@@ -208,10 +208,14 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
       }
 
       setFieldValue(`${fieldName}.file`, null);
-    } finally {
+
+      // Zamykamy submenu po zapisie
       setSubMenu(false);
       setSetPosition(false);
       setUploadImage(false);
+    } catch (error) {
+      console.error('Error saving image:', error);
+      alert('Błąd podczas zapisywania obrazu');
     }
   };
 

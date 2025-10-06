@@ -2,9 +2,13 @@
 
 import { ArrowRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
+import { getSiteImage, SiteImage } from '../lib/siteImages';
 import { useEditMode } from '../contexts/EditModeContext';
-import SiteImageEditor from './SiteImageEditor';
+import { ImageEditorField } from './ImageEditorField';
+import { Formik, Form } from 'formik';
+import { IImage, IUploadImage } from '../types/image';
+import { uploadImage } from '../lib/storage';
+import { supabase } from '../lib/supabase';
 
 export default function Hero() {
   const [heroImage, setHeroImage] = useState<SiteImage | null>(null);
@@ -27,27 +31,111 @@ export default function Hero() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const backgroundStyle = heroImage
-    ? getImageStyle(heroImage, isMobile)
-    : { backgroundImage: 'url(https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920)' };
+  const initialImage: IImage | null = heroImage
+    ? {
+        id: heroImage.id,
+        alt: heroImage.alt_text || '',
+        image_metadata: {
+          desktop: {
+            src: heroImage.desktop_url,
+            position: { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: heroImage.mobile_url
+            ? {
+                src: heroImage.mobile_url,
+                position: { posX: 0, posY: 0, scale: 1 },
+              }
+            : undefined,
+        },
+      }
+    : null;
+
+  const handleSave = async (values: any) => {
+    try {
+      const desktopImage = values.heroImage as IUploadImage | IImage;
+      let desktopUrl = '';
+
+      if ('file' in desktopImage && desktopImage.file) {
+        desktopUrl = await uploadImage(desktopImage.file, 'hero');
+      } else if (desktopImage?.image_metadata?.desktop?.src) {
+        desktopUrl = desktopImage.image_metadata.desktop.src;
+      }
+
+      if (heroImage && heroImage.id) {
+        const { error } = await supabase
+          .from('site_images')
+          .update({
+            desktop_url: desktopUrl,
+            alt_text: desktopImage.alt || '',
+          })
+          .eq('id', heroImage.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('site_images').insert({
+          section: 'hero',
+          name: 'Hero image',
+          description: '',
+          desktop_url: desktopUrl,
+          alt_text: desktopImage.alt || '',
+          position: 'center',
+          order_index: 1,
+          is_active: true,
+        });
+
+        if (error) throw error;
+      }
+
+      await loadImage();
+    } catch (error) {
+      console.error('Error saving image:', error);
+    }
+  };
 
   return (
     <header className="relative min-h-screen flex items-center" role="banner">
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={backgroundStyle}
-        role="img"
-        aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
+      <Formik
+        initialValues={{
+          heroImage: initialImage || {
+            alt: '',
+            image_metadata: {
+              desktop: {
+                position: { posX: 0, posY: 0, scale: 1 },
+              },
+            },
+          },
+        }}
+        onSubmit={handleSave}
+        enableReinitialize
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90"></div>
-        <SiteImageEditor
-          section="hero"
-          image={heroImage}
-          isEditMode={isEditMode}
-          onUpdate={loadImage}
-          position="bottom-right"
-        />
-      </div>
+        {() => (
+          <Form className="absolute inset-0">
+            {isEditMode ? (
+              <ImageEditorField
+                fieldName="heroImage"
+                image={initialImage}
+                isAdmin={true}
+                withMenu={true}
+                mode="horizontal"
+                menuPosition="right-bottom"
+                onSave={handleSave}
+              />
+            ) : (
+              <div
+                className="absolute inset-0 bg-cover bg-center"
+                style={{
+                  backgroundImage: heroImage
+                    ? `url(${isMobile && heroImage.mobile_url ? heroImage.mobile_url : heroImage.desktop_url})`
+                    : 'url(https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920)',
+                }}
+                role="img"
+                aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
+              />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90 pointer-events-none"></div>
+          </Form>
+        )}
+      </Formik>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
         <div className="max-w-3xl">
