@@ -2,16 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
+import { useEditMode } from '../contexts/EditModeContext';
+import SiteImageEditor from './SiteImageEditor';
 
 export default function Divider() {
   const [image, setImage] = useState<SiteImage | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const { isEditMode } = useEditMode();
+
+  const loadImage = async () => {
+    const img = await getSiteImage('divider1');
+    setImage(img);
+  };
 
   useEffect(() => {
-    const loadImage = async () => {
-      const img = await getSiteImage('divider1');
-      setImage(img);
-    };
     loadImage();
 
     const checkMobile = () => {
@@ -33,6 +37,13 @@ export default function Divider() {
         style={backgroundStyle}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/70 to-[#1c1f33]/80"></div>
+        <SiteImageEditor
+          section="divider1"
+          image={image}
+          isEditMode={isEditMode}
+          onUpdate={loadImage}
+          position="bottom-right"
+        />
       </div>
 
       <div className="relative z-10 h-full flex items-center justify-center px-4 sm:px-6 lg:px-8">

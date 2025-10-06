@@ -2,18 +2,22 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
+import { useEditMode } from '../contexts/EditModeContext';
+import SiteImageEditor from './SiteImageEditor';
 
 export default function DividerTwo() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const sectionRef = useRef<HTMLElement>(null);
   const [image, setImage] = useState<SiteImage | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const { isEditMode } = useEditMode();
+
+  const loadImage = async () => {
+    const img = await getSiteImage('divider2');
+    setImage(img);
+  };
 
   useEffect(() => {
-    const loadImage = async () => {
-      const img = await getSiteImage('divider2');
-      setImage(img);
-    };
     loadImage();
 
     const checkMobile = () => {
@@ -57,6 +61,13 @@ export default function DividerTwo() {
         style={backgroundStyle}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85"></div>
+        <SiteImageEditor
+          section="divider2"
+          image={image}
+          isEditMode={isEditMode}
+          onUpdate={loadImage}
+          position="bottom-right"
+        />
       </div>
 
       <div className="relative z-10 h-full flex items-center justify-center px-4 sm:px-6 lg:px-8">

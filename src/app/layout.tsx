@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { EditModeProvider } from '@/contexts/EditModeContext';
 import { Providers } from './providers';
 import '@/index.css';
 
@@ -18,7 +19,9 @@ export default function RootLayout({
       <body>
         <Providers>
           <AuthProvider>
-            {children}
+            <EditModeProvider>
+              {children}
+            </EditModeProvider>
           </AuthProvider>
         </Providers>
       </body>

@@ -1,8 +1,9 @@
 'use client';
 
-import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Globe } from 'lucide-react';
+import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Globe, Edit3, Eye } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useEditMode } from '../contexts/EditModeContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAppSelector } from '../store/hooks';
@@ -19,6 +20,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const servicesRef = useRef<HTMLDivElement>(null);
   const { signOut, user } = useAuth();
+  const { isEditMode, toggleEditMode } = useEditMode();
   const router = useRouter();
   const authUser = useAppSelector((state) => state.auth.user);
   const [crmUser, setCrmUser] = useState<any>(null);
@@ -272,6 +274,34 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                             <p className="text-xs text-[#e5e4e2]/60">Zarządzanie stroną</p>
                           </div>
                         </button>
+                      )}
+                      {(crmUser || authUser) && (
+                        <>
+                          <div className="h-px bg-[#d3bb73]/20 my-2" />
+                          <button
+                            onClick={() => {
+                              toggleEditMode();
+                              setIsDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 transition-colors text-left group ${isEditMode ? 'bg-[#d3bb73]/10' : ''}`}
+                          >
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors ${isEditMode ? 'bg-[#d3bb73]/20' : 'bg-[#d3bb73]/10'}`}>
+                              {isEditMode ? (
+                                <Eye className="w-4 h-4 text-[#d3bb73]" />
+                              ) : (
+                                <Edit3 className="w-4 h-4 text-[#d3bb73]" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-[#e5e4e2]">
+                                {isEditMode ? 'Wyłącz edycję obrazów' : 'Edytuj obrazy strony'}
+                              </p>
+                              <p className="text-xs text-[#e5e4e2]/60">
+                                {isEditMode ? 'Wróć do trybu przeglądania' : 'Edytuj zdjęcia na stronie'}
+                              </p>
+                            </div>
+                          </button>
+                        </>
                       )}
                       <div className="h-px bg-[#d3bb73]/20 my-2" />
                       <button

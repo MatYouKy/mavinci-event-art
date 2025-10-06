@@ -3,16 +3,20 @@
 import { ArrowRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
+import { useEditMode } from '../contexts/EditModeContext';
+import SiteImageEditor from './SiteImageEditor';
 
 export default function Hero() {
   const [heroImage, setHeroImage] = useState<SiteImage | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const { isEditMode } = useEditMode();
+
+  const loadImage = async () => {
+    const image = await getSiteImage('hero');
+    setHeroImage(image);
+  };
 
   useEffect(() => {
-    const loadImage = async () => {
-      const image = await getSiteImage('hero');
-      setHeroImage(image);
-    };
     loadImage();
 
     const checkMobile = () => {
@@ -36,6 +40,13 @@ export default function Hero() {
         aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90"></div>
+        <SiteImageEditor
+          section="hero"
+          image={heroImage}
+          isEditMode={isEditMode}
+          onUpdate={loadImage}
+          position="bottom-right"
+        />
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
