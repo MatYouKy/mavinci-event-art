@@ -1,17 +1,39 @@
 'use client';
 
 import { ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
 
 export default function Hero() {
+  const [heroImage, setHeroImage] = useState<SiteImage | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const loadImage = async () => {
+      const image = await getSiteImage('hero');
+      setHeroImage(image);
+    };
+    loadImage();
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const backgroundStyle = heroImage
+    ? getImageStyle(heroImage, isMobile)
+    : { backgroundImage: 'url(https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920)' };
+
   return (
     <header className="relative min-h-screen flex items-center" role="banner">
       <div
         className="absolute inset-0 bg-cover bg-center"
-        style={{
-          backgroundImage: 'url(https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920)',
-        }}
+        style={backgroundStyle}
         role="img"
-        aria-label="Profesjonalna organizacja eventów biznesowych"
+        aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90"></div>
       </div>

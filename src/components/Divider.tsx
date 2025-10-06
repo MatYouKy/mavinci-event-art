@@ -1,13 +1,36 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
+
 export default function Divider() {
+  const [image, setImage] = useState<SiteImage | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const loadImage = async () => {
+      const img = await getSiteImage('divider1');
+      setImage(img);
+    };
+    loadImage();
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const backgroundStyle = image
+    ? getImageStyle(image, isMobile)
+    : { backgroundImage: 'url(https://images.pexels.com/photos/1540406/pexels-photo-1540406.jpeg?auto=compress&cs=tinysrgb&w=1920)' };
+
   return (
     <section className="relative h-[60vh] md:h-[70vh] overflow-hidden">
       <div
         className="absolute inset-0 bg-cover bg-center bg-fixed"
-        style={{
-          backgroundImage: 'url(https://images.pexels.com/photos/1540406/pexels-photo-1540406.jpeg?auto=compress&cs=tinysrgb&w=1920)',
-        }}
+        style={backgroundStyle}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/70 to-[#1c1f33]/80"></div>
       </div>

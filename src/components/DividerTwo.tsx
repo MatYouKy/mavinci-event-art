@@ -1,12 +1,27 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
 
 export default function DividerTwo() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const sectionRef = useRef<HTMLElement>(null);
+  const [image, setImage] = useState<SiteImage | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    const loadImage = async () => {
+      const img = await getSiteImage('divider2');
+      setImage(img);
+    };
+    loadImage();
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
     const handleScroll = () => {
       if (!sectionRef.current) return;
 
@@ -25,16 +40,21 @@ export default function DividerTwo() {
     window.addEventListener('scroll', handleScroll);
     handleScroll();
 
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', checkMobile);
+    };
   }, []);
+
+  const backgroundStyle = image
+    ? getImageStyle(image, isMobile)
+    : { backgroundImage: 'url(https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=1920)' };
 
   return (
     <section ref={sectionRef} className="relative h-[60vh] md:h-[70vh] overflow-hidden">
       <div
         className="absolute inset-0 bg-cover bg-center bg-fixed"
-        style={{
-          backgroundImage: 'url(https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=1920)',
-        }}
+        style={backgroundStyle}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85"></div>
       </div>

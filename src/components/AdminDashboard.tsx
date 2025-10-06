@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Users, Briefcase, LogOut, Home } from 'lucide-react';
+import { Users, Briefcase, LogOut, Home, Image } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';;
 import AdminTeamPanel from './AdminTeamPanel';
 import AdminPortfolioPanel from './AdminPortfolioPanel';
+import AdminSiteImagesPanel from './AdminSiteImagesPanel';
 
-type TabType = 'team' | 'portfolio';
+type TabType = 'team' | 'portfolio' | 'images';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('team');
@@ -61,6 +62,17 @@ export default function AdminDashboard() {
               <Briefcase className="w-5 h-5" />
               Portfolio
             </button>
+            <button
+              onClick={() => setActiveTab('images')}
+              className={`flex items-center gap-2 px-6 py-3 border-b-2 transition-colors ${
+                activeTab === 'images'
+                  ? 'border-[#d3bb73] text-[#d3bb73]'
+                  : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+            >
+              <Image className="w-5 h-5" />
+              Obrazy Strony
+            </button>
           </div>
         </div>
       </div>
@@ -68,6 +80,7 @@ export default function AdminDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'team' && <AdminTeamPanel />}
         {activeTab === 'portfolio' && <AdminPortfolioPanel />}
+        {activeTab === 'images' && <AdminSiteImagesPanel />}
       </div>
     </div>
   );
