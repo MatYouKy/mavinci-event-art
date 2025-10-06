@@ -203,8 +203,16 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
     try {
       const payload = buildPayload();
 
+      console.log('ImageEditorField handleSubmit - payload:', payload);
+      console.log('ImageEditorField handleSubmit - values:', values);
+      console.log('ImageEditorField handleSubmit - fieldName:', fieldName);
+
       if (onSave) {
+        console.log('Wywołuję onSave z payload:', payload);
         await onSave(payload);
+        console.log('onSave zakończone pomyślnie');
+      } else {
+        console.warn('Brak funkcji onSave!');
       }
 
       setFieldValue(`${fieldName}.file`, null);
@@ -215,7 +223,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
       setUploadImage(false);
     } catch (error) {
       console.error('Error saving image:', error);
-      alert('Błąd podczas zapisywania obrazu');
+      alert('Błąd podczas zapisywania obrazu: ' + (error as Error).message);
     }
   };
 

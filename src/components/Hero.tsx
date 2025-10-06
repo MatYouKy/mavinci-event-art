@@ -50,15 +50,21 @@ export default function Hero() {
       }
     : null;
 
-  const handleSave = async (values: any) => {
+  const handleSave = async (payload: { file?: File; image: IUploadImage | IImage }) => {
     try {
-      const desktopImage = values.heroImage as IUploadImage | IImage;
       let desktopUrl = '';
 
-      if ('file' in desktopImage && desktopImage.file) {
-        desktopUrl = await uploadImage(desktopImage.file, 'hero');
-      } else if (desktopImage?.image_metadata?.desktop?.src) {
-        desktopUrl = desktopImage.image_metadata.desktop.src;
+      // Jeśli jest nowy plik, wgraj go
+      if (payload.file) {
+        desktopUrl = await uploadImage(payload.file, 'hero');
+      }
+      // Jeśli nie ma pliku, użyj istniejącego URL
+      else if (payload.image?.image_metadata?.desktop?.src) {
+        desktopUrl = payload.image.image_metadata.desktop.src;
+      }
+
+      if (!desktopUrl) {
+        throw new Error('Brak URL obrazu');
       }
 
       if (heroImage && heroImage.id) {
@@ -66,7 +72,7 @@ export default function Hero() {
           .from('site_images')
           .update({
             desktop_url: desktopUrl,
-            alt_text: desktopImage.alt || '',
+            alt_text: payload.image.alt || '',
           })
           .eq('id', heroImage.id);
 
@@ -77,7 +83,7 @@ export default function Hero() {
           name: 'Hero image',
           description: '',
           desktop_url: desktopUrl,
-          alt_text: desktopImage.alt || '',
+          alt_text: payload.image.alt || '',
           position: 'center',
           order_index: 1,
           is_active: true,
@@ -87,8 +93,10 @@ export default function Hero() {
       }
 
       await loadImage();
+      console.log('Obraz zapisany pomyślnie!');
     } catch (error) {
       console.error('Error saving image:', error);
+      alert('Błąd podczas zapisywania obrazu: ' + (error as Error).message);
     }
   };
 
@@ -106,7 +114,7 @@ export default function Hero() {
               },
             },
           }}
-          onSubmit={handleSave}
+          onSubmit={() => {}}
           enableReinitialize
         >
           {() => (
