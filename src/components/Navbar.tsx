@@ -1,6 +1,6 @@
 'use client';
 
-import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Globe, Edit3, Eye } from 'lucide-react';
+import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Globe, CreditCard as Edit3, Eye } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEditMode } from '../contexts/EditModeContext';

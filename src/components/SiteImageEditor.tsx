@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Edit2, Save, X } from 'lucide-react';
+import { CreditCard as Edit2, Save, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { SiteImage } from '../lib/siteImages';
 import { Formik, Form, Field } from 'formik';
