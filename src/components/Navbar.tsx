@@ -64,7 +64,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   };
 
   const handleLoginClick = () => {
-    router.push('/admin/login');
+    router.push('/crm/login');
   };
 
   const handleDashboardClick = () => {
