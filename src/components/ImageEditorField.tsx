@@ -1,0 +1,501 @@
+'use client';
+
+import { FormImageInput, FormInput } from './formik';
+import { FormImageInputHandle } from './formik/FormImageInput';
+import { ElasticBoxComponent, Loader } from './UI';
+import {
+  ThreeDotMenu,
+  ThreeDotPosition,
+} from './UI/ThreeDotMenu/ThreeDotMenu';
+import { useMobile } from '../hooks/useMobile';
+import { Card, CardMedia, IconButton } from '@mui/material';
+import { useField, useFormikContext } from 'formik';
+import cloneDeep from 'lodash/cloneDeep';
+import isUndefined from 'lodash/isUndefined';
+import mergeWith from 'lodash/mergeWith';
+import { UploadCloud as UploadCloudIcon, Trash2 as Trash2Icon, Move, Check, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+
+import {
+  IImage,
+  IUploadImage,
+  IImagePosition,
+  IScreenMetadata,
+  IScreenMetadataUpload,
+} from '../types/image';
+import { FormikFieldModal } from './UI/Modal/FormikFieldModal';
+import { SliderX, SliderY, SliderScale } from './UI/Slider/Slider';
+
+interface ImageEditorFieldProps {
+  isAdmin?: boolean;
+  fieldName: string;
+  withMenu?: boolean;
+  image?: IImage | IUploadImage | null;
+  style?: React.CSSProperties;
+  mode?: 'vertical' | 'horizontal';
+  menuPosition?: ThreeDotPosition;
+  multiplier?: number;
+  isLoading?: boolean;
+  onSave?: (args: {
+    file?: File;
+    image: IUploadImage | IImage;
+  }) => Promise<void> | void;
+}
+
+export function mergeImagePayload(
+  base: IImage,
+  patch?: Partial<IImage>
+): IImage {
+  if (!patch) return base;
+
+  const baseClone = cloneDeep(base);
+
+  return mergeWith(baseClone, patch, (objValue, srcValue) => {
+    if (isUndefined(srcValue)) {
+      return objValue;
+    }
+    return undefined;
+  });
+}
+
+export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
+  fieldName,
+  withMenu = true,
+  image,
+  mode = 'vertical',
+  style,
+  menuPosition = 'right-bottom',
+  multiplier,
+  isAdmin = false,
+  isLoading = false,
+  onSave,
+}) => {
+  const isMobile = useMobile();
+  const screenMode = isMobile ? 'mobile' : 'desktop';
+  const { values, setFieldValue } = useFormikContext<any>();
+  const [field, , helpers] = useField<IUploadImage | IImage>(fieldName);
+  const [, , altHelper] = useField<string>(`${fieldName}.alt`);
+  const [setPosition, setSetPosition] = useState<boolean>(false);
+  const [subMenu, setSubMenu] = useState<boolean>(false);
+  const [setAlt, setSetAlt] = useState<boolean>(false);
+  const [uploadImage, setUploadImage] = useState<boolean>(false);
+
+  const imageInputRef = useRef<FormImageInputHandle>(null);
+
+  const uploadedImageFile = values?.[fieldName]?.file;
+
+  const isScreenMetadataWithSrc = (
+    metadata: IScreenMetadata | IScreenMetadataUpload
+  ): metadata is IScreenMetadata => {
+    return 'src' in metadata && typeof metadata.src === 'string';
+  };
+
+  const screenMeta = image?.image_metadata?.[screenMode];
+  const positions = values?.[fieldName]?.image_metadata?.[screenMode]
+    ?.position ?? {
+    posX: 0,
+    posY: 0,
+    scale: 1,
+  };
+
+  const buildPayload = (): { file?: File; image: IUploadImage | IImage } => {
+    const current = (values?.[fieldName] || {}) as any;
+    const file = current?.file as File | undefined;
+
+    const { file: _omit, ...imageWithoutFile } = current || {};
+    return { file, image: imageWithoutFile as IUploadImage | IImage };
+  };
+
+  const src =
+    uploadedImageFile instanceof File
+      ? URL.createObjectURL(uploadedImageFile)
+      : screenMeta && isScreenMetadataWithSrc(screenMeta)
+        ? screenMeta.src
+        : '';
+
+  const handleChange = (property: keyof IImagePosition, value: number) => {
+    const currentPosition = values?.[fieldName]?.image_metadata?.[screenMode]
+      ?.position ?? {
+      posX: 0,
+      posY: 0,
+      scale: 1,
+    };
+
+    const updatedPosition = {
+      ...currentPosition,
+      [property]: value,
+    };
+
+    const prev = values?.[fieldName] as IUploadImage;
+
+    const updated: IUploadImage = {
+      ...prev,
+      image_metadata: {
+        ...prev?.image_metadata,
+        [screenMode]: {
+          ...prev?.image_metadata?.[screenMode],
+          position: updatedPosition,
+          upload_settings: {
+            ...prev?.image_metadata?.[screenMode]?.upload_settings,
+          },
+        },
+      },
+    };
+
+    helpers.setValue(updated);
+  };
+
+  const handleChangeAlt = (value: string) => {
+    altHelper.setValue(value);
+    handleSubmit();
+    handleSetAlt(false);
+  };
+
+  const handleSetPosition = (action: boolean) => {
+    setSetPosition(action);
+    handleOpenSubmenu();
+  };
+
+  const handleOpenSubmenu = () => {
+    setSubMenu(true);
+  };
+
+  const handleSetAlt = (action: boolean) => {
+    setSetAlt(action);
+  };
+
+  const handleUploadImage = () => {
+    setSubMenu(true);
+    setUploadImage(true);
+  };
+
+  const handleRemove = () => {
+    setFieldValue(`${fieldName}.file`, null);
+  };
+
+  const handleResetPosition = () => {
+    const originalPosition = image?.image_metadata?.[screenMode]?.position ?? {
+      posX: 0,
+      posY: 0,
+      scale: 1,
+    };
+
+    setFieldValue(
+      `${fieldName}.image_metadata.${screenMode}.position`,
+      originalPosition
+    );
+  };
+
+  const handleCloseSubmenu = () => {
+    setSubMenu(false);
+    setSetPosition(false);
+    setUploadImage(false);
+    if (uploadedImageFile) {
+      handleRemove();
+    }
+    handleResetPosition();
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const payload = buildPayload();
+
+      if (onSave) {
+        await onSave(payload);
+      }
+
+      setFieldValue(`${fieldName}.file`, null);
+    } finally {
+      setSubMenu(false);
+      setSetPosition(false);
+      setUploadImage(false);
+    }
+  };
+
+  const menuItems = [
+    {
+      children: 'Wgraj Zdjęcie',
+      onClick: () => {
+        return handleUploadImage();
+      },
+    },
+    {
+      children: 'Ustaw Alt',
+      onClick: () => {
+        return handleSetAlt(true);
+      },
+    },
+    {
+      children: 'Ustaw Pozycję',
+      onClick: handleSetPosition.bind(null, true),
+    },
+    {
+      children: 'Resetuj pozycję',
+      onClick: () => {
+        handleChange('posX', 0);
+        handleChange('posY', 0);
+        handleChange('scale', 1);
+      },
+    },
+  ];
+
+  useEffect(() => {
+    const uploadedImage = values?.[fieldName]?.file;
+    if (uploadedImage) {
+      helpers.setValue({
+        ...values?.[fieldName],
+        image_metadata: {
+          ...values?.[fieldName]?.image_metadata,
+          desktop: {
+            ...values?.[fieldName]?.image_metadata?.desktop,
+            position: { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: {
+            ...values?.[fieldName]?.image_metadata?.mobile,
+            position: { posX: 0, posY: 0, scale: 1 },
+          },
+        },
+      });
+    }
+  }, [values?.[fieldName]?.file]);
+
+  return (
+    <>
+      <ElasticBoxComponent mode={mode} multiplier={multiplier}>
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: setPosition ? 1400 : 100,
+          }}
+        >
+          {setPosition && (
+            <>
+              <SliderX
+                style={{
+                  bottom:
+                    menuPosition === 'right-bottom' ||
+                    menuPosition === 'left-bottom'
+                      ? 40
+                      : 0,
+                }}
+                value={positions?.posX ?? 0}
+                min={-100}
+                max={100}
+                step={0.01}
+                onChange={(_, v) => {
+                  return handleChange('posX', v as number);
+                }}
+              />
+              <SliderY
+                value={positions?.posY ?? 0}
+                min={-100}
+                max={100}
+                step={0.01}
+                onChange={(_, v) => {
+                  return handleChange('posY', v as number);
+                }}
+              />
+              <SliderScale
+                style={{
+                  top:
+                    menuPosition === 'right-top' || menuPosition === 'left-top'
+                      ? 40
+                      : 0,
+                }}
+                value={positions?.scale ?? 1}
+                min={0.1}
+                max={3}
+                step={0.01}
+                onChange={(_, v) => {
+                  return handleChange('scale', v as number);
+                }}
+              />
+            </>
+          )}
+          {withMenu && isAdmin && (
+            <ThreeDotMenu
+              menuPosition={menuPosition}
+              menuAction={subMenu}
+              menuActionContent={
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '2px',
+                    margin: '0 10px',
+                    zIndex: 100000,
+                  }}
+                >
+                  {uploadImage && (
+                    <div>
+                      <IconButton
+                        size="medium"
+                        onClick={() => {
+                          return imageInputRef.current?.click();
+                        }}
+                        sx={{
+                          color: '#e5e4e2',
+                        }}
+                      >
+                        <UploadCloudIcon />
+                      </IconButton>
+                      {uploadedImageFile && (
+                        <>
+                          <IconButton
+                            sx={{
+                              color: '#e5e4e2',
+                            }}
+                            size="small"
+                            onClick={() => {
+                              return setSetPosition((prev) => {
+                                return !prev;
+                              });
+                            }}
+                          >
+                            <Move />
+                          </IconButton>
+                          <IconButton
+                            sx={{
+                              color: '#e5e4e2',
+                            }}
+                            size="small"
+                            onClick={() => {
+                              return handleRemove();
+                            }}
+                          >
+                            <Trash2Icon />
+                          </IconButton>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}
+                  >
+                    <IconButton
+                      size="medium"
+                      sx={{
+                        color: '#4ade80',
+                      }}
+                      onClick={handleSubmit}
+                    >
+                      <Check />
+                    </IconButton>
+                    <IconButton
+                      size="medium"
+                      onClick={handleCloseSubmenu}
+                      sx={{
+                        color: '#ef4444',
+                      }}
+                    >
+                      <X />
+                    </IconButton>
+                  </div>
+                </div>
+              }
+              menu_items={menuItems}
+            />
+          )}
+          {uploadImage && (
+            <div
+              style={{
+                position: 'absolute',
+                margin: '30px',
+                top:
+                  menuPosition === 'right-top' || menuPosition === 'left-top'
+                    ? 40
+                    : 0,
+                left: 0,
+                right: 0,
+                bottom:
+                  menuPosition === 'right-bottom' ||
+                  menuPosition === 'left-bottom'
+                    ? 40
+                    : 0,
+                zIndex: 100,
+              }}
+            >
+              <FormImageInput
+                name={`${fieldName}.file`}
+                label="Wgraj zdjęcie"
+                ref={imageInputRef}
+              />
+            </div>
+          )}
+        </div>
+
+        <Card
+          sx={{
+            position: 'relative',
+            overflow: 'hidden',
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#1c1f33',
+          }}
+          style={style}
+        >
+          {isLoading && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(28, 31, 51, 0.8)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 1,
+              }}
+            >
+              <Loader />
+            </div>
+          )}
+          <CardMedia
+            component="img"
+            src={src}
+            alt={values?.[fieldName]?.alt ?? ''}
+            sx={{
+              position: 'absolute',
+              left: 0,
+              maxWidth: 'unset',
+              maxHeight: 'unset',
+              width: mode === 'horizontal' ? 'auto' : '100%',
+              height: mode === 'vertical' ? 'auto' : '100%',
+              minWidth: '100%',
+              minHeight: '100%',
+              transform: `translate(${
+                positions?.posX ? positions.posX * 0.7 : 0
+              }%, ${positions?.posY ? positions.posY * -0.7 : 0}%) scale(${
+                positions?.scale ?? 1
+              })`,
+              transformOrigin: 'center',
+            }}
+          />
+        </Card>
+      </ElasticBoxComponent>
+      {setAlt && (
+        <FormikFieldModal
+          title="Ustaw opis zdjęcia"
+          open={setAlt}
+          fieldName={`${fieldName}.alt`}
+          onClose={() => {
+            return handleSetAlt(false);
+          }}
+          onSave={() => {
+            return handleChangeAlt(values[fieldName].alt);
+          }}
+          values={values}
+          isMobile={isMobile}
+          label="Opis Alt"
+        />
+      )}
+    </>
+  );
+};

@@ -1,0 +1,366 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Bell, X, Check, ExternalLink, Trash2, CheckCheck } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  category: string;
+  is_read: boolean;
+  is_global: boolean;
+  action_url: string | null;
+  created_at: string;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+}
+
+export default function NotificationCenter() {
+  const router = useRouter();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showPanel, setShowPanel] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+
+  useEffect(() => {
+    fetchNotifications();
+
+    const channel = supabase
+      .channel('notifications-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+        },
+        () => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      if (data) {
+        setNotifications(data);
+        setUnreadCount(data.filter((n) => !n.is_read).length);
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  };
+
+  const markAsRead = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking as read:', error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      setLoading(true);
+      const unreadIds = notifications
+        .filter((n) => !n.is_read)
+        .map((n) => n.id);
+
+      if (unreadIds.length === 0) return;
+
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .in('id', unreadIds);
+
+      if (error) throw error;
+
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      fetchNotifications();
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    if (!notification.is_read) {
+      markAsRead(notification.id);
+    }
+
+    if (notification.action_url) {
+      router.push(notification.action_url);
+      setShowPanel(false);
+    }
+  };
+
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'success':
+        return 'border-green-500/30 bg-green-500/5';
+      case 'error':
+        return 'border-red-500/30 bg-red-500/5';
+      case 'warning':
+        return 'border-yellow-500/30 bg-yellow-500/5';
+      default:
+        return 'border-blue-500/30 bg-blue-500/5';
+    }
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'success':
+        return '✅';
+      case 'error':
+        return '❌';
+      case 'warning':
+        return '⚠️';
+      default:
+        return 'ℹ️';
+    }
+  };
+
+  const filteredNotifications =
+    filter === 'unread'
+      ? notifications.filter((n) => !n.is_read)
+      : notifications;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowPanel(!showPanel)}
+        className="relative p-2 rounded-lg hover:bg-[#1c1f33] transition-colors"
+      >
+        <Bell className="w-6 h-6 text-[#e5e4e2]" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {showPanel && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowPanel(false)}
+          />
+
+          <div className="absolute right-0 top-12 w-96 max-h-[600px] bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl z-50 flex flex-col">
+            <div className="p-4 border-b border-[#d3bb73]/20">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-[#e5e4e2]">
+                  Powiadomienia
+                </h3>
+                <button
+                  onClick={() => setShowPanel(false)}
+                  className="p-1 hover:bg-[#0f1119] rounded transition-colors"
+                >
+                  <X className="w-5 h-5 text-[#e5e4e2]" />
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    filter === 'all'
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                  }`}
+                >
+                  Wszystkie ({notifications.length})
+                </button>
+                <button
+                  onClick={() => setFilter('unread')}
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    filter === 'unread'
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                  }`}
+                >
+                  Nieprzeczytane ({unreadCount})
+                </button>
+              </div>
+
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  disabled={loading}
+                  className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  Oznacz wszystkie jako przeczytane
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {filteredNotifications.length === 0 ? (
+                <div className="p-8 text-center text-[#e5e4e2]/60">
+                  <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>
+                    {filter === 'unread'
+                      ? 'Brak nieprzeczytanych powiadomień'
+                      : 'Brak powiadomień'}
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-[#d3bb73]/10">
+                  {filteredNotifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-4 hover:bg-[#0f1119]/50 transition-colors ${
+                        !notification.is_read ? 'bg-[#d3bb73]/5' : ''
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`flex-shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${getTypeColor(
+                            notification.type
+                          )}`}
+                        >
+                          <span className="text-sm">
+                            {getTypeIcon(notification.type)}
+                          </span>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4
+                              className={`font-medium ${
+                                notification.is_read
+                                  ? 'text-[#e5e4e2]/70'
+                                  : 'text-[#e5e4e2]'
+                              }`}
+                            >
+                              {notification.title}
+                            </h4>
+                            {!notification.is_read && (
+                              <div className="flex-shrink-0 w-2 h-2 bg-[#d3bb73] rounded-full" />
+                            )}
+                          </div>
+
+                          <p
+                            className={`text-sm mt-1 ${
+                              notification.is_read
+                                ? 'text-[#e5e4e2]/50'
+                                : 'text-[#e5e4e2]/70'
+                            }`}
+                          >
+                            {notification.message}
+                          </p>
+
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs text-[#e5e4e2]/40">
+                              {new Date(
+                                notification.created_at
+                              ).toLocaleString('pl-PL', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+
+                            {notification.is_global && (
+                              <span className="text-xs px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                                Globalne
+                              </span>
+                            )}
+
+                            <span className="text-xs px-2 py-0.5 bg-[#0f1119] text-[#e5e4e2]/60 rounded">
+                              {notification.category}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-2">
+                            {notification.action_url && (
+                              <button
+                                onClick={() =>
+                                  handleNotificationClick(notification)
+                                }
+                                className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Przejdź
+                              </button>
+                            )}
+
+                            {!notification.is_read && (
+                              <button
+                                onClick={() => markAsRead(notification.id)}
+                                className="flex items-center gap-1 text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                              >
+                                <Check className="w-3 h-3" />
+                                Oznacz jako przeczytane
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => deleteNotification(notification.id)}
+                              className="flex items-center gap-1 text-xs text-red-400/60 hover:text-red-400 transition-colors ml-auto"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Usuń
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

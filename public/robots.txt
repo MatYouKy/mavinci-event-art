@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /admin/login
+Disallow: /admin/dashboard
+
+Sitemap: https://mavinci.pl/sitemap.xml
+
+Crawl-delay: 0
