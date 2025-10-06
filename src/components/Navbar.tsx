@@ -17,8 +17,12 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isServicesOpen, setIsServicesOpen] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isHovered, setIsHovered] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const servicesRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const lastScrollY = useRef(0);
   const { signOut, user } = useAuth();
   const { isEditMode, toggleEditMode } = useEditMode();
   const router = useRouter();
@@ -54,6 +58,27 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      if (currentScrollY < 50) {
+        setIsVisible(true);
+      } else if (currentScrollY > lastScrollY.current) {
+        if (!isHovered) {
+          setIsVisible(false);
+        }
+      } else {
+        setIsVisible(true);
+      }
+
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isHovered]);
 
   const navLinks = [
     { label: 'O Nas', href: '/o-nas' },
@@ -142,7 +167,15 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const userEmail = crmUser?.email || authUser?.user_email?.address;
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 lg:px-8 pt-4">
+    <nav
+      ref={navRef}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 lg:px-8 pt-4 transition-transform duration-300"
+      style={{
+        transform: isVisible || isHovered ? 'translateY(0)' : 'translateY(-100%)'
+      }}
+    >
       <div className="max-w-7xl mx-auto bg-[#1c1f33]/95 backdrop-blur-md rounded-full px-6 md:px-8 border border-[#d3bb73]/20 shadow-lg">
         <div className="flex items-center justify-between h-14 md:h-16">
           <Link href="/" className="flex items-center">

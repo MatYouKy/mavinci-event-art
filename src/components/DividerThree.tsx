@@ -1,15 +1,49 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
+import { useEditMode } from '../contexts/EditModeContext';
+import SiteImageEditor from './SiteImageEditor';
+
 export default function DividerThree() {
+  const [image, setImage] = useState<SiteImage | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const { isEditMode } = useEditMode();
+
+  const loadImage = async () => {
+    const img = await getSiteImage('divider3');
+    setImage(img);
+  };
+
+  useEffect(() => {
+    loadImage();
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const backgroundStyle = image
+    ? getImageStyle(image, isMobile)
+    : { backgroundImage: 'url(https://images.pexels.com/photos/1190298/pexels-photo-1190298.jpeg?auto=compress&cs=tinysrgb&w=1920)' };
+
   return (
     <section className="relative h-[50vh] md:h-[60vh] overflow-hidden">
       <div
         className="absolute inset-0 bg-cover bg-center bg-fixed"
-        style={{
-          backgroundImage: 'url(https://images.pexels.com/photos/1190298/pexels-photo-1190298.jpeg?auto=compress&cs=tinysrgb&w=1920)',
-        }}
+        style={backgroundStyle}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/90 via-[#800020]/80 to-[#1c1f33]/90"></div>
+        <SiteImageEditor
+          section="divider3"
+          image={image}
+          isEditMode={isEditMode}
+          onUpdate={loadImage}
+          position="bottom-right"
+        />
       </div>
 
       <div className="relative z-10 h-full flex items-center justify-center px-4 sm:px-6 lg:px-8">
