@@ -26,6 +26,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/o-nas/page.js"
     ],
+    "/uslugi/technika-sceniczna/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/uslugi/technika-sceniczna/page.js"
+    ],
     "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

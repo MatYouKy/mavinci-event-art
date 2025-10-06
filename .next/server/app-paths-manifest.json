@@ -3,5 +3,6 @@
   "/portfolio/[id]/page": "app/portfolio/[id]/page.js",
   "/portfolio/page": "app/portfolio/page.js",
   "/page": "app/page.js",
-  "/o-nas/page": "app/o-nas/page.js"
+  "/o-nas/page": "app/o-nas/page.js",
+  "/uslugi/technika-sceniczna/page": "app/uslugi/technika-sceniczna/page.js"
 }
