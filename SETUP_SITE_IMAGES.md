@@ -2,7 +2,7 @@
 
 ## ✅ GOTOWE DO UŻYCIA!
 
-System inline editing obrazów jest już w pełni funkcjonalny. Ikony edycji pojawiają się automatycznie gdy włączysz tryb edycji.
+System inline editing obrazów z **pełną obsługą file upload** jest już funkcjonalny. Ikony edycji pojawiają się automatycznie gdy włączysz tryb edycji.
 
 ## Jak używać (krok po kroku):
 
@@ -16,10 +16,20 @@ Możesz się zalogować przez:
 2. Wybierz opcję **"Edytuj obrazy strony"**
 3. Ikony edycji pojawią się automatycznie
 
-### 3. Edytuj obrazy
+### 3. Edytuj obrazy - dwa sposoby!
+
+**Sposób 1: Upload własnego obrazu** (zalecane)
 - **Złote ikony edycji** (z ołówkiem) pojawią się przy każdym obrazie
 - Kliknij ikonę aby otworzyć edytor
-- Wklej nowy URL obrazu
+- Kliknij przycisk **"Upload"** przy polu Desktop lub Mobile
+- Wybierz obraz z dysku
+- Obraz zostanie automatycznie uploadowany do Supabase Storage
+- Zobacz **podgląd na żywo**
+- Kliknij "Zapisz Zmiany"
+- Strona automatycznie się przeładuje
+
+**Sposób 2: Użyj URL z internetu**
+- Wklej URL obrazu (np. z Pexels) bezpośrednio w pole tekstowe
 - Zobacz **podgląd na żywo** (obraz pojawi się od razu po wklejeniu URL)
 - Kliknij "Zapisz Zmiany"
 - Strona automatycznie się przeładuje
@@ -34,11 +44,53 @@ Możesz się zalogować przez:
 - **Divider 1** - pierwsze tło separatora
 - **Divider 2** - drugie tło separatora
 
-## Czy muszę utworzyć tabelę w bazie?
+## Wymagana konfiguracja Supabase
 
-**NIE - ikony działają od razu!**
+### Krok A: Utwórz Storage Bucket (wymagane dla file upload)
 
-Jednak aby zapisywać zmiany, musisz utworzyć tabelę `site_images` w Supabase. Wykonaj poniższe SQL w panelu Supabase → SQL Editor:
+1. Przejdź do panelu Supabase → **Storage**
+2. Kliknij **"Create bucket"**
+3. Nazwa bucketu: `site-images`
+4. **Public bucket**: ✅ Zaznacz (obrazy muszą być publiczne)
+5. Kliknij "Create bucket"
+
+### Krok B: Ustaw polityki Storage
+
+Przejdź do Supabase → SQL Editor i wykonaj:
+
+```sql
+-- Allow authenticated users to upload images
+CREATE POLICY "Authenticated users can upload site images"
+ON storage.objects
+FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'site-images');
+
+-- Allow authenticated users to update images
+CREATE POLICY "Authenticated users can update site images"
+ON storage.objects
+FOR UPDATE
+TO authenticated
+USING (bucket_id = 'site-images')
+WITH CHECK (bucket_id = 'site-images');
+
+-- Allow authenticated users to delete images
+CREATE POLICY "Authenticated users can delete site images"
+ON storage.objects
+FOR DELETE
+TO authenticated
+USING (bucket_id = 'site-images');
+
+-- Allow public access to read images
+CREATE POLICY "Anyone can view site images"
+ON storage.objects
+FOR SELECT
+USING (bucket_id = 'site-images');
+```
+
+### Krok C: Utwórz tabelę site_images (wymagane dla zapisywania)
+
+Wykonaj poniższe SQL w panelu Supabase → SQL Editor:
 
 ### SQL do wykonania (skopiuj i wklej w Supabase):
 

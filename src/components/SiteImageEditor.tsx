@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { CreditCard as Edit2, Save, X } from 'lucide-react';
+import { CreditCard as Edit2, Save, X, Upload } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { SiteImage } from '../lib/siteImages';
 import { Formik, Form, Field } from 'formik';
+import { uploadImage } from '../lib/storage';
 
 interface SiteImageEditorProps {
   section: string;
@@ -23,6 +24,7 @@ export default function SiteImageEditor({
 }: SiteImageEditorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   if (!isEditMode) return null;
 
@@ -33,11 +35,26 @@ export default function SiteImageEditor({
     'bottom-right': 'bottom-4 right-4',
   };
 
+  const handleFileUpload = async (
+    file: File,
+    type: 'desktop' | 'mobile',
+    setFieldValue: any
+  ) => {
+    setUploading(true);
+    try {
+      const url = await uploadImage(file, section);
+      setFieldValue(type === 'desktop' ? 'desktop_url' : 'mobile_url', url);
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Błąd podczas uploadu obrazu. Upewnij się, że bucket site-images został utworzony w Supabase Storage.');
+    }
+    setUploading(false);
+  };
+
   const handleSave = async (values: any) => {
     setSaving(true);
     try {
       if (image && image.id) {
-        // Update existing image
         const { error } = await supabase
           .from('site_images')
           .update({
@@ -50,7 +67,6 @@ export default function SiteImageEditor({
 
         if (error) throw error;
       } else {
-        // Create new image
         const { error } = await supabase
           .from('site_images')
           .insert({
@@ -112,7 +128,7 @@ export default function SiteImageEditor({
               }}
               onSubmit={handleSave}
             >
-              {({ values }) => (
+              {({ values, setFieldValue }) => (
                 <Form>
                   <div className="p-6 space-y-6">
                     <div>
@@ -126,56 +142,100 @@ export default function SiteImageEditor({
 
                     <div>
                       <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                        URL Desktop *
+                        Obraz Desktop *
                       </label>
-                      <Field
-                        name="desktop_url"
-                        type="text"
-                        className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
-                        placeholder="https://images.pexels.com/..."
-                      />
-                      {values.desktop_url && (
-                        <div className="mt-3">
-                          <p className="text-xs text-[#e5e4e2]/60 mb-2">Podgląd Desktop:</p>
-                          <div className="aspect-video bg-[#0f1119] rounded-lg overflow-hidden">
-                            <img
-                              src={values.desktop_url}
-                              alt="Preview"
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
+
+                      <div className="space-y-3">
+                        <div className="flex gap-2">
+                          <Field
+                            name="desktop_url"
+                            type="text"
+                            className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 flex-1 focus:outline-none focus:border-[#d3bb73]"
+                            placeholder="Wklej URL lub użyj przycisku upload..."
+                          />
+                          <label className="bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] px-4 py-2 rounded-lg cursor-pointer transition-colors flex items-center gap-2">
+                            <Upload className="w-4 h-4" />
+                            Upload
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              disabled={uploading}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFileUpload(file, 'desktop', setFieldValue);
                               }}
                             />
-                          </div>
+                          </label>
                         </div>
-                      )}
+
+                        {uploading && (
+                          <p className="text-sm text-[#d3bb73]">Uploading...</p>
+                        )}
+
+                        {values.desktop_url && (
+                          <div className="mt-3">
+                            <p className="text-xs text-[#e5e4e2]/60 mb-2">Podgląd Desktop:</p>
+                            <div className="aspect-video bg-[#0f1119] rounded-lg overflow-hidden">
+                              <img
+                                src={values.desktop_url}
+                                alt="Preview"
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                        URL Mobile (opcjonalnie)
+                        Obraz Mobile (opcjonalnie)
                       </label>
-                      <Field
-                        name="mobile_url"
-                        type="text"
-                        className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
-                        placeholder="https://images.pexels.com/..."
-                      />
-                      {values.mobile_url && (
-                        <div className="mt-3">
-                          <p className="text-xs text-[#e5e4e2]/60 mb-2">Podgląd Mobile:</p>
-                          <div className="aspect-video bg-[#0f1119] rounded-lg overflow-hidden max-w-xs">
-                            <img
-                              src={values.mobile_url}
-                              alt="Preview Mobile"
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
+
+                      <div className="space-y-3">
+                        <div className="flex gap-2">
+                          <Field
+                            name="mobile_url"
+                            type="text"
+                            className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 flex-1 focus:outline-none focus:border-[#d3bb73]"
+                            placeholder="Wklej URL lub użyj przycisku upload..."
+                          />
+                          <label className="bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] px-4 py-2 rounded-lg cursor-pointer transition-colors flex items-center gap-2">
+                            <Upload className="w-4 h-4" />
+                            Upload
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              disabled={uploading}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFileUpload(file, 'mobile', setFieldValue);
                               }}
                             />
-                          </div>
+                          </label>
                         </div>
-                      )}
+
+                        {values.mobile_url && (
+                          <div className="mt-3">
+                            <p className="text-xs text-[#e5e4e2]/60 mb-2">Podgląd Mobile:</p>
+                            <div className="aspect-video bg-[#0f1119] rounded-lg overflow-hidden max-w-xs">
+                              <img
+                                src={values.mobile_url}
+                                alt="Preview Mobile"
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div>
