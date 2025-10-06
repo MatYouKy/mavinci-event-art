@@ -1,11 +1,12 @@
 'use client';
 
-import { ShieldCheck, LogOut, Settings, User, ChevronDown } from 'lucide-react';
+import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Globe } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAppSelector } from '../store/hooks';
+import { supabase } from '@/lib/supabase';
 
 interface NavbarProps {
   onAdminClick?: () => void;
@@ -20,6 +21,37 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const { signOut, user } = useAuth();
   const router = useRouter();
   const authUser = useAppSelector((state) => state.auth.user);
+  const [crmUser, setCrmUser] = useState<any>(null);
+  const [employee, setEmployee] = useState<any>(null);
+
+  useEffect(() => {
+    const checkCrmAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setCrmUser(session.user);
+        const { data: employeeData } = await supabase
+          .from('employees')
+          .select('*')
+          .eq('email', session.user.email)
+          .maybeSingle();
+        if (employeeData) {
+          setEmployee(employeeData);
+        }
+      }
+    };
+    checkCrmAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setCrmUser(null);
+        setEmployee(null);
+      } else if (session) {
+        setCrmUser(session.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const navLinks = [
     { label: 'O Nas', href: '/o-nas' },
@@ -58,8 +90,11 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   }, [isDropdownOpen, isServicesOpen]);
 
   const handleLogout = async () => {
+    await supabase.auth.signOut();
     await signOut();
     setIsDropdownOpen(false);
+    setCrmUser(null);
+    setEmployee(null);
     router.push('/');
   };
 
@@ -72,9 +107,37 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
     setIsDropdownOpen(false);
   };
 
-  const isAuthenticated = !!user || !!authUser;
-  const displayName = authUser?.user_name || 'Admin';
-  const avatarUrl = authUser?.user_avatar?.image_metadata?.desktop?.src || authUser?.user_avatar;
+  const isAuthenticated = !!user || !!authUser || !!crmUser;
+
+  const getDisplayName = () => {
+    if (employee) {
+      return `${employee.name} ${employee.surname}`;
+    }
+    if (crmUser?.email) {
+      return crmUser.email.split('@')[0];
+    }
+    if (authUser?.user_name) {
+      return authUser.user_name;
+    }
+    return 'Użytkownik';
+  };
+
+  const getInitials = () => {
+    if (employee) {
+      return `${employee.name.charAt(0)}${employee.surname.charAt(0)}`.toUpperCase();
+    }
+    if (crmUser?.email) {
+      return crmUser.email.charAt(0).toUpperCase();
+    }
+    if (authUser?.user_name) {
+      return authUser.user_name.charAt(0).toUpperCase();
+    }
+    return 'U';
+  };
+
+  const displayName = getDisplayName();
+  const avatarUrl = employee?.avatar_url || authUser?.user_avatar?.image_metadata?.desktop?.src || authUser?.user_avatar;
+  const userEmail = crmUser?.email || authUser?.user_email?.address;
 
   return (
     <nav className="absolute top-4 left-0 right-0 z-50 px-4 sm:px-6 lg:px-8">
@@ -131,41 +194,97 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex items-center gap-2 bg-[#800020]/20 text-[#e5e4e2] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#800020]/30 transition-colors duration-200"
+                  className="flex items-center gap-2 bg-[#800020]/20 text-[#e5e4e2] px-3 py-2 rounded-full text-sm font-medium hover:bg-[#800020]/30 transition-colors duration-200"
                 >
                   {avatarUrl ? (
                     <img
                       src={avatarUrl}
                       alt={displayName}
-                      className="w-6 h-6 rounded-full object-cover"
+                      className="w-8 h-8 rounded-full object-cover border-2 border-[#d3bb73]/30"
                     />
                   ) : (
-                    <User className="w-4 h-4 text-[#d3bb73]" />
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
+                      <span className="text-[#1c1f33] font-bold text-xs">
+                        {getInitials()}
+                      </span>
+                    </div>
                   )}
                   <span className="text-[#d3bb73]">{displayName}</span>
                   <ChevronDown className={`w-4 h-4 text-[#d3bb73] transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {isDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl overflow-hidden">
-                    <div className="px-4 py-3 border-b border-[#d3bb73]/20">
-                      <p className="text-sm text-[#e5e4e2] font-medium">{displayName}</p>
-                      <p className="text-xs text-[#e5e4e2]/60">{authUser?.user_email?.address}</p>
+                  <div className="absolute right-0 mt-2 w-72 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl overflow-hidden">
+                    <div className="p-4 border-b border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-transparent">
+                      <div className="flex items-center gap-3 mb-2">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt={displayName}
+                            className="w-12 h-12 rounded-full object-cover border-2 border-[#d3bb73]/30"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
+                            <span className="text-[#1c1f33] font-bold text-base">
+                              {getInitials()}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-base font-semibold text-[#e5e4e2] truncate">{displayName}</p>
+                          <p className="text-sm text-[#e5e4e2]/60 truncate">{userEmail}</p>
+                        </div>
+                      </div>
+                      {employee?.role && (
+                        <span className="inline-block px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full text-xs">
+                          {employee.role === 'admin' ? 'Administrator' : employee.role === 'manager' ? 'Manager' : 'Pracownik'}
+                        </span>
+                      )}
                     </div>
                     <div className="py-2">
-                      <button
-                        onClick={handleDashboardClick}
-                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 transition-colors"
-                      >
-                        <Settings className="w-4 h-4 text-[#d3bb73]" />
-                        Panel Admina
-                      </button>
+                      {crmUser && (
+                        <button
+                          onClick={() => {
+                            router.push('/crm');
+                            setIsDropdownOpen(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
+                            <LayoutDashboard className="w-4 h-4 text-[#d3bb73]" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#e5e4e2]">Panel CRM</p>
+                            <p className="text-xs text-[#e5e4e2]/60">System zarządzania</p>
+                          </div>
+                        </button>
+                      )}
+                      {authUser && (
+                        <button
+                          onClick={handleDashboardClick}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
+                            <Settings className="w-4 h-4 text-[#d3bb73]" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#e5e4e2]">Panel Admina</p>
+                            <p className="text-xs text-[#e5e4e2]/60">Zarządzanie stroną</p>
+                          </div>
+                        </button>
+                      )}
+                      <div className="h-px bg-[#d3bb73]/20 my-2" />
                       <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-red-500/10 transition-colors text-left group"
                       >
-                        <LogOut className="w-4 h-4 text-[#d3bb73]" />
-                        Wyloguj się
+                        <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
+                          <LogOut className="w-4 h-4 text-red-400" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-red-400">Wyloguj się</p>
+                          <p className="text-xs text-[#e5e4e2]/60">Zakończ sesję</p>
+                        </div>
                       </button>
                     </div>
                   </div>
@@ -243,22 +362,58 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
               )}
             </div>
             {isAuthenticated ? (
-              <>
-                <button
-                  onClick={handleDashboardClick}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-                >
-                  <Settings className="w-4 h-4 text-[#d3bb73]" />
-                  Panel Admina
-                </button>
+              <div className="space-y-2 mt-4">
+                <div className="flex items-center gap-3 px-4 py-3 bg-[#d3bb73]/10 rounded-lg">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-[#d3bb73]/30"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
+                      <span className="text-[#1c1f33] font-bold text-sm">
+                        {getInitials()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#e5e4e2] truncate">{displayName}</p>
+                    <p className="text-xs text-[#e5e4e2]/60 truncate">{userEmail}</p>
+                  </div>
+                </div>
+                {crmUser && (
+                  <button
+                    onClick={() => {
+                      router.push('/crm');
+                      setIsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-[#d3bb73]" />
+                    Panel CRM
+                  </button>
+                )}
+                {authUser && (
+                  <button
+                    onClick={() => {
+                      handleDashboardClick();
+                      setIsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                  >
+                    <Settings className="w-4 h-4 text-[#d3bb73]" />
+                    Panel Admina
+                  </button>
+                )}
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                 >
-                  <LogOut className="w-4 h-4 text-[#d3bb73]" />
+                  <LogOut className="w-4 h-4 text-red-400" />
                   Wyloguj się
                 </button>
-              </>
+              </div>
             ) : (
               <button
                 onClick={handleLoginClick}
