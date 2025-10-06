@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { getSiteImage, getImageStyle, SiteImage } from '../lib/siteImages';
+import { getSiteImage, SiteImage } from '../lib/siteImages';
 import { useEditMode } from '../contexts/EditModeContext';
-import SiteImageEditor from './SiteImageEditor';
+import { ImageEditorField } from './ImageEditorField';
+import { Formik, Form } from 'formik';
+import { IImage, IUploadImage } from '../types/image';
+import { uploadImage } from '../lib/storage';
+import { supabase } from '../lib/supabase';
 
 export default function DividerTwo() {
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -50,25 +54,119 @@ export default function DividerTwo() {
     };
   }, []);
 
-  const backgroundStyle = image
-    ? getImageStyle(image, isMobile)
-    : { backgroundImage: 'url(https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=1920)' };
+  const initialImage: IImage | null = image
+    ? {
+        id: image.id,
+        alt: image.alt_text || '',
+        image_metadata: {
+          desktop: {
+            src: image.desktop_url,
+            position: { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: image.mobile_url
+            ? {
+                src: image.mobile_url,
+                position: { posX: 0, posY: 0, scale: 1 },
+              }
+            : undefined,
+        },
+      }
+    : null;
+
+  const handleSave = async (payload: { file?: File; image: IUploadImage | IImage }) => {
+    try {
+      let desktopUrl = '';
+
+      if (payload.file) {
+        desktopUrl = await uploadImage(payload.file, 'divider2');
+      } else if (payload.image?.image_metadata?.desktop?.src) {
+        desktopUrl = payload.image.image_metadata.desktop.src;
+      }
+
+      if (!desktopUrl) {
+        throw new Error('Brak URL obrazu');
+      }
+
+      if (image && image.id) {
+        const { error } = await supabase
+          .from('site_images')
+          .update({
+            desktop_url: desktopUrl,
+            alt_text: payload.image.alt || '',
+          })
+          .eq('id', image.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('site_images').insert({
+          section: 'divider2',
+          name: 'Divider 2 image',
+          description: '',
+          desktop_url: desktopUrl,
+          alt_text: payload.image.alt || '',
+          position: 'center',
+          order_index: 1,
+          is_active: true,
+        });
+
+        if (error) throw error;
+      }
+
+      await loadImage();
+    } catch (error) {
+      console.error('Error saving image:', error);
+      alert('Błąd podczas zapisywania obrazu: ' + (error as Error).message);
+    }
+  };
 
   return (
     <section ref={sectionRef} className="relative h-[60vh] md:h-[70vh] overflow-hidden">
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-fixed"
-        style={backgroundStyle}
-      >
-        <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85"></div>
-        <SiteImageEditor
-          section="divider2"
-          image={image}
-          isEditMode={isEditMode}
-          onUpdate={loadImage}
-          position="bottom-right"
-        />
-      </div>
+      {isEditMode ? (
+        <Formik
+          initialValues={{
+            dividerImage: initialImage || {
+              alt: '',
+              image_metadata: {
+                desktop: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                },
+              },
+            },
+          }}
+          onSubmit={() => {}}
+          enableReinitialize
+        >
+          {() => (
+            <Form className="absolute inset-0">
+              <div className="absolute inset-0" style={{ zIndex: 1 }}>
+                <ImageEditorField
+                  fieldName="dividerImage"
+                  image={initialImage}
+                  isAdmin={true}
+                  withMenu={true}
+                  mode="horizontal"
+                  menuPosition="right-bottom"
+                  onSave={handleSave}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                />
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85 pointer-events-none" style={{ zIndex: 2 }}></div>
+            </Form>
+          )}
+        </Formik>
+      ) : (
+        <>
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-fixed"
+            style={{
+              backgroundImage: image
+                ? `url(${isMobile && image.mobile_url ? image.mobile_url : image.desktop_url})`
+                : 'url(https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=1920)',
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85"></div>
+        </>
+      )}
 
       <div className="relative z-10 h-full flex items-center justify-center px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl w-full">
