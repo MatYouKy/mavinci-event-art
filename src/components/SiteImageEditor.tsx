@@ -24,7 +24,7 @@ export default function SiteImageEditor({
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  if (!isEditMode || !image) return null;
+  if (!isEditMode) return null;
 
   const positionClasses = {
     'top-left': 'top-4 left-4',
@@ -36,24 +36,44 @@ export default function SiteImageEditor({
   const handleSave = async (values: any) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('site_images')
-        .update({
-          desktop_url: values.desktop_url,
-          mobile_url: values.mobile_url || null,
-          alt_text: values.alt_text,
-          position: values.position,
-        })
-        .eq('id', image.id);
+      if (image && image.id) {
+        // Update existing image
+        const { error } = await supabase
+          .from('site_images')
+          .update({
+            desktop_url: values.desktop_url,
+            mobile_url: values.mobile_url || null,
+            alt_text: values.alt_text,
+            position: values.position,
+          })
+          .eq('id', image.id);
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // Create new image
+        const { error } = await supabase
+          .from('site_images')
+          .insert({
+            section: section,
+            name: values.name || `${section} image`,
+            description: values.description || '',
+            desktop_url: values.desktop_url,
+            mobile_url: values.mobile_url || null,
+            alt_text: values.alt_text,
+            position: values.position,
+            order_index: 1,
+            is_active: true,
+          });
+
+        if (error) throw error;
+      }
 
       setIsOpen(false);
       if (onUpdate) onUpdate();
       window.location.reload();
     } catch (error) {
       console.error('Error saving image:', error);
-      alert('Błąd podczas zapisywania obrazu');
+      alert('Błąd podczas zapisywania obrazu. Upewnij się, że tabela site_images została utworzona w bazie danych.');
     }
     setSaving(false);
   };
@@ -63,7 +83,7 @@ export default function SiteImageEditor({
       <button
         onClick={() => setIsOpen(true)}
         className={`absolute ${positionClasses[position]} z-50 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] p-3 rounded-full shadow-lg transition-all hover:scale-110`}
-        title="Edytuj obraz"
+        title={image ? 'Edytuj obraz' : 'Dodaj obraz'}
       >
         <Edit2 className="w-5 h-5" />
       </button>
@@ -83,10 +103,12 @@ export default function SiteImageEditor({
 
             <Formik
               initialValues={{
-                desktop_url: image.desktop_url,
-                mobile_url: image.mobile_url || '',
-                alt_text: image.alt_text,
-                position: image.position,
+                name: image?.name || `${section} image`,
+                description: image?.description || '',
+                desktop_url: image?.desktop_url || '',
+                mobile_url: image?.mobile_url || '',
+                alt_text: image?.alt_text || '',
+                position: image?.position || 'center',
               }}
               onSubmit={handleSave}
             >
@@ -98,7 +120,7 @@ export default function SiteImageEditor({
                         Sekcja
                       </label>
                       <div className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2">
-                        {image.name} ({section})
+                        {section}
                       </div>
                     </div>
 

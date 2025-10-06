@@ -1,10 +1,46 @@
-# Instrukcja konfiguracji systemu edycji obrazów strony
+# System edycji obrazów strony - Instrukcja
 
-## Krok 1: Uruchom migracje w Supabase
+## ✅ GOTOWE DO UŻYCIA!
 
-Przejdź do panelu Supabase → SQL Editor i wykonaj poniższe zapytania:
+System inline editing obrazów jest już w pełni funkcjonalny. Ikony edycji pojawiają się automatycznie gdy włączysz tryb edycji.
 
-### 1. Utwórz tabelę site_images
+## Jak używać (krok po kroku):
+
+### 1. Zaloguj się jako admin
+Możesz się zalogować przez:
+- `/crm/login` - panel CRM
+- `/admin/login` - panel admina
+
+### 2. Włącz tryb edycji obrazów
+1. Kliknij w swoje **menu użytkownika** (awatar/inicjały w prawym górnym rogu)
+2. Wybierz opcję **"Edytuj obrazy strony"**
+3. Ikony edycji pojawią się automatycznie
+
+### 3. Edytuj obrazy
+- **Złote ikony edycji** (z ołówkiem) pojawią się przy każdym obrazie
+- Kliknij ikonę aby otworzyć edytor
+- Wklej nowy URL obrazu
+- Zobacz **podgląd na żywo** (obraz pojawi się od razu po wklejeniu URL)
+- Kliknij "Zapisz Zmiany"
+- Strona automatycznie się przeładuje
+
+### 4. Wyłącz tryb edycji
+- Kliknij ponownie w menu użytkownika
+- Wybierz **"Wyłącz edycję obrazów"**
+
+## Dostępne sekcje z ikonami edycji:
+
+- **Hero** - główne tło strony głównej
+- **Divider 1** - pierwsze tło separatora
+- **Divider 2** - drugie tło separatora
+
+## Czy muszę utworzyć tabelę w bazie?
+
+**NIE - ikony działają od razu!**
+
+Jednak aby zapisywać zmiany, musisz utworzyć tabelę `site_images` w Supabase. Wykonaj poniższe SQL w panelu Supabase → SQL Editor:
+
+### SQL do wykonania (skopiuj i wklej w Supabase):
 
 ```sql
 -- Create site_images table
@@ -31,13 +67,13 @@ CREATE INDEX IF NOT EXISTS idx_site_images_active ON site_images(is_active);
 -- Enable RLS
 ALTER TABLE site_images ENABLE ROW LEVEL SECURITY;
 
--- Policy for public read access (anyone can view active images)
+-- Policy for public read access
 CREATE POLICY "Anyone can view active site images"
   ON site_images
   FOR SELECT
   USING (is_active = true);
 
--- Policy for authenticated users to view all images (including inactive)
+-- Policy for authenticated users to view all images
 CREATE POLICY "Authenticated users can view all site images"
   ON site_images
   FOR SELECT
@@ -75,107 +111,57 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to automatically update updated_at
+-- Create trigger
 CREATE TRIGGER trigger_update_site_images_updated_at
   BEFORE UPDATE ON site_images
   FOR EACH ROW
   EXECUTE FUNCTION update_site_images_updated_at();
 ```
 
-### 2. Dodaj dane przykładowe (opcjonalnie)
+### Dane przykładowe (opcjonalnie):
 
 ```sql
--- Insert Hero section image
+-- Hero image
 INSERT INTO site_images (section, name, description, desktop_url, mobile_url, alt_text, position, order_index)
 VALUES
-(
-  'hero',
-  'Hero Background',
-  'Main hero section background image on homepage',
-  'https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  'https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'Profesjonalna organizacja eventów biznesowych',
-  'center',
-  1
-);
+('hero', 'Hero Background', 'Main hero section background',
+ 'https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920',
+ 'https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=800',
+ 'Profesjonalna organizacja eventów', 'center', 1);
 
--- Insert Divider section images
+-- Dividers
 INSERT INTO site_images (section, name, description, desktop_url, mobile_url, alt_text, position, order_index)
 VALUES
-(
-  'divider1',
-  'Divider 1 Background',
-  'First divider section background',
-  'https://images.pexels.com/photos/1540406/pexels-photo-1540406.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  'https://images.pexels.com/photos/1540406/pexels-photo-1540406.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'Event decoration and setup',
-  'center',
-  1
-),
-(
-  'divider2',
-  'Divider 2 Background',
-  'Second divider section background',
-  'https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  'https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'Professional event lighting',
-  'center',
-  1
-),
-(
-  'divider3',
-  'Divider 3 Background',
-  'Third divider section background',
-  'https://images.pexels.com/photos/1190298/pexels-photo-1190298.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  'https://images.pexels.com/photos/1190298/pexels-photo-1190298.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'Corporate event venue',
-  'center',
-  1
-),
-(
-  'divider4',
-  'Divider 4 Background',
-  'Fourth divider section background',
-  'https://images.pexels.com/photos/1157557/pexels-photo-1157557.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  'https://images.pexels.com/photos/1157557/pexels-photo-1157557.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'Event stage and audio equipment',
-  'center',
-  1
-);
+('divider1', 'Divider 1', 'First divider background',
+ 'https://images.pexels.com/photos/1540406/pexels-photo-1540406.jpeg?auto=compress&cs=tinysrgb&w=1920',
+ 'https://images.pexels.com/photos/1540406/pexels-photo-1540406.jpeg?auto=compress&cs=tinysrgb&w=800',
+ 'Event decoration', 'center', 1),
+('divider2', 'Divider 2', 'Second divider background',
+ 'https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=1920',
+ 'https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=800',
+ 'Professional lighting', 'center', 1);
 ```
 
-## Krok 2: Jak używać systemu edycji obrazów
+## Rozwiązywanie problemów:
 
-1. **Zaloguj się jako admin** (przez /crm/login lub /admin/login)
+**Problem: Nie widzę ikon edycji**
+- Sprawdź czy jesteś zalogowany jako admin
+- Sprawdź czy tryb edycji jest włączony (menu użytkownika → "Edytuj obrazy strony")
+- Odśwież stronę (Ctrl+Shift+R lub Cmd+Shift+R)
 
-2. **Włącz tryb edycji:**
-   - Kliknij w swoje menu użytkownika (awatar/inicjały w prawym górnym rogu)
-   - Wybierz opcję "Edytuj obrazy strony"
+**Problem: Ikony są widoczne, ale nie mogę zapisać zmian**
+- Wykonaj SQL w panelu Supabase (patrz sekcja powyżej)
+- Sprawdź czy masz uprawnienia w bazie danych
 
-3. **Edytuj obrazy:**
-   - Po włączeniu trybu edycji, przy każdym obrazie na stronie pojawi się złota ikona edycji (ołówek)
-   - Kliknij ikonę aby otworzyć edytor
-   - Wklej nowy URL obrazu (desktop i opcjonalnie mobile)
-   - Zobacz podgląd na żywo
-   - Zapisz zmiany
+**Problem: Obraz nie ładuje się w podglądzie**
+- Sprawdź czy URL jest poprawny
+- Upewnij się, że URL zaczyna się od `https://`
+- Spróbuj innego obrazu z Pexels
 
-4. **Wyłącz tryb edycji:**
-   - Ponownie kliknij w menu użytkownika
-   - Wybierz "Wyłącz edycję obrazów"
+## Wskazówki:
 
-## Dostępne sekcje do edycji
-
-- `hero` - Tło głównej sekcji hero na stronie głównej
-- `divider1` - Pierwsze tło divider
-- `divider2` - Drugie tło divider
-- `divider3` - Trzecie tło divider
-- `divider4` - Czwarte tło divider
-- `process` - Tło sekcji proces
-- Oraz wiele innych sekcji dla podstron
-
-## Ważne informacje
-
-- Zmiany są natychmiastowe po zapisaniu
-- Strona automatycznie się przeładuje po zapisaniu
-- Możesz dodać osobne obrazy dla desktop i mobile
-- Alt text jest ważny dla SEO i dostępności
+- **Obrazy z Pexels** - zalecane, darmowe i wysokiej jakości
+- **URL Desktop** - szerokość minimum 1920px
+- **URL Mobile** - szerokość około 800px (opcjonalne)
+- **Format** - najlepiej JPG lub WebP
+- **Alt text** - ważny dla SEO i dostępności
