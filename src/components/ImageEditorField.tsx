@@ -272,7 +272,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
 
   return (
     <>
-      <ElasticBoxComponent mode={mode} multiplier={multiplier}>
+      <ElasticBoxComponent mode={mode} multiplier={multiplier} style={style}>
         <div
           style={{
             position: 'absolute',

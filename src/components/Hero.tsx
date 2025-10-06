@@ -94,48 +94,54 @@ export default function Hero() {
 
   return (
     <header className="relative min-h-screen flex items-center" role="banner">
-      <Formik
-        initialValues={{
-          heroImage: initialImage || {
-            alt: '',
-            image_metadata: {
-              desktop: {
-                position: { posX: 0, posY: 0, scale: 1 },
+      {isEditMode ? (
+        <Formik
+          initialValues={{
+            heroImage: initialImage || {
+              alt: '',
+              image_metadata: {
+                desktop: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                },
               },
             },
-          },
-        }}
-        onSubmit={handleSave}
-        enableReinitialize
-      >
-        {() => (
-          <Form className="absolute inset-0">
-            {isEditMode ? (
-              <ImageEditorField
-                fieldName="heroImage"
-                image={initialImage}
-                isAdmin={true}
-                withMenu={true}
-                mode="horizontal"
-                menuPosition="right-bottom"
-                onSave={handleSave}
-              />
-            ) : (
-              <div
-                className="absolute inset-0 bg-cover bg-center"
-                style={{
-                  backgroundImage: heroImage
-                    ? `url(${isMobile && heroImage.mobile_url ? heroImage.mobile_url : heroImage.desktop_url})`
-                    : 'url(https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920)',
-                }}
-                role="img"
-                aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90 pointer-events-none"></div>
-          </Form>
-        )}
-      </Formik>
+          }}
+          onSubmit={handleSave}
+          enableReinitialize
+        >
+          {() => (
+            <Form className="absolute inset-0">
+              <div className="absolute inset-0" style={{ zIndex: 1 }}>
+                <ImageEditorField
+                  fieldName="heroImage"
+                  image={initialImage}
+                  isAdmin={true}
+                  withMenu={true}
+                  mode="horizontal"
+                  menuPosition="right-bottom"
+                  onSave={handleSave}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                />
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90 pointer-events-none" style={{ zIndex: 2 }}></div>
+            </Form>
+          )}
+        </Formik>
+      ) : (
+        <>
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: heroImage
+                ? `url(${isMobile && heroImage.mobile_url ? heroImage.mobile_url : heroImage.desktop_url})`
+                : 'url(https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920)',
+            }}
+            role="img"
+            aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90"></div>
+        </>
+      )}
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
         <div className="max-w-3xl">
