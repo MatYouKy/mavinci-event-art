@@ -165,8 +165,11 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
   };
 
   const handleUploadImage = () => {
-    setSubMenu(true);
     setUploadImage(true);
+    // Od razu klikamy w input do wyboru pliku
+    setTimeout(() => {
+      imageInputRef.current?.click();
+    }, 100);
   };
 
   const handleRemove = () => {
@@ -212,7 +215,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
     }
   };
 
-  const menuItems = [
+  const menuItems = isAdmin ? [
     {
       children: 'Wgraj Zdjęcie',
       onClick: () => {
@@ -237,11 +240,15 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
         handleChange('scale', 1);
       },
     },
-  ];
+  ] : [];
 
   useEffect(() => {
     const uploadedImage = values?.[fieldName]?.file;
     if (uploadedImage) {
+      // Automatycznie otwieramy submenu po wgraniu pliku
+      setSubMenu(true);
+      setSetPosition(true); // Od razu włączamy możliwość przesuwania
+
       helpers.setValue({
         ...values?.[fieldName],
         image_metadata: {
