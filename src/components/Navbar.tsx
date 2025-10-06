@@ -142,8 +142,8 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const userEmail = crmUser?.email || authUser?.user_email?.address;
 
   return (
-    <nav className="absolute top-4 left-0 right-0 z-50 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto bg-[#1c1f33]/90 backdrop-blur-md rounded-full px-6 md:px-8 border border-[#d3bb73]/20">
+    <nav className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 lg:px-8 pt-4">
+      <div className="max-w-7xl mx-auto bg-[#1c1f33]/95 backdrop-blur-md rounded-full px-6 md:px-8 border border-[#d3bb73]/20 shadow-lg">
         <div className="flex items-center justify-between h-14 md:h-16">
           <Link href="/" className="flex items-center">
             <img
