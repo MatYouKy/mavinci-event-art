@@ -424,18 +424,17 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
             <div
               style={{
                 position: 'absolute',
-                margin: '30px',
                 top:
                   menuPosition === 'right-top' || menuPosition === 'left-top'
-                    ? 40
-                    : 0,
-                left: 0,
-                right: 0,
+                    ? 50
+                    : 10,
+                left: 50,
+                right: 50,
                 bottom:
                   menuPosition === 'right-bottom' ||
                   menuPosition === 'left-bottom'
-                    ? 40
-                    : 0,
+                    ? 50
+                    : 10,
                 zIndex: 100,
               }}
             >
