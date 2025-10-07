@@ -171,7 +171,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
       ref={navRef}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="fixed top-0 left-0 right-0 z-[9999] px-4 sm:px-6 lg:px-8 pt-4 transition-transform duration-300"
+      className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 lg:px-8 pt-4 transition-transform duration-300"
       style={{
         transform: isVisible || isHovered ? 'translateY(0)' : 'translateY(-100%)'
       }}

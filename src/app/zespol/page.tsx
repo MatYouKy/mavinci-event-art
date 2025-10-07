@@ -1,16 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Mail, Linkedin, Quote, ArrowRight, CreditCard as Edit2, Plus, Trash2 } from 'lucide-react';
+import { Users, Mail, Linkedin, Quote, ArrowRight } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { TeamMember } from '@/lib/supabase';
-import { useEditMode } from '@/contexts/EditModeContext';
-import { Formik, Form } from 'formik';
-import { FormInput } from '@/components/formik/FormInput';
-import { ImageEditorField } from '@/components/ImageEditorField';
-import { uploadImage } from '@/lib/storage';
-import { IUploadImage } from '@/types/image';
 
 const MOCK_TEAM: TeamMember[] = [
   {
@@ -82,13 +76,9 @@ const MOCK_TEAM: TeamMember[] = [
 ];
 
 export default function TeamPage() {
-  const { isEditMode } = useEditMode();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     fetchTeam();
@@ -97,170 +87,14 @@ export default function TeamPage() {
   const fetchTeam = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`);
       const data = await response.json();
-      const teamData = data?.members || data || [];
-      setTeam(teamData.length > 0 ? teamData : MOCK_TEAM);
+      setTeam(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
       console.error('Error fetching team:', error);
       setTeam(MOCK_TEAM);
     }
     setLoading(false);
-  };
-
-  const handleSave = async (values: any, isNew: boolean) => {
-    try {
-      let imageUrl = values.image;
-      let imageMetadata = values.image_metadata;
-
-      if (values.imageData?.file) {
-        imageUrl = await uploadImage(values.imageData.file, 'team');
-        imageMetadata = {
-          desktop: {
-            src: imageUrl,
-            position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
-          },
-          mobile: {
-            src: imageUrl,
-            position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
-          },
-        };
-      }
-
-      const payload = {
-        name: values.name,
-        position: values.position,
-        email: values.email,
-        image: imageUrl,
-        alt: values.alt || '',
-        image_metadata: imageMetadata,
-        bio: values.bio || '',
-        linkedin: values.linkedin || '',
-      };
-
-      if (isNew) {
-        const response = await fetch('/api/team-members', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('Failed to create');
-        setIsAdding(false);
-      } else {
-        const response = await fetch(`/api/team-members/${editingId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('Failed to update');
-        setEditingId(null);
-      }
-
-      fetchTeam();
-    } catch (error: any) {
-      alert('Błąd: ' + error.message);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tego członka zespołu?')) return;
-
-    try {
-      const response = await fetch(`/api/team-members/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete');
-      fetchTeam();
-    } catch (error: any) {
-      alert('Błąd: ' + error.message);
-    }
-  };
-
-  const handleImageSave = async (memberId: string, { file, image }: { file?: File; image: IUploadImage }) => {
-    try {
-      let imageUrl = image.image || '';
-      let imageMetadata = image.image_metadata;
-
-      if (file) {
-        imageUrl = await uploadImage(file, 'team');
-        imageMetadata = {
-          desktop: {
-            src: imageUrl,
-            position: image.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
-          },
-          mobile: {
-            src: imageUrl,
-            position: image.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
-          },
-        };
-      } else if (image.image_metadata) {
-        imageMetadata = image.image_metadata;
-      }
-
-      const payload: any = {
-        image_metadata: imageMetadata,
-        alt: image.alt || '',
-      };
-
-      if (imageUrl) {
-        payload.image = imageUrl;
-      }
-
-      const response = await fetch(`/api/team-members/${memberId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update image');
-      }
-      await fetchTeam();
-    } catch (error) {
-      console.error('Error saving image:', error);
-      throw error;
-    }
-  };
-
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
-
-    const newTeam = [...team];
-    const draggedMember = newTeam[draggedIndex];
-    newTeam.splice(draggedIndex, 1);
-    newTeam.splice(index, 0, draggedMember);
-
-    newTeam.forEach((member, idx) => {
-      member.order_index = idx + 1;
-    });
-
-    setTeam(newTeam);
-    setDraggedIndex(index);
-  };
-
-  const handleDragEnd = async () => {
-    if (draggedIndex === null) return;
-
-    try {
-      await Promise.all(
-        team.map((member) =>
-          fetch(`/api/team-members/${member.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order_index: member.order_index }),
-          })
-        )
-      );
-    } catch (error) {
-      console.error('Error updating order:', error);
-      alert('Błąd podczas aktualizacji kolejności');
-    }
-
-    setDraggedIndex(null);
   };
 
   return (
@@ -297,80 +131,6 @@ export default function TeamPage() {
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            {isEditMode && (
-              <div className="mb-8 flex justify-end">
-                <button
-                  onClick={() => setIsAdding(true)}
-                  className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-full hover:bg-[#d3bb73]/90 transition-colors"
-                >
-                  <Plus className="w-5 h-5" />
-                  Dodaj Członka Zespołu
-                </button>
-              </div>
-            )}
-
-            {isAdding && (
-              <div className="mb-8 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-2xl p-8">
-                <Formik
-                  initialValues={{
-                    name: '',
-                    position: '',
-                    email: '',
-                    image: '',
-                    alt: '',
-                    imageData: {} as IUploadImage,
-                    bio: '',
-                    linkedin: '',
-                    image_metadata: undefined,
-                  }}
-                  onSubmit={(values) => handleSave(values, true)}
-                >
-                  {({ submitForm }) => (
-                    <Form>
-                      <h3 className="text-2xl font-light text-[#e5e4e2] mb-6">Nowy Członek Zespołu</h3>
-
-                      <div className="mb-6">
-                        <ImageEditorField
-                          fieldName="imageData"
-                          isAdmin={true}
-                          mode="vertical"
-                          multiplier={1}
-                          onSave={async () => {}}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <FormInput name="name" label="Imię i nazwisko" placeholder="Jan Kowalski" />
-                        <FormInput name="position" label="Stanowisko" placeholder="Event Manager" />
-                        <FormInput name="email" label="Email" placeholder="jan@mavinci.pl" />
-                        <FormInput name="linkedin" label="LinkedIn URL" placeholder="https://linkedin.com/in/..." />
-                        <div className="md:col-span-2">
-                          <FormInput name="bio" label="Bio" multiline rows={3} />
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <button
-                          type="button"
-                          onClick={submitForm}
-                          className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                        >
-                          Zapisz
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsAdding(false)}
-                          className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
-                        >
-                          Anuluj
-                        </button>
-                      </div>
-                    </Form>
-                  )}
-                </Formik>
-              </div>
-            )}
-
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-[#d3bb73] text-lg">Ładowanie zespołu...</div>
@@ -384,151 +144,61 @@ export default function TeamPage() {
                 {team.map((member, index) => (
                   <div
                     key={member.id}
-                    draggable={isEditMode && !editingId}
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragEnd={handleDragEnd}
-                    className={`group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl overflow-hidden hover:border-[#d3bb73]/30 transition-all duration-300 ${
-                      draggedIndex === index ? 'opacity-50' : ''
-                    } ${isEditMode && !editingId ? 'cursor-move' : ''}`}
+                    className="group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl overflow-hidden hover:border-[#d3bb73]/30 transition-all duration-300"
                     onMouseEnter={() => setHoveredId(member.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     style={{
                       animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
                     }}
                   >
-                    {editingId === member.id ? (
-                      <div className="p-6">
-                        <Formik
-                          initialValues={{
-                            name: member.name,
-                            position: member.position || '',
-                            email: member.email || '',
-                            image: member.image,
-                            alt: member.alt || '',
-                            imageData: {
-                              alt: member.alt || '',
-                              image_metadata: member.image_metadata,
-                            } as IUploadImage,
-                            bio: member.bio || '',
-                            linkedin: member.linkedin || '',
-                            image_metadata: member.image_metadata,
-                          }}
-                          onSubmit={(values) => handleSave(values, false)}
-                        >
-                          {({ submitForm }) => (
-                            <Form>
-                              <div className="mb-4">
-                                <ImageEditorField
-                                  fieldName="imageData"
-                                  isAdmin={true}
-                                  mode="vertical"
-                                  multiplier={1}
-                                  image={{
-                                    alt: member.alt,
-                                    image_metadata: member.image_metadata,
-                                  }}
-                                  onSave={(payload) => handleImageSave(member.id, payload)}
-                                />
-                              </div>
+                    <div className="aspect-square relative overflow-hidden">
+                      <img
+                        src={member.image_metadata?.desktop?.src || member.image}
+                        alt={member.alt || member.name}
+                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
 
-                              <div className="space-y-3">
-                                <FormInput name="name" label="Imię i nazwisko" />
-                                <FormInput name="position" label="Stanowisko" />
-                                <FormInput name="email" label="Email" />
-                                <FormInput name="linkedin" label="LinkedIn" />
-                                <FormInput name="bio" label="Bio" multiline rows={3} />
-                              </div>
-
-                              <div className="flex gap-3 mt-4">
-                                <button
-                                  type="button"
-                                  onClick={submitForm}
-                                  className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                                >
-                                  Zapisz
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingId(null)}
-                                  className="flex-1 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
-                                >
-                                  Anuluj
-                                </button>
-                              </div>
-                            </Form>
-                          )}
-                        </Formik>
+                      <div className="absolute bottom-0 left-0 right-0 p-6">
+                        <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-1">
+                          {member.name}
+                        </h3>
+                        <p className="text-[#d3bb73] text-sm font-light mb-3">{member.position}</p>
                       </div>
-                    ) : (
-                      <>
-                        <div className="aspect-square relative overflow-hidden">
-                          <img
-                            src={member.image_metadata?.desktop?.src || member.image}
-                            alt={member.alt || member.name}
-                            className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
+                    </div>
 
-                          {isEditMode && (
-                            <div className="absolute top-4 right-4 flex gap-2">
-                              <button
-                                onClick={() => setEditingId(member.id)}
-                                className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-full hover:bg-[#d3bb73]/90 transition-colors"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(member.id)}
-                                className="p-2 bg-[#800020] text-white rounded-full hover:bg-[#800020]/90 transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
+                    <div className="p-6">
+                      <p
+                        className={`text-[#e5e4e2]/70 text-sm font-light leading-relaxed transition-all duration-500 ${
+                          hoveredId === member.id ? 'opacity-100' : 'opacity-70'
+                        }`}
+                      >
+                        {member.bio}
+                      </p>
 
-                          <div className="absolute bottom-0 left-0 right-0 p-6">
-                            <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-1">
-                              {member.name}
-                            </h3>
-                            <p className="text-[#d3bb73] text-sm font-light mb-3">{member.position}</p>
-                          </div>
-                        </div>
-
-                        <div className="p-6">
-                          <p
-                            className={`text-[#e5e4e2]/70 text-sm font-light leading-relaxed transition-all duration-500 ${
-                              hoveredId === member.id ? 'opacity-100' : 'opacity-70'
-                            }`}
+                      <div className="mt-4 flex gap-3">
+                        {member.email && (
+                          <a
+                            href={`mailto:${member.email}`}
+                            className="flex items-center justify-center w-10 h-10 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
+                            aria-label={`Email ${member.name}`}
                           >
-                            {member.bio}
-                          </p>
-
-                          <div className="mt-4 flex gap-3">
-                            {member.email && (
-                              <a
-                                href={`mailto:${member.email}`}
-                                className="flex items-center justify-center w-10 h-10 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
-                                aria-label={`Email ${member.name}`}
-                              >
-                                <Mail className="w-4 h-4" />
-                              </a>
-                            )}
-                            {member.linkedin && (
-                              <a
-                                href={member.linkedin}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center justify-center w-10 h-10 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
-                                aria-label={`LinkedIn ${member.name}`}
-                              >
-                                <Linkedin className="w-4 h-4" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    )}
+                            <Mail className="w-4 h-4" />
+                          </a>
+                        )}
+                        {member.linkedin && (
+                          <a
+                            href={member.linkedin}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center w-10 h-10 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
+                            aria-label={`LinkedIn ${member.name}`}
+                          >
+                            <Linkedin className="w-4 h-4" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

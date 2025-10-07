@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, CreditCard as Edit2, Trash2, GripVertical } from 'lucide-react';
+import { Plus, CreditCard as Edit2, Trash2 } from 'lucide-react';
 import { Formik, Form } from 'formik';
 import { TeamMember } from '../lib/supabase';
 import { ImageEditorField } from './ImageEditorField';
@@ -14,7 +14,6 @@ export default function AdminTeamPanel() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [draggedItem, setDraggedItem] = useState<number | null>(null);
 
   useEffect(() => {
     fetchMembers();
@@ -23,9 +22,13 @@ export default function AdminTeamPanel() {
   const fetchMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
       const data = await response.json();
-      setMembers(data?.members || data || []);
+      setMembers(data?.users || data || []);
     } catch (error) {
       console.error('Error fetching team members:', error);
     }
@@ -65,20 +68,22 @@ export default function AdminTeamPanel() {
       };
 
       if (isNew) {
-        const response = await fetch('/api/team-members', {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error('Failed to create');
         setIsAdding(false);
       } else {
-        const response = await fetch(`/api/team-members/${editingId}`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${editingId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify(payload),
         });
@@ -98,96 +103,16 @@ export default function AdminTeamPanel() {
     }
 
     try {
-      const response = await fetch(`/api/team-members/${id}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
       });
       if (!response.ok) throw new Error('Failed to delete');
       fetchMembers();
     } catch (error: any) {
       alert('Błąd podczas usuwania: ' + error.message);
-    }
-  };
-
-  const handleDragStart = (index: number) => {
-    setDraggedItem(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (draggedItem === null || draggedItem === index) return;
-
-    const newMembers = [...members];
-    const draggedMember = newMembers[draggedItem];
-    newMembers.splice(draggedItem, 1);
-    newMembers.splice(index, 0, draggedMember);
-
-    newMembers.forEach((member, idx) => {
-      member.order_index = idx + 1;
-    });
-
-    setMembers(newMembers);
-    setDraggedItem(index);
-  };
-
-  const handleDragEnd = async () => {
-    if (draggedItem === null) return;
-
-    try {
-      await Promise.all(
-        members.map((member) =>
-          fetch(`/api/team-members/${member.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ order_index: member.order_index }),
-          })
-        )
-      );
-    } catch (error) {
-      console.error('Error updating order:', error);
-      alert('Błąd podczas aktualizacji kolejności');
-    }
-
-    setDraggedItem(null);
-  };
-
-  const handleImageSave = async (memberId: string, { file, image }: { file?: File; image: IUploadImage }) => {
-    try {
-      let imageUrl = image.image || '';
-      let imageMetadata = image.image_metadata;
-
-      if (file) {
-        imageUrl = await uploadImage(file, 'team');
-        imageMetadata = {
-          desktop: {
-            src: imageUrl,
-            position: image.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
-          },
-          mobile: {
-            src: imageUrl,
-            position: image.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
-          },
-        };
-      }
-
-      const response = await fetch(`/api/team-members/${memberId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image: imageUrl,
-          image_metadata: imageMetadata,
-          alt: image.alt,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to update image');
-      await fetchMembers();
-    } catch (error) {
-      console.error('Error saving image:', error);
-      throw error;
     }
   };
 
@@ -296,17 +221,8 @@ export default function AdminTeamPanel() {
       )}
 
       <div className="grid grid-cols-1 gap-4">
-        {members.map((member, index) => (
-          <div
-            key={member.id}
-            draggable
-            onDragStart={() => handleDragStart(index)}
-            onDragOver={(e) => handleDragOver(e, index)}
-            onDragEnd={handleDragEnd}
-            className={`bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 transition-all ${
-              draggedItem === index ? 'opacity-50' : ''
-            }`}
-          >
+        {members.map((member) => (
+          <div key={member.id} className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
             {editingId === member.id ? (
               <Formik
                 initialValues={getMemberForEdit(member)}
@@ -324,7 +240,7 @@ export default function AdminTeamPanel() {
                           alt: member.alt,
                           image_metadata: member.image_metadata,
                         }}
-                        onSave={(payload) => handleImageSave(member.id, payload)}
+                        onSave={async () => {}}
                       />
                     </div>
 
@@ -357,9 +273,6 @@ export default function AdminTeamPanel() {
             ) : (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <button className="cursor-grab active:cursor-grabbing text-[#e5e4e2]/40 hover:text-[#e5e4e2]">
-                    <GripVertical className="w-5 h-5" />
-                  </button>
                   <img
                     src={member.image_metadata?.desktop?.src || member.image}
                     alt={member.alt || member.name}

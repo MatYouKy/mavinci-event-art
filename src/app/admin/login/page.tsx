@@ -1,5 +1,1 @@
-import AdminLogin from '../../../components/AdminLogin';
-
-export default function Page() {
-  return <AdminLogin />;
-}
+'use client'; export default function Page() { return <div>admin/login</div>; }
