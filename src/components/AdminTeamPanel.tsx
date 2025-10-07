@@ -22,15 +22,15 @@ export default function AdminTeamPanel() {
   const fetchMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      const response = await fetch('/api/team-members');
+      if (!response.ok) {
+        throw new Error('Failed to fetch team members');
+      }
       const data = await response.json();
-      setMembers(data?.users || data || []);
+      setMembers(data || []);
     } catch (error) {
       console.error('Error fetching team members:', error);
+      setMembers([]);
     }
     setLoading(false);
   };
@@ -68,22 +68,20 @@ export default function AdminTeamPanel() {
       };
 
       if (isNew) {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`, {
+        const response = await fetch('/api/team-members', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error('Failed to create');
         setIsAdding(false);
       } else {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${editingId}`, {
+        const response = await fetch(`/api/team-members/${editingId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify(payload),
         });
@@ -103,11 +101,8 @@ export default function AdminTeamPanel() {
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${id}`, {
+      const response = await fetch(`/api/team-members/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
       });
       if (!response.ok) throw new Error('Failed to delete');
       fetchMembers();

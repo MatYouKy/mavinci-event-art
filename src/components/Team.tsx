@@ -71,7 +71,10 @@ export default function Team() {
   const fetchTeamMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`);
+      const response = await fetch('/api/team-members');
+      if (!response.ok) {
+        throw new Error('Failed to fetch team members');
+      }
       const data = await response.json();
       setTeamMembers(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
@@ -133,7 +136,7 @@ export default function Team() {
               style={{
                 animation: `fadeInUp 0.6s ease-out ${index * 0.15}s both`,
               }}
-              onMouseEnter={() => setHoveredId(member.id || member._id || null)}
+              onMouseEnter={() => setHoveredId(member.id)}
               onMouseLeave={() => setHoveredId(null)}
             >
               <div className="relative overflow-hidden rounded-2xl">

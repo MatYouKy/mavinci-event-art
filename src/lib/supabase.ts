@@ -22,14 +22,15 @@ export interface ImageMetadata {
 }
 
 export interface TeamMember {
-  _id?: string;
-  id?: string;
+  id: string;
   name: string;
   role: string;
+  position?: string;
   image: string;
   alt?: string;
   image_metadata?: ImageMetadata;
   bio?: string;
+  email?: string;
   linkedin?: string;
   instagram?: string;
   facebook?: string;
