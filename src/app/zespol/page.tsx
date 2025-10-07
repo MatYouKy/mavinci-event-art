@@ -88,6 +88,7 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     fetchTeam();
@@ -190,24 +191,76 @@ export default function TeamPage() {
             position: image.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
           },
         };
+      } else if (image.image_metadata) {
+        imageMetadata = image.image_metadata;
+      }
+
+      const payload: any = {
+        image_metadata: imageMetadata,
+        alt: image.alt || '',
+      };
+
+      if (imageUrl) {
+        payload.image = imageUrl;
       }
 
       const response = await fetch(`/api/team-members/${memberId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: imageUrl,
-          image_metadata: imageMetadata,
-          alt: image.alt,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error('Failed to update image');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update image');
+      }
       await fetchTeam();
     } catch (error) {
       console.error('Error saving image:', error);
       throw error;
     }
+  };
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newTeam = [...team];
+    const draggedMember = newTeam[draggedIndex];
+    newTeam.splice(draggedIndex, 1);
+    newTeam.splice(index, 0, draggedMember);
+
+    newTeam.forEach((member, idx) => {
+      member.order_index = idx + 1;
+    });
+
+    setTeam(newTeam);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = async () => {
+    if (draggedIndex === null) return;
+
+    try {
+      await Promise.all(
+        team.map((member) =>
+          fetch(`/api/team-members/${member.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_index: member.order_index }),
+          })
+        )
+      );
+    } catch (error) {
+      console.error('Error updating order:', error);
+      alert('Błąd podczas aktualizacji kolejności');
+    }
+
+    setDraggedIndex(null);
   };
 
   return (
@@ -331,7 +384,13 @@ export default function TeamPage() {
                 {team.map((member, index) => (
                   <div
                     key={member.id}
-                    className="group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl overflow-hidden hover:border-[#d3bb73]/30 transition-all duration-300"
+                    draggable={isEditMode && !editingId}
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    className={`group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl overflow-hidden hover:border-[#d3bb73]/30 transition-all duration-300 ${
+                      draggedIndex === index ? 'opacity-50' : ''
+                    } ${isEditMode && !editingId ? 'cursor-move' : ''}`}
                     onMouseEnter={() => setHoveredId(member.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     style={{
