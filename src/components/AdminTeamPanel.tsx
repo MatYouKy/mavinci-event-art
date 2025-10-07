@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, GripVertical, Save, X } from 'lucide-react';
+import { Plus, CreditCard as Edit2, Trash2, GripVertical, Save, X } from 'lucide-react';
 import { Formik, Form } from 'formik';
 import { supabase, TeamMember } from '../lib/supabase';
 import { ImageEditorField } from './ImageEditorField';
