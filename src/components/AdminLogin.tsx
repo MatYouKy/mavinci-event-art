@@ -5,9 +5,7 @@ import { Lock, Mail } from 'lucide-react';
 import { Formik, Form } from 'formik';
 import * as Yup from 'yup';
 import { useRouter } from 'next/navigation';
-import { useLoginUserMutation } from '../store/api/api';
-import { useAppDispatch } from '../store/hooks';
-import { setCredentials } from '../store/slices/authSlice';
+import { useAuth } from '../contexts/AuthContext';
 import { FormInput } from './formik/FormInput';
 
 const validationSchema = Yup.object({
@@ -21,18 +19,26 @@ const validationSchema = Yup.object({
 
 export default function AdminLogin() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const [loginUser, { isLoading, error }] = useLoginUserMutation();
+  const { signIn } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const handleSubmit = async (values: { user_email: string; user_password: string }) => {
     try {
+      setIsLoading(true);
       setErrorMessage('');
-      const data = await loginUser(values).unwrap();
-      dispatch(setCredentials(data));
-      router.push('/admin/dashboard');
+
+      const { error } = await signIn(values.user_email, values.user_password);
+
+      if (error) {
+        setErrorMessage(error.message || 'Nieprawidłowy email lub hasło');
+      } else {
+        router.push('/admin/dashboard');
+      }
     } catch (err: any) {
-      setErrorMessage(err?.data?.message || 'Nieprawidłowy email lub hasło');
+      setErrorMessage('Wystąpił błąd podczas logowania');
+    } finally {
+      setIsLoading(false);
     }
   };
 
