@@ -139,7 +139,7 @@ export default function DividerTwo() {
           {() => (
             <Form className="absolute inset-0">
               <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85 pointer-events-none" style={{ zIndex: 1 }}></div>
-              <div className="absolute inset-0" style={{ zIndex: 10 }}>
+              <div className="absolute inset-0" style={{ zIndex: 50 }}>
                 <ImageEditorField
                   fieldName="dividerImage"
                   image={initialImage}
