@@ -10,10 +10,6 @@ export async function GET(request: Request) {
       .from('team_members')
       .select('*');
 
-    if (!showAll) {
-      query = query.eq('is_visible', true);
-    }
-
     const { data, error } = await query.order('order_index', { ascending: true });
 
     if (error) {
@@ -32,23 +28,28 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
+    const insertData: any = {
+      name: body.name,
+      role: body.role,
+      position: body.position,
+      image: body.image,
+      alt: body.alt || '',
+      email: body.email || '',
+      image_metadata: body.image_metadata || {},
+      bio: body.bio || '',
+      linkedin: body.linkedin || '',
+      instagram: body.instagram || '',
+      facebook: body.facebook || '',
+      order_index: body.order_index || 0,
+    };
+
+    if (body.is_visible !== undefined) {
+      insertData.is_visible = body.is_visible;
+    }
+
     const { data, error } = await supabase
       .from('team_members')
-      .insert([{
-        name: body.name,
-        role: body.role,
-        position: body.position,
-        image: body.image,
-        alt: body.alt || '',
-        email: body.email || '',
-        image_metadata: body.image_metadata || {},
-        bio: body.bio || '',
-        linkedin: body.linkedin || '',
-        instagram: body.instagram || '',
-        facebook: body.facebook || '',
-        order_index: body.order_index || 0,
-        is_visible: body.is_visible !== undefined ? body.is_visible : true,
-      }])
+      .insert([insertData])
       .select()
       .single();
 

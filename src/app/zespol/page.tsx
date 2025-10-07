@@ -138,7 +138,6 @@ export default function TeamPage() {
         instagram: values.instagram || '',
         facebook: values.facebook || '',
         order_index: values.order_index,
-        is_visible: values.is_visible !== undefined ? values.is_visible : true,
       };
 
       if (isNew) {
@@ -270,7 +269,6 @@ export default function TeamPage() {
                     instagram: '',
                     facebook: '',
                     order_index: team.length,
-                    is_visible: true,
                     image_metadata: undefined,
                   }}
                   onSubmit={(values) => handleSave(values, true)}
@@ -294,9 +292,6 @@ export default function TeamPage() {
                         <FormInput name="position" label="Stanowisko" placeholder="Event Manager" />
                         <FormInput name="email" label="Email" placeholder="jan@mavinci.pl" />
                         <FormInput name="order_index" label="Kolejność" type="number" />
-                        <div className="flex items-center gap-2">
-                          <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
-                        </div>
                         <FormInput name="linkedin" label="LinkedIn URL" />
                         <FormInput name="instagram" label="Instagram URL" />
                         <FormInput name="facebook" label="Facebook URL" />
@@ -361,7 +356,6 @@ export default function TeamPage() {
                           instagram: member.instagram || '',
                           facebook: member.facebook || '',
                           order_index: member.order_index,
-                          is_visible: member.is_visible !== undefined ? member.is_visible : true,
                           image_metadata: member.image_metadata,
                         }}
                         onSubmit={(values) => handleSave(values, false, member.id)}
@@ -388,7 +382,6 @@ export default function TeamPage() {
                               <FormInput name="email" label="Email" />
                               <FormInput name="bio" label="Biogram" multiline rows={2} />
                               <FormInput name="order_index" label="Kolejność" type="number" />
-                              <FormInput name="is_visible" label="Widoczny" type="checkbox" />
                             </div>
 
                             <div className="flex gap-2 mt-4">
@@ -514,11 +507,6 @@ export default function TeamPage() {
                         )}
                       </div>
                     </div>
-                    {isEditMode && !member.is_visible && (
-                      <div className="absolute bottom-2 left-2 right-2 bg-[#800020]/80 backdrop-blur-sm text-white text-xs py-1 px-2 rounded text-center">
-                        Ukryty na stronie
-                      </div>
-                    )}
                   </div>
                   )
                 ))}

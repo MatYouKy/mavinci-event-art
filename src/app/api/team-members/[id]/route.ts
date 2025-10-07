@@ -9,24 +9,21 @@ export async function PUT(
     const body = await request.json();
     const { id } = params;
 
-    const updateData: any = {
-        name: body.name,
-        role: body.role,
-        position: body.position,
-        image: body.image,
-        alt: body.alt || '',
-        email: body.email || '',
-        image_metadata: body.image_metadata || {},
-        bio: body.bio || '',
-        linkedin: body.linkedin || '',
-        instagram: body.instagram || '',
-        facebook: body.facebook || '',
-        order_index: body.order_index,
-    };
+    const updateData: any = {};
 
-    if (body.is_visible !== undefined) {
-      updateData.is_visible = body.is_visible;
-    }
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.role !== undefined) updateData.role = body.role;
+    if (body.position !== undefined) updateData.position = body.position;
+    if (body.image !== undefined) updateData.image = body.image;
+    if (body.alt !== undefined) updateData.alt = body.alt || '';
+    if (body.email !== undefined) updateData.email = body.email || '';
+    if (body.image_metadata !== undefined) updateData.image_metadata = body.image_metadata || {};
+    if (body.bio !== undefined) updateData.bio = body.bio || '';
+    if (body.linkedin !== undefined) updateData.linkedin = body.linkedin || '';
+    if (body.instagram !== undefined) updateData.instagram = body.instagram || '';
+    if (body.facebook !== undefined) updateData.facebook = body.facebook || '';
+    if (body.order_index !== undefined) updateData.order_index = body.order_index;
+    if (body.is_visible !== undefined) updateData.is_visible = body.is_visible;
 
     const { data, error } = await supabase
       .from('team_members')
