@@ -9,9 +9,7 @@ export async function PUT(
     const body = await request.json();
     const { id } = params;
 
-    const { data, error } = await supabase
-      .from('team_members')
-      .update({
+    const updateData: any = {
         name: body.name,
         role: body.role,
         image: body.image,
@@ -22,7 +20,15 @@ export async function PUT(
         instagram: body.instagram || '',
         facebook: body.facebook || '',
         order_index: body.order_index,
-      })
+    };
+
+    if (body.is_visible !== undefined) {
+      updateData.is_visible = body.is_visible;
+    }
+
+    const { data, error } = await supabase
+      .from('team_members')
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();

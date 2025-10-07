@@ -35,6 +35,7 @@ export interface TeamMember {
   instagram?: string;
   facebook?: string;
   order_index: number;
+  is_visible?: boolean;
   created_at?: string;
   updated_at?: string;
 }

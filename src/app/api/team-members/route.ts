@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { data, error } = await supabase
+    const { searchParams } = new URL(request.url);
+    const showAll = searchParams.get('all') === 'true';
+
+    let query = supabase
       .from('team_members')
-      .select('*')
-      .order('order_index', { ascending: true });
+      .select('*');
+
+    if (!showAll) {
+      query = query.eq('is_visible', true);
+    }
+
+    const { data, error } = await query.order('order_index', { ascending: true });
 
     if (error) {
       console.error('Error fetching team members:', error);
@@ -37,6 +45,7 @@ export async function POST(request: Request) {
         instagram: body.instagram || '',
         facebook: body.facebook || '',
         order_index: body.order_index || 0,
+        is_visible: body.is_visible !== undefined ? body.is_visible : true,
       }])
       .select()
       .single();

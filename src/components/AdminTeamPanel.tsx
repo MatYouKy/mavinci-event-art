@@ -22,7 +22,7 @@ export default function AdminTeamPanel() {
   const fetchMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members');
+      const response = await fetch('/api/team-members?all=true');
       if (!response.ok) {
         throw new Error('Failed to fetch team members');
       }
@@ -65,6 +65,7 @@ export default function AdminTeamPanel() {
         instagram: values.instagram || '',
         facebook: values.facebook || '',
         order_index: values.order_index,
+        is_visible: values.is_visible !== undefined ? values.is_visible : true,
       };
 
       if (isNew) {
@@ -126,6 +127,7 @@ export default function AdminTeamPanel() {
       instagram: member.instagram || '',
       facebook: member.facebook || '',
       order_index: member.order_index,
+      is_visible: member.is_visible !== undefined ? member.is_visible : true,
       image_metadata: member.image_metadata,
     };
   };
@@ -164,6 +166,7 @@ export default function AdminTeamPanel() {
             instagram: '',
             facebook: '',
             order_index: members.length,
+            is_visible: true,
             image_metadata: undefined,
           }}
           onSubmit={(values) => handleSave(values, true)}
@@ -186,6 +189,9 @@ export default function AdminTeamPanel() {
                 <FormInput name="name" label="Imię i nazwisko" placeholder="Jan Kowalski" />
                 <FormInput name="role" label="Stanowisko" placeholder="Event Manager" />
                 <FormInput name="order_index" label="Kolejność" type="number" />
+                <div className="flex items-center gap-2">
+                  <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
+                </div>
                 <FormInput name="linkedin" label="LinkedIn URL (opcjonalnie)" />
                 <FormInput name="instagram" label="Instagram URL (opcjonalnie)" />
                 <FormInput name="facebook" label="Facebook URL (opcjonalnie)" />
@@ -243,6 +249,9 @@ export default function AdminTeamPanel() {
                       <FormInput name="name" label="Imię i nazwisko" />
                       <FormInput name="role" label="Stanowisko" />
                       <FormInput name="order_index" label="Kolejność" type="number" />
+                      <div className="flex items-center gap-2">
+                        <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
+                      </div>
                       <FormInput name="bio" label="Bio" multiline rows={2} />
                     </div>
 
@@ -277,6 +286,9 @@ export default function AdminTeamPanel() {
                     <h3 className="text-lg font-medium text-[#e5e4e2]">{member.name}</h3>
                     <p className="text-[#d3bb73]">{member.role}</p>
                     <p className="text-sm text-[#e5e4e2]/60">Kolejność: {member.order_index}</p>
+                    <p className="text-sm text-[#e5e4e2]/60">
+                      Status: {member.is_visible ? '✓ Widoczny' : '✗ Ukryty'}
+                    </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
