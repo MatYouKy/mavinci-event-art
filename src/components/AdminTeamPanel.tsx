@@ -23,13 +23,9 @@ export default function AdminTeamPanel() {
   const fetchMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      const response = await fetch('/api/team-members');
       const data = await response.json();
-      setMembers(data?.users || data || []);
+      setMembers(data?.members || data || []);
     } catch (error) {
       console.error('Error fetching team members:', error);
     }
@@ -69,22 +65,20 @@ export default function AdminTeamPanel() {
       };
 
       if (isNew) {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`, {
+        const response = await fetch('/api/team-members', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error('Failed to create');
         setIsAdding(false);
       } else {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${editingId}`, {
+        const response = await fetch(`/api/team-members/${editingId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify(payload),
         });
@@ -104,11 +98,8 @@ export default function AdminTeamPanel() {
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${id}`, {
+      const response = await fetch(`/api/team-members/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
       });
       if (!response.ok) throw new Error('Failed to delete');
       fetchMembers();
@@ -144,11 +135,10 @@ export default function AdminTeamPanel() {
     try {
       await Promise.all(
         members.map((member) =>
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${member.id}`, {
+          fetch(`/api/team-members/${member.id}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
             },
             body: JSON.stringify({ order_index: member.order_index }),
           })
@@ -181,11 +171,10 @@ export default function AdminTeamPanel() {
         };
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members/${memberId}`, {
+      const response = await fetch(`/api/team-members/${memberId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify({
           image: imageUrl,

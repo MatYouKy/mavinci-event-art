@@ -71,7 +71,7 @@ export default function Team() {
   const fetchTeamMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`);
+      const response = await fetch('/api/team-members');
       const data = await response.json();
       const teamData = data?.members || data || [];
       setTeamMembers(teamData.length > 0 ? teamData : MOCK_TEAM);
