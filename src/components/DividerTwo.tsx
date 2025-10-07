@@ -138,7 +138,8 @@ export default function DividerTwo() {
         >
           {() => (
             <Form className="absolute inset-0">
-              <div className="absolute inset-0" style={{ zIndex: 1 }}>
+              <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85 pointer-events-none" style={{ zIndex: 1 }}></div>
+              <div className="absolute inset-0" style={{ zIndex: 10 }}>
                 <ImageEditorField
                   fieldName="dividerImage"
                   image={initialImage}
@@ -150,7 +151,6 @@ export default function DividerTwo() {
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 />
               </div>
-              <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/85 via-[#800020]/75 to-[#1c1f33]/85 pointer-events-none" style={{ zIndex: 2 }}></div>
             </Form>
           )}
         </Formik>
