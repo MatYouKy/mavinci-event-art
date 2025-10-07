@@ -54,7 +54,7 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
           </button>
 
           {isOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 overflow-hidden">
+            <div className="absolute right-0 bottom-full mb-2 w-56 bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 overflow-hidden z-[9999]">
               {menu_items.map((item, index) => (
                 <button
                   key={index}
