@@ -134,11 +134,7 @@ export default function TeamPage() {
         image: imageUrl,
         alt: values.alt || '',
         image_metadata: imageMetadata || {},
-        bio: values.bio || '',
         email: values.email || '',
-        linkedin: values.linkedin || '',
-        instagram: values.instagram || '',
-        facebook: values.facebook || '',
         order_index: values.order_index,
       };
 
@@ -274,11 +270,7 @@ export default function TeamPage() {
                     image: '',
                     alt: '',
                     imageData: {} as IUploadImage,
-                    bio: '',
                     email: '',
-                    linkedin: '',
-                    instagram: '',
-                    facebook: '',
                     order_index: team.length,
                     image_metadata: undefined,
                   }}
@@ -303,12 +295,6 @@ export default function TeamPage() {
                         <FormInput name="position" label="Stanowisko" placeholder="Event Manager" />
                         <FormInput name="email" label="Email" placeholder="jan@mavinci.pl" />
                         <FormInput name="order_index" label="Kolejność" type="number" />
-                        <FormInput name="linkedin" label="LinkedIn URL" />
-                        <FormInput name="instagram" label="Instagram URL" />
-                        <FormInput name="facebook" label="Facebook URL" />
-                        <div className="md:col-span-2">
-                          <FormInput name="bio" label="Biogram" multiline rows={3} />
-                        </div>
                       </div>
 
                       <div className="flex gap-3 mt-4">
@@ -361,11 +347,7 @@ export default function TeamPage() {
                             alt: member.alt,
                             image_metadata: member.image_metadata,
                           } as IUploadImage,
-                          bio: member.bio || '',
                           email: member.email || '',
-                          linkedin: member.linkedin || '',
-                          instagram: member.instagram || '',
-                          facebook: member.facebook || '',
                           order_index: member.order_index,
                           image_metadata: member.image_metadata,
                         }}
@@ -391,7 +373,6 @@ export default function TeamPage() {
                               <FormInput name="name" label="Imię i nazwisko" />
                               <FormInput name="position" label="Stanowisko" />
                               <FormInput name="email" label="Email" />
-                              <FormInput name="bio" label="Biogram" multiline rows={2} />
                               <FormInput name="order_index" label="Kolejność" type="number" />
                             </div>
 
@@ -487,16 +468,8 @@ export default function TeamPage() {
                     </div>
 
                     <div className="p-6">
-                      <p
-                        className={`text-[#e5e4e2]/70 text-sm font-light leading-relaxed transition-all duration-500 ${
-                          hoveredId === member.id ? 'opacity-100' : 'opacity-70'
-                        }`}
-                      >
-                        {member.bio}
-                      </p>
-
-                      <div className="mt-4 flex gap-3">
-                        {member.email && (
+                      {member.email && (
+                        <div className="flex gap-3">
                           <a
                             href={`mailto:${member.email}`}
                             className="flex items-center justify-center w-10 h-10 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
@@ -504,19 +477,8 @@ export default function TeamPage() {
                           >
                             <Mail className="w-4 h-4" />
                           </a>
-                        )}
-                        {member.linkedin && (
-                          <a
-                            href={member.linkedin}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-center w-10 h-10 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
-                            aria-label={`LinkedIn ${member.name}`}
-                          >
-                            <Linkedin className="w-4 h-4" />
-                          </a>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   )

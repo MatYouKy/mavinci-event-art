@@ -36,10 +36,6 @@ export async function POST(request: Request) {
       alt: body.alt || null,
       email: body.email || null,
       image_metadata: body.image_metadata || {},
-      bio: body.bio || null,
-      linkedin: body.linkedin || null,
-      instagram: body.instagram || null,
-      facebook: body.facebook || null,
       order_index: body.order_index || 0,
     };
 
