@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, GripVertical } from 'lucide-react';
+import { Plus, CreditCard as Edit2, Trash2, GripVertical } from 'lucide-react';
 import { Formik, Form } from 'formik';
 import { TeamMember } from '../lib/supabase';
 import { ImageEditorField } from './ImageEditorField';
@@ -317,6 +317,7 @@ export default function AdminTeamPanel() {
             className={`bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 transition-all ${
               draggedItem === index ? 'opacity-50' : ''
             }`}
+          >
             {editingId === member.id ? (
               <Formik
                 initialValues={getMemberForEdit(member)}
