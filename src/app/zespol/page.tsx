@@ -89,7 +89,8 @@ export default function TeamPage() {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`);
       const data = await response.json();
-      setTeam(data && data.length > 0 ? data : MOCK_TEAM);
+      const teamData = data?.members || data || [];
+      setTeam(teamData.length > 0 ? teamData : MOCK_TEAM);
     } catch (error) {
       console.error('Error fetching team:', error);
       setTeam(MOCK_TEAM);
