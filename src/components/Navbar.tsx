@@ -327,10 +327,10 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                             </div>
                             <div className="flex-1">
                               <p className="text-sm font-medium text-[#e5e4e2]">
-                                {isEditMode ? 'Wyłącz tryb edycji' : 'Tryb edycji strony'}
+                                {isEditMode ? 'Wyłącz edycję obrazów' : 'Edytuj obrazy strony'}
                               </p>
                               <p className="text-xs text-[#e5e4e2]/60">
-                                {isEditMode ? 'Wróć do trybu przeglądania' : 'Edytuj zawartość strony'}
+                                {isEditMode ? 'Wróć do trybu przeglądania' : 'Edytuj zdjęcia na stronie'}
                               </p>
                             </div>
                           </button>
