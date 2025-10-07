@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Mail, Linkedin, Quote, ArrowRight, Edit2, Plus, Trash2 } from 'lucide-react';
+import { Users, Mail, Linkedin, Quote, ArrowRight, CreditCard as Edit2, Plus, Trash2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { TeamMember } from '@/lib/supabase';
