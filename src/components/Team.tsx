@@ -71,13 +71,8 @@ export default function Team() {
   const fetchTeamMembers = async () => {
     setLoading(true);
     try {
-      const { supabase } = await import('../lib/supabase');
-      const { data, error } = await supabase
-        .from('team_members')
-        .select('*')
-        .order('order_index', { ascending: true });
-
-      if (error) throw error;
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`);
+      const data = await response.json();
       setTeamMembers(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
       console.error('Error fetching team members:', error);
