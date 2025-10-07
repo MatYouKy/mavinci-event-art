@@ -37,8 +37,10 @@ export async function POST(request: Request) {
       .insert([{
         name: body.name,
         role: body.role,
+        position: body.position,
         image: body.image,
         alt: body.alt || '',
+        email: body.email || '',
         image_metadata: body.image_metadata || {},
         bio: body.bio || '',
         linkedin: body.linkedin || '',

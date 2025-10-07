@@ -1,10 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Mail, Linkedin, Quote, ArrowRight } from 'lucide-react';
+import { Users, Mail, Linkedin, Quote, ArrowRight, Edit, Plus, Trash2, Save, X, GripVertical } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { TeamMember } from '@/lib/supabase';
+import { useEditMode } from '@/contexts/EditModeContext';
+import Draggable from 'react-draggable';
+import { ImageEditorField } from '@/components/ImageEditorField';
+import { Formik, Form } from 'formik';
+import { FormInput } from '@/components/formik/FormInput';
+import { uploadImage } from '@/lib/storage';
+import { IUploadImage } from '@/types/image';
 
 const MOCK_TEAM: TeamMember[] = [
   {
@@ -76,18 +83,20 @@ const MOCK_TEAM: TeamMember[] = [
 ];
 
 export default function TeamPage() {
+  const { isEditMode } = useEditMode();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [draggedItems, setDraggedItems] = useState<{[key: string]: {x: number, y: number}}>({})
 
-  useEffect(() => {
-    fetchTeam();
-  }, []);
 
   const fetchTeam = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/team-members`);
+      const url = isEditMode ? '/api/team-members?all=true' : '/api/team-members';
+      const response = await fetch(url);
       const data = await response.json();
       setTeam(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
@@ -96,6 +105,108 @@ export default function TeamPage() {
     }
     setLoading(false);
   };
+
+  const handleSave = async (values: any, isNew: boolean, memberId?: string) => {
+    try {
+      let imageUrl = values.image;
+      let imageMetadata = values.image_metadata;
+
+      if (values.imageData?.file) {
+        imageUrl = await uploadImage(values.imageData.file, 'team');
+        imageMetadata = {
+          desktop: {
+            src: imageUrl,
+            position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: {
+            src: imageUrl,
+            position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+        };
+      }
+
+      const payload = {
+        name: values.name,
+        role: values.role || values.position,
+        position: values.position || values.role,
+        image: imageUrl,
+        alt: values.alt || '',
+        image_metadata: imageMetadata,
+        bio: values.bio || '',
+        email: values.email || '',
+        linkedin: values.linkedin || '',
+        instagram: values.instagram || '',
+        facebook: values.facebook || '',
+        order_index: values.order_index,
+        is_visible: values.is_visible !== undefined ? values.is_visible : true,
+      };
+
+      if (isNew) {
+        const response = await fetch('/api/team-members', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error('Failed to create');
+        setIsAdding(false);
+      } else {
+        const response = await fetch(`/api/team-members/${memberId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error('Failed to update');
+        setEditingId(null);
+      }
+
+      fetchTeam();
+    } catch (error: any) {
+      alert('Błąd: ' + error.message);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tego członka zespołu?')) return;
+
+    try {
+      const response = await fetch(`/api/team-members/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete');
+      fetchTeam();
+    } catch (error: any) {
+      alert('Błąd: ' + error.message);
+    }
+  };
+
+  const handleReorder = async () => {
+    try {
+      const updates = team.map((member, index) => ({
+        id: member.id,
+        order_index: index,
+      }));
+
+      for (const update of updates) {
+        await fetch(`/api/team-members/${update.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_index: update.order_index }),
+        });
+      }
+    } catch (error) {
+      console.error('Error updating order:', error);
+    }
+  };
+
+  const moveItem = (fromIndex: number, toIndex: number) => {
+    const newTeam = [...team];
+    const [movedItem] = newTeam.splice(fromIndex, 1);
+    newTeam.splice(toIndex, 0, movedItem);
+    setTeam(newTeam);
+    handleReorder();
+  };
+
+  useEffect(() => {
+    fetchTeam();
+  }, [isEditMode]);
 
   return (
     <>
@@ -131,6 +242,92 @@ export default function TeamPage() {
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {isEditMode && (
+              <div className="mb-8 flex justify-end">
+                <button
+                  onClick={() => setIsAdding(true)}
+                  className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
+                  <Plus className="w-5 h-5" />
+                  Dodaj Członka Zespołu
+                </button>
+              </div>
+            )}
+
+            {isAdding && isEditMode && (
+              <div className="mb-8 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
+                <Formik
+                  initialValues={{
+                    name: '',
+                    position: '',
+                    role: '',
+                    image: '',
+                    alt: '',
+                    imageData: {} as IUploadImage,
+                    bio: '',
+                    email: '',
+                    linkedin: '',
+                    instagram: '',
+                    facebook: '',
+                    order_index: team.length,
+                    is_visible: true,
+                    image_metadata: undefined,
+                  }}
+                  onSubmit={(values) => handleSave(values, true)}
+                >
+                  {({ submitForm }) => (
+                    <Form>
+                      <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Nowy Członek Zespołu</h3>
+
+                      <div className="mb-6">
+                        <ImageEditorField
+                          fieldName="imageData"
+                          isAdmin={true}
+                          mode="square"
+                          multiplier={1}
+                          onSave={async () => {}}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormInput name="name" label="Imię i nazwisko" placeholder="Jan Kowalski" />
+                        <FormInput name="position" label="Stanowisko" placeholder="Event Manager" />
+                        <FormInput name="email" label="Email" placeholder="jan@mavinci.pl" />
+                        <FormInput name="order_index" label="Kolejność" type="number" />
+                        <div className="flex items-center gap-2">
+                          <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
+                        </div>
+                        <FormInput name="linkedin" label="LinkedIn URL" />
+                        <FormInput name="instagram" label="Instagram URL" />
+                        <FormInput name="facebook" label="Facebook URL" />
+                        <div className="md:col-span-2">
+                          <FormInput name="bio" label="Biogram" multiline rows={3} />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-4">
+                        <button
+                          type="button"
+                          onClick={submitForm}
+                          className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                        >
+                          <Save className="w-4 h-4 inline mr-2" />
+                          Zapisz
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsAdding(false)}
+                          className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                        >
+                          <X className="w-4 h-4 inline mr-2" />
+                          Anuluj
+                        </button>
+                      </div>
+                    </Form>
+                  )}
+                </Formik>
+              </div>
+            )}
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-[#d3bb73] text-lg">Ładowanie zespołu...</div>
@@ -142,15 +339,133 @@ export default function TeamPage() {
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {team.map((member, index) => (
+                  editingId === member.id && isEditMode ? (
+                    <div
+                      key={member.id}
+                      className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-6"
+                    >
+                      <Formik
+                        initialValues={{
+                          name: member.name,
+                          position: member.position || member.role || '',
+                          role: member.role || member.position || '',
+                          image: member.image,
+                          alt: member.alt || '',
+                          imageData: {
+                            alt: member.alt,
+                            image_metadata: member.image_metadata,
+                          } as IUploadImage,
+                          bio: member.bio || '',
+                          email: member.email || '',
+                          linkedin: member.linkedin || '',
+                          instagram: member.instagram || '',
+                          facebook: member.facebook || '',
+                          order_index: member.order_index,
+                          is_visible: member.is_visible !== undefined ? member.is_visible : true,
+                          image_metadata: member.image_metadata,
+                        }}
+                        onSubmit={(values) => handleSave(values, false, member.id)}
+                      >
+                        {({ submitForm }) => (
+                          <Form>
+                            <div className="mb-4">
+                              <ImageEditorField
+                                fieldName="imageData"
+                                isAdmin={true}
+                                mode="square"
+                                multiplier={1}
+                                image={{
+                                  alt: member.alt,
+                                  image_metadata: member.image_metadata,
+                                }}
+                                onSave={async () => {}}
+                              />
+                            </div>
+
+                            <div className="space-y-3">
+                              <FormInput name="name" label="Imię i nazwisko" />
+                              <FormInput name="position" label="Stanowisko" />
+                              <FormInput name="email" label="Email" />
+                              <FormInput name="bio" label="Biogram" multiline rows={2} />
+                              <FormInput name="order_index" label="Kolejność" type="number" />
+                              <FormInput name="is_visible" label="Widoczny" type="checkbox" />
+                            </div>
+
+                            <div className="flex gap-2 mt-4">
+                              <button
+                                type="button"
+                                onClick={submitForm}
+                                className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm"
+                              >
+                                <Save className="w-4 h-4 inline mr-1" />
+                                Zapisz
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingId(null)}
+                                className="flex-1 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 text-sm"
+                              >
+                                <X className="w-4 h-4 inline mr-1" />
+                                Anuluj
+                              </button>
+                            </div>
+                          </Form>
+                        )}
+                      </Formik>
+                    </div>
+                  ) : (
                   <div
                     key={member.id}
-                    className="group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl overflow-hidden hover:border-[#d3bb73]/30 transition-all duration-300"
+                    className={`group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 ${
+                      isEditMode
+                        ? 'border-[#d3bb73]/30 cursor-move'
+                        : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
+                    }`}
                     onMouseEnter={() => setHoveredId(member.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     style={{
                       animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
                     }}
+                    draggable={isEditMode}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/html', index.toString());
+                    }}
+                    onDragOver={(e) => {
+                      if (isEditMode) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (isEditMode) {
+                        e.preventDefault();
+                        const fromIndex = parseInt(e.dataTransfer.getData('text/html'));
+                        moveItem(fromIndex, index);
+                      }
+                    }}
                   >
+                    {isEditMode && (
+                      <div className="absolute top-2 left-2 z-20 bg-[#1c1f33]/90 rounded-lg p-1">
+                        <GripVertical className="w-5 h-5 text-[#d3bb73]" />
+                      </div>
+                    )}
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 z-20 flex gap-2">
+                        <button
+                          onClick={() => setEditingId(member.id)}
+                          className="p-2 bg-[#d3bb73]/20 backdrop-blur-sm text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(member.id)}
+                          className="p-2 bg-[#800020]/20 backdrop-blur-sm text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                     <div className="aspect-square relative overflow-hidden">
                       <img
                         src={member.image_metadata?.desktop?.src || member.image}
@@ -199,7 +514,13 @@ export default function TeamPage() {
                         )}
                       </div>
                     </div>
+                    {isEditMode && !member.is_visible && (
+                      <div className="absolute bottom-2 left-2 right-2 bg-[#800020]/80 backdrop-blur-sm text-white text-xs py-1 px-2 rounded text-center">
+                        Ukryty na stronie
+                      </div>
+                    )}
                   </div>
+                  )
                 ))}
               </div>
             )}
