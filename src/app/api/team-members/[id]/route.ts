@@ -15,13 +15,13 @@ export async function PUT(
     if (body.role !== undefined) updateData.role = body.role;
     if (body.position !== undefined) updateData.position = body.position;
     if (body.image !== undefined) updateData.image = body.image;
-    if (body.alt !== undefined) updateData.alt = body.alt || '';
-    if (body.email !== undefined) updateData.email = body.email || '';
-    if (body.image_metadata !== undefined) updateData.image_metadata = body.image_metadata || {};
-    if (body.bio !== undefined) updateData.bio = body.bio || '';
-    if (body.linkedin !== undefined) updateData.linkedin = body.linkedin || '';
-    if (body.instagram !== undefined) updateData.instagram = body.instagram || '';
-    if (body.facebook !== undefined) updateData.facebook = body.facebook || '';
+    if (body.alt !== undefined) updateData.alt = body.alt || null;
+    if (body.email !== undefined) updateData.email = body.email || null;
+    if (body.image_metadata !== undefined) updateData.image_metadata = body.image_metadata;
+    if (body.bio !== undefined) updateData.bio = body.bio || null;
+    if (body.linkedin !== undefined) updateData.linkedin = body.linkedin || null;
+    if (body.instagram !== undefined) updateData.instagram = body.instagram || null;
+    if (body.facebook !== undefined) updateData.facebook = body.facebook || null;
     if (body.order_index !== undefined) updateData.order_index = body.order_index;
     if (body.is_visible !== undefined) updateData.is_visible = body.is_visible;
 

@@ -123,6 +123,8 @@ export default function TeamPage() {
             position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
           },
         };
+      } else if (values.imageData?.image_metadata) {
+        imageMetadata = values.imageData.image_metadata;
       }
 
       const payload = {
@@ -131,7 +133,7 @@ export default function TeamPage() {
         position: values.position || values.role,
         image: imageUrl,
         alt: values.alt || '',
-        image_metadata: imageMetadata,
+        image_metadata: imageMetadata || {},
         bio: values.bio || '',
         email: values.email || '',
         linkedin: values.linkedin || '',
@@ -146,7 +148,11 @@ export default function TeamPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (!response.ok) throw new Error('Failed to create');
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('API Error:', errorData);
+          throw new Error(errorData.error || 'Failed to create');
+        }
         setIsAdding(false);
       } else {
         const response = await fetch(`/api/team-members/${memberId}`, {
@@ -154,12 +160,17 @@ export default function TeamPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (!response.ok) throw new Error('Failed to update');
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('API Error:', errorData);
+          throw new Error(errorData.error || 'Failed to update');
+        }
         setEditingId(null);
       }
 
       fetchTeam();
     } catch (error: any) {
+      console.error('Save error:', error);
       alert('Błąd: ' + error.message);
     }
   };
