@@ -71,7 +71,7 @@ export default function Team() {
   const fetchTeamMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members', { cache: 'no-store' });
+      const response = await fetch('/api/team-members?all=true', { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to fetch team members');
       }
@@ -145,6 +145,12 @@ export default function Team() {
                     src={member.image || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800'}
                     alt={member.alt || member.name}
                     className="transition-all duration-700"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (target.src !== 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800') {
+                        target.src = 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800';
+                      }
+                    }}
                     style={{
                       position: 'absolute',
                       top: 0,
