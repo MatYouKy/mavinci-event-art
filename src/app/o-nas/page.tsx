@@ -1,13 +1,10 @@
-import { Metadata } from 'next';
+'use client';
+
 import { Award, Users, Heart, Target, Sparkles, TrendingUp, ArrowRight } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-
-export const metadata: Metadata = {
-  title: 'O Nas | Mavinci',
-  description: 'Poznaj zespół Mavinci - ekspertów w organizacji eventów. Nasze wartości, misja i doświadczenie w branży eventowej.',
-  keywords: 'o nas, Mavinci, agencja eventowa, organizacja eventów, team building',
-};
+import { PageHeroImage } from '@/components/PageHeroImage';
+import { EditableImage } from '@/components/EditableImage';
 
 export default function AboutPage() {
   const values = [
@@ -44,16 +41,12 @@ export default function AboutPage() {
     <>
       <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
-        <section className="relative py-24 md:py-32 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] overflow-hidden">
-          <div className="absolute inset-0">
-            <img
-              src="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920"
-              alt="O nas"
-              className="w-full h-full object-cover opacity-20"
-            />
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/90 to-[#0f1119]/90"></div>
-          </div>
-
+        <PageHeroImage
+          section="about"
+          defaultImage="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920"
+          defaultOpacity={0.2}
+          className="py-24 md:py-32 overflow-hidden"
+        >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
               <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
@@ -84,7 +77,7 @@ export default function AboutPage() {
               ))}
             </div>
           </div>
-        </section>
+        </PageHeroImage>
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -110,13 +103,13 @@ export default function AboutPage() {
 
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
-                <div className="relative rounded-3xl overflow-hidden border border-[#d3bb73]/20">
-                  <img
-                    src="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1200"
-                    alt="Nasz zespół"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+                <EditableImage
+                  section="about-historia"
+                  defaultImage="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1200"
+                  alt="Nasz zespół"
+                  className="relative rounded-3xl overflow-hidden border border-[#d3bb73]/20 aspect-square"
+                  imageClassName="w-full h-full object-cover"
+                />
               </div>
             </div>
           </div>
@@ -153,13 +146,13 @@ export default function AboutPage() {
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div className="relative order-2 lg:order-1">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
-                <div className="relative rounded-3xl overflow-hidden border border-[#d3bb73]/20">
-                  <img
-                    src="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200"
-                    alt="Nasze projekty"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+                <EditableImage
+                  section="about-mavinci"
+                  defaultImage="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200"
+                  alt="Nasze projekty"
+                  className="relative rounded-3xl overflow-hidden border border-[#d3bb73]/20 aspect-square"
+                  imageClassName="w-full h-full object-cover"
+                />
               </div>
 
               <div className="order-1 lg:order-2">
