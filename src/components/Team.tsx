@@ -139,7 +139,32 @@ export default function Team() {
             <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 justify-items-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="group relative">
+              <div className="relative overflow-hidden rounded-2xl">
+                <div className="aspect-[3/4] relative overflow-hidden bg-[#800020]/10">
+                  <img
+                    src="https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800"
+                    alt="Test Member"
+                    className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/40 to-transparent opacity-60"></div>
+                  <div className="absolute bottom-0 left-0 right-0 p-6">
+                    <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-1">TEST MEMBER</h3>
+                    <p className="text-[#d3bb73] text-sm font-light mb-3 tracking-wide">Test Position</p>
+                    <p className="text-[#e5e4e2]/80 text-sm font-light">Test bio text here</p>
+                    <div className="flex gap-3 mt-4">
+                      <a href="mailto:test@test.com" className="text-[#d3bb73] hover:text-[#e5e4e2] transition-colors">
+                        <Mail className="w-5 h-5" />
+                      </a>
+                      <a href="#" className="text-[#d3bb73] hover:text-[#e5e4e2] transition-colors">
+                        <Linkedin className="w-5 h-5" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             {teamMembers.map((member, index) => (
             <div
               key={member.id}
