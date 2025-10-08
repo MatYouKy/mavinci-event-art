@@ -17,6 +17,7 @@ export interface ImagePosition {
 export interface ScreenMetadata {
   src: string;
   position?: ImagePosition;
+  objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
 }
 
 export interface ImageMetadata {

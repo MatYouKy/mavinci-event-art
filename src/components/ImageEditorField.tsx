@@ -78,6 +78,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
   const [setPosition, setSetPosition] = useState<boolean>(false);
   const [subMenu, setSubMenu] = useState<boolean>(false);
   const [setAlt, setSetAlt] = useState<boolean>(false);
+  const [setObjectFit, setSetObjectFit] = useState<boolean>(false);
   const [uploadImage, setUploadImage] = useState<boolean>(false);
 
   const imageInputRef = useRef<FormImageInputHandle>(null);
@@ -164,6 +165,23 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
     setSetAlt(action);
   };
 
+  const handleChangeObjectFit = (value: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down') => {
+    const prev = values?.[fieldName];
+    const updated = {
+      ...prev,
+      image_metadata: {
+        ...prev?.image_metadata,
+        [screenMode]: {
+          ...prev?.image_metadata?.[screenMode],
+          objectFit: value,
+        },
+      },
+    };
+    helpers.setValue(updated);
+    handleSubmit();
+    setSetObjectFit(false);
+  };
+
   const handleUploadImage = () => {
     console.log('[ImageEditorField] handleUploadImage - ustawiam uploadImage=true i subMenu=true');
     setUploadImage(true);
@@ -245,6 +263,10 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
     {
       children: 'Ustaw Pozycję',
       onClick: handleSetPosition.bind(null, true),
+    },
+    {
+      children: 'Ustaw Object Fit',
+      onClick: () => setSetObjectFit(true),
     },
     {
       children: 'Resetuj pozycję',
@@ -518,6 +540,37 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
           isMobile={isMobile}
           label="Opis Alt"
         />
+      )}
+      {setObjectFit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">Wybierz Object Fit</h3>
+            <div className="space-y-2">
+              {(['cover', 'contain', 'fill', 'none', 'scale-down'] as const).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => handleChangeObjectFit(option)}
+                  className="w-full text-left px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-[#d3bb73] hover:bg-[#d3bb73]/10 transition-colors"
+                >
+                  <div className="font-medium text-gray-900 capitalize">{option}</div>
+                  <div className="text-sm text-gray-600">
+                    {option === 'cover' && 'Wypełnia całą przestrzeń (może przyciąć obraz)'}
+                    {option === 'contain' && 'Zmieści cały obraz w kontenerze'}
+                    {option === 'fill' && 'Rozciąga obraz do wypełnienia kontenera'}
+                    {option === 'none' && 'Nie zmienia rozmiaru obrazu'}
+                    {option === 'scale-down' && 'Zmniejsza obraz jeśli jest za duży'}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setSetObjectFit(false)}
+              className="mt-4 w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
+            >
+              Anuluj
+            </button>
+          </div>
+        </div>
       )}
     </>
   );
