@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 import { getSiteImage } from '@/lib/siteImages';
 import type { SiteImage } from '@/lib/siteImages';
 import { SliderX, SliderY, SliderScale, SliderOpacity } from './UI/Slider/Slider';
@@ -26,6 +27,7 @@ export function PageHeroImage({
   children,
 }: PageHeroImageProps) {
   const { isEditMode } = useEditMode();
+  const { showSnackbar } = useSnackbar();
   const [siteImage, setSiteImage] = useState<SiteImage | null>(null);
   const [isEditingPosition, setIsEditingPosition] = useState(false);
   const [isEditingOpacity, setIsEditingOpacity] = useState(false);
@@ -259,9 +261,10 @@ export function PageHeroImage({
 
       setIsEditingPosition(false);
       setPositionSubMenu(false);
+      showSnackbar('Pozycja zapisana pomyślnie', 'success');
     } catch (error) {
       console.error('Error saving position:', error);
-      alert('Błąd podczas zapisywania pozycji');
+      showSnackbar('Błąd podczas zapisywania pozycji', 'error');
     }
   };
 
@@ -363,9 +366,10 @@ export function PageHeroImage({
 
       setIsEditingOpacity(false);
       setOpacitySubMenu(false);
+      showSnackbar('Przezroczystość zapisana pomyślnie', 'success');
     } catch (error) {
       console.error('Error saving opacity:', error);
-      alert('Błąd podczas zapisywania przezroczystości');
+      showSnackbar('Błąd podczas zapisywania przezroczystości', 'error');
     }
   };
 
@@ -478,9 +482,10 @@ export function PageHeroImage({
       }
 
       await loadImage();
+      showSnackbar('Zdjęcie wgrane pomyślnie', 'success');
     } catch (error) {
       console.error('Error uploading image:', error);
-      alert('Błąd podczas przesyłania zdjęcia');
+      showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
     }
   };
 
@@ -532,8 +537,10 @@ export function PageHeroImage({
 
         if (error) throw error;
         await loadImage();
+        showSnackbar('Pozycja zresetowana', 'success');
       } catch (error) {
         console.error('Error resetting position:', error);
+        showSnackbar('Błąd podczas resetowania pozycji', 'error');
       }
     }
   };
@@ -571,17 +578,32 @@ export function PageHeroImage({
 
   return (
     <div className={`relative ${className}`}>
-      <div className="absolute inset-0">
-        <img
-          src={imageUrl}
-          alt={siteImage?.alt_text || section}
-          className="w-full h-full object-cover"
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          className="w-full h-full"
           style={{
+            position: 'relative',
             opacity: displayOpacity,
-            transform: `translate(${displayPosition.posX}%, ${displayPosition.posY}%) scale(${displayPosition.scale})`,
-            transformOrigin: 'center',
           }}
-        />
+        >
+          <img
+            src={imageUrl}
+            alt={siteImage?.alt_text || section}
+            className="absolute"
+            style={{
+              minWidth: '100%',
+              minHeight: '100%',
+              width: 'auto',
+              height: 'auto',
+              maxWidth: 'none',
+              objectFit: 'cover',
+              left: '50%',
+              top: '50%',
+              transform: `translate(calc(-50% + ${displayPosition.posX}%), calc(-50% + ${displayPosition.posY}%)) scale(${displayPosition.scale})`,
+              transformOrigin: 'center',
+            }}
+          />
+        </div>
         <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/90 to-[#0f1119]/90"></div>
       </div>
 
