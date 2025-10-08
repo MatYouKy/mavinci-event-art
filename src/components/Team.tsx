@@ -124,8 +124,18 @@ export default function Team() {
             <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto animate-[scaleIn_1s_ease-out]"></div>
           </div>
         </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-[#d3bb73] text-lg">Ładowanie zespołu...</div>
+          </div>
+        ) : teamMembers.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
+          </div>
+        ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 justify-items-center">
-            {MOCK_TEAM.map((member, index) => (
+            {teamMembers.map((member, index) => (
             <div
               key={member.id}
               className="group relative"
@@ -220,6 +230,7 @@ export default function Team() {
             </div>
           ))}
           </div>
+        )}
 
         <div className="text-center mt-16 animate-[fadeIn_1.2s_ease-out]">
           <p className="text-[#e5e4e2]/70 text-base md:text-lg font-light mb-6 max-w-2xl mx-auto">
