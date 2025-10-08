@@ -300,7 +300,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
                   bottom:
                     menuPosition === 'right-bottom' ||
                     menuPosition === 'left-bottom'
-                      ? 40
+                      ? 80
                       : 0,
                 }}
                 value={positions?.posX ?? 0}
@@ -348,28 +348,30 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     gap: '2px',
-                    margin: '0 10px',
+                    margin: '0 4px',
                     zIndex: 100000,
                   }}
                 >
                   {uploadImage && (
-                    <div>
+                    <div style={{ display: 'flex', gap: '2px' }}>
                       <IconButton
-                        size="medium"
+                        size="small"
                         onClick={() => {
                           return imageInputRef.current?.click();
                         }}
                         sx={{
                           color: '#e5e4e2',
+                          padding: '6px',
                         }}
                       >
-                        <UploadCloudIcon />
+                        <UploadCloudIcon size={18} />
                       </IconButton>
                       {uploadedImageFile && (
                         <>
                           <IconButton
                             sx={{
                               color: '#e5e4e2',
+                              padding: '6px',
                             }}
                             size="small"
                             onClick={() => {
@@ -378,18 +380,19 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
                               });
                             }}
                           >
-                            <Move />
+                            <Move size={18} />
                           </IconButton>
                           <IconButton
                             sx={{
                               color: '#e5e4e2',
+                              padding: '6px',
                             }}
                             size="small"
                             onClick={() => {
                               return handleRemove();
                             }}
                           >
-                            <Trash2Icon />
+                            <Trash2Icon size={18} />
                           </IconButton>
                         </>
                       )}
@@ -399,22 +402,24 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
                     style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}
                   >
                     <IconButton
-                      size="medium"
+                      size="small"
                       sx={{
                         color: '#4ade80',
+                        padding: '6px',
                       }}
                       onClick={handleSubmit}
                     >
-                      <Check />
+                      <Check size={18} />
                     </IconButton>
                     <IconButton
-                      size="medium"
+                      size="small"
                       onClick={handleCloseSubmenu}
                       sx={{
                         color: '#ef4444',
+                        padding: '6px',
                       }}
                     >
-                      <X />
+                      <X size={18} />
                     </IconButton>
                   </div>
                 </div>
@@ -491,8 +496,8 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
               minWidth: '100%',
               minHeight: '100%',
               transform: `translate(${
-                positions?.posX ? positions.posX * 0.7 : 0
-              }%, ${positions?.posY ? positions.posY * -0.7 : 0}%) scale(${
+                positions?.posX || 0
+              }%, ${positions?.posY || 0}%) scale(${
                 positions?.scale ?? 1
               })`,
               transformOrigin: 'center',

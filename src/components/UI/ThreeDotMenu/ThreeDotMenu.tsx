@@ -29,13 +29,13 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
       case 'right-top':
         return 'top-4 right-4';
       case 'right-bottom':
-        return 'bottom-4 right-4';
+        return 'bottom-20 right-4';
       case 'left-top':
         return 'top-4 left-4';
       case 'left-bottom':
-        return 'bottom-4 left-4';
+        return 'bottom-20 left-4';
       default:
-        return 'bottom-4 right-4';
+        return 'bottom-20 right-4';
     }
   };
 
@@ -71,7 +71,7 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
   return (
     <div ref={menuRef} className={`absolute ${getPositionClasses()} z-50`}>
       {menuAction ? (
-        <div className="bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 p-2">
+        <div className="bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 p-1">
           {menuActionContent}
         </div>
       ) : (
