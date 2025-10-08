@@ -147,36 +147,24 @@ export default function Team() {
                     className="w-full h-full object-cover transition-all duration-700"
                     style={{
                       transform: `translate(${
-                        member.image_metadata?.desktop?.position?.posX
-                          ? member.image_metadata.desktop.position.posX * 0.7
-                          : 0
+                        member.image_metadata?.desktop?.position?.posX || 0
                       }%, ${
-                        member.image_metadata?.desktop?.position?.posY
-                          ? member.image_metadata.desktop.position.posY * -0.7
-                          : 0
+                        member.image_metadata?.desktop?.position?.posY || 0
                       }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`,
                       transformOrigin: 'center',
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = `translate(${
-                        member.image_metadata?.desktop?.position?.posX
-                          ? member.image_metadata.desktop.position.posX * 0.7
-                          : 0
+                        member.image_metadata?.desktop?.position?.posX || 0
                       }%, ${
-                        member.image_metadata?.desktop?.position?.posY
-                          ? member.image_metadata.desktop.position.posY * -0.7
-                          : 0
+                        member.image_metadata?.desktop?.position?.posY || 0
                       }%) scale(${(member.image_metadata?.desktop?.position?.scale || 1) * 1.1}) rotate(2deg)`;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = `translate(${
-                        member.image_metadata?.desktop?.position?.posX
-                          ? member.image_metadata.desktop.position.posX * 0.7
-                          : 0
+                        member.image_metadata?.desktop?.position?.posX || 0
                       }%, ${
-                        member.image_metadata?.desktop?.position?.posY
-                          ? member.image_metadata.desktop.position.posY * -0.7
-                          : 0
+                        member.image_metadata?.desktop?.position?.posY || 0
                       }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`;
                     }}
                   />

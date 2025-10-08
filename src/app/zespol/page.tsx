@@ -531,7 +531,29 @@ export default function TeamPage() {
                       <img
                         src={member.image_metadata?.desktop?.src || member.image}
                         alt={member.alt || member.name}
-                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
+                        className="w-full h-full object-cover transition-all duration-700"
+                        style={{
+                          transform: `translate(${
+                            member.image_metadata?.desktop?.position?.posX || 0
+                          }%, ${
+                            member.image_metadata?.desktop?.position?.posY || 0
+                          }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`,
+                          transformOrigin: 'center',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = `translate(${
+                            member.image_metadata?.desktop?.position?.posX || 0
+                          }%, ${
+                            member.image_metadata?.desktop?.position?.posY || 0
+                          }%) scale(${(member.image_metadata?.desktop?.position?.scale || 1) * 1.1})`;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = `translate(${
+                            member.image_metadata?.desktop?.position?.posX || 0
+                          }%, ${
+                            member.image_metadata?.desktop?.position?.posY || 0
+                          }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`;
+                        }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
 
