@@ -142,7 +142,7 @@ export default function Team() {
               <div className="relative overflow-hidden rounded-2xl">
                 <div className="aspect-[3/4] relative overflow-hidden bg-[#800020]/10">
                   <img
-                    src={member.image}
+                    src={member.image || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800'}
                     alt={member.alt || member.name}
                     className="transition-all duration-700"
                     style={{
