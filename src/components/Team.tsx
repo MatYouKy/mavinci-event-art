@@ -128,7 +128,7 @@ export default function Team() {
             <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 justify-items-center">
             {teamMembers.map((member, index) => (
             <div
               key={member.id}
@@ -144,7 +144,7 @@ export default function Team() {
                   <img
                     src={member.image}
                     alt={member.alt || member.name}
-                    className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110 group-hover:rotate-2"
+                    className="w-full h-full object-cover transition-all duration-700"
                     style={{
                       transform: `translate(${
                         member.image_metadata?.desktop?.position?.posX
@@ -156,6 +156,28 @@ export default function Team() {
                           : 0
                       }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`,
                       transformOrigin: 'center',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = `translate(${
+                        member.image_metadata?.desktop?.position?.posX
+                          ? member.image_metadata.desktop.position.posX * 0.7
+                          : 0
+                      }%, ${
+                        member.image_metadata?.desktop?.position?.posY
+                          ? member.image_metadata.desktop.position.posY * -0.7
+                          : 0
+                      }%) scale(${(member.image_metadata?.desktop?.position?.scale || 1) * 1.1}) rotate(2deg)`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = `translate(${
+                        member.image_metadata?.desktop?.position?.posX
+                          ? member.image_metadata.desktop.position.posX * 0.7
+                          : 0
+                      }%, ${
+                        member.image_metadata?.desktop?.position?.posY
+                          ? member.image_metadata.desktop.position.posY * -0.7
+                          : 0
+                      }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`;
                     }}
                   />
 

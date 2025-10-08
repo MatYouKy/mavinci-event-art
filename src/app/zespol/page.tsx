@@ -109,8 +109,9 @@ export default function TeamPage() {
   const handleSave = async (values: any, isNew: boolean, memberId?: string) => {
     try {
       let imageUrl = values.image;
-      let imageMetadata = values.image_metadata;
+      let imageMetadata: any = {};
 
+      console.log('[handleSave] values:', values);
       console.log('[handleSave] values.imageData:', values.imageData);
 
       if (values.imageData?.file) {
@@ -132,6 +133,15 @@ export default function TeamPage() {
             position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
           },
         };
+      } else {
+        imageMetadata = {
+          desktop: {
+            position: values.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: {
+            position: values.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+        };
       }
 
       console.log('[handleSave] imageMetadata do zapisu:', imageMetadata);
@@ -142,10 +152,12 @@ export default function TeamPage() {
         position: values.position || values.role,
         image: imageUrl,
         alt: values.imageData?.alt || values.alt || '',
-        image_metadata: imageMetadata || {},
+        image_metadata: imageMetadata,
         email: values.email || '',
-        order_index: values.order_index,
+        order_index: parseInt(values.order_index) || 0,
       };
+
+      console.log('[handleSave] payload:', JSON.stringify(payload, null, 2));
 
       if (isNew) {
         const response = await fetch('/api/team-members', {
@@ -153,9 +165,16 @@ export default function TeamPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        console.log('[handleSave] response status:', response.status);
         if (!response.ok) {
-          const errorData = await response.json();
-          console.error('API Error:', errorData);
+          const errorText = await response.text();
+          console.error('API Error response:', errorText);
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: errorText };
+          }
           throw new Error(errorData.error || 'Failed to create');
         }
         setIsAdding(false);
@@ -165,15 +184,22 @@ export default function TeamPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        console.log('[handleSave] response status:', response.status);
         if (!response.ok) {
-          const errorData = await response.json();
-          console.error('API Error:', errorData);
+          const errorText = await response.text();
+          console.error('API Error response:', errorText);
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: errorText };
+          }
           throw new Error(errorData.error || 'Failed to update');
         }
         setEditingId(null);
       }
 
-      fetchTeam();
+      await fetchTeam();
     } catch (error: any) {
       console.error('Save error:', error);
       alert('Błąd: ' + error.message);
