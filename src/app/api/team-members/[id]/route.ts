@@ -23,6 +23,7 @@ export async function PUT(
     if (body.email !== undefined) updateData.email = body.email || null;
     if (body.image_metadata !== undefined) updateData.image_metadata = body.image_metadata;
     if (body.order_index !== undefined) updateData.order_index = body.order_index;
+    if (body.is_visible !== undefined) updateData.is_visible = body.is_visible;
 
     console.log('[API PUT] Update data:', JSON.stringify(updateData, null, 2));
 
