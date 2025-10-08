@@ -9,6 +9,7 @@ const MOCK_TEAM: TeamMember[] = [
     id: 'mock-1',
     name: 'Anna Kowalska',
     role: 'Event Manager',
+    position: 'Event Manager',
     image: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=600',
     bio: 'Specjalistka od organizacji wydarzeń z 8-letnim doświadczeniem',
     linkedin: '',
@@ -22,6 +23,7 @@ const MOCK_TEAM: TeamMember[] = [
     id: 'mock-2',
     name: 'Marek Nowak',
     role: 'Creative Director',
+    position: 'Creative Director',
     image: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=600',
     bio: 'Wizjoner i twórca niezapomnianych koncepcji eventowych',
     linkedin: '',
@@ -35,6 +37,7 @@ const MOCK_TEAM: TeamMember[] = [
     id: 'mock-3',
     name: 'Katarzyna Wiśniewska',
     role: 'PR Specialist',
+    position: 'PR Specialist',
     image: 'https://images.pexels.com/photos/733872/pexels-photo-733872.jpeg?auto=compress&cs=tinysrgb&w=600',
     bio: 'Ekspertka w budowaniu relacji z mediami i promocji wydarzeń',
     linkedin: '',
@@ -48,6 +51,7 @@ const MOCK_TEAM: TeamMember[] = [
     id: 'mock-4',
     name: 'Piotr Zieliński',
     role: 'Technical Director',
+    position: 'Technical Director',
     image: 'https://images.pexels.com/photos/1516680/pexels-photo-1516680.jpeg?auto=compress&cs=tinysrgb&w=600',
     bio: 'Odpowiada za całą stronę techniczną i logistyczną eventów',
     linkedin: '',
@@ -203,7 +207,7 @@ export default function Team() {
                       {member.name}
                     </h3>
                     <p className="text-[#d3bb73] text-sm font-light mb-3 tracking-wide">
-                      {member.role}
+                      {member.position || member.role}
                     </p>
                     <p
                       className={`text-[#e5e4e2]/80 text-sm font-light leading-relaxed transition-all duration-500 ${
