@@ -71,7 +71,7 @@ export default function Team() {
   const fetchTeamMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members');
+      const response = await fetch('/api/team-members', { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to fetch team members');
       }
