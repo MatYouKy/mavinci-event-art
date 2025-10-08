@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, CreditCard as Edit2, Trash2 } from 'lucide-react';
+import { Plus, Edit2, Trash2 } from 'lucide-react';
 import { Formik, Form } from 'formik';
+import { Dialog } from '@mui/material';
 import { TeamMember } from '../lib/supabase';
 import { ImageEditorField } from './ImageEditorField';
 import { FormInput } from './formik/FormInput';
@@ -12,7 +13,7 @@ import { IUploadImage } from '../types/image';
 export default function AdminTeamPanel() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
@@ -46,10 +47,12 @@ export default function AdminTeamPanel() {
           desktop: {
             src: imageUrl,
             position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+            objectFit: values.imageData.image_metadata?.desktop?.objectFit || 'cover',
           },
           mobile: {
             src: imageUrl,
             position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+            objectFit: values.imageData.image_metadata?.mobile?.objectFit || 'cover',
           },
         };
       } else if (values.imageData?.image_metadata) {
@@ -57,10 +60,12 @@ export default function AdminTeamPanel() {
           desktop: {
             src: values.imageData.image_metadata?.desktop?.src || values.image || imageUrl,
             position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+            objectFit: values.imageData.image_metadata?.desktop?.objectFit || 'cover',
           },
           mobile: {
             src: values.imageData.image_metadata?.mobile?.src || values.image || imageUrl,
             position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+            objectFit: values.imageData.image_metadata?.mobile?.objectFit || 'cover',
           },
         };
       }
@@ -71,7 +76,7 @@ export default function AdminTeamPanel() {
         role: values.role,
         email: values.email || '',
         image: imageUrl,
-        alt: values.alt || '',
+        alt: values.alt || values.name,
         image_metadata: imageMetadata,
         bio: values.bio || '',
         linkedin: values.linkedin || '',
@@ -92,7 +97,7 @@ export default function AdminTeamPanel() {
         if (!response.ok) throw new Error('Failed to create');
         setIsAdding(false);
       } else {
-        const response = await fetch(`/api/team-members/${editingId}`, {
+        const response = await fetch(`/api/team-members/${editingMember?.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -100,7 +105,7 @@ export default function AdminTeamPanel() {
           body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error('Failed to update');
-        setEditingId(null);
+        setEditingMember(null);
       }
 
       fetchMembers();
@@ -128,8 +133,8 @@ export default function AdminTeamPanel() {
   const getMemberForEdit = (member: TeamMember) => {
     return {
       name: member.name,
-      position: member.position,
-      role: member.role,
+      position: member.position || '',
+      role: member.role || '',
       email: member.email || '',
       image: member.image,
       alt: member.alt || '',
@@ -145,6 +150,11 @@ export default function AdminTeamPanel() {
       is_visible: member.is_visible !== undefined ? member.is_visible : true,
       image_metadata: member.image_metadata,
     };
+  };
+
+  const closeModal = () => {
+    setEditingMember(null);
+    setIsAdding(false);
   };
 
   if (loading) {
@@ -168,171 +178,226 @@ export default function AdminTeamPanel() {
         </button>
       </div>
 
-      {isAdding && (
+      {/* Modal for Add/Edit */}
+      <Dialog
+        open={isAdding || editingMember !== null}
+        onClose={closeModal}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          style: {
+            backgroundColor: '#1c1f33',
+            border: '1px solid rgba(211, 187, 115, 0.2)',
+            borderRadius: '12px',
+            maxHeight: '90vh',
+            overflow: 'auto',
+          },
+        }}
+      >
         <Formik
-          initialValues={{
-            name: '',
-            position: '',
-            role: '',
-            email: '',
-            image: '',
-            alt: '',
-            imageData: {} as IUploadImage,
-            bio: '',
-            linkedin: '',
-            instagram: '',
-            facebook: '',
-            order_index: members.length,
-            is_visible: true,
-            image_metadata: undefined,
-          }}
-          onSubmit={(values) => handleSave(values, true)}
+          initialValues={
+            editingMember
+              ? getMemberForEdit(editingMember)
+              : {
+                  name: '',
+                  position: '',
+                  role: '',
+                  email: '',
+                  image: '',
+                  alt: '',
+                  imageData: {} as IUploadImage,
+                  bio: '',
+                  linkedin: '',
+                  instagram: '',
+                  facebook: '',
+                  order_index: members.length + 1,
+                  is_visible: true,
+                  image_metadata: undefined,
+                }
+          }
+          onSubmit={(values) => handleSave(values, !editingMember)}
+          enableReinitialize
         >
-          {({ submitForm }) => (
-            <Form className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
-              <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Nowy Członek Zespołu</h3>
+          {({ submitForm, values }) => (
+            <Form className="p-6">
+              <h3 className="text-xl font-light text-[#e5e4e2] mb-6">
+                {editingMember ? 'Edytuj Członka Zespołu' : 'Nowy Członek Zespołu'}
+              </h3>
 
               <div className="mb-6">
+                <label className="block text-sm font-medium text-[#d3bb73] mb-2">
+                  Zdjęcie (proporcje 3:4)
+                </label>
                 <ImageEditorField
                   fieldName="imageData"
                   isAdmin={true}
                   mode="vertical"
                   multiplier={1.33}
+                  image={
+                    editingMember
+                      ? {
+                          alt: editingMember.alt,
+                          image_metadata: editingMember.image_metadata,
+                        }
+                      : undefined
+                  }
                   onSave={async () => {}}
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormInput name="name" label="Imię i nazwisko" placeholder="Jan Kowalski" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <FormInput
+                  name="name"
+                  label="Imię i nazwisko"
+                  placeholder="Roman Pażdzioch"
+                  required
+                />
                 <FormInput name="position" label="Pozycja" placeholder="CEO" />
-                <FormInput name="role" label="Rola" placeholder="Creative Director" />
-                <FormInput name="email" label="Email" placeholder="jan@mavinci.pl" type="email" />
-                <FormInput name="order_index" label="Kolejność" type="number" />
-                <div className="flex items-center gap-2">
-                  <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
-                </div>
-                <FormInput name="linkedin" label="LinkedIn URL (opcjonalnie)" />
-                <FormInput name="instagram" label="Instagram URL (opcjonalnie)" />
-                <FormInput name="facebook" label="Facebook URL (opcjonalnie)" />
-                <div className="md:col-span-2">
-                  <FormInput name="bio" label="Bio (opcjonalnie)" multiline rows={3} />
-                </div>
+                <FormInput
+                  name="role"
+                  label="Rola"
+                  placeholder="Creative Director"
+                />
+                <FormInput
+                  name="email"
+                  label="Email"
+                  placeholder="email@mavinci.pl"
+                  type="email"
+                />
+                <FormInput
+                  name="linkedin"
+                  label="LinkedIn URL"
+                  placeholder="https://linkedin.com/in/..."
+                />
+                <FormInput
+                  name="instagram"
+                  label="Instagram URL"
+                  placeholder="https://instagram.com/..."
+                />
+                <FormInput
+                  name="facebook"
+                  label="Facebook URL"
+                  placeholder="https://facebook.com/..."
+                />
+                <FormInput
+                  name="order_index"
+                  label="Kolejność"
+                  type="number"
+                  placeholder="1"
+                />
               </div>
 
-              <div className="flex gap-3 mt-4">
+              <div className="mb-6">
+                <label className="flex items-center gap-2 text-[#e5e4e2] cursor-pointer">
+                  <FormInput
+                    name="is_visible"
+                    type="checkbox"
+                    label=""
+                    style={{ width: 'auto', margin: 0 }}
+                  />
+                  <span>Widoczny na stronie głównej</span>
+                </label>
+              </div>
+
+              <div className="mb-6">
+                <FormInput
+                  name="bio"
+                  label="Biografia"
+                  multiline
+                  rows={4}
+                  placeholder="Krótki opis osoby..."
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
                 <button
                   type="button"
-                  onClick={submitForm}
-                  className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                >
-                  Zapisz
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAdding(false)}
+                  onClick={closeModal}
                   className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
                 >
                   Anuluj
+                </button>
+                <button
+                  type="button"
+                  onClick={submitForm}
+                  className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+                >
+                  Zapisz
                 </button>
               </div>
             </Form>
           )}
         </Formik>
-      )}
+      </Dialog>
 
+      {/* Members List */}
       <div className="grid grid-cols-1 gap-4">
         {members.map((member) => (
-          <div key={member.id} className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
-            {editingId === member.id ? (
-              <Formik
-                initialValues={getMemberForEdit(member)}
-                onSubmit={(values) => handleSave(values, false)}
-              >
-                {({ submitForm }) => (
-                  <Form>
-                    <div className="mb-6">
-                      <ImageEditorField
-                        fieldName="imageData"
-                        isAdmin={true}
-                        mode="vertical"
-                        multiplier={1.33}
-                        image={{
-                          alt: member.alt,
-                          image_metadata: member.image_metadata,
-                        }}
-                        onSave={async () => {}}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <FormInput name="name" label="Imię i nazwisko" />
-                      <FormInput name="position" label="Pozycja" />
-                      <FormInput name="role" label="Rola" />
-                      <FormInput name="email" label="Email" type="email" />
-                      <FormInput name="linkedin" label="LinkedIn URL" />
-                      <FormInput name="instagram" label="Instagram URL" />
-                      <FormInput name="facebook" label="Facebook URL" />
-                      <FormInput name="order_index" label="Kolejność" type="number" />
-                      <div className="flex items-center gap-2">
-                        <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <FormInput name="bio" label="Bio" multiline rows={3} />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={submitForm}
-                        className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                      >
-                        Zapisz
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingId(null)}
-                        className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
-                      >
-                        Anuluj
-                      </button>
-                    </div>
-                  </Form>
-                )}
-              </Formik>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
+          <div
+            key={member.id}
+            className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="relative w-16 h-20 rounded-lg overflow-hidden bg-[#800020]/10">
                   <img
                     src={member.image_metadata?.desktop?.src || member.image}
                     alt={member.alt || member.name}
-                    className="w-16 h-16 rounded-full object-cover"
+                    className="w-full h-full object-cover"
+                    style={{
+                      objectFit:
+                        member.image_metadata?.desktop?.objectFit || 'cover',
+                      transform: `translate(${
+                        member.image_metadata?.desktop?.position?.posX || 0
+                      }%, ${
+                        member.image_metadata?.desktop?.position?.posY || 0
+                      }%) scale(${
+                        member.image_metadata?.desktop?.position?.scale || 1
+                      })`,
+                    }}
                   />
-                  <div>
-                    <h3 className="text-lg font-medium text-[#e5e4e2]">{member.name}</h3>
-                    <p className="text-[#d3bb73]">{member.role}</p>
-                    <p className="text-sm text-[#e5e4e2]/60">Kolejność: {member.order_index}</p>
-                    <p className="text-sm text-[#e5e4e2]/60">
-                      Status: {member.is_visible ? '✓ Widoczny' : '✗ Ukryty'}
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-[#e5e4e2]">
+                    {member.name}
+                  </h3>
+                  <p className="text-[#d3bb73] text-sm">{member.position}</p>
+                  {member.role && (
+                    <p className="text-[#e5e4e2]/60 text-sm">{member.role}</p>
+                  )}
+                  <div className="flex items-center gap-4 mt-1">
+                    <p className="text-xs text-[#e5e4e2]/60">
+                      Kolejność: {member.order_index}
+                    </p>
+                    <p
+                      className={`text-xs ${
+                        member.is_visible
+                          ? 'text-green-400'
+                          : 'text-[#e5e4e2]/40'
+                      }`}
+                    >
+                      {member.is_visible ? '✓ Widoczny' : '✗ Ukryty'}
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setEditingId(member.id)}
-                    className="p-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
-                  >
-                    <Edit2 className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(member.id)}
-                    className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
               </div>
-            )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingMember(member)}
+                  className="p-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                  title="Edytuj"
+                >
+                  <Edit2 className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => handleDelete(member.id)}
+                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                  title="Usuń"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
           </div>
         ))}
       </div>
