@@ -22,6 +22,7 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
   menuActionContent,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
 
   const getPositionClasses = () => {
     switch (menuPosition) {
@@ -44,8 +45,31 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
     }
   }, [menuAction]);
 
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const handleMenuItemClick = (onClick: () => void, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onClick();
+    // Nie zamykamy od razu - useEffect z menuAction to zrobi
+  };
+
   return (
-    <div className={`absolute ${getPositionClasses()} z-50`}>
+    <div ref={menuRef} className={`absolute ${getPositionClasses()} z-50`}>
       {menuAction ? (
         <div className="bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 p-2">
           {menuActionContent}
@@ -54,6 +78,7 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
         <>
           <button
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               setIsOpen(!isOpen);
             }}
@@ -67,10 +92,7 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
               {menu_items.map((item, index) => (
                 <button
                   key={index}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    item.onClick();
-                  }}
+                  onClick={(e) => handleMenuItemClick(item.onClick, e)}
                   className="w-full px-4 py-3 text-left text-[#e5e4e2] hover:bg-[#d3bb73]/20 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
                 >
                   {item.children}

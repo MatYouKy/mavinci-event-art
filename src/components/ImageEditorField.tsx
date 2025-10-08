@@ -165,7 +165,9 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
   };
 
   const handleUploadImage = () => {
+    console.log('[ImageEditorField] handleUploadImage - ustawiam uploadImage=true i subMenu=true');
     setUploadImage(true);
+    setSubMenu(true);
     // Od razu klikamy w input do wyboru pliku
     setTimeout(() => {
       imageInputRef.current?.click();

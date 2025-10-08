@@ -337,6 +337,7 @@ export default function TeamPage() {
                       className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-6"
                     >
                       <Formik
+                        enableReinitialize={false}
                         initialValues={{
                           name: member.name,
                           position: member.position || member.role || '',
@@ -345,8 +346,17 @@ export default function TeamPage() {
                           alt: member.alt || '',
                           imageData: {
                             alt: member.alt,
-                            image_metadata: member.image_metadata,
-                          } as IUploadImage,
+                            image_metadata: {
+                              desktop: {
+                                src: member.image,
+                                position: member.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+                              },
+                              mobile: {
+                                src: member.image,
+                                position: member.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+                              },
+                            },
+                          } as any,
                           email: member.email || '',
                           order_index: member.order_index,
                           image_metadata: member.image_metadata,
@@ -359,13 +369,22 @@ export default function TeamPage() {
                               <ImageEditorField
                                 fieldName="imageData"
                                 isAdmin={true}
-                                mode="square"
+                                mode="vertical"
                                 multiplier={1}
                                 image={{
                                   alt: member.alt,
-                                  image_metadata: member.image_metadata,
+                                  image_metadata: {
+                                    desktop: {
+                                      src: member.image,
+                                      position: member.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+                                    },
+                                    mobile: {
+                                      src: member.image,
+                                      position: member.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+                                    },
+                                  },
                                 }}
-                                onSave={async () => {}}
+                                onSave={submitForm}
                               />
                             </div>
 
