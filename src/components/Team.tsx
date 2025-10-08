@@ -139,6 +139,7 @@ export default function Team() {
             <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
           </div>
         ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {teamMembers.map((member, index) => (
             <div
               key={member.id}
