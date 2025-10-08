@@ -38,6 +38,12 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
     }
   };
 
+  React.useEffect(() => {
+    if (menuAction) {
+      setIsOpen(false);
+    }
+  }, [menuAction]);
+
   return (
     <div className={`absolute ${getPositionClasses()} z-50`}>
       {menuAction ? (
@@ -47,7 +53,10 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
       ) : (
         <>
           <button
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
             className="w-10 h-10 rounded-full bg-[#1c1f33]/80 backdrop-blur-md flex items-center justify-center hover:bg-[#d3bb73] transition-all duration-300 border border-[#d3bb73]/30"
           >
             <MoreVertical className="w-5 h-5 text-[#e5e4e2]" />
@@ -58,9 +67,9 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
               {menu_items.map((item, index) => (
                 <button
                   key={index}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     item.onClick();
-                    setIsOpen(false);
                   }}
                   className="w-full px-4 py-3 text-left text-[#e5e4e2] hover:bg-[#d3bb73]/20 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
                 >
