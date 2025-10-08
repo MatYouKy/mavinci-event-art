@@ -29,13 +29,13 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
       case 'right-top':
         return 'top-4 right-4';
       case 'right-bottom':
-        return 'bottom-20 right-4';
+        return 'bottom-0 right-4';
       case 'left-top':
         return 'top-4 left-4';
       case 'left-bottom':
-        return 'bottom-20 left-4';
+        return 'bottom-0 left-4';
       default:
-        return 'bottom-20 right-4';
+        return 'bottom-0 right-4';
     }
   };
 

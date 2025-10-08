@@ -300,7 +300,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
                   bottom:
                     menuPosition === 'right-bottom' ||
                     menuPosition === 'left-bottom'
-                      ? 80
+                      ? 60
                       : 0,
                 }}
                 value={positions?.posX ?? 0}

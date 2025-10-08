@@ -119,27 +119,33 @@ export default function TeamPage() {
         imageUrl = await uploadImage(values.imageData.file, 'team');
         imageMetadata = {
           desktop: {
+            src: imageUrl,
             position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
+            src: imageUrl,
             position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
           },
         };
       } else if (values.imageData?.image_metadata) {
         imageMetadata = {
           desktop: {
+            src: values.imageData.image_metadata?.desktop?.src || values.image || imageUrl,
             position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
+            src: values.imageData.image_metadata?.mobile?.src || values.image || imageUrl,
             position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
           },
         };
       } else {
         imageMetadata = {
           desktop: {
+            src: values.image || imageUrl,
             position: values.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
+            src: values.image || imageUrl,
             position: values.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
           },
         };
