@@ -537,8 +537,17 @@ export default function TeamPage() {
                       <img
                         src={member.image_metadata?.desktop?.src || member.image}
                         alt={member.alt || member.name}
-                        className="w-full h-full object-cover transition-all duration-700"
+                        className="transition-all duration-700"
                         style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: 'auto',
+                          minWidth: '100%',
+                          minHeight: '100%',
+                          maxWidth: 'none',
+                          maxHeight: 'none',
                           transform: `translate(${
                             member.image_metadata?.desktop?.position?.posX || 0
                           }%, ${
