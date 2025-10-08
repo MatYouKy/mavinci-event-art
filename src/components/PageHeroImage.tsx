@@ -5,9 +5,10 @@ import { useEditMode } from '@/contexts/EditModeContext';
 import { getSiteImage } from '@/lib/siteImages';
 import type { SiteImage } from '@/lib/siteImages';
 import { SliderX, SliderY, SliderScale, SliderOpacity } from './UI/Slider/Slider';
-import { Edit, Save, X, Upload } from 'lucide-react';
+import { Save, X, Upload } from 'lucide-react';
 import { uploadImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { ThreeDotMenu } from './UI/ThreeDotMenu/ThreeDotMenu';
 
 interface PageHeroImageProps {
   section: string;
@@ -28,6 +29,7 @@ export function PageHeroImage({
   const [siteImage, setSiteImage] = useState<SiteImage | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [subMenu, setSubMenu] = useState(false);
 
   const [editState, setEditState] = useState({
     posX: 0,
@@ -119,6 +121,7 @@ export function PageHeroImage({
       }
 
       setIsEditing(false);
+      setSubMenu(false);
     } catch (error) {
       console.error('Error saving hero image:', error);
       alert('Błąd podczas zapisywania');
@@ -157,6 +160,48 @@ export function PageHeroImage({
     }
   };
 
+  const handleCancel = () => {
+    setIsEditing(false);
+    setSubMenu(false);
+    if (siteImage) {
+      setEditState({
+        posX: siteImage.image_metadata?.desktop?.position?.posX || 0,
+        posY: siteImage.image_metadata?.desktop?.position?.posY || 0,
+        scale: siteImage.image_metadata?.desktop?.position?.scale || 1,
+        opacity: siteImage.opacity || defaultOpacity,
+      });
+    }
+  };
+
+  const menuItems = [
+    {
+      children: 'Wgraj Zdjęcie',
+      onClick: () => {
+        document.getElementById(`hero-image-upload-${section}`)?.click();
+      },
+    },
+    {
+      children: 'Ustaw Pozycję',
+      onClick: () => {
+        setIsEditing(true);
+        setSubMenu(true);
+      },
+    },
+    {
+      children: 'Ustaw Przezroczystość',
+      onClick: () => {
+        setIsEditing(true);
+        setSubMenu(true);
+      },
+    },
+    {
+      children: 'Resetuj Pozycję',
+      onClick: () => {
+        setEditState(s => ({ ...s, posX: 0, posY: 0, scale: 1 }));
+      },
+    },
+  ];
+
   const imageUrl = siteImage?.desktop_url || defaultImage;
   const opacity = isEditing ? editState.opacity : (siteImage?.opacity || defaultOpacity);
   const position = isEditing ? editState : (siteImage?.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 });
@@ -178,57 +223,40 @@ export function PageHeroImage({
       </div>
 
       {isEditMode && (
-        <div className="absolute top-4 right-4 z-50 flex gap-2">
-          {!isEditing ? (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="p-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
-            >
-              <Edit className="w-5 h-5" />
-            </button>
-          ) : (
-            <>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                id="hero-image-upload"
-              />
-              <label
-                htmlFor="hero-image-upload"
-                className="p-3 bg-[#800020] text-[#e5e4e2] rounded-lg hover:bg-[#800020]/90 transition-colors cursor-pointer shadow-lg"
-              >
-                <Upload className="w-5 h-5" />
-              </label>
-              <button
-                onClick={handleSave}
-                className="p-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
-              >
-                <Save className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  setIsEditing(false);
-                  if (siteImage) {
-                    setEditState({
-                      posX: siteImage.image_metadata?.desktop?.position?.posX || 0,
-                      posY: siteImage.image_metadata?.desktop?.position?.posY || 0,
-                      scale: siteImage.image_metadata?.desktop?.position?.scale || 1,
-                      opacity: siteImage.opacity || defaultOpacity,
-                    });
-                  }
-                }}
-                className="p-3 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors shadow-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </>
-          )}
-        </div>
+        <>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            className="hidden"
+            id={`hero-image-upload-${section}`}
+          />
+
+          <ThreeDotMenu
+            menuPosition="right-bottom"
+            menu_items={menuItems}
+            menuAction={subMenu}
+            menuActionContent={
+              <div className="flex gap-2 p-2">
+                <button
+                  onClick={handleSave}
+                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
+                  <Save className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            }
+          />
+        </>
       )}
 
-      {isEditing && (
+      {isEditing && subMenu && (
         <div className="absolute inset-0 z-40" style={{ pointerEvents: 'none' }}>
           <div style={{ pointerEvents: 'auto' }}>
             <SliderX
@@ -237,6 +265,15 @@ export function PageHeroImage({
               max={100}
               step={0.1}
               onChange={(_, v) => setEditState(s => ({ ...s, posX: v as number }))}
+              style={{ bottom: 70 }}
+            />
+            <SliderOpacity
+              value={editState.opacity}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={(_, v) => setEditState(s => ({ ...s, opacity: v as number }))}
+              style={{ bottom: 120 }}
             />
             <SliderY
               value={editState.posY}
@@ -251,13 +288,6 @@ export function PageHeroImage({
               max={3}
               step={0.01}
               onChange={(_, v) => setEditState(s => ({ ...s, scale: v as number }))}
-            />
-            <SliderOpacity
-              value={editState.opacity}
-              min={0}
-              max={1}
-              step={0.01}
-              onChange={(_, v) => setEditState(s => ({ ...s, opacity: v as number }))}
             />
           </div>
         </div>
