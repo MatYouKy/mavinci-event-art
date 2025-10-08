@@ -292,7 +292,7 @@ export default function TeamPage() {
       <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
         <PageHeroImage
-          section="zespol-hero"
+          section="team"
           defaultImage="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920"
           defaultOpacity={0.2}
           className="py-24 md:py-32 overflow-hidden"

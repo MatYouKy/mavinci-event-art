@@ -46,6 +46,52 @@ export function PageHeroImage({
 
   const loadImage = async () => {
     setLoading(true);
+
+    // Sprawdź czy używamy nowego systemu stron (team_page_images)
+    const pageTableName = `${section.replace('-hero', '')}_page_images`;
+
+    try {
+      // Próbuj pobrać z nowej tabeli stron
+      const { data: pageImage, error: pageError } = await supabase
+        .from(pageTableName)
+        .select('*')
+        .eq('section', 'hero')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!pageError && pageImage) {
+        // Konwertuj format z nowej tabeli na format SiteImage
+        const convertedImage: SiteImage = {
+          id: pageImage.id,
+          section: section,
+          name: pageImage.name,
+          description: pageImage.description,
+          desktop_url: pageImage.image_url,
+          mobile_url: pageImage.image_url,
+          alt_text: pageImage.alt_text,
+          position: 'center',
+          order_index: pageImage.order_index || 1,
+          is_active: pageImage.is_active,
+          image_metadata: pageImage.image_metadata,
+          opacity: pageImage.opacity || defaultOpacity,
+          created_at: pageImage.created_at,
+          updated_at: pageImage.updated_at,
+        };
+        setSiteImage(convertedImage);
+        setEditState({
+          posX: convertedImage.image_metadata?.desktop?.position?.posX || 0,
+          posY: convertedImage.image_metadata?.desktop?.position?.posY || 0,
+          scale: convertedImage.image_metadata?.desktop?.position?.scale || 1,
+          opacity: convertedImage.opacity || defaultOpacity,
+        });
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      console.log(`Tabela ${pageTableName} nie istnieje, używam starych tabel`);
+    }
+
+    // Jeśli nie znaleziono w nowej tabeli, użyj starej
     const image = await getSiteImage(section);
     setSiteImage(image);
 
@@ -62,6 +108,85 @@ export function PageHeroImage({
 
   const handleSavePosition = async () => {
     try {
+      const pageTableName = `${section.replace('-hero', '')}_page_images`;
+
+      // Sprawdź czy używamy nowego systemu
+      try {
+        const { data: existing } = await supabase
+          .from(pageTableName)
+          .select('id')
+          .eq('section', 'hero')
+          .maybeSingle();
+
+        if (existing || section.includes('zespol') || section.includes('team')) {
+          // Użyj nowej tabeli
+          if (!existing) {
+            const { error } = await supabase
+              .from(pageTableName)
+              .insert({
+                section: 'hero',
+                name: `Hero ${section}`,
+                description: `Hero image for ${section} page`,
+                image_url: defaultImage,
+                alt_text: section,
+                opacity: editState.opacity,
+                image_metadata: {
+                  desktop: {
+                    position: {
+                      posX: editState.posX,
+                      posY: editState.posY,
+                      scale: editState.scale,
+                    },
+                    objectFit: 'cover',
+                  },
+                  mobile: {
+                    position: {
+                      posX: editState.posX,
+                      posY: editState.posY,
+                      scale: editState.scale,
+                    },
+                    objectFit: 'cover',
+                  },
+                },
+              });
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from(pageTableName)
+              .update({
+                image_metadata: {
+                  desktop: {
+                    position: {
+                      posX: editState.posX,
+                      posY: editState.posY,
+                      scale: editState.scale,
+                    },
+                    objectFit: 'cover',
+                  },
+                  mobile: {
+                    position: {
+                      posX: editState.posX,
+                      posY: editState.posY,
+                      scale: editState.scale,
+                    },
+                    objectFit: 'cover',
+                  },
+                },
+              })
+              .eq('section', 'hero');
+            if (error) throw error;
+          }
+
+          await loadImage();
+          setIsEditingPosition(false);
+          setPositionSubMenu(false);
+          return;
+        }
+      } catch (err) {
+        console.log('Używam starych tabel');
+      }
+
+      // Stary system (site_images)
       if (!siteImage) {
         const { data, error } = await supabase
           .from('site_images')
@@ -142,6 +267,60 @@ export function PageHeroImage({
 
   const handleSaveOpacity = async () => {
     try {
+      const pageTableName = `${section.replace('-hero', '')}_page_images`;
+
+      // Sprawdź czy używamy nowego systemu
+      try {
+        const { data: existing } = await supabase
+          .from(pageTableName)
+          .select('id')
+          .eq('section', 'hero')
+          .maybeSingle();
+
+        if (existing || section.includes('zespol') || section.includes('team')) {
+          // Użyj nowej tabeli
+          if (!existing) {
+            const { error } = await supabase
+              .from(pageTableName)
+              .insert({
+                section: 'hero',
+                name: `Hero ${section}`,
+                description: `Hero image for ${section} page`,
+                image_url: defaultImage,
+                alt_text: section,
+                opacity: editState.opacity,
+                image_metadata: {
+                  desktop: {
+                    position: { posX: 0, posY: 0, scale: 1 },
+                    objectFit: 'cover',
+                  },
+                  mobile: {
+                    position: { posX: 0, posY: 0, scale: 1 },
+                    objectFit: 'cover',
+                  },
+                },
+              });
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from(pageTableName)
+              .update({
+                opacity: editState.opacity,
+              })
+              .eq('section', 'hero');
+            if (error) throw error;
+          }
+
+          await loadImage();
+          setIsEditingOpacity(false);
+          setOpacitySubMenu(false);
+          return;
+        }
+      } catch (err) {
+        console.log('Używam starych tabel');
+      }
+
+      // Stary system (site_images)
       if (!siteImage) {
         const { data, error } = await supabase
           .from('site_images')
@@ -196,7 +375,58 @@ export function PageHeroImage({
 
     try {
       const url = await uploadImage(file, 'hero');
+      const pageTableName = `${section.replace('-hero', '')}_page_images`;
 
+      // Sprawdź czy używamy nowego systemu
+      try {
+        const { data: existing } = await supabase
+          .from(pageTableName)
+          .select('id')
+          .eq('section', 'hero')
+          .maybeSingle();
+
+        if (existing || section.includes('zespol') || section.includes('team')) {
+          // Użyj nowej tabeli
+          if (existing) {
+            const { error } = await supabase
+              .from(pageTableName)
+              .update({
+                image_url: url,
+              })
+              .eq('section', 'hero');
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from(pageTableName)
+              .insert({
+                section: 'hero',
+                name: `Hero ${section}`,
+                description: `Hero image for ${section} page`,
+                image_url: url,
+                alt_text: section,
+                opacity: defaultOpacity,
+                image_metadata: {
+                  desktop: {
+                    position: { posX: 0, posY: 0, scale: 1 },
+                    objectFit: 'cover',
+                  },
+                  mobile: {
+                    position: { posX: 0, posY: 0, scale: 1 },
+                    objectFit: 'cover',
+                  },
+                },
+              });
+            if (error) throw error;
+          }
+
+          await loadImage();
+          return;
+        }
+      } catch (err) {
+        console.log('Używam starych tabel');
+      }
+
+      // Stary system (site_images)
       if (siteImage) {
         const { error } = await supabase
           .from('site_images')
