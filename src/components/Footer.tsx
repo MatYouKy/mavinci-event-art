@@ -33,7 +33,7 @@ export default function Footer() {
                 />
               </Link>
               <p className="text-[#e5e4e2]/60 text-sm font-light leading-relaxed">
-                Event & ART - Tworzymy Niezapomniane Chwile
+                Event & ART - Sztuka Tworzenia Eventów
               </p>
             </div>
             <div className="flex gap-3">
@@ -106,14 +106,14 @@ export default function Footer() {
               <li className="flex items-start gap-3">
                 <Mail className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
                 <a href="mailto:kontakt@mavinci.pl" className="text-[#e5e4e2]/60 hover:text-[#d3bb73] transition-colors duration-300 text-sm font-light">
-                  kontakt@mavinci.pl
+                  biuro@mavinci.pl
                 </a>
               </li>
               <li className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
                 <span className="text-[#e5e4e2]/60 text-sm font-light">
-                  ul. Eventowa 12<br />
-                  00-001 Warszawa
+                  ul. Marcina Kasprzaka 15/66<br />
+                  10-057 Olsztyn
                 </span>
               </li>
             </ul>
