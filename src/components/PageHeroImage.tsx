@@ -273,7 +273,7 @@ export function PageHeroImage({
               max={1}
               step={0.01}
               onChange={(_, v) => setEditState(s => ({ ...s, opacity: v as number }))}
-              style={{ bottom: 120 }}
+              style={{ bottom: 90 }}
             />
             <SliderY
               value={editState.posY}
