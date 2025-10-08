@@ -150,11 +150,8 @@ export default function Team() {
                       top: 0,
                       left: 0,
                       width: '100%',
-                      height: 'auto',
-                      minWidth: '100%',
-                      minHeight: '100%',
-                      maxWidth: 'none',
-                      maxHeight: 'none',
+                      height: '100%',
+                      objectFit: 'cover',
                       transform: `translate(${
                         member.image_metadata?.desktop?.position?.posX || 0
                       }%, ${

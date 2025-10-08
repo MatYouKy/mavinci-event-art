@@ -488,13 +488,11 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
             alt={values?.[fieldName]?.alt ?? ''}
             sx={{
               position: 'absolute',
+              top: 0,
               left: 0,
-              maxWidth: 'unset',
-              maxHeight: 'unset',
-              width: mode === 'horizontal' ? 'auto' : '100%',
-              height: mode === 'vertical' ? 'auto' : '100%',
-              minWidth: '100%',
-              minHeight: '100%',
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
               transform: `translate(${
                 positions?.posX || 0
               }%, ${positions?.posY || 0}%) scale(${

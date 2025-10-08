@@ -96,8 +96,8 @@ export default function TeamPage() {
   const fetchTeam = async () => {
     setLoading(true);
     try {
-      const url = isEditMode ? '/api/team-members?all=true' : '/api/team-members';
-      const response = await fetch(url);
+      const url = '/api/team-members?all=true';
+      const response = await fetch(url, { cache: 'no-store' });
       const data = await response.json();
       setTeam(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
@@ -543,11 +543,8 @@ export default function TeamPage() {
                           top: 0,
                           left: 0,
                           width: '100%',
-                          height: 'auto',
-                          minWidth: '100%',
-                          minHeight: '100%',
-                          maxWidth: 'none',
-                          maxHeight: 'none',
+                          height: '100%',
+                          objectFit: 'cover',
                           transform: `translate(${
                             member.image_metadata?.desktop?.position?.posX || 0
                           }%, ${
