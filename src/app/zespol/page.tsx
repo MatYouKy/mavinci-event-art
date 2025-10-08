@@ -540,7 +540,7 @@ export default function TeamPage() {
                           top: 0,
                           left: 0,
                           width: '100%',
-                          height: '100%',
+                          height: 'auto',
                           objectFit: 'cover',
                           transform: `translate(${
                             member.image_metadata?.desktop?.position?.posX || 0
