@@ -96,8 +96,7 @@ export default function TeamPage() {
   const fetchTeam = async () => {
     setLoading(true);
     try {
-      const url = '/api/team-members?all=true';
-      const response = await fetch(url, { cache: 'no-store' });
+      const response = await fetch('/api/team-members', { cache: 'no-store' });
       const data = await response.json();
       setTeam(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
@@ -162,7 +161,6 @@ export default function TeamPage() {
         image_metadata: imageMetadata,
         email: values.email || '',
         order_index: parseInt(values.order_index) || 0,
-        is_visible: values.is_visible !== undefined ? values.is_visible : true,
       };
 
       console.log('[handleSave] payload:', JSON.stringify(payload, null, 2));
@@ -347,7 +345,6 @@ export default function TeamPage() {
                     email: '',
                     order_index: team.length,
                     image_metadata: undefined,
-                    is_visible: true,
                   }}
                   onSubmit={(values) => handleSave(values, true)}
                 >
@@ -372,16 +369,6 @@ export default function TeamPage() {
                         <FormInput name="order_index" label="Kolejność" type="number" />
                       </div>
 
-                      <div className="mt-4">
-                        <label className="flex items-center gap-2 text-[#e5e4e2] cursor-pointer">
-                          <Field
-                            type="checkbox"
-                            name="is_visible"
-                            className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73]"
-                          />
-                          <span className="text-sm">Widoczny na stronie głównej</span>
-                        </label>
-                      </div>
 
                       <div className="flex gap-3 mt-4">
                         <button
@@ -446,7 +433,6 @@ export default function TeamPage() {
                           email: member.email || '',
                           order_index: member.order_index,
                           image_metadata: member.image_metadata,
-                          is_visible: member.is_visible !== undefined ? member.is_visible : true,
                         }}
                         onSubmit={(values) => handleSave(values, false, member.id)}
                       >
@@ -480,15 +466,6 @@ export default function TeamPage() {
                               <FormInput name="position" label="Stanowisko" />
                               <FormInput name="email" label="Email" />
                               <FormInput name="order_index" label="Kolejność" type="number" />
-
-                              <label className="flex items-center gap-2 text-[#e5e4e2] cursor-pointer">
-                                <Field
-                                  type="checkbox"
-                                  name="is_visible"
-                                  className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73]"
-                                />
-                                <span className="text-sm">Widoczny na stronie głównej</span>
-                              </label>
                             </div>
 
                             <div className="flex gap-2 mt-4">

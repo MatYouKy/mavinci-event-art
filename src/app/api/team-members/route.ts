@@ -4,19 +4,10 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const showAll = searchParams.get('all') === 'true';
-
-    let query = supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('team_members')
-      .select('*');
-
-    // Jeśli nie jest tryb edycji, pokaż tylko widocznych
-    if (!showAll) {
-      query = query.eq('is_visible', true);
-    }
-
-    const { data, error } = await query.order('order_index', { ascending: true });
+      .select('*')
+      .order('order_index', { ascending: true });
 
     if (error) {
       console.error('Error fetching team members:', error);
@@ -44,10 +35,6 @@ export async function POST(request: Request) {
       image_metadata: body.image_metadata || {},
       order_index: body.order_index || 0,
     };
-
-    if (body.is_visible !== undefined) {
-      insertData.is_visible = body.is_visible;
-    }
 
     const { data, error } = await supabaseAdmin
       .from('team_members')
