@@ -1,5 +1,26 @@
 import { supabase } from './supabase';
 
+export interface SiteImageMetadata {
+  desktop?: {
+    src?: string;
+    position?: {
+      posX: number;
+      posY: number;
+      scale: number;
+    };
+    objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
+  };
+  mobile?: {
+    src?: string;
+    position?: {
+      posX: number;
+      posY: number;
+      scale: number;
+    };
+    objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
+  };
+}
+
 export interface SiteImage {
   id: string;
   section: string;
@@ -11,6 +32,8 @@ export interface SiteImage {
   position: string;
   order_index: number;
   is_active: boolean;
+  opacity?: number;
+  image_metadata?: SiteImageMetadata;
   created_at: string;
   updated_at: string;
 }

@@ -103,3 +103,36 @@ export const SliderScale: React.FC<CustomSliderProps> = ({ style, ...props }) =>
     </div>
   );
 };
+
+export const SliderOpacity: React.FC<CustomSliderProps> = ({ style, ...props }) => {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: '10%',
+        right: '10%',
+        top: 10,
+        zIndex: 1500,
+        ...style,
+      }}
+    >
+      <MuiSlider
+        {...props}
+        orientation="horizontal"
+        sx={{
+          color: '#d3bb73',
+          '& .MuiSlider-thumb': {
+            backgroundColor: '#d3bb73',
+          },
+          '& .MuiSlider-track': {
+            backgroundColor: '#d3bb73',
+          },
+          '& .MuiSlider-rail': {
+            backgroundColor: '#e5e4e2',
+            opacity: 0.3,
+          },
+        }}
+      />
+    </div>
+  );
+};
