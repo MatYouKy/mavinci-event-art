@@ -55,8 +55,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    revalidatePath('/');
-    revalidatePath('/zespol');
+    try {
+      revalidatePath('/');
+      revalidatePath('/zespol');
+    } catch (revalidateError) {
+      console.warn('[API POST] Revalidate warning (safe to ignore in dev):', revalidateError);
+    }
 
     return NextResponse.json(data);
   } catch (error) {

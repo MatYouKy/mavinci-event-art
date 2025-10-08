@@ -40,8 +40,13 @@ export async function PUT(
 
     console.log('[API PUT] Success, data:', data);
 
-    revalidatePath('/');
-    revalidatePath('/zespol');
+    // Revalidate paths - wrap in try-catch as it can fail in dev mode
+    try {
+      revalidatePath('/');
+      revalidatePath('/zespol');
+    } catch (revalidateError) {
+      console.warn('[API PUT] Revalidate warning (safe to ignore in dev):', revalidateError);
+    }
 
     return NextResponse.json(data);
   } catch (error: any) {
@@ -72,8 +77,12 @@ export async function DELETE(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    revalidatePath('/');
-    revalidatePath('/zespol');
+    try {
+      revalidatePath('/');
+      revalidatePath('/zespol');
+    } catch (revalidateError) {
+      console.warn('[API DELETE] Revalidate warning (safe to ignore in dev):', revalidateError);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
