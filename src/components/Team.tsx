@@ -129,10 +129,7 @@ export default function Team() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 justify-items-center">
-            {console.log('[Team.tsx] Rendering', teamMembers.length, 'members')}
-            {teamMembers.map((member, index) => {
-              console.log('[Team.tsx] Rendering member:', member.name, 'image:', member.image);
-              return (
+            {teamMembers.map((member, index) => (
             <div
               key={member.id}
               className="group relative"
@@ -219,8 +216,7 @@ export default function Team() {
 
               <div className="absolute -inset-1 bg-gradient-to-br from-[#d3bb73]/0 via-[#d3bb73]/0 to-[#d3bb73]/0 group-hover:from-[#d3bb73]/20 group-hover:via-[#d3bb73]/5 group-hover:to-[#d3bb73]/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-700 -z-10"></div>
             </div>
-          );
-            })}
+          ))}
           </div>
         )}
 
