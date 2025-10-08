@@ -67,7 +67,9 @@ export default function AdminTeamPanel() {
 
       const payload = {
         name: values.name,
+        position: values.position,
         role: values.role,
+        email: values.email || '',
         image: imageUrl,
         alt: values.alt || '',
         image_metadata: imageMetadata,
@@ -126,7 +128,9 @@ export default function AdminTeamPanel() {
   const getMemberForEdit = (member: TeamMember) => {
     return {
       name: member.name,
+      position: member.position,
       role: member.role,
+      email: member.email || '',
       image: member.image,
       alt: member.alt || '',
       imageData: {
@@ -168,7 +172,9 @@ export default function AdminTeamPanel() {
         <Formik
           initialValues={{
             name: '',
+            position: '',
             role: '',
+            email: '',
             image: '',
             alt: '',
             imageData: {} as IUploadImage,
@@ -198,7 +204,9 @@ export default function AdminTeamPanel() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormInput name="name" label="Imię i nazwisko" placeholder="Jan Kowalski" />
-                <FormInput name="role" label="Stanowisko" placeholder="Event Manager" />
+                <FormInput name="position" label="Pozycja" placeholder="CEO" />
+                <FormInput name="role" label="Rola" placeholder="Creative Director" />
+                <FormInput name="email" label="Email" placeholder="jan@mavinci.pl" type="email" />
                 <FormInput name="order_index" label="Kolejność" type="number" />
                 <div className="flex items-center gap-2">
                   <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
@@ -258,12 +266,19 @@ export default function AdminTeamPanel() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <FormInput name="name" label="Imię i nazwisko" />
-                      <FormInput name="role" label="Stanowisko" />
+                      <FormInput name="position" label="Pozycja" />
+                      <FormInput name="role" label="Rola" />
+                      <FormInput name="email" label="Email" type="email" />
+                      <FormInput name="linkedin" label="LinkedIn URL" />
+                      <FormInput name="instagram" label="Instagram URL" />
+                      <FormInput name="facebook" label="Facebook URL" />
                       <FormInput name="order_index" label="Kolejność" type="number" />
                       <div className="flex items-center gap-2">
                         <FormInput name="is_visible" label="Widoczny na stronie" type="checkbox" />
                       </div>
-                      <FormInput name="bio" label="Bio" multiline rows={2} />
+                      <div className="md:col-span-2">
+                        <FormInput name="bio" label="Bio" multiline rows={3} />
+                      </div>
                     </div>
 
                     <div className="flex gap-3">
