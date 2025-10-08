@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
-import { PortfolioProject } from '../lib/supabase';
+import { PortfolioProject, supabase } from '../lib/supabase';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
   {
@@ -81,8 +81,17 @@ export default function Portfolio() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/portfolio-projects`);
-      const data = await response.json();
+      const { data, error } = await supabase
+        .from('portfolio_projects')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Fetched portfolio projects:', data);
       setProjects(data && data.length > 0 ? data : MOCK_PROJECTS);
     } catch (error) {
       console.error('Error fetching projects:', error);
