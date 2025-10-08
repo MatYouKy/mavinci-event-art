@@ -482,7 +482,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
             position: 'relative',
             overflow: 'hidden',
             width: '100%',
-            height: '100%',
+            height: 'auto',
             backgroundColor: '#1c1f33',
           }}
           style={style}
