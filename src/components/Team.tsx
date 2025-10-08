@@ -167,7 +167,7 @@ export default function Team() {
                       top: 0,
                       left: 0,
                       width: '100%',
-                      height: '100%',
+                      height: 'auto',
                       objectFit: member.image_metadata?.desktop?.objectFit || 'cover',
                       transform: `translate(${
                         member.image_metadata?.desktop?.position?.posX || 0
