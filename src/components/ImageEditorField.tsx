@@ -98,6 +98,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
     posY: 0,
     scale: 1,
   };
+  const objectFit = values?.[fieldName]?.image_metadata?.[screenMode]?.objectFit || 'cover';
 
   const buildPayload = (): { file?: File; image: IUploadImage | IImage } => {
     const current = (values?.[fieldName] || {}) as any;
