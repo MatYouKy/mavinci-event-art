@@ -1,14 +1,12 @@
-import { Metadata } from 'next';
+'use client';
+
+
 import { Presentation, Users, Mic, Globe, CheckCircle2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { PageHeroImage } from '@/components/PageHeroImage';
 
-export const metadata: Metadata = {
-  title: 'Konferencje | Mavinci',
-  description: 'Profesjonalna organizacja konferencji biznesowych, szkoleń i eventów korporacyjnych.',
-  keywords: 'konferencje, eventy biznesowe, szkolenia, organizacja konferencji',
-};
 
 export default function KonferencjePage() {
   const features = [

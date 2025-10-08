@@ -1,14 +1,10 @@
-import { Metadata } from 'next';
-import { PartyPopper, Heart, Music, Cake, CheckCircle2, ArrowLeft } from 'lucide-react';
+'use client';
+
+import { PartyPopper, Heart, CheckCircle2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-
-export const metadata: Metadata = {
-  title: 'Integracje Firmowe | Mavinci',
-  description: 'Imprezy integracyjne dla firm. Organizacja eventów firmowych, pikników i spotkań integracyjnych.',
-  keywords: 'integracje firmowe, imprezy firmowe, eventy integracyjne',
-};
+import { PageHeroImage } from '@/components/PageHeroImage';
 
 export default function IntegracjePage() {
   const features = [
@@ -26,12 +22,12 @@ export default function IntegracjePage() {
     <>
       <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
-        <section className="relative py-24 md:py-32 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] overflow-hidden">
-          <div className="absolute inset-0">
-            <img src="https://images.pexels.com/photos/1395967/pexels-photo-1395967.jpeg?auto=compress&cs=tinysrgb&w=1920" alt="Company party" className="w-full h-full object-cover opacity-20" />
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/90 to-[#0f1119]/90"></div>
-          </div>
-
+        <PageHeroImage
+          section="integracje"
+          defaultImage="https://images.pexels.com/photos/1395967/pexels-photo-1395967.jpeg?auto=compress&cs=tinysrgb&w=1920"
+          defaultOpacity={0.2}
+          className="py-24 md:py-32 overflow-hidden"
+        >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <Link href="/#uslugi" className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8">
               <ArrowLeft className="w-4 h-4" />
@@ -75,7 +71,7 @@ export default function IntegracjePage() {
               </div>
             </div>
           </div>
-        </section>
+        </PageHeroImage>
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

@@ -1,14 +1,12 @@
-import { Metadata } from 'next';
+'use client';
+
+
 import { Glasses, Joystick, Radio, Gamepad, CheckCircle2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { PageHeroImage } from '@/components/PageHeroImage';
 
-export const metadata: Metadata = {
-  title: 'Symulatory i VR | Mavinci',
-  description: 'Profesjonalne symulatory i gogle VR na eventy. Wyścigi, symulatory lotów, rzeczywistość wirtualna.',
-  keywords: 'symulatory, VR, virtual reality, gogle VR, symulator rajdowy',
-};
 
 export default function SymulatoryVRPage() {
   const features = [
