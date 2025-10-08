@@ -1,40 +1,15 @@
 /*
-  # Allow Public Updates to Team Members
+  # Disable RLS for Team Members (Development)
 
-  This migration allows public access to team member management
-  for the admin interface to work without authentication.
+  This migration disables Row Level Security for the team_members table
+  to allow the admin interface to work without authentication during development.
 
   ## Changes
-  - Drop existing restrictive policies
-  - Create new public policies for INSERT, UPDATE, DELETE
+  - Disable RLS for team_members table
 
   ## Security Note
-  In production, replace these with authenticated admin-only policies.
+  In production, enable RLS and create proper authenticated admin-only policies.
 */
 
--- Drop existing restrictive policies
-DROP POLICY IF EXISTS "Admins can insert team members" ON team_members;
-DROP POLICY IF EXISTS "Admins can update team members" ON team_members;
-DROP POLICY IF EXISTS "Admins can delete team members" ON team_members;
-
--- Allow public INSERT
-CREATE POLICY "Public can insert team members"
-  ON team_members
-  FOR INSERT
-  TO public
-  WITH CHECK (true);
-
--- Allow public UPDATE
-CREATE POLICY "Public can update team members"
-  ON team_members
-  FOR UPDATE
-  TO public
-  USING (true)
-  WITH CHECK (true);
-
--- Allow public DELETE
-CREATE POLICY "Public can delete team members"
-  ON team_members
-  FOR DELETE
-  TO public
-  USING (true);
+-- Disable Row Level Security for team_members (development only)
+ALTER TABLE team_members DISABLE ROW LEVEL SECURITY;
