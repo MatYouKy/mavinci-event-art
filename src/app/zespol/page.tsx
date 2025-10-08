@@ -111,28 +111,37 @@ export default function TeamPage() {
       let imageUrl = values.image;
       let imageMetadata = values.image_metadata;
 
+      console.log('[handleSave] values.imageData:', values.imageData);
+
       if (values.imageData?.file) {
         imageUrl = await uploadImage(values.imageData.file, 'team');
         imageMetadata = {
           desktop: {
-            src: imageUrl,
             position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
-            src: imageUrl,
             position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
           },
         };
       } else if (values.imageData?.image_metadata) {
-        imageMetadata = values.imageData.image_metadata;
+        imageMetadata = {
+          desktop: {
+            position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: {
+            position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+        };
       }
+
+      console.log('[handleSave] imageMetadata do zapisu:', imageMetadata);
 
       const payload = {
         name: values.name,
         role: values.role || values.position,
         position: values.position || values.role,
         image: imageUrl,
-        alt: values.alt || '',
+        alt: values.imageData?.alt || values.alt || '',
         image_metadata: imageMetadata || {},
         email: values.email || '',
         order_index: values.order_index,

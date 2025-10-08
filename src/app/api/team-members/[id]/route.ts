@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { supabase } from '@/lib/supabase';
 
 export async function PUT(
@@ -32,6 +33,9 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    revalidatePath('/');
+    revalidatePath('/zespol');
+
     return NextResponse.json(data);
   } catch (error) {
     console.error('Unexpected error:', error);
@@ -55,6 +59,9 @@ export async function DELETE(
       console.error('Error deleting team member:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    revalidatePath('/');
+    revalidatePath('/zespol');
 
     return NextResponse.json({ success: true });
   } catch (error) {

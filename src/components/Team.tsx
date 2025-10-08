@@ -142,9 +142,21 @@ export default function Team() {
               <div className="relative overflow-hidden rounded-2xl">
                 <div className="aspect-[3/4] relative overflow-hidden bg-[#800020]/10">
                   <img
-                    src={member.image_metadata?.desktop?.src || member.image}
+                    src={member.image}
                     alt={member.alt || member.name}
                     className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110 group-hover:rotate-2"
+                    style={{
+                      transform: `translate(${
+                        member.image_metadata?.desktop?.position?.posX
+                          ? member.image_metadata.desktop.position.posX * 0.7
+                          : 0
+                      }%, ${
+                        member.image_metadata?.desktop?.position?.posY
+                          ? member.image_metadata.desktop.position.posY * -0.7
+                          : 0
+                      }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`,
+                      transformOrigin: 'center',
+                    }}
                   />
 
                   <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/40 to-transparent opacity-60 group-hover:opacity-90 transition-all duration-500"></div>
