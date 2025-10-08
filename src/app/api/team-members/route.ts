@@ -11,6 +11,11 @@ export async function GET(request: Request) {
       .from('team_members')
       .select('*');
 
+    // Jeśli nie jest tryb edycji, pokaż tylko widocznych
+    if (!showAll) {
+      query = query.eq('is_visible', true);
+    }
+
     const { data, error } = await query.order('order_index', { ascending: true });
 
     if (error) {
