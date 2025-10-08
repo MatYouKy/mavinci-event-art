@@ -78,10 +78,15 @@ export default function Team() {
       const { data, error } = await supabase
         .from('team_members')
         .select('*')
+        .eq('is_visible', true)
         .order('order_index', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
+      console.log('Fetched team members:', data);
       setTeamMembers(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
       console.error('Error fetching team members:', error);
