@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Linkedin, Mail } from 'lucide-react';
-import { TeamMember } from '../lib/supabase';
+import { TeamMember, supabase } from '../lib/supabase';
 
 const MOCK_TEAM: TeamMember[] = [
   {
@@ -75,11 +75,13 @@ export default function Team() {
   const fetchTeamMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members', { cache: 'no-store' });
-      if (!response.ok) {
-        throw new Error('Failed to fetch team members');
-      }
-      const data = await response.json();
+      const { data, error } = await supabase
+        .from('team_members')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (error) throw error;
+
       setTeamMembers(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
       console.error('Error fetching team members:', error);
