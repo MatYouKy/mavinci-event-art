@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function PUT(
   request: Request,
@@ -21,7 +21,7 @@ export async function PUT(
     if (body.image_metadata !== undefined) updateData.image_metadata = body.image_metadata;
     if (body.order_index !== undefined) updateData.order_index = body.order_index;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('team_members')
       .update(updateData)
       .eq('id', id)
@@ -50,7 +50,7 @@ export async function DELETE(
   try {
     const { id } = params;
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('team_members')
       .delete()
       .eq('id', id);

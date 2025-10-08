@@ -89,8 +89,9 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [draggedItems, setDraggedItems] = useState<{[key: string]: {x: number, y: number}}>({})
-
+  const [draggedItems, setDraggedItems] = useState<{[key: string]: {x: number, y: number}}>({});
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const fetchTeam = async () => {
     setLoading(true);
@@ -243,6 +244,37 @@ export default function TeamPage() {
     newTeam.splice(toIndex, 0, movedItem);
     setTeam(newTeam);
     handleReorder();
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex !== null && draggedIndex !== dropIndex) {
+      moveItem(draggedIndex, dropIndex);
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
   useEffect(() => {
@@ -462,26 +494,16 @@ export default function TeamPage() {
                     }`}
                     onMouseEnter={() => setHoveredId(member.id)}
                     onMouseLeave={() => setHoveredId(null)}
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, index)}
+                    onDragEnd={handleDragEnd}
                     style={{
                       animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
-                    }}
-                    draggable={isEditMode}
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/html', index.toString());
-                    }}
-                    onDragOver={(e) => {
-                      if (isEditMode) {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
-                      }
-                    }}
-                    onDrop={(e) => {
-                      if (isEditMode) {
-                        e.preventDefault();
-                        const fromIndex = parseInt(e.dataTransfer.getData('text/html'));
-                        moveItem(fromIndex, index);
-                      }
+                      opacity: draggedIndex === index ? 0.5 : 1,
+                      border: dragOverIndex === index ? '2px solid #d3bb73' : undefined,
                     }}
                   >
                     {isEditMode && (

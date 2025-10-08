@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const showAll = searchParams.get('all') === 'true';
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('team_members')
       .select('*');
 
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       insertData.is_visible = body.is_visible;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('team_members')
       .insert([insertData])
       .select()

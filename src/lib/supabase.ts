@@ -5,6 +5,9 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// For API routes - same as regular client for now
+export const supabaseAdmin = supabase;
+
 export interface ImagePosition {
   posX: number;
   posY: number;
