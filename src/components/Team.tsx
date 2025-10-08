@@ -76,9 +76,6 @@ export default function Team() {
         throw new Error('Failed to fetch team members');
       }
       const data = await response.json();
-      console.log('[Team.tsx] Fetched data:', data);
-      console.log('[Team.tsx] Data length:', data?.length);
-      console.log('[Team.tsx] Will use:', data && data.length > 0 ? 'API data' : 'MOCK_TEAM');
       setTeamMembers(data && data.length > 0 ? data : MOCK_TEAM);
     } catch (error) {
       console.error('Error fetching team members:', error);
@@ -86,8 +83,6 @@ export default function Team() {
     }
     setLoading(false);
   };
-
-  console.log('[Team.tsx] Rendering with:', { loading, teamMembersLength: teamMembers.length });
 
   return (
     <section className="relative py-24 md:py-32 bg-[#1c1f33] overflow-hidden">
@@ -147,7 +142,7 @@ export default function Team() {
               <div className="relative overflow-hidden rounded-2xl">
                 <div className="aspect-[3/4] relative overflow-hidden bg-[#800020]/10">
                   <img
-                    src={member.image}
+                    src={member.image || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800'}
                     alt={member.alt || member.name}
                     className="transition-all duration-700"
                     style={{
