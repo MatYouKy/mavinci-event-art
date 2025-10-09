@@ -39,16 +39,36 @@ export default function NaglosnieniaPage() {
             <div>
               <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                 <Music className="w-5 h-5 text-[#d3bb73]" />
-                <span className="text-[#d3bb73] text-sm font-medium">Profesjonalne Nagłośnienie</span>
+                <EditableContent
+                  section="naglosnienie-hero-badge"
+                  tableName="naglosnienie_content"
+                  defaultTitle="Profesjonalne Nagłośnienie"
+                  defaultContent=""
+                  className="inline"
+                  titleClassName="text-[#d3bb73] text-sm font-medium"
+                  contentClassName="hidden"
+                />
               </div>
 
-              <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
-                Nagłośnienie <span className="text-[#d3bb73]">Eventów</span>
-              </h1>
+              <EditableContent
+                section="naglosnienie-hero-title"
+                tableName="naglosnienie_content"
+                defaultTitle="Nagłośnienie Eventów"
+                defaultContent=""
+                className="mb-6"
+                titleClassName="text-4xl md:text-6xl font-light text-[#e5e4e2]"
+                contentClassName="hidden"
+              />
 
-              <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed mb-8">
-                Dostarczamy profesjonalne systemy nagłośnieniowe najwyższej klasy. Nasz sprzęt i doświadczony zespół techniczny gwarantują krystalicznie czysty dźwięk na każdym evencie.
-              </p>
+              <EditableContent
+                section="naglosnienie-hero-description"
+                tableName="naglosnienie_content"
+                defaultTitle=""
+                defaultContent="Dostarczamy profesjonalne systemy nagłośnieniowe najwyższej klasy. Nasz sprzęt i doświadczony zespół techniczny gwarantują krystalicznie czysty dźwięk na każdym evencie."
+                className="mb-8"
+                titleClassName="hidden"
+                contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+              />
 
               <div className="flex flex-wrap gap-4">
                 <a
@@ -70,10 +90,15 @@ export default function NaglosnieniaPage() {
               <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
               <div className="relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-3xl p-8">
                 <Volume2 className="w-24 h-24 text-[#d3bb73] mb-6" />
-                <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">Sprzęt Najwyższej Klasy</h3>
-                <p className="text-[#e5e4e2]/70 font-light">
-                  Wykorzystujemy systemy audio renomowanych marek, zapewniając doskonałą jakość dźwięku dla każdego typu wydarzenia.
-                </p>
+                <EditableContent
+                  section="naglosnienie-hero-card"
+                  tableName="naglosnienie_content"
+                  defaultTitle="Sprzęt Najwyższej Klasy"
+                  defaultContent="Wykorzystujemy systemy audio renomowanych marek, zapewniając doskonałą jakość dźwięku dla każdego typu wydarzenia."
+                  className=""
+                  titleClassName="text-2xl font-light text-[#e5e4e2] mb-4"
+                  contentClassName="text-[#e5e4e2]/70 font-light"
+                />
               </div>
             </div>
           </div>
