@@ -298,7 +298,6 @@ export function PageHeroImage({
     setSaving(true);
     try {
       const pageTableName = getTableName(section);
-      console.log('💾 Saving opacity for section:', section, 'table:', pageTableName, 'opacity:', editState.opacity);
 
       // Sprawdź czy używamy nowego systemu
       try {
@@ -307,8 +306,6 @@ export function PageHeroImage({
           .select('id')
           .eq('section', 'hero')
           .maybeSingle();
-
-        console.log('📊 Existing record:', existing);
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           // Użyj nowej tabeli
@@ -413,7 +410,6 @@ export function PageHeroImage({
     try {
       const url = await uploadImage(file, 'hero');
       const pageTableName = getTableName(section);
-      console.log('📸 Uploading image for section:', section, 'table:', pageTableName, 'url:', url);
 
       // Sprawdź czy używamy nowego systemu
       try {
@@ -422,8 +418,6 @@ export function PageHeroImage({
           .select('id')
           .eq('section', 'hero')
           .maybeSingle();
-
-        console.log('📊 Existing record for upload:', existing);
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           // Użyj nowej tabeli
