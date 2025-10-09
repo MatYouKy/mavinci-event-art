@@ -82,9 +82,34 @@ export default function NaglosnieniaPage() {
 
       <NaglosnieniaContent />
 
+      {/* Image Divider 1 - Parallax Effect */}
+      <section className="relative h-96 overflow-hidden">
+        <div className="absolute inset-0">
+          <EditableImageSection
+            section="naglosnienie-divider-1"
+            tableName="naglosnienie_gallery_images"
+            defaultImage="https://images.pexels.com/photos/976866/pexels-photo-976866.jpeg?auto=compress&cs=tinysrgb&w=1920"
+            alt="Concert stage"
+            className="w-full h-full"
+            imageClassName="w-full h-full object-cover"
+          />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0f1119] via-transparent to-[#0f1119]"></div>
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center px-4">
+            <div className="inline-block bg-[#d3bb73]/10 backdrop-blur-md border border-[#d3bb73]/30 rounded-2xl px-12 py-8">
+              <h3 className="text-4xl md:text-5xl font-light text-[#e5e4e2] mb-2">1000+</h3>
+              <p className="text-[#d3bb73] text-sm uppercase tracking-wider">Zrealizowanych Eventów</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Editable Content Section - Why Us */}
-      <section className="py-24 bg-[#0f1119]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-24 bg-[#0f1119] relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-[#d3bb73]/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#800020]/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <EditableContent
             section="naglosnienie-intro"
             tableName="naglosnienie_content"
@@ -97,7 +122,7 @@ export default function NaglosnieniaPage() {
         </div>
       </section>
 
-      {/* Gallery Section with Visual Effects */}
+      {/* Gallery Section - Split Layout */}
       <section className="py-24 bg-[#1c1f33] relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/5 via-transparent to-[#800020]/5"></div>
 
@@ -109,8 +134,34 @@ export default function NaglosnieniaPage() {
             <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {[1, 2, 3].map((index) => (
+          {/* Large Feature Image */}
+          <div className="mb-8">
+            <div className="group relative h-[500px] rounded-3xl overflow-hidden border border-[#d3bb73]/30 hover:border-[#d3bb73] transition-all duration-700 hover:shadow-2xl hover:shadow-[#d3bb73]/30">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/30 via-transparent to-[#800020]/30 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119] via-[#0f1119]/40 to-transparent"></div>
+
+              <EditableImageSection
+                section="naglosnienie-gallery-1"
+                tableName="naglosnienie_gallery_images"
+                defaultImage="https://images.pexels.com/photos/164936/pexels-photo-164936.jpeg?auto=compress&cs=tinysrgb&w=1920"
+                alt="Professional audio system"
+                className="absolute inset-0 transition-transform duration-1000 group-hover:scale-110"
+                imageClassName="w-full h-full object-cover"
+              />
+
+              <div className="absolute inset-0 flex items-end p-12 z-20">
+                <div className="max-w-2xl transform transition-all duration-700 group-hover:translate-x-4">
+                  <div className="h-1 w-20 bg-[#d3bb73] mb-6 transition-all duration-700 group-hover:w-32"></div>
+                  <h3 className="text-4xl font-light text-[#e5e4e2] mb-4">Systemy Line Array</h3>
+                  <p className="text-[#e5e4e2]/80 text-lg">Najwyższa jakość nagłośnienia dla eventów każdej skali</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Two Column Images */}
+          <div className="grid md:grid-cols-2 gap-8">
+            {[2, 3].map((index) => (
               <div
                 key={index}
                 className="group relative h-96 rounded-2xl overflow-hidden border border-[#d3bb73]/20 hover:border-[#d3bb73]/60 transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-[#d3bb73]/20"
@@ -121,7 +172,7 @@ export default function NaglosnieniaPage() {
                 <EditableImageSection
                   section={`naglosnienie-gallery-${index}`}
                   tableName="naglosnienie_gallery_images"
-                  defaultImage={`https://images.pexels.com/photos/${index === 1 ? '164936' : index === 2 ? '1763075' : '1679618'}/pexels-photo-${index === 1 ? '164936' : index === 2 ? '1763075' : '1679618'}.jpeg?auto=compress&cs=tinysrgb&w=1920`}
+                  defaultImage={`https://images.pexels.com/photos/${index === 2 ? '1763075' : '1679618'}/pexels-photo-${index === 2 ? '1763075' : '1679618'}.jpeg?auto=compress&cs=tinysrgb&w=1920`}
                   alt={`Audio equipment ${index}`}
                   className="absolute inset-0 transition-transform duration-700 group-hover:scale-110"
                   imageClassName="w-full h-full object-cover"
@@ -129,8 +180,8 @@ export default function NaglosnieniaPage() {
 
                 <div className="absolute bottom-0 left-0 right-0 p-6 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 z-20">
                   <div className="h-1 w-16 bg-[#d3bb73] mb-4"></div>
-                  <h3 className="text-xl font-light text-[#e5e4e2] mb-2">Profesjonalny Sprzęt</h3>
-                  <p className="text-[#e5e4e2]/70 text-sm">Najwyższa jakość audio</p>
+                  <h3 className="text-xl font-light text-[#e5e4e2] mb-2">{index === 2 ? 'Miksery Cyfrowe' : 'Mikrofony'}</h3>
+                  <p className="text-[#e5e4e2]/70 text-sm">Profesjonalny sprzęt audio</p>
                 </div>
               </div>
             ))}
@@ -138,18 +189,76 @@ export default function NaglosnieniaPage() {
         </div>
       </section>
 
-      {/* Editable Content Section - Technology */}
-      <section className="py-24 bg-[#0f1119]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <EditableContent
-            section="naglosnienie-tech"
-            tableName="naglosnienie_content"
-            defaultTitle="Technologia"
-            defaultContent="Wykorzystujemy najnowsze systemy audio line array od renomowanych producentów takich jak L-Acoustics, d&b audiotechnik i Meyer Sound. Każdy event poprzedzamy dokładnymi pomiarami akustycznymi i konfiguracją systemu."
-            className="text-center max-w-4xl mx-auto"
-            titleClassName="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6"
-            contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+      {/* Image Divider 2 - Full Width */}
+      <section className="relative h-[600px] overflow-hidden">
+        <div className="absolute inset-0">
+          <EditableImageSection
+            section="naglosnienie-divider-2"
+            tableName="naglosnienie_gallery_images"
+            defaultImage="https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=1920"
+            alt="Live concert"
+            className="w-full h-full"
+            imageClassName="w-full h-full object-cover"
           />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33] via-[#0f1119]/80 to-[#0f1119]"></div>
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center px-4">
+            <div className="space-y-6">
+              <div className="inline-block bg-[#d3bb73]/10 backdrop-blur-md border border-[#d3bb73]/30 rounded-2xl px-16 py-10 mb-4">
+                <Music className="w-16 h-16 text-[#d3bb73] mx-auto mb-4" />
+                <h3 className="text-5xl md:text-6xl font-light text-[#e5e4e2] mb-3">Perfekcyjny Dźwięk</h3>
+                <p className="text-[#d3bb73] text-lg">Na każdym wydarzeniu</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Editable Content Section - Technology with Images */}
+      <section className="py-24 bg-[#0f1119] relative overflow-hidden">
+        <div className="absolute top-20 right-0 w-[600px] h-[600px] bg-[#d3bb73]/5 rounded-full blur-3xl"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div className="relative h-[500px] rounded-2xl overflow-hidden group">
+              <EditableImageSection
+                section="naglosnienie-tech-image"
+                tableName="naglosnienie_gallery_images"
+                defaultImage="https://images.pexels.com/photos/210764/pexels-photo-210764.jpeg?auto=compress&cs=tinysrgb&w=1920"
+                alt="Audio technology"
+                className="w-full h-full transition-transform duration-700 group-hover:scale-110"
+                imageClassName="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <div className="absolute inset-0 border-4 border-[#d3bb73]/20 group-hover:border-[#d3bb73]/40 transition-colors duration-500 rounded-2xl"></div>
+            </div>
+
+            <div>
+              <EditableContent
+                section="naglosnienie-tech"
+                tableName="naglosnienie_content"
+                defaultTitle="Technologia"
+                defaultContent="Wykorzystujemy najnowsze systemy audio line array od renomowanych producentów takich jak L-Acoustics, d&b audiotechnik i Meyer Sound. Każdy event poprzedzamy dokładnymi pomiarami akustycznymi i konfiguracją systemu."
+                className=""
+                titleClassName="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6"
+                contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+              />
+              <div className="mt-8 grid grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-[#1c1f33]/50 rounded-xl border border-[#d3bb73]/10">
+                  <Volume2 className="w-8 h-8 text-[#d3bb73] mx-auto mb-2" />
+                  <p className="text-[#e5e4e2]/80 text-sm">Line Array</p>
+                </div>
+                <div className="text-center p-4 bg-[#1c1f33]/50 rounded-xl border border-[#d3bb73]/10">
+                  <Radio className="w-8 h-8 text-[#d3bb73] mx-auto mb-2" />
+                  <p className="text-[#e5e4e2]/80 text-sm">Wireless</p>
+                </div>
+                <div className="text-center p-4 bg-[#1c1f33]/50 rounded-xl border border-[#d3bb73]/10">
+                  <Music className="w-8 h-8 text-[#d3bb73] mx-auto mb-2" />
+                  <p className="text-[#e5e4e2]/80 text-sm">Digital Mix</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
