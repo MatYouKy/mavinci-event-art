@@ -1,11 +1,12 @@
 import { Metadata } from 'next';
-import { Music, Volume2, Radio, Zap, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Music, Volume2, Radio, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableImageSection } from '@/components/EditableImageSection';
 import { EditableContent } from '@/components/EditableContent';
+import { NaglosnieniaContent } from './NaglosnieniaContent';
 
 export const metadata: Metadata = {
   title: 'Nagłośnienie Eventów | Mavinci',
@@ -14,23 +15,6 @@ export const metadata: Metadata = {
 };
 
 export default function NaglosnieniaPage() {
-  const features = [
-    'Systemy line array najwyższej klasy',
-    'Monitory sceniczne i odsłuchy',
-    'Mikrofony bezprzewodowe i przewodowe',
-    'Miksery cyfrowe z pełną kontrolą',
-    'Procesory audio i equalizery',
-    'Profesjonalna obsługa techniczna',
-    'Konfiguracja dostosowana do miejsca',
-    'Pomiary akustyczne i optymalizacja',
-  ];
-
-  const applications = [
-    { title: 'Koncerty', desc: 'Nagłośnienie scen koncertowych od 100 do 10000 osób' },
-    { title: 'Konferencje', desc: 'Wyraźny dźwięk dla prezentacji i wykładów' },
-    { title: 'Eventy Plenerowe', desc: 'Systemy odporne na warunki atmosferyczne' },
-    { title: 'Imprezy Firmowe', desc: 'Dyskretne nagłośnienie dla biznesu' },
-  ];
 
   return (
     <>
@@ -96,58 +80,7 @@ export default function NaglosnieniaPage() {
         </div>
       </PageHeroImage>
 
-      {/* Features Section */}
-      <section className="py-24 bg-[#0f1119]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
-              Co Oferujemy
-            </h2>
-            <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((feature, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-3 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all duration-300"
-              >
-                <CheckCircle2 className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                <span className="text-[#e5e4e2]/90 font-light">{feature}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Applications Section */}
-      <section className="py-24 bg-[#1c1f33]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
-              Zastosowania
-            </h2>
-            <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {applications.map((app, index) => (
-              <div
-                key={index}
-                className="group relative bg-gradient-to-br from-[#0f1119]/80 to-[#0f1119]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 hover:border-[#d3bb73]/30 transition-all duration-300 hover:transform hover:-translate-y-2"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl"></div>
-
-                <div className="relative z-10">
-                  <Zap className="w-8 h-8 text-[#d3bb73] mb-4" />
-                  <h3 className="text-xl font-light text-[#e5e4e2] mb-3">{app.title}</h3>
-                  <p className="text-[#e5e4e2]/60 text-sm font-light">{app.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <NaglosnieniaContent />
 
       {/* Editable Content Section - Why Us */}
       <section className="py-24 bg-[#0f1119]">
@@ -164,41 +97,43 @@ export default function NaglosnieniaPage() {
         </div>
       </section>
 
-      {/* Gallery Section */}
-      <section className="py-24 bg-[#1c1f33]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Gallery Section with Visual Effects */}
+      <section className="py-24 bg-[#1c1f33] relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/5 via-transparent to-[#800020]/5"></div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
-              Wizualizacje Sprzętu
+            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4 animate-fade-in">
+              Nasza Technologia
             </h2>
             <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            <EditableImageSection
-              section="naglosnienie-gallery-1"
-              tableName="naglosnienie_gallery_images"
-              defaultImage="https://images.pexels.com/photos/164936/pexels-photo-164936.jpeg?auto=compress&cs=tinysrgb&w=1920"
-              alt="Profesjonalne głośniki na evencie"
-              className="h-80 rounded-2xl overflow-hidden border border-[#d3bb73]/20"
-              imageClassName="w-full h-full object-cover"
-            />
-            <EditableImageSection
-              section="naglosnienie-gallery-2"
-              tableName="naglosnienie_gallery_images"
-              defaultImage="https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920"
-              alt="Mikser audio DJ"
-              className="h-80 rounded-2xl overflow-hidden border border-[#d3bb73]/20"
-              imageClassName="w-full h-full object-cover"
-            />
-            <EditableImageSection
-              section="naglosnienie-gallery-3"
-              tableName="naglosnienie_gallery_images"
-              defaultImage="https://images.pexels.com/photos/1679618/pexels-photo-1679618.jpeg?auto=compress&cs=tinysrgb&w=1920"
-              alt="Mikrofony na scenie"
-              className="h-80 rounded-2xl overflow-hidden border border-[#d3bb73]/20"
-              imageClassName="w-full h-full object-cover"
-            />
+            {[1, 2, 3].map((index) => (
+              <div
+                key={index}
+                className="group relative h-96 rounded-2xl overflow-hidden border border-[#d3bb73]/20 hover:border-[#d3bb73]/60 transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-[#d3bb73]/20"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 via-transparent to-[#800020]/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119] via-[#0f1119]/50 to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-500"></div>
+
+                <EditableImageSection
+                  section={`naglosnienie-gallery-${index}`}
+                  tableName="naglosnienie_gallery_images"
+                  defaultImage={`https://images.pexels.com/photos/${index === 1 ? '164936' : index === 2 ? '1763075' : '1679618'}/pexels-photo-${index === 1 ? '164936' : index === 2 ? '1763075' : '1679618'}.jpeg?auto=compress&cs=tinysrgb&w=1920`}
+                  alt={`Audio equipment ${index}`}
+                  className="absolute inset-0 transition-transform duration-700 group-hover:scale-110"
+                  imageClassName="w-full h-full object-cover"
+                />
+
+                <div className="absolute bottom-0 left-0 right-0 p-6 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 z-20">
+                  <div className="h-1 w-16 bg-[#d3bb73] mb-4"></div>
+                  <h3 className="text-xl font-light text-[#e5e4e2] mb-2">Profesjonalny Sprzęt</h3>
+                  <p className="text-[#e5e4e2]/70 text-sm">Najwyższa jakość audio</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
