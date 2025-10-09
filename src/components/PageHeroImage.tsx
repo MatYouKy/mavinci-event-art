@@ -50,7 +50,7 @@ export function PageHeroImage({
 
     // Mapowanie dla stron usług według rzeczywistych nazw tabel w bazie
     const serviceMapping: Record<string, string> = {
-      'konferencje': 'konferencje_page_images',
+      'konferencje': 'konferencje_page',
       'streaming': 'streaming_page_images',
       'integracje': 'integracje_page_images',
       'kasyno': 'kasyno_page_images',
