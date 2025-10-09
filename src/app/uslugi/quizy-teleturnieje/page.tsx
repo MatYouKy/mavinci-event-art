@@ -3,6 +3,7 @@ import { Gamepad2, Trophy, Lightbulb, Users, CheckCircle2, ArrowLeft } from 'luc
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { PageHeroImage } from '@/components/PageHeroImage';
 
 export const metadata: Metadata = {
   title: 'Quizy i Teleturnieje | Mavinci',
@@ -26,12 +27,12 @@ export default function QuizyTeleturnieje() {
     <>
       <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
-        <section className="relative py-24 md:py-32 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] overflow-hidden">
-          <div className="absolute inset-0">
-            <img src="https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?auto=compress&cs=tinysrgb&w=1920" alt="Quiz event" className="w-full h-full object-cover opacity-20" />
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/90 to-[#0f1119]/90"></div>
-          </div>
-
+        <PageHeroImage
+          section="quizy-teleturnieje-hero"
+          defaultImage="https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?auto=compress&cs=tinysrgb&w=1920"
+          defaultOpacity={0.2}
+          className="py-24 md:py-32 overflow-hidden"
+        >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <Link href="/#uslugi" className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8">
               <ArrowLeft className="w-4 h-4" />
@@ -75,7 +76,7 @@ export default function QuizyTeleturnieje() {
               </div>
             </div>
           </div>
-        </section>
+        </PageHeroImage>
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

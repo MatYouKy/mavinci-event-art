@@ -3,6 +3,7 @@ import { Lightbulb, Zap, Speaker, Settings, CheckCircle2, ArrowLeft } from 'luci
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { PageHeroImage } from '@/components/PageHeroImage';
 
 export const metadata: Metadata = {
   title: 'Technika Sceniczna | Mavinci',
@@ -49,27 +50,12 @@ export default function TechnikaScenicznaPage() {
     <>
       <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
-        <section className="relative py-24 md:py-32 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] overflow-hidden">
-          <div className="absolute inset-0">
-            <img
-              src="https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920"
-              alt="Stage lighting and technical equipment"
-              className="w-full h-full object-cover opacity-20"
-            />
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/90 to-[#0f1119]/90"></div>
-          </div>
-
-          <div className="absolute inset-0 opacity-10">
-            <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <pattern id="hero-dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <circle cx="2" cy="2" r="1" fill="#d3bb73" />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#hero-dots)" />
-            </svg>
-          </div>
-
+        <PageHeroImage
+          section="technika-sceniczna-hero"
+          defaultImage="https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920"
+          defaultOpacity={0.2}
+          className="py-24 md:py-32 overflow-hidden"
+        >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <Link
               href="/#uslugi"
@@ -122,7 +108,7 @@ export default function TechnikaScenicznaPage() {
               </div>
             </div>
           </div>
-        </section>
+        </PageHeroImage>
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
