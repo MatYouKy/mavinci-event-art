@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
+import { EditableContent } from '@/components/EditableContent';
 
 export const metadata: Metadata = {
   title: 'Wieczory Tematyczne | Mavinci',
@@ -43,16 +44,36 @@ export default function WieczeoryTematycznePage() {
               <div>
                 <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                   <Wine className="w-5 h-5 text-[#d3bb73]" />
-                  <span className="text-[#d3bb73] text-sm font-medium">Stylizowane Eventy</span>
+                  <EditableContent
+                    section="wieczory-hero-badge"
+                    tableName="wieczory_content"
+                    defaultTitle="Stylizowane Eventy"
+                    defaultContent=""
+                    className="inline"
+                    titleClassName="text-[#d3bb73] text-sm font-medium"
+                    contentClassName="hidden"
+                  />
                 </div>
 
-                <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
-                  Wieczory <span className="text-[#d3bb73]">Tematyczne</span>
-                </h1>
+                <EditableContent
+                  section="wieczory-hero-title"
+                  tableName="wieczory_content"
+                  defaultTitle="Wieczory Tematyczne"
+                  defaultContent=""
+                  className="mb-6"
+                  titleClassName="text-4xl md:text-6xl font-light text-[#e5e4e2]"
+                  contentClassName="hidden"
+                />
 
-                <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed mb-8">
-                  Tworzymy niezapomniane wieczory tematyczne z pełną scenografią i oprawą. Gatsby, Las Vegas, Hollywood - przenieś swoich gości do innej epoki lub świata.
-                </p>
+                <EditableContent
+                  section="wieczory-hero-description"
+                  tableName="wieczory_content"
+                  defaultTitle=""
+                  defaultContent="Tworzymy niezapomniane wieczory tematyczne z pełną scenografią i oprawą. Gatsby, Las Vegas, Hollywood - przenieś swoich gości do innej epoki lub świata."
+                  className="mb-8"
+                  titleClassName="hidden"
+                  contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+                />
 
                 <div className="flex flex-wrap gap-4">
                   <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
@@ -68,10 +89,15 @@ export default function WieczeoryTematycznePage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
                 <div className="relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-3xl p-8">
                   <Sparkles className="w-24 h-24 text-[#d3bb73] mb-6" />
-                  <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">Magiczna Atmosfera</h3>
-                  <p className="text-[#e5e4e2]/70 font-light">
-                    Profesjonalna scenografia, stylizacje i dekoracje tworzą autentyczny klimat wybranej epoki lub motywu.
-                  </p>
+                  <EditableContent
+                    section="wieczory-hero-card"
+                    tableName="wieczory_content"
+                    defaultTitle="Magiczna Atmosfera"
+                    defaultContent="Profesjonalna scenografia, stylizacje i dekoracje tworzą autentyczny klimat wybranej epoki lub motywu."
+                    className=""
+                    titleClassName="text-2xl font-light text-[#e5e4e2] mb-4"
+                    contentClassName="text-[#e5e4e2]/70 font-light"
+                  />
                 </div>
               </div>
             </div>

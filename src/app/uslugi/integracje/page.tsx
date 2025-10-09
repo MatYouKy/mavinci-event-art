@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
+import { EditableContent } from '@/components/EditableContent';
 
 export default function IntegracjePage() {
   const features = [
@@ -38,16 +39,36 @@ export default function IntegracjePage() {
               <div>
                 <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                   <PartyPopper className="w-5 h-5 text-[#d3bb73]" />
-                  <span className="text-[#d3bb73] text-sm font-medium">Imprezy Firmowe</span>
+                  <EditableContent
+                    section="integracje-hero-badge"
+                    tableName="integracje_content"
+                    defaultTitle="Imprezy Firmowe"
+                    defaultContent=""
+                    className="inline"
+                    titleClassName="text-[#d3bb73] text-sm font-medium"
+                    contentClassName="hidden"
+                  />
                 </div>
 
-                <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
-                  Integracje <span className="text-[#d3bb73]">Firmowe</span>
-                </h1>
+                <EditableContent
+                  section="integracje-hero-title"
+                  tableName="integracje_content"
+                  defaultTitle="Integracje Firmowe"
+                  defaultContent=""
+                  className="mb-6"
+                  titleClassName="text-4xl md:text-6xl font-light text-[#e5e4e2]"
+                  contentClassName="hidden"
+                />
 
-                <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed mb-8">
-                  Organizujemy imprezy integracyjne, które budują więzi w zespole i tworzą wspaniałą atmosferę. Pikniki, zabawy i wydarzenia okolicznościowe z pełną obsługą.
-                </p>
+                <EditableContent
+                  section="integracje-hero-description"
+                  tableName="integracje_content"
+                  defaultTitle=""
+                  defaultContent="Organizujemy imprezy integracyjne, które budują więzi w zespole i tworzą wspaniałą atmosferę. Pikniki, zabawy i wydarzenia okolicznościowe z pełną obsługą."
+                  className="mb-8"
+                  titleClassName="hidden"
+                  contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+                />
 
                 <div className="flex flex-wrap gap-4">
                   <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
@@ -63,10 +84,15 @@ export default function IntegracjePage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
                 <div className="relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-3xl p-8">
                   <Heart className="w-24 h-24 text-[#d3bb73] mb-6" />
-                  <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">Wspólna Zabawa</h3>
-                  <p className="text-[#e5e4e2]/70 font-light">
-                    Imprezy integracyjne to doskonała okazja do lepszego poznania się zespołu w luźnej, przyjaznej atmosferze.
-                  </p>
+                  <EditableContent
+                    section="integracje-hero-card"
+                    tableName="integracje_content"
+                    defaultTitle="Wspólna Zabawa"
+                    defaultContent="Imprezy integracyjne to doskonała okazja do lepszego poznania się zespołu w luźnej, przyjaznej atmosferze."
+                    className=""
+                    titleClassName="text-2xl font-light text-[#e5e4e2] mb-4"
+                    contentClassName="text-[#e5e4e2]/70 font-light"
+                  />
                 </div>
               </div>
             </div>

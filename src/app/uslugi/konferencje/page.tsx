@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
+import { EditableContent } from '@/components/EditableContent';
 
 
 export default function KonferencjePage() {
@@ -40,16 +41,36 @@ export default function KonferencjePage() {
               <div>
                 <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                   <Presentation className="w-5 h-5 text-[#d3bb73]" />
-                  <span className="text-[#d3bb73] text-sm font-medium">Eventy Biznesowe</span>
+                  <EditableContent
+                    section="konferencje-hero-badge"
+                    tableName="konferencje_content"
+                    defaultTitle="Eventy Biznesowe"
+                    defaultContent=""
+                    className="inline"
+                    titleClassName="text-[#d3bb73] text-sm font-medium"
+                    contentClassName="hidden"
+                  />
                 </div>
 
-                <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
-                  Organizacja <span className="text-[#d3bb73]">Konferencji</span>
-                </h1>
+                <EditableContent
+                  section="konferencje-hero-title"
+                  tableName="konferencje_content"
+                  defaultTitle="Organizacja Konferencji"
+                  defaultContent=""
+                  className="mb-6"
+                  titleClassName="text-4xl md:text-6xl font-light text-[#e5e4e2]"
+                  contentClassName="hidden"
+                />
 
-                <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed mb-8">
-                  Kompleksowa organizacja konferencji biznesowych, szkoleń i eventów korporacyjnych. Od koncepcji przez realizację po obsługę poeventową.
-                </p>
+                <EditableContent
+                  section="konferencje-hero-description"
+                  tableName="konferencje_content"
+                  defaultTitle=""
+                  defaultContent="Kompleksowa organizacja konferencji biznesowych, szkoleń i eventów korporacyjnych. Od koncepcji przez realizację po obsługę poeventową."
+                  className="mb-8"
+                  titleClassName="hidden"
+                  contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+                />
 
                 <div className="flex flex-wrap gap-4">
                   <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
@@ -65,10 +86,15 @@ export default function KonferencjePage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
                 <div className="relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-3xl p-8">
                   <Globe className="w-24 h-24 text-[#d3bb73] mb-6" />
-                  <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">Profesjonalna Organizacja</h3>
-                  <p className="text-[#e5e4e2]/70 font-light">
-                    Zapewniamy kompleksową obsługę konferencji - od logistyki przez technikę po catering i obsługę uczestników.
-                  </p>
+                  <EditableContent
+                    section="konferencje-hero-card"
+                    tableName="konferencje_content"
+                    defaultTitle="Profesjonalna Organizacja"
+                    defaultContent="Zapewniamy kompleksową obsługę konferencji - od logistyki przez technikę po catering i obsługę uczestników."
+                    className=""
+                    titleClassName="text-2xl font-light text-[#e5e4e2] mb-4"
+                    contentClassName="text-[#e5e4e2]/70 font-light"
+                  />
                 </div>
               </div>
             </div>
