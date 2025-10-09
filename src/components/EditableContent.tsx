@@ -25,6 +25,9 @@ interface EditableContentProps {
   className?: string;
   titleClassName?: string;
   contentClassName?: string;
+  titleTag?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'span' | 'div';
+  contentTag?: 'p' | 'span' | 'div';
+  ariaLabel?: string;
 }
 
 export function EditableContent({
@@ -35,6 +38,9 @@ export function EditableContent({
   className = '',
   titleClassName = '',
   contentClassName = '',
+  titleTag = 'h3',
+  contentTag = 'p',
+  ariaLabel,
 }: EditableContentProps) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
@@ -143,9 +149,12 @@ export function EditableContent({
   const displayTitle = contentData?.title || defaultTitle;
   const displayContent = contentData?.content || defaultContent;
 
+  const TitleTag = titleTag;
+  const ContentTag = contentTag;
+
   if (loading) {
     return (
-      <div className={className}>
+      <div className={className} aria-busy="true" aria-label="Ładowanie treści">
         <div className="animate-pulse">
           <div className="h-8 bg-[#1c1f33]/50 rounded w-1/3 mb-4"></div>
           <div className="h-4 bg-[#1c1f33]/50 rounded w-full mb-2"></div>
@@ -156,16 +165,29 @@ export function EditableContent({
   }
 
   return (
-    <div className={`relative ${className}`}>
+    <div
+      className={`relative ${className}`}
+      aria-label={ariaLabel || section}
+      role="region"
+    >
       {!isEditing ? (
         <>
-          {displayTitle && <h3 className={titleClassName}>{displayTitle}</h3>}
-          {displayContent && <p className={contentClassName}>{displayContent}</p>}
+          {displayTitle && (
+            <TitleTag className={titleClassName}>
+              {displayTitle}
+            </TitleTag>
+          )}
+          {displayContent && (
+            <ContentTag className={contentClassName}>
+              {displayContent}
+            </ContentTag>
+          )}
 
           {isEditMode && (
             <button
               onClick={() => setIsEditing(true)}
               className="absolute top-0 right-0 p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              aria-label={`Edytuj ${section}`}
             >
               <Edit className="w-4 h-4" />
             </button>

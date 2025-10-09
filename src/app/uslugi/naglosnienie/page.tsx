@@ -47,6 +47,8 @@ export default function NaglosnieniaPage() {
                   className="inline"
                   titleClassName="text-[#d3bb73] text-sm font-medium"
                   contentClassName="hidden"
+                  titleTag="span"
+                  ariaLabel="Kategoria usługi"
                 />
               </div>
 
@@ -58,6 +60,8 @@ export default function NaglosnieniaPage() {
                 className="mb-6"
                 titleClassName="text-4xl md:text-6xl font-light text-[#e5e4e2]"
                 contentClassName="hidden"
+                titleTag="h1"
+                ariaLabel="Główny tytuł strony"
               />
 
               <EditableContent
@@ -68,6 +72,8 @@ export default function NaglosnieniaPage() {
                 className="mb-8"
                 titleClassName="hidden"
                 contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+                contentTag="p"
+                ariaLabel="Główny opis usługi"
               />
 
               <div className="flex flex-wrap gap-4">
@@ -98,6 +104,9 @@ export default function NaglosnieniaPage() {
                   className=""
                   titleClassName="text-2xl font-light text-[#e5e4e2] mb-4"
                   contentClassName="text-[#e5e4e2]/70 font-light"
+                  titleTag="h2"
+                  contentTag="p"
+                  ariaLabel="Informacja o sprzęcie"
                 />
               </div>
             </div>
