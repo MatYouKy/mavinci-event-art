@@ -135,14 +135,17 @@ export function PageHeroImage({
     setSaving(true);
     try {
       const pageTableName = getTableName(section);
+      console.log('[PageHeroImage] handleSavePosition - section:', section, 'tableName:', pageTableName);
 
       // Sprawdź czy używamy nowego systemu
       try {
-        const { data: existing } = await supabase
+        const { data: existing, error: checkError } = await supabase
           .from(pageTableName)
           .select('id')
           .eq('section', 'hero')
           .maybeSingle();
+
+        console.log('[PageHeroImage] Check existing:', existing, 'error:', checkError);
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           // Użyj nowej tabeli
@@ -177,6 +180,7 @@ export function PageHeroImage({
               });
             if (error) throw error;
           } else {
+            console.log('[PageHeroImage] Updating position for existing record');
             const { error } = await supabase
               .from(pageTableName)
               .update({
@@ -200,12 +204,14 @@ export function PageHeroImage({
                 },
               })
               .eq('section', 'hero');
+            console.log('[PageHeroImage] Update result - error:', error);
             if (error) throw error;
           }
 
           await loadImage();
           setIsEditingPosition(false);
           setPositionSubMenu(false);
+          showSnackbar('Pozycja zapisana pomyślnie', 'success');
           return;
         }
       } catch (err) {
@@ -298,14 +304,17 @@ export function PageHeroImage({
     setSaving(true);
     try {
       const pageTableName = getTableName(section);
+      console.log('[PageHeroImage] handleSaveOpacity - section:', section, 'tableName:', pageTableName, 'opacity:', editState.opacity);
 
       // Sprawdź czy używamy nowego systemu
       try {
-        const { data: existing } = await supabase
+        const { data: existing, error: checkError } = await supabase
           .from(pageTableName)
           .select('id')
           .eq('section', 'hero')
           .maybeSingle();
+
+        console.log('[PageHeroImage] Check existing (opacity):', existing, 'error:', checkError);
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           // Użyj nowej tabeli
@@ -332,18 +341,21 @@ export function PageHeroImage({
               });
             if (error) throw error;
           } else {
+            console.log('[PageHeroImage] Updating opacity for existing record');
             const { error } = await supabase
               .from(pageTableName)
               .update({
                 opacity: editState.opacity,
               })
               .eq('section', 'hero');
+            console.log('[PageHeroImage] Update opacity result - error:', error);
             if (error) throw error;
           }
 
           await loadImage();
           setIsEditingOpacity(false);
           setOpacitySubMenu(false);
+          showSnackbar('Przezroczystość zapisana pomyślnie', 'success');
           return;
         }
       } catch (err) {
