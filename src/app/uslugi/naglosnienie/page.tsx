@@ -4,6 +4,8 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
+import { EditableImageSection } from '@/components/EditableImageSection';
+import { EditableContent } from '@/components/EditableContent';
 
 export const metadata: Metadata = {
   title: 'Nagłośnienie Eventów | Mavinci',
@@ -144,6 +146,75 @@ export default function NaglosnieniaPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Editable Content Section - Why Us */}
+      <section className="py-24 bg-[#0f1119]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <EditableContent
+            section="naglosnienie-intro"
+            tableName="naglosnienie_content"
+            defaultTitle="Dlaczego my?"
+            defaultContent="Posiadamy wieloletnie doświadczenie w zapewnianiu profesjonalnego nagłośnienia dla największych wydarzeń w Polsce. Nasz zespół techników audio gwarantuje najwyższą jakość dźwięku i bezawaryjną obsługę."
+            className="text-center max-w-4xl mx-auto"
+            titleClassName="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6"
+            contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+          />
+        </div>
+      </section>
+
+      {/* Gallery Section */}
+      <section className="py-24 bg-[#1c1f33]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+              Wizualizacje Sprzętu
+            </h2>
+            <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <EditableImageSection
+              section="naglosnienie-gallery-1"
+              tableName="naglosnienie_gallery_images"
+              defaultImage="https://images.pexels.com/photos/164936/pexels-photo-164936.jpeg?auto=compress&cs=tinysrgb&w=1920"
+              alt="Profesjonalne głośniki na evencie"
+              className="h-80 rounded-2xl overflow-hidden border border-[#d3bb73]/20"
+              imageClassName="w-full h-full object-cover"
+            />
+            <EditableImageSection
+              section="naglosnienie-gallery-2"
+              tableName="naglosnienie_gallery_images"
+              defaultImage="https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920"
+              alt="Mikser audio DJ"
+              className="h-80 rounded-2xl overflow-hidden border border-[#d3bb73]/20"
+              imageClassName="w-full h-full object-cover"
+            />
+            <EditableImageSection
+              section="naglosnienie-gallery-3"
+              tableName="naglosnienie_gallery_images"
+              defaultImage="https://images.pexels.com/photos/1679618/pexels-photo-1679618.jpeg?auto=compress&cs=tinysrgb&w=1920"
+              alt="Mikrofony na scenie"
+              className="h-80 rounded-2xl overflow-hidden border border-[#d3bb73]/20"
+              imageClassName="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Editable Content Section - Technology */}
+      <section className="py-24 bg-[#0f1119]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <EditableContent
+            section="naglosnienie-tech"
+            tableName="naglosnienie_content"
+            defaultTitle="Technologia"
+            defaultContent="Wykorzystujemy najnowsze systemy audio line array od renomowanych producentów takich jak L-Acoustics, d&b audiotechnik i Meyer Sound. Każdy event poprzedzamy dokładnymi pomiarami akustycznymi i konfiguracją systemu."
+            className="text-center max-w-4xl mx-auto"
+            titleClassName="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6"
+            contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+          />
         </div>
       </section>
 
