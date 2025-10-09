@@ -573,10 +573,7 @@ export function EditableImage({
 
       {uploading && (
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#1c1f33] p-6 rounded-lg shadow-xl flex flex-col items-center gap-3">
-            <div className="w-12 h-12 border-4 border-[#d3bb73] border-t-transparent rounded-full animate-spin" />
-            <p className="text-[#e5e4e2] font-medium">Przesyłanie zdjęcia...</p>
-          </div>
+          <div className="w-16 h-16 border-4 border-[#d3bb73] border-t-transparent rounded-full animate-spin" />
         </div>
       )}
     </div>
