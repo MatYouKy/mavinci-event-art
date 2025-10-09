@@ -31,6 +31,8 @@ export function EditableImage({
   const [siteImage, setSiteImage] = useState<SiteImage | null>(null);
   const [isEditingPosition, setIsEditingPosition] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [positionSubMenu, setPositionSubMenu] = useState(false);
 
   const [editState, setEditState] = useState({
@@ -100,6 +102,7 @@ export function EditableImage({
   };
 
   const handleSavePosition = async () => {
+    setSaving(true);
     try {
       const pageTableName = `${section.split('-')[0]}_page_images`;
 
@@ -252,6 +255,8 @@ export function EditableImage({
     } catch (error) {
       console.error('Error saving position:', error);
       showSnackbar('Błąd podczas zapisywania pozycji', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -259,6 +264,7 @@ export function EditableImage({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploading(true);
     try {
       const url = await uploadImage(file, section);
       const pageTableName = `${section.split('-')[0]}_page_images`;
@@ -364,6 +370,8 @@ export function EditableImage({
     } catch (error) {
       console.error('Error uploading image:', error);
       showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -383,6 +391,7 @@ export function EditableImage({
     setEditState({ posX: 0, posY: 0, scale: 1 });
 
     if (siteImage) {
+      setSaving(true);
       try {
         const pageTableName = `${section.split('-')[0]}_page_images`;
 
@@ -442,6 +451,8 @@ export function EditableImage({
       } catch (error) {
         console.error('Error resetting position:', error);
         showSnackbar('Błąd podczas resetowania pozycji', 'error');
+      } finally {
+        setSaving(false);
       }
     }
   };
@@ -510,13 +521,19 @@ export function EditableImage({
               <div className="flex gap-2 p-2">
                 <button
                   onClick={handleSavePosition}
-                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  disabled={saving}
+                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Save className="w-5 h-5" />
+                  {saving ? (
+                    <div className="w-5 h-5 border-2 border-[#1c1f33] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Save className="w-5 h-5" />
+                  )}
                 </button>
                 <button
                   onClick={handleCancelPosition}
-                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                  disabled={saving}
+                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -550,6 +567,15 @@ export function EditableImage({
               step={0.01}
               onChange={(_, v) => setEditState(s => ({ ...s, scale: v as number }))}
             />
+          </div>
+        </div>
+      )}
+
+      {uploading && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#1c1f33] p-6 rounded-lg shadow-xl flex flex-col items-center gap-3">
+            <div className="w-12 h-12 border-4 border-[#d3bb73] border-t-transparent rounded-full animate-spin" />
+            <p className="text-[#e5e4e2] font-medium">Przesyłanie zdjęcia...</p>
           </div>
         </div>
       )}

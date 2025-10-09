@@ -32,6 +32,8 @@ export function PageHeroImage({
   const [isEditingPosition, setIsEditingPosition] = useState(false);
   const [isEditingOpacity, setIsEditingOpacity] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [positionSubMenu, setPositionSubMenu] = useState(false);
   const [opacitySubMenu, setOpacitySubMenu] = useState(false);
 
@@ -109,6 +111,7 @@ export function PageHeroImage({
   };
 
   const handleSavePosition = async () => {
+    setSaving(true);
     try {
       const pageTableName = `${section.replace('-hero', '')}_page_images`;
 
@@ -265,10 +268,13 @@ export function PageHeroImage({
     } catch (error) {
       console.error('Error saving position:', error);
       showSnackbar('Błąd podczas zapisywania pozycji', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleSaveOpacity = async () => {
+    setSaving(true);
     try {
       const pageTableName = `${section.replace('-hero', '')}_page_images`;
 
@@ -370,6 +376,8 @@ export function PageHeroImage({
     } catch (error) {
       console.error('Error saving opacity:', error);
       showSnackbar('Błąd podczas zapisywania przezroczystości', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -377,6 +385,7 @@ export function PageHeroImage({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploading(true);
     try {
       const url = await uploadImage(file, 'hero');
       const pageTableName = `${section.replace('-hero', '')}_page_images`;
@@ -486,6 +495,8 @@ export function PageHeroImage({
     } catch (error) {
       console.error('Error uploading image:', error);
       showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -517,6 +528,7 @@ export function PageHeroImage({
     setEditState(s => ({ ...s, posX: 0, posY: 0, scale: 1 }));
 
     if (siteImage) {
+      setSaving(true);
       try {
         const { error } = await supabase
           .from('site_images')
@@ -541,6 +553,8 @@ export function PageHeroImage({
       } catch (error) {
         console.error('Error resetting position:', error);
         showSnackbar('Błąd podczas resetowania pozycji', 'error');
+      } finally {
+        setSaving(false);
       }
     }
   };
@@ -625,13 +639,19 @@ export function PageHeroImage({
               <div className="flex gap-2 p-2">
                 <button
                   onClick={positionSubMenu ? handleSavePosition : handleSaveOpacity}
-                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  disabled={saving}
+                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Save className="w-5 h-5" />
+                  {saving ? (
+                    <div className="w-5 h-5 border-2 border-[#1c1f33] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Save className="w-5 h-5" />
+                  )}
                 </button>
                 <button
                   onClick={positionSubMenu ? handleCancelPosition : handleCancelOpacity}
-                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                  disabled={saving}
+                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -680,6 +700,15 @@ export function PageHeroImage({
               onChange={(_, v) => setEditState(s => ({ ...s, opacity: v as number }))}
               style={{ bottom: 70, top: 'auto' }}
             />
+          </div>
+        </div>
+      )}
+
+      {uploading && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#1c1f33] p-6 rounded-lg shadow-xl flex flex-col items-center gap-3">
+            <div className="w-12 h-12 border-4 border-[#d3bb73] border-t-transparent rounded-full animate-spin" />
+            <p className="text-[#e5e4e2] font-medium">Przesyłanie zdjęcia...</p>
           </div>
         </div>
       )}
