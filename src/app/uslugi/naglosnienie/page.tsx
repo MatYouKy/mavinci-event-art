@@ -80,6 +80,23 @@ export default function NaglosnieniaPage() {
         </div>
       </PageHeroImage>
 
+      {/* Editable Content Section - Why Us */}
+      <section className="py-24 bg-[#0f1119] relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-[#d3bb73]/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#800020]/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <EditableContent
+            section="naglosnienie-intro"
+            tableName="naglosnienie_content"
+            defaultTitle="Dlaczego my?"
+            defaultContent="Posiadamy wieloletnie doświadczenie w zapewnianiu profesjonalnego nagłośnienia dla największych wydarzeń w Polsce. Nasz zespół techników audio gwarantuje najwyższą jakość dźwięku i bezawaryjną obsługę."
+            className="text-center max-w-4xl mx-auto"
+            titleClassName="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6"
+            contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
+          />
+        </div>
+      </section>
+
       <NaglosnieniaContent />
 
       {/* Image Divider 1 - Parallax Effect */}
@@ -102,23 +119,6 @@ export default function NaglosnieniaPage() {
               <p className="text-[#d3bb73] text-sm uppercase tracking-wider">Zrealizowanych Eventów</p>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Editable Content Section - Why Us */}
-      <section className="py-24 bg-[#0f1119] relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-[#d3bb73]/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#800020]/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <EditableContent
-            section="naglosnienie-intro"
-            tableName="naglosnienie_content"
-            defaultTitle="Dlaczego my?"
-            defaultContent="Posiadamy wieloletnie doświadczenie w zapewnianiu profesjonalnego nagłośnienia dla największych wydarzeń w Polsce. Nasz zespół techników audio gwarantuje najwyższą jakość dźwięku i bezawaryjną obsługę."
-            className="text-center max-w-4xl mx-auto"
-            titleClassName="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6"
-            contentClassName="text-[#e5e4e2]/70 text-lg font-light leading-relaxed"
-          />
         </div>
       </section>
 
