@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2, Save, X } from 'lucide-react';
+import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PortfolioProject, GalleryImage } from '@/lib/supabase';
@@ -13,7 +13,6 @@ import { Formik, Form } from 'formik';
 import { FormInput } from '@/components/formik/FormInput';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
-import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
 import { supabase } from '@/lib/supabase';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
@@ -116,7 +115,6 @@ export default function PortfolioPage() {
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
@@ -143,7 +141,7 @@ export default function PortfolioPage() {
     setLoading(false);
   };
 
-  const handleSave = async (values: any, isNew: boolean, projectId?: string) => {
+  const handleSave = async (values: any) => {
     try {
       let imageUrl = values.image;
       let imageMetadata = values.image_metadata;
@@ -170,31 +168,19 @@ export default function PortfolioPage() {
         image_metadata: imageMetadata,
         description: values.description,
         order_index: values.order_index,
-        gallery: values.gallery || [],
+        gallery: [],
         hero_image_section: `portfolio-${values.title.toLowerCase().replace(/\s+/g, '-')}`,
         location: values.location || 'Polska',
         event_date: values.event_date || new Date().toISOString().split('T')[0],
       };
 
-      if (isNew) {
-        const { error } = await supabase
-          .from('portfolio_projects')
-          .insert([payload]);
+      const { error } = await supabase
+        .from('portfolio_projects')
+        .insert([payload]);
 
-        if (error) throw error;
-        showSnackbar('Projekt dodany pomyślnie', 'success');
-        setIsAdding(false);
-      } else {
-        const { error } = await supabase
-          .from('portfolio_projects')
-          .update(payload)
-          .eq('id', projectId);
-
-        if (error) throw error;
-        showSnackbar('Projekt zaktualizowany pomyślnie', 'success');
-        setEditingId(null);
-      }
-
+      if (error) throw error;
+      showSnackbar('Projekt dodany pomyślnie', 'success');
+      setIsAdding(false);
       fetchProjects();
     } catch (error: any) {
       console.error('Error saving project:', error);
@@ -221,24 +207,6 @@ export default function PortfolioPage() {
     }
   };
 
-  const getProjectForEdit = (project: PortfolioProject) => {
-    return {
-      title: project.title,
-      category: project.category,
-      image: project.image,
-      alt: project.alt || '',
-      imageData: {
-        alt: project.alt || '',
-        image_metadata: project.image_metadata,
-      } as IUploadImage,
-      description: project.description,
-      order_index: project.order_index,
-      image_metadata: project.image_metadata,
-      gallery: project.gallery || [],
-      location: project.location || 'Polska',
-      event_date: project.event_date || new Date().toISOString().split('T')[0],
-    };
-  };
 
   const categories = ['all', ...Array.from(new Set(projects.map(p => p.category)))];
   const filteredProjects = selectedCategory === 'all'
@@ -329,7 +297,7 @@ export default function PortfolioPage() {
                     location: 'Polska',
                     event_date: new Date().toISOString().split('T')[0],
                   }}
-                  onSubmit={(values) => handleSave(values, true)}
+                  onSubmit={(values) => handleSave(values)}
                 >
                   {({ submitForm, values, setFieldValue }) => (
                     <Form>
@@ -353,13 +321,6 @@ export default function PortfolioPage() {
                         <div className="md:col-span-2">
                           <FormInput name="description" label="Opis wydarzenia" multiline rows={3} />
                         </div>
-                      </div>
-
-                      <div className="mb-6">
-                        <PortfolioGalleryEditor
-                          gallery={values.gallery}
-                          onChange={(newGallery) => setFieldValue('gallery', newGallery)}
-                        />
                       </div>
 
                       <div className="flex gap-3">
@@ -396,74 +357,8 @@ export default function PortfolioPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-                {filteredProjects.map((project, index) => {
+                {filteredProjects.map((project) => {
                   const projectId = project.id || '';
-                  const isEditing = editingId === projectId;
-
-                  if (isEditing) {
-                    return (
-                      <div key={projectId} className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-6">
-                        <Formik
-                          initialValues={getProjectForEdit(project)}
-                          onSubmit={(values) => handleSave(values, false, projectId)}
-                        >
-                          {({ submitForm, values, setFieldValue }) => (
-                            <Form>
-                              <div className="mb-4">
-                                <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Hero Image</label>
-                                <ImageEditorField
-                                  fieldName="imageData"
-                                  isAdmin={true}
-                                  mode="vertical"
-                                  multiplier={1.25}
-                                  image={{
-                                    alt: project.alt,
-                                    image_metadata: project.image_metadata,
-                                  }}
-                                  onSave={async () => {}}
-                                />
-                              </div>
-
-                              <div className="space-y-3 mb-4">
-                                <FormInput name="title" label="Tytuł" />
-                                <FormInput name="category" label="Kategoria" />
-                                <FormInput name="location" label="Lokalizacja" />
-                                <FormInput name="event_date" label="Data" type="date" />
-                                <FormInput name="order_index" label="Kolejność" type="number" />
-                                <FormInput name="description" label="Opis" multiline rows={2} />
-                              </div>
-
-                              <div className="mb-4">
-                                <PortfolioGalleryEditor
-                                  gallery={values.gallery}
-                                  onChange={(newGallery) => setFieldValue('gallery', newGallery)}
-                                />
-                              </div>
-
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={submitForm}
-                                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
-                                >
-                                  <Save className="w-4 h-4" />
-                                  Zapisz
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingId(null)}
-                                  className="flex items-center gap-2 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors text-sm"
-                                >
-                                  <X className="w-4 h-4" />
-                                  Anuluj
-                                </button>
-                              </div>
-                            </Form>
-                          )}
-                        </Formik>
-                      </div>
-                    );
-                  }
 
                   return (
                     <div
@@ -488,15 +383,13 @@ export default function PortfolioPage() {
                           <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-[-10px] group-hover:translate-y-0">
                             {isEditMode ? (
                               <>
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    setEditingId(projectId);
-                                  }}
+                                <a
+                                  href={`/portfolio/${projectId}`}
+                                  onClick={(e) => e.stopPropagation()}
                                   className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform"
                                 >
                                   <Edit className="w-5 h-5 text-[#1c1f33]" />
-                                </button>
+                                </a>
                                 <button
                                   onClick={(e) => {
                                     e.preventDefault();

@@ -2,12 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Tag, MapPin, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { PortfolioProject } from '@/lib/supabase';
+import { PortfolioProject, GalleryImage, supabase } from '@/lib/supabase';
 import { PageHeroImage } from '@/components/PageHeroImage';
+import { useEditMode } from '@/contexts/EditModeContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { Formik, Form } from 'formik';
+import { FormInput } from '@/components/formik/FormInput';
+import { ImageEditorField } from '@/components/ImageEditorField';
+import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
+import { uploadImage } from '@/lib/storage';
+import { IUploadImage } from '@/types/image';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
   {
@@ -103,10 +111,13 @@ const MOCK_PROJECTS: PortfolioProject[] = [
 ];
 
 export default function ProjectDetailPage() {
+  const { isEditMode } = useEditMode();
+  const { showSnackbar } = useSnackbar();
   const params = useParams();
   const id = params.id as string;
   const [project, setProject] = useState<PortfolioProject | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     fetchProject();
@@ -115,9 +126,13 @@ export default function ProjectDetailPage() {
   const fetchProject = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/portfolio-projects/${id}`);
-      if (response.ok) {
-        const data = await response.json();
+      const { data, error } = await supabase
+        .from('portfolio_projects')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!error && data) {
         setProject(data);
       } else {
         const mockProject = MOCK_PROJECTS.find(p => p.id === id);
@@ -129,6 +144,54 @@ export default function ProjectDetailPage() {
       setProject(mockProject || null);
     }
     setLoading(false);
+  };
+
+  const handleSave = async (values: any) => {
+    try {
+      let imageUrl = values.image;
+      let imageMetadata = values.image_metadata;
+
+      if (values.imageData?.file) {
+        imageUrl = await uploadImage(values.imageData.file, 'portfolio');
+        imageMetadata = {
+          desktop: {
+            src: imageUrl,
+            position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: {
+            src: imageUrl,
+            position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+        };
+      }
+
+      const payload = {
+        title: values.title,
+        category: values.category,
+        image: imageUrl,
+        alt: values.alt || '',
+        image_metadata: imageMetadata,
+        description: values.description,
+        order_index: values.order_index,
+        gallery: values.gallery || [],
+        location: values.location || 'Polska',
+        event_date: values.event_date,
+      };
+
+      const { error } = await supabase
+        .from('portfolio_projects')
+        .update(payload)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showSnackbar('Projekt zaktualizowany pomyślnie', 'success');
+      setIsEditing(false);
+      fetchProject();
+    } catch (error: any) {
+      console.error('Error saving project:', error);
+      showSnackbar('Błąd podczas zapisywania projektu', 'error');
+    }
   };
 
   if (loading) {
@@ -171,13 +234,25 @@ export default function ProjectDetailPage() {
           className="py-24 md:py-32 overflow-hidden"
         >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <Link
-              href="/portfolio"
-              className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Wróć do portfolio
-            </Link>
+            <div className="flex items-center justify-between mb-8">
+              <Link
+                href="/portfolio"
+                className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Wróć do portfolio
+              </Link>
+
+              {isEditMode && !isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                  Edytuj wydarzenie
+                </button>
+              )}
+            </div>
 
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
@@ -223,6 +298,92 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </PageHeroImage>
+
+        {isEditing && (
+          <section className="py-12 bg-[#0f1119] border-b border-[#d3bb73]/10">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
+                <h2 className="text-2xl font-light text-[#e5e4e2] mb-6">Edycja Wydarzenia</h2>
+                <Formik
+                  initialValues={{
+                    title: project?.title || '',
+                    category: project?.category || '',
+                    image: project?.image || '',
+                    alt: project?.alt || '',
+                    imageData: {
+                      alt: project?.alt || '',
+                      image_metadata: project?.image_metadata,
+                    } as IUploadImage,
+                    description: project?.description || '',
+                    order_index: project?.order_index || 0,
+                    image_metadata: project?.image_metadata,
+                    gallery: project?.gallery || [],
+                    location: project?.location || 'Polska',
+                    event_date: project?.event_date || new Date().toISOString().split('T')[0],
+                  }}
+                  onSubmit={handleSave}
+                >
+                  {({ submitForm, values, setFieldValue }) => (
+                    <Form>
+                      <div className="mb-6">
+                        <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Hero Image</label>
+                        <ImageEditorField
+                          fieldName="imageData"
+                          isAdmin={true}
+                          mode="vertical"
+                          multiplier={1.25}
+                          image={{
+                            alt: project?.alt,
+                            image_metadata: project?.image_metadata,
+                          }}
+                          onSave={async () => {}}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <FormInput name="title" label="Tytuł wydarzenia" />
+                        <FormInput name="category" label="Kategoria" />
+                        <FormInput name="location" label="Lokalizacja" />
+                        <FormInput name="event_date" label="Data wydarzenia" type="date" />
+                        <FormInput name="order_index" label="Kolejność" type="number" />
+                        <div className="md:col-span-2">
+                          <FormInput name="description" label="Opis wydarzenia" multiline rows={4} />
+                        </div>
+                      </div>
+
+                      <div className="mb-6">
+                        <label className="block text-[#e5e4e2] text-sm font-medium mb-3">Galeria Wydarzenia</label>
+                        <PortfolioGalleryEditor
+                          gallery={values.gallery}
+                          onChange={(newGallery) => setFieldValue('gallery', newGallery)}
+                        />
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={submitForm}
+                          className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                        >
+                          <Save className="w-4 h-4" />
+                          Zapisz zmiany
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(false)}
+                          className="flex items-center gap-2 px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                          Anuluj
+                        </button>
+                      </div>
+                    </Form>
+                  )}
+                </Formik>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
