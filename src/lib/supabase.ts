@@ -44,6 +44,12 @@ export interface TeamMember {
   updated_at?: string;
 }
 
+export interface GalleryImage {
+  src: string;
+  alt?: string;
+  image_metadata?: ImageMetadata;
+}
+
 export interface PortfolioProject {
   _id?: string;
   id?: string;
@@ -54,6 +60,10 @@ export interface PortfolioProject {
   image_metadata?: ImageMetadata;
   description: string;
   order_index: number;
+  gallery?: GalleryImage[];
+  hero_image_section?: string;
+  location?: string;
+  event_date?: string;
   created_at?: string;
   updated_at?: string;
 }

@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Tag, MapPin } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, MapPin, Image as ImageIcon } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PortfolioProject } from '@/lib/supabase';
+import { PageHeroImage } from '@/components/PageHeroImage';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
   {
@@ -163,16 +164,12 @@ export default function ProjectDetailPage() {
     <>
       <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
-        <section className="relative py-24 md:py-32 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] overflow-hidden">
-          <div className="absolute inset-0">
-            <img
-              src={project.image_metadata?.desktop?.src || project.image}
-              alt={project.alt || project.title}
-              className="w-full h-full object-cover opacity-20"
-            />
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/90 to-[#0f1119]/90"></div>
-          </div>
-
+        <PageHeroImage
+          section={project.hero_image_section || `portfolio-${project.id}`}
+          defaultImage={project.image_metadata?.desktop?.src || project.image}
+          defaultOpacity={0.2}
+          className="py-24 md:py-32 overflow-hidden"
+        >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <Link
               href="/portfolio"
@@ -225,7 +222,7 @@ export default function ProjectDetailPage() {
               </div>
             </div>
           </div>
-        </section>
+        </PageHeroImage>
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -262,11 +259,46 @@ export default function ProjectDetailPage() {
               <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-xl p-6 text-center">
                 <MapPin className="w-8 h-8 text-[#d3bb73] mx-auto mb-4" />
                 <h3 className="text-[#e5e4e2] font-light mb-2">Lokalizacja</h3>
-                <p className="text-[#d3bb73] text-sm">Polska</p>
+                <p className="text-[#d3bb73] text-sm">{project.location || 'Polska'}</p>
               </div>
             </div>
           </div>
         </section>
+
+        {project.gallery && project.gallery.length > 0 && (
+          <section className="py-24 bg-gradient-to-br from-[#0f1119] to-[#1c1f33]">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="text-center mb-16">
+                <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+                  Galeria Wydarzenia
+                </h2>
+                <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {project.gallery.map((image, index) => (
+                  <div
+                    key={index}
+                    className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300"
+                  >
+                    <img
+                      src={image.image_metadata?.desktop?.src || image.src}
+                      alt={image.alt || `Zdjęcie z wydarzenia ${index + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <p className="text-[#e5e4e2] text-sm font-light">
+                          {image.alt || `Zdjęcie ${index + 1}`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="py-24 bg-gradient-to-br from-[#0f1119] to-[#1c1f33]">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">

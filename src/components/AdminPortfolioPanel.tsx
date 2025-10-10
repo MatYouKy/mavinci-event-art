@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { Plus, CreditCard as Edit2, Trash2 } from 'lucide-react';
 import { Formik, Form } from 'formik';
-import { PortfolioProject } from '../lib/supabase';
+import { PortfolioProject, GalleryImage } from '../lib/supabase';
 import { ImageEditorField } from './ImageEditorField';
 import { FormInput } from './formik/FormInput';
 import { uploadImage } from '../lib/storage';
 import { IUploadImage } from '../types/image';
+import { PortfolioGalleryEditor } from './PortfolioGalleryEditor';
 
 export default function AdminPortfolioPanel() {
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
@@ -62,6 +63,10 @@ export default function AdminPortfolioPanel() {
         image_metadata: imageMetadata,
         description: values.description,
         order_index: values.order_index,
+        gallery: values.gallery || [],
+        hero_image_section: `portfolio-${values.title.toLowerCase().replace(/\s+/g, '-')}`,
+        location: values.location || 'Polska',
+        event_date: values.event_date || new Date().toISOString().split('T')[0],
       };
 
       if (isNew) {
@@ -126,6 +131,9 @@ export default function AdminPortfolioPanel() {
       description: project.description,
       order_index: project.order_index,
       image_metadata: project.image_metadata,
+      gallery: project.gallery || [],
+      location: project.location || 'Polska',
+      event_date: project.event_date || new Date().toISOString().split('T')[0],
     };
   };
 
@@ -161,14 +169,18 @@ export default function AdminPortfolioPanel() {
             description: '',
             order_index: projects.length,
             image_metadata: undefined,
+            gallery: [] as GalleryImage[],
+            location: 'Polska',
+            event_date: new Date().toISOString().split('T')[0],
           }}
           onSubmit={(values) => handleSave(values, true)}
         >
-          {({ submitForm }) => (
+          {({ submitForm, values, setFieldValue }) => (
             <Form className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
               <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Nowy Projekt</h3>
 
               <div className="mb-6">
+                <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Hero Image</label>
                 <ImageEditorField
                   fieldName="imageData"
                   isAdmin={true}
@@ -178,13 +190,22 @@ export default function AdminPortfolioPanel() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <FormInput name="title" label="Tytuł projektu" placeholder="Gala Biznesowa 2024" />
                 <FormInput name="category" label="Kategoria" placeholder="Corporate Event" />
+                <FormInput name="location" label="Lokalizacja" placeholder="Warszawa" />
+                <FormInput name="event_date" label="Data wydarzenia" type="date" />
                 <FormInput name="order_index" label="Kolejność" type="number" />
                 <div className="md:col-span-2">
                   <FormInput name="description" label="Opis projektu" multiline rows={3} />
                 </div>
+              </div>
+
+              <div className="mb-6">
+                <PortfolioGalleryEditor
+                  gallery={values.gallery}
+                  onChange={(newGallery) => setFieldValue('gallery', newGallery)}
+                />
               </div>
 
               <div className="flex gap-3 mt-4">
@@ -218,9 +239,10 @@ export default function AdminPortfolioPanel() {
                 initialValues={getProjectForEdit(project)}
                 onSubmit={(values) => handleSave(values, false)}
               >
-                {({ submitForm }) => (
+                {({ submitForm, values, setFieldValue }) => (
                   <Form className="p-6">
                     <div className="mb-6">
+                      <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Hero Image</label>
                       <ImageEditorField
                         fieldName="imageData"
                         isAdmin={true}
@@ -237,8 +259,17 @@ export default function AdminPortfolioPanel() {
                     <div className="space-y-4 mb-4">
                       <FormInput name="title" label="Tytuł" />
                       <FormInput name="category" label="Kategoria" />
+                      <FormInput name="location" label="Lokalizacja" />
+                      <FormInput name="event_date" label="Data wydarzenia" type="date" />
                       <FormInput name="order_index" label="Kolejność" type="number" />
                       <FormInput name="description" label="Opis" multiline rows={2} />
+                    </div>
+
+                    <div className="mb-4">
+                      <PortfolioGalleryEditor
+                        gallery={values.gallery}
+                        onChange={(newGallery) => setFieldValue('gallery', newGallery)}
+                      />
                     </div>
 
                     <div className="flex gap-3">
