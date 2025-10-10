@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2 } from 'lucide-react';
+import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2, Save } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PortfolioProject, GalleryImage } from '@/lib/supabase';
@@ -109,6 +110,7 @@ const MOCK_PROJECTS: PortfolioProject[] = [
 ];
 
 export default function PortfolioPage() {
+  const router = useRouter();
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -254,7 +256,7 @@ export default function PortfolioPage() {
                 </p>
                 {isEditMode && (
                   <button
-                    onClick={() => setIsAdding(true)}
+                    onClick={() => router.push('/portfolio/new')}
                     className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
                   >
                     <Plus className="w-5 h-5" />
