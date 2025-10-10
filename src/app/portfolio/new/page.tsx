@@ -2,12 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, MapPin, Calendar, Tag, Image as ImageIcon } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { PageHeroImage } from '@/components/PageHeroImage';
-import { Formik, Form } from 'formik';
-import { FormInput } from '@/components/formik/FormInput';
 import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
 import { uploadImage } from '@/lib/storage';
@@ -19,26 +16,49 @@ export default function NewPortfolioPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [saving, setSaving] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string>('https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920');
 
-  const handleSave = async (values: any) => {
+  // Stan formularza
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('');
+  const [location, setLocation] = useState('Polska');
+  const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [description, setDescription] = useState('');
+  const [orderIndex, setOrderIndex] = useState(0);
+  const [imageData, setImageData] = useState<IUploadImage | null>(null);
+  const [previewImage, setPreviewImage] = useState<string>('https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920');
+  const [heroOpacity, setHeroOpacity] = useState(0.2);
+  const [gallery, setGallery] = useState<GalleryImage[]>([]);
+
+  const handleImageSelect = (data: IUploadImage) => {
+    setImageData(data);
+    if (data.file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewImage(reader.result as string);
+      };
+      reader.readAsDataURL(data.file);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!title || !imageData?.file) {
+      showSnackbar('Uzupełnij tytuł i dodaj zdjęcie', 'error');
+      return;
+    }
+
     setSaving(true);
     try {
-      let imageUrl = '';
-
-      if (values.imageData?.file) {
-        imageUrl = await uploadImage(values.imageData.file, 'portfolio');
-      }
+      const imageUrl = await uploadImage(imageData.file, 'portfolio');
 
       const newProject = {
-        title: values.title,
-        category: values.category,
+        title,
+        category,
         image: imageUrl,
-        alt: values.imageData?.alt || values.title,
-        description: values.description,
-        order_index: parseInt(values.order_index) || 0,
-        location: values.location,
-        event_date: values.event_date,
+        alt: imageData.alt || title,
+        description,
+        order_index: orderIndex,
+        location,
+        event_date: eventDate,
         image_metadata: {
           desktop: {
             src: imageUrl,
@@ -49,7 +69,7 @@ export default function NewPortfolioPage() {
             position: { posX: 0, posY: 0, scale: 1 },
           },
         },
-        gallery: values.gallery,
+        gallery,
       };
 
       const { data, error } = await supabase
@@ -70,17 +90,30 @@ export default function NewPortfolioPage() {
     }
   };
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   return (
     <>
       <Navbar />
       <main className="min-h-screen bg-gradient-to-b from-[#0a0c15] via-[#0f1119] to-[#1c1f33]">
-        <PageHeroImage
-          section="portfolio"
-          defaultImage={previewImage}
-          defaultOpacity={0.2}
-          className="py-24 md:py-32 overflow-hidden"
-        >
+        {/* Hero Section z edytowalnym tłem */}
+        <section className="relative py-24 md:py-32 overflow-hidden">
+          {/* Background Image */}
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${previewImage})`,
+              opacity: heroOpacity,
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0c15]/50 via-[#0f1119]/30 to-[#1c1f33]" />
+
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Top Navigation */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
               <button
                 onClick={() => router.push('/portfolio')}
@@ -89,105 +122,157 @@ export default function NewPortfolioPage() {
                 <ArrowLeft className="w-4 h-4" />
                 Wróć do portfolio
               </button>
-            </div>
 
-            <div className="text-center">
-              <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
-                Nowe <span className="text-[#d3bb73]">Wydarzenie</span>
-              </h1>
-              <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed max-w-2xl mx-auto">
-                Uzupełnij szczegóły wydarzenia i zobacz jak będzie wyglądać na stronie
-              </p>
-            </div>
-          </div>
-        </PageHeroImage>
-
-        <section className="py-12 bg-[#0f1119] border-b border-[#d3bb73]/10">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
-              <h2 className="text-2xl font-light text-[#e5e4e2] mb-6">Szczegóły Wydarzenia</h2>
-              <Formik
-                initialValues={{
-                  title: '',
-                  category: '',
-                  imageData: null as IUploadImage | null,
-                  description: '',
-                  order_index: 0,
-                  gallery: [] as GalleryImage[],
-                  location: 'Polska',
-                  event_date: new Date().toISOString().split('T')[0],
-                }}
-                onSubmit={handleSave}
+              <button
+                onClick={handleSave}
+                disabled={saving || !title || !imageData?.file}
+                className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto justify-center"
               >
-                {({ submitForm, values, setFieldValue }) => (
-                  <Form>
-                    <div className="mb-6">
-                      <label className="block text-[#e5e4e2] text-sm font-medium mb-3">Główne zdjęcie wydarzenia</label>
-                      <SimpleImageUploader
-                        onImageSelect={(imageData) => {
-                          setFieldValue('imageData', imageData);
-                          if (imageData.file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setPreviewImage(reader.result as string);
-                            };
-                            reader.readAsDataURL(imageData.file);
-                          }
-                        }}
-                        showPreview={true}
+                <Save className="w-4 h-4" />
+                {saving ? 'Zapisywanie...' : 'Zapisz wydarzenie'}
+              </button>
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              {/* Left Column - Editable Content */}
+              <div>
+                {/* Category Badge */}
+                <div className="mb-6">
+                  <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2">
+                    <Tag className="w-5 h-5 text-[#d3bb73]" />
+                    <input
+                      type="text"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      placeholder="Kategoria wydarzenia"
+                      className="bg-transparent text-[#d3bb73] text-sm font-medium outline-none border-none w-full"
+                    />
+                  </div>
+                </div>
+
+                {/* Title */}
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Tytuł wydarzenia..."
+                  className="w-full bg-transparent text-4xl md:text-5xl font-light text-[#e5e4e2] mb-6 outline-none border-b-2 border-transparent focus:border-[#d3bb73] transition-colors pb-2"
+                />
+
+                {/* Location & Date */}
+                <div className="flex flex-wrap gap-6 mb-8">
+                  <div className="flex items-center gap-2 text-[#e5e4e2]/70">
+                    <MapPin className="w-5 h-5 text-[#d3bb73]" />
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="Lokalizacja"
+                      className="bg-transparent outline-none border-none text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 text-[#e5e4e2]/70">
+                    <Calendar className="w-5 h-5 text-[#d3bb73]" />
+                    <span className="text-sm">{formatDate(eventDate)}</span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Opis wydarzenia... Opisz co się wydarzyło, jakie były atrakcje, ile osób uczestniczyło."
+                  className="w-full bg-[#1c1f33]/40 text-[#e5e4e2]/80 text-base font-light leading-relaxed p-4 rounded-lg border border-[#d3bb73]/20 outline-none focus:border-[#d3bb73] transition-colors resize-none"
+                  rows={6}
+                />
+              </div>
+
+              {/* Right Column - Image Uploader */}
+              <div className="space-y-4">
+                <div className="bg-[#1c1f33]/60 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <ImageIcon className="w-5 h-5 text-[#d3bb73]" />
+                    <h3 className="text-lg font-light text-[#e5e4e2]">Główne zdjęcie</h3>
+                  </div>
+                  <SimpleImageUploader
+                    onImageSelect={handleImageSelect}
+                    showPreview={true}
+                  />
+
+                  {/* Opacity Control */}
+                  <div className="mt-4">
+                    <label className="block text-[#e5e4e2]/70 text-sm mb-2">
+                      Przeźroczystość tła: {Math.round(heroOpacity * 100)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={heroOpacity * 100}
+                      onChange={(e) => setHeroOpacity(parseInt(e.target.value) / 100)}
+                      className="w-full h-2 bg-[#1c1f33] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                    />
+                  </div>
+                </div>
+
+                {/* Additional Settings */}
+                <div className="bg-[#1c1f33]/60 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-6">
+                  <h3 className="text-lg font-light text-[#e5e4e2] mb-4">Ustawienia</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[#e5e4e2]/70 text-sm mb-2">Data wydarzenia</label>
+                      <input
+                        type="date"
+                        value={eventDate}
+                        onChange={(e) => setEventDate(e.target.value)}
+                        className="w-full bg-[#0a0c15] text-[#e5e4e2] px-4 py-2 rounded-lg border border-[#d3bb73]/20 outline-none focus:border-[#d3bb73] transition-colors"
                       />
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                      <FormInput name="title" label="Tytuł wydarzenia" />
-                      <FormInput name="category" label="Kategoria" />
-                      <FormInput name="location" label="Lokalizacja" />
-                      <FormInput name="event_date" label="Data wydarzenia" type="date" />
-                      <FormInput name="order_index" label="Kolejność" type="number" />
-                      <div className="md:col-span-2">
-                        <FormInput name="description" label="Opis wydarzenia" multiline rows={4} />
-                      </div>
-                    </div>
-
-                    <div className="mb-6">
-                      <PortfolioGalleryEditor
-                        gallery={values.gallery}
-                        onChange={(gallery) => setFieldValue('gallery', gallery)}
+                    <div>
+                      <label className="block text-[#e5e4e2]/70 text-sm mb-2">Kolejność wyświetlania</label>
+                      <input
+                        type="number"
+                        value={orderIndex}
+                        onChange={(e) => setOrderIndex(parseInt(e.target.value) || 0)}
+                        className="w-full bg-[#0a0c15] text-[#e5e4e2] px-4 py-2 rounded-lg border border-[#d3bb73]/20 outline-none focus:border-[#d3bb73] transition-colors"
                       />
                     </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={submitForm}
-                        disabled={saving || !values.title || !values.imageData?.file}
-                        className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Save className="w-4 h-4" />
-                        {saving ? 'Zapisywanie...' : 'Zapisz wydarzenie'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => router.push('/portfolio')}
-                        className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
-                      >
-                        Anuluj
-                      </button>
-                    </div>
-                  </Form>
-                )}
-              </Formik>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="py-16 bg-[#0a0c15]">
+        {/* Gallery Section */}
+        <section className="py-16 bg-[#0f1119] border-t border-[#d3bb73]/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="mb-8">
+              <h2 className="text-3xl font-light text-[#e5e4e2] mb-2">
+                Galeria <span className="text-[#d3bb73]">Zdjęć</span>
+              </h2>
+              <p className="text-[#e5e4e2]/60">
+                Dodaj więcej zdjęć z wydarzenia, które będą wyświetlane w galerii
+              </p>
+            </div>
+            <PortfolioGalleryEditor
+              gallery={gallery}
+              onChange={setGallery}
+            />
+          </div>
+        </section>
+
+        {/* Tips Section */}
+        <section className="py-12 bg-[#0a0c15]">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="bg-[#d3bb73]/5 border border-[#d3bb73]/20 rounded-xl p-6">
-              <h3 className="text-lg font-light text-[#e5e4e2] mb-3">Podgląd</h3>
-              <p className="text-[#e5e4e2]/60 text-sm">
-                Po zapisaniu, wydarzenie będzie widoczne na stronie portfolio. Będziesz mógł je edytować w dowolnym momencie.
-              </p>
+              <h3 className="text-lg font-light text-[#e5e4e2] mb-3">Porady</h3>
+              <ul className="text-[#e5e4e2]/60 text-sm space-y-2">
+                <li>• Wypełnij wszystkie pola aby stworzyć kompletne wydarzenie</li>
+                <li>• Użyj suwaka przeźroczystości aby dostosować widoczność tła</li>
+                <li>• Dodaj co najmniej 3-5 zdjęć do galerii dla najlepszego efektu</li>
+                <li>• Kliknij "Zapisz wydarzenie" gdy będziesz gotowy</li>
+              </ul>
             </div>
           </div>
         </section>
