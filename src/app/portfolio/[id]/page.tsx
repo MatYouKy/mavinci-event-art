@@ -12,7 +12,7 @@ import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { Formik, Form } from 'formik';
 import { FormInput } from '@/components/formik/FormInput';
-import { ImageEditorField } from '@/components/ImageEditorField';
+import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
@@ -234,7 +234,7 @@ export default function ProjectDetailPage() {
           className="py-24 md:py-32 overflow-hidden"
         >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
               <Link
                 href="/portfolio"
                 className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
@@ -246,10 +246,10 @@ export default function ProjectDetailPage() {
               {isEditMode && !isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors w-full sm:w-auto justify-center"
                 >
                   <Edit className="w-4 h-4" />
-                  Edytuj wydarzenie
+                  <span>Edytuj wydarzenie</span>
                 </button>
               )}
             </div>
@@ -326,17 +326,14 @@ export default function ProjectDetailPage() {
                   {({ submitForm, values, setFieldValue }) => (
                     <Form>
                       <div className="mb-6">
-                        <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Hero Image</label>
-                        <ImageEditorField
-                          fieldName="imageData"
-                          isAdmin={true}
-                          mode="vertical"
-                          multiplier={1.25}
-                          image={{
+                        <label className="block text-[#e5e4e2] text-sm font-medium mb-3">Główne zdjęcie wydarzenia</label>
+                        <SimpleImageUploader
+                          onImageSelect={(imageData) => setFieldValue('imageData', imageData)}
+                          initialImage={{
+                            src: project?.image_metadata?.desktop?.src || project?.image,
                             alt: project?.alt,
-                            image_metadata: project?.image_metadata,
                           }}
-                          onSave={async () => {}}
+                          showPreview={true}
                         />
                       </div>
 
