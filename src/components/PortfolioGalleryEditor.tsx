@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Image as ImageIcon, Edit } from 'lucide-react';
 import { GalleryImage } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
-import { ImageEditorField } from './ImageEditorField';
+import { SimpleImageUploader } from './SimpleImageUploader';
 import { IUploadImage } from '@/types/image';
 
 interface PortfolioGalleryEditorProps {
@@ -16,34 +16,37 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [newImageData, setNewImageData] = useState<IUploadImage | null>(null);
+  const [editImageData, setEditImageData] = useState<IUploadImage | null>(null);
 
-  const handleAddImage = async (imageData: IUploadImage) => {
+  const handleAddImage = async () => {
+    if (!newImageData?.file) {
+      alert('Wybierz zdjęcie');
+      return;
+    }
+
     setUploading(true);
     try {
-      if (!imageData.file) {
-        alert('Wybierz zdjęcie');
-        return;
-      }
-
-      const imageUrl = await uploadImage(imageData.file, 'portfolio-gallery');
+      const imageUrl = await uploadImage(newImageData.file, 'portfolio-gallery');
 
       const newImage: GalleryImage = {
         src: imageUrl,
-        alt: imageData.alt || '',
+        alt: newImageData.alt || '',
         image_metadata: {
           desktop: {
             src: imageUrl,
-            position: imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+            position: { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
             src: imageUrl,
-            position: imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+            position: { posX: 0, posY: 0, scale: 1 },
           },
         },
       };
 
       onChange([...gallery, newImage]);
       setIsAdding(false);
+      setNewImageData(null);
     } catch (error) {
       console.error('Error uploading image:', error);
       alert('Błąd podczas wgrywania zdjęcia');
@@ -52,26 +55,26 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
     }
   };
 
-  const handleUpdateImage = async (index: number, imageData: IUploadImage) => {
+  const handleUpdateImage = async (index: number) => {
     setUploading(true);
     try {
       let imageUrl = gallery[index].src;
 
-      if (imageData.file) {
-        imageUrl = await uploadImage(imageData.file, 'portfolio-gallery');
+      if (editImageData?.file) {
+        imageUrl = await uploadImage(editImageData.file, 'portfolio-gallery');
       }
 
       const updatedImage: GalleryImage = {
         src: imageUrl,
-        alt: imageData.alt || '',
+        alt: editImageData?.alt || gallery[index].alt || '',
         image_metadata: {
           desktop: {
             src: imageUrl,
-            position: imageData.image_metadata?.desktop?.position || gallery[index].image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+            position: { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
             src: imageUrl,
-            position: imageData.image_metadata?.mobile?.position || gallery[index].image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+            position: { posX: 0, posY: 0, scale: 1 },
           },
         },
       };
@@ -80,6 +83,7 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
       newGallery[index] = updatedImage;
       onChange(newGallery);
       setEditingIndex(null);
+      setEditImageData(null);
     } catch (error) {
       console.error('Error updating image:', error);
       alert('Błąd podczas aktualizacji zdjęcia');
@@ -112,19 +116,25 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
       {isAdding && (
         <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6">
           <h5 className="text-[#e5e4e2] mb-4">Nowe zdjęcie</h5>
-          <ImageEditorField
-            fieldName="newImage"
-            isAdmin={true}
-            mode="horizontal"
-            multiplier={1.5}
-            onSave={async (imageData) => {
-              await handleAddImage(imageData as IUploadImage);
-            }}
+          <SimpleImageUploader
+            onImageSelect={(imageData) => setNewImageData(imageData)}
+            showPreview={true}
           />
           <div className="flex gap-3 mt-4">
             <button
               type="button"
-              onClick={() => setIsAdding(false)}
+              onClick={handleAddImage}
+              disabled={uploading || !newImageData?.file}
+              className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploading ? 'Wgrywanie...' : 'Dodaj zdjęcie'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsAdding(false);
+                setNewImageData(null);
+              }}
               className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
             >
               Anuluj
@@ -138,26 +148,34 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
           <div key={index} className="relative group">
             {editingIndex === index ? (
               <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-4">
-                <ImageEditorField
-                  fieldName={`gallery-${index}`}
-                  isAdmin={true}
-                  mode="horizontal"
-                  multiplier={1.5}
-                  image={{
+                <SimpleImageUploader
+                  onImageSelect={(imageData) => setEditImageData(imageData)}
+                  initialImage={{
+                    src: image.image_metadata?.desktop?.src || image.src,
                     alt: image.alt,
-                    image_metadata: image.image_metadata,
                   }}
-                  onSave={async (imageData) => {
-                    await handleUpdateImage(index, imageData as IUploadImage);
-                  }}
+                  showPreview={true}
                 />
-                <button
-                  type="button"
-                  onClick={() => setEditingIndex(null)}
-                  className="w-full mt-2 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
-                >
-                  Anuluj
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateImage(index)}
+                    disabled={uploading}
+                    className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                  >
+                    {uploading ? 'Zapisywanie...' : 'Zapisz'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingIndex(null);
+                      setEditImageData(null);
+                    }}
+                    className="flex-1 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -171,10 +189,16 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
                 <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     type="button"
-                    onClick={() => setEditingIndex(index)}
+                    onClick={() => {
+                      setEditingIndex(index);
+                      setEditImageData({
+                        alt: image.alt || '',
+                        image_metadata: image.image_metadata,
+                      } as IUploadImage);
+                    }}
                     className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
                   >
-                    <ImageIcon className="w-4 h-4" />
+                    <Edit className="w-4 h-4" />
                   </button>
                   <button
                     type="button"
