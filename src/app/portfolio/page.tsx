@@ -1,11 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, ArrowUpRight, Filter } from 'lucide-react';
+import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2, Save, X } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { PortfolioProject } from '@/lib/supabase';
+import { PortfolioProject, GalleryImage } from '@/lib/supabase';
 import { PageHeroImage } from '@/components/PageHeroImage';
+import { useEditMode } from '@/contexts/EditModeContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { ImageEditorField } from '@/components/ImageEditorField';
+import { Formik, Form } from 'formik';
+import { FormInput } from '@/components/formik/FormInput';
+import { uploadImage } from '@/lib/storage';
+import { IUploadImage } from '@/types/image';
+import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
+import { supabase } from '@/lib/supabase';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
   {
@@ -101,10 +110,14 @@ const MOCK_PROJECTS: PortfolioProject[] = [
 ];
 
 export default function PortfolioPage() {
+  const { isEditMode } = useEditMode();
+  const { showSnackbar } = useSnackbar();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -113,14 +126,118 @@ export default function PortfolioPage() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/portfolio-projects`);
-      const data = await response.json();
-      setProjects(data && data.length > 0 ? data : MOCK_PROJECTS);
+      const { data, error } = await supabase
+        .from('portfolio_projects')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        setProjects(data);
+      } else {
+        setProjects(MOCK_PROJECTS);
+      }
     } catch (error) {
       console.error('Error fetching projects:', error);
       setProjects(MOCK_PROJECTS);
     }
     setLoading(false);
+  };
+
+  const handleSave = async (values: any, isNew: boolean, projectId?: string) => {
+    try {
+      let imageUrl = values.image;
+      let imageMetadata = values.image_metadata;
+
+      if (values.imageData?.file) {
+        imageUrl = await uploadImage(values.imageData.file, 'portfolio');
+        imageMetadata = {
+          desktop: {
+            src: imageUrl,
+            position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+          mobile: {
+            src: imageUrl,
+            position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+          },
+        };
+      }
+
+      const payload = {
+        title: values.title,
+        category: values.category,
+        image: imageUrl,
+        alt: values.alt || '',
+        image_metadata: imageMetadata,
+        description: values.description,
+        order_index: values.order_index,
+        gallery: values.gallery || [],
+        hero_image_section: `portfolio-${values.title.toLowerCase().replace(/\s+/g, '-')}`,
+        location: values.location || 'Polska',
+        event_date: values.event_date || new Date().toISOString().split('T')[0],
+      };
+
+      if (isNew) {
+        const { error } = await supabase
+          .from('portfolio_projects')
+          .insert([payload]);
+
+        if (error) throw error;
+        showSnackbar('Projekt dodany pomyślnie', 'success');
+        setIsAdding(false);
+      } else {
+        const { error } = await supabase
+          .from('portfolio_projects')
+          .update(payload)
+          .eq('id', projectId);
+
+        if (error) throw error;
+        showSnackbar('Projekt zaktualizowany pomyślnie', 'success');
+        setEditingId(null);
+      }
+
+      fetchProjects();
+    } catch (error: any) {
+      console.error('Error saving project:', error);
+      showSnackbar('Błąd podczas zapisywania projektu', 'error');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć ten projekt?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('portfolio_projects')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showSnackbar('Projekt usunięty pomyślnie', 'success');
+      fetchProjects();
+    } catch (error: any) {
+      console.error('Error deleting project:', error);
+      showSnackbar('Błąd podczas usuwania projektu', 'error');
+    }
+  };
+
+  const getProjectForEdit = (project: PortfolioProject) => {
+    return {
+      title: project.title,
+      category: project.category,
+      image: project.image,
+      alt: project.alt || '',
+      imageData: {
+        alt: project.alt || '',
+        image_metadata: project.image_metadata,
+      } as IUploadImage,
+      description: project.description,
+      order_index: project.order_index,
+      image_metadata: project.image_metadata,
+      gallery: project.gallery || [],
+      location: project.location || 'Polska',
+      event_date: project.event_date || new Date().toISOString().split('T')[0],
+    };
   };
 
   const categories = ['all', ...Array.from(new Set(projects.map(p => p.category)))];
@@ -163,9 +280,20 @@ export default function PortfolioPage() {
                 <Filter className="w-5 h-5 text-[#d3bb73]" />
                 <h2 className="text-xl font-light text-[#e5e4e2]">Filtruj projekty</h2>
               </div>
-              <p className="text-[#e5e4e2]/60 text-sm">
-                {filteredProjects.length} {filteredProjects.length === 1 ? 'projekt' : 'projektów'}
-              </p>
+              <div className="flex items-center gap-4">
+                <p className="text-[#e5e4e2]/60 text-sm">
+                  {filteredProjects.length} {filteredProjects.length === 1 ? 'projekt' : 'projektów'}
+                </p>
+                {isEditMode && (
+                  <button
+                    onClick={() => setIsAdding(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Dodaj wydarzenie
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-3 mb-12">
@@ -184,6 +312,80 @@ export default function PortfolioPage() {
               ))}
             </div>
 
+            {isAdding && (
+              <div className="mb-12 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
+                <h3 className="text-2xl font-light text-[#e5e4e2] mb-6">Nowe Wydarzenie</h3>
+                <Formik
+                  initialValues={{
+                    title: '',
+                    category: '',
+                    image: '',
+                    alt: '',
+                    imageData: {} as IUploadImage,
+                    description: '',
+                    order_index: projects.length,
+                    image_metadata: undefined,
+                    gallery: [] as GalleryImage[],
+                    location: 'Polska',
+                    event_date: new Date().toISOString().split('T')[0],
+                  }}
+                  onSubmit={(values) => handleSave(values, true)}
+                >
+                  {({ submitForm, values, setFieldValue }) => (
+                    <Form>
+                      <div className="mb-6">
+                        <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Hero Image</label>
+                        <ImageEditorField
+                          fieldName="imageData"
+                          isAdmin={true}
+                          mode="vertical"
+                          multiplier={1.25}
+                          onSave={async () => {}}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <FormInput name="title" label="Tytuł wydarzenia" placeholder="Gala Biznesowa 2024" />
+                        <FormInput name="category" label="Kategoria" placeholder="Eventy Korporacyjne" />
+                        <FormInput name="location" label="Lokalizacja" placeholder="Warszawa" />
+                        <FormInput name="event_date" label="Data wydarzenia" type="date" />
+                        <FormInput name="order_index" label="Kolejność" type="number" />
+                        <div className="md:col-span-2">
+                          <FormInput name="description" label="Opis wydarzenia" multiline rows={3} />
+                        </div>
+                      </div>
+
+                      <div className="mb-6">
+                        <PortfolioGalleryEditor
+                          gallery={values.gallery}
+                          onChange={(newGallery) => setFieldValue('gallery', newGallery)}
+                        />
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={submitForm}
+                          className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                        >
+                          <Save className="w-4 h-4" />
+                          Zapisz
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsAdding(false)}
+                          className="flex items-center gap-2 px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                          Anuluj
+                        </button>
+                      </div>
+                    </Form>
+                  )}
+                </Formik>
+              </div>
+            )}
+
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-[#d3bb73] text-lg">Ładowanie projektów...</div>
@@ -194,58 +396,157 @@ export default function PortfolioPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-                {filteredProjects.map((project, index) => (
-                  <a
-                    key={project.id}
-                    href={`/portfolio/${project.id}`}
-                    className="group relative overflow-hidden rounded-2xl cursor-pointer block"
-                    onMouseEnter={() => setHoveredId(project.id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                  >
-                    <div className="aspect-[4/5] relative overflow-hidden">
-                      <img
-                        src={project.image_metadata?.desktop?.src || project.image}
-                        alt={project.alt || project.title}
-                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
-                      />
+                {filteredProjects.map((project, index) => {
+                  const projectId = project.id || '';
+                  const isEditing = editingId === projectId;
 
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
-
-                      <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-[-10px] group-hover:translate-y-0">
-                        <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
-                          <Eye className="w-5 h-5 text-[#1c1f33]" />
-                        </div>
-                        <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
-                          <ArrowUpRight className="w-5 h-5 text-[#1c1f33]" />
-                        </div>
-                      </div>
-
-                      <div className="absolute bottom-0 left-0 right-0 p-6 transform transition-all duration-500">
-                        <div className="mb-3">
-                          <span className="inline-block px-3 py-1 bg-[#d3bb73]/20 backdrop-blur-md border border-[#d3bb73]/40 rounded-full text-[#d3bb73] text-xs font-light tracking-wide">
-                            {project.category}
-                          </span>
-                        </div>
-
-                        <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-2 transform transition-all duration-500 group-hover:translate-x-2">
-                          {project.title}
-                        </h3>
-
-                        <p
-                          className={`text-[#e5e4e2]/70 text-sm font-light leading-relaxed transition-all duration-500 ${
-                            hoveredId === project.id
-                              ? 'opacity-100 translate-y-0 max-h-20'
-                              : 'opacity-0 translate-y-4 max-h-0'
-                          }`}
+                  if (isEditing) {
+                    return (
+                      <div key={projectId} className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-6">
+                        <Formik
+                          initialValues={getProjectForEdit(project)}
+                          onSubmit={(values) => handleSave(values, false, projectId)}
                         >
-                          {project.description}
-                        </p>
-                      </div>
+                          {({ submitForm, values, setFieldValue }) => (
+                            <Form>
+                              <div className="mb-4">
+                                <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Hero Image</label>
+                                <ImageEditorField
+                                  fieldName="imageData"
+                                  isAdmin={true}
+                                  mode="vertical"
+                                  multiplier={1.25}
+                                  image={{
+                                    alt: project.alt,
+                                    image_metadata: project.image_metadata,
+                                  }}
+                                  onSave={async () => {}}
+                                />
+                              </div>
 
-                      <div className="absolute inset-0 border-2 border-transparent group-hover:border-[#d3bb73]/30 rounded-2xl transition-all duration-500 pointer-events-none"></div>
+                              <div className="space-y-3 mb-4">
+                                <FormInput name="title" label="Tytuł" />
+                                <FormInput name="category" label="Kategoria" />
+                                <FormInput name="location" label="Lokalizacja" />
+                                <FormInput name="event_date" label="Data" type="date" />
+                                <FormInput name="order_index" label="Kolejność" type="number" />
+                                <FormInput name="description" label="Opis" multiline rows={2} />
+                              </div>
+
+                              <div className="mb-4">
+                                <PortfolioGalleryEditor
+                                  gallery={values.gallery}
+                                  onChange={(newGallery) => setFieldValue('gallery', newGallery)}
+                                />
+                              </div>
+
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={submitForm}
+                                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
+                                >
+                                  <Save className="w-4 h-4" />
+                                  Zapisz
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(null)}
+                                  className="flex items-center gap-2 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors text-sm"
+                                >
+                                  <X className="w-4 h-4" />
+                                  Anuluj
+                                </button>
+                              </div>
+                            </Form>
+                          )}
+                        </Formik>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={projectId}
+                      className="group relative overflow-hidden rounded-2xl"
+                      onMouseEnter={() => setHoveredId(projectId)}
+                      onMouseLeave={() => setHoveredId(null)}
+                    >
+                      <a
+                        href={`/portfolio/${projectId}`}
+                        className="block"
+                      >
+                        <div className="aspect-[4/5] relative overflow-hidden">
+                          <img
+                            src={project.image_metadata?.desktop?.src || project.image}
+                            alt={project.alt || project.title}
+                            className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
+                          />
+
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
+
+                          <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-[-10px] group-hover:translate-y-0">
+                            {isEditMode ? (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setEditingId(projectId);
+                                  }}
+                                  className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform"
+                                >
+                                  <Edit className="w-5 h-5 text-[#1c1f33]" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handleDelete(projectId);
+                                  }}
+                                  className="w-10 h-10 rounded-full bg-[#800020]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#800020] transition-colors duration-300 hover:scale-110 transform"
+                                >
+                                  <Trash2 className="w-5 h-5 text-[#e5e4e2]" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
+                                  <Eye className="w-5 h-5 text-[#1c1f33]" />
+                                </div>
+                                <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
+                                  <ArrowUpRight className="w-5 h-5 text-[#1c1f33]" />
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          <div className="absolute bottom-0 left-0 right-0 p-6 transform transition-all duration-500">
+                            <div className="mb-3">
+                              <span className="inline-block px-3 py-1 bg-[#d3bb73]/20 backdrop-blur-md border border-[#d3bb73]/40 rounded-full text-[#d3bb73] text-xs font-light tracking-wide">
+                                {project.category}
+                              </span>
+                            </div>
+
+                            <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-2 transform transition-all duration-500 group-hover:translate-x-2">
+                              {project.title}
+                            </h3>
+
+                            <p
+                              className={`text-[#e5e4e2]/70 text-sm font-light leading-relaxed transition-all duration-500 ${
+                                hoveredId === projectId
+                                  ? 'opacity-100 translate-y-0 max-h-20'
+                                  : 'opacity-0 translate-y-4 max-h-0'
+                              }`}
+                            >
+                              {project.description}
+                            </p>
+                          </div>
+
+                          <div className="absolute inset-0 border-2 border-transparent group-hover:border-[#d3bb73]/30 rounded-2xl transition-all duration-500 pointer-events-none"></div>
+                        </div>
+                      </a>
                     </div>
-                  </a>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
