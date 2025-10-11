@@ -526,33 +526,21 @@ export default function ProjectDetailPage() {
               ) : (
                 <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 md:p-12">
                   {features.length > 0 && (
-                    <div className="flex justify-center mb-8">
-                      <div
-                        className={`grid gap-6 max-w-4xl ${
-                          features.length === 1
-                            ? 'grid-cols-1'
-                            : features.length === 2
-                            ? 'grid-cols-1 md:grid-cols-2'
-                            : features.length === 3
-                            ? 'grid-cols-1 md:grid-cols-3'
-                            : 'grid-cols-2 md:grid-cols-4'
-                        }`}
-                      >
-                        {features.map((feature, idx) => {
-                          const IconComponent = (Icons as any)[feature.icon_name];
-                          return (
-                            <div key={idx} className="text-center">
-                              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
-                                {IconComponent && <IconComponent className="w-8 h-8 text-[#d3bb73]" />}
-                              </div>
-                              <h3 className="text-[#e5e4e2] font-light text-sm">{feature.title}</h3>
-                              {feature.description && (
-                                <p className="text-[#e5e4e2]/60 text-xs mt-1">{feature.description}</p>
-                              )}
+                    <div className="flex flex-wrap justify-center gap-6 mb-8 max-w-4xl mx-auto">
+                      {features.map((feature, idx) => {
+                        const IconComponent = (Icons as any)[feature.icon_name];
+                        return (
+                          <div key={idx} className="text-center w-32">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
+                              {IconComponent && <IconComponent className="w-8 h-8 text-[#d3bb73]" />}
                             </div>
-                          );
-                        })}
-                      </div>
+                            <h3 className="text-[#e5e4e2] font-light text-sm">{feature.title}</h3>
+                            {feature.description && (
+                              <p className="text-[#e5e4e2]/60 text-xs mt-1">{feature.description}</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
