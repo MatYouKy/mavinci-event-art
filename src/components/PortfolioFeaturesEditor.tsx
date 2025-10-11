@@ -1,9 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import type { AvailableIcon, PortfolioProjectFeature } from '@/lib/supabase';
+import { useState } from 'react';
+import type { PortfolioProjectFeature } from '@/lib/supabase';
 import * as Icons from 'lucide-react';
+
+interface AvailableIcon {
+  name: string;
+  label: string;
+  category: string;
+  description?: string;
+}
 
 interface PortfolioFeaturesEditorProps {
   projectId?: string;
@@ -11,45 +17,57 @@ interface PortfolioFeaturesEditorProps {
   onChange: (features: PortfolioProjectFeature[]) => void;
 }
 
+// Stała lista dostępnych ikon - zdefiniowana bezpośrednio w UI
+const AVAILABLE_ICONS: AvailableIcon[] = [
+  // Ludzie
+  { name: 'Users', label: 'Zespół', category: 'ludzie', description: 'Profesjonalny zespół' },
+  { name: 'UserCheck', label: 'Ekspert', category: 'ludzie', description: 'Eksperci w swojej dziedzinie' },
+  { name: 'UsersRound', label: 'Grupa', category: 'ludzie', description: 'Duża grupa uczestników' },
+
+  // Czas
+  { name: 'Clock', label: 'Terminowość', category: 'czas', description: 'Dotrzymanie terminów' },
+  { name: 'Timer', label: 'Szybkość', category: 'czas', description: 'Szybka realizacja' },
+  { name: 'Calendar', label: 'Planowanie', category: 'czas', description: 'Dobre planowanie' },
+
+  // Jakość
+  { name: 'Award', label: 'Jakość', category: 'jakość', description: 'Najwyższa jakość' },
+  { name: 'Star', label: 'Wyróżnienie', category: 'jakość', description: 'Nagradzana realizacja' },
+  { name: 'BadgeCheck', label: 'Certyfikat', category: 'jakość', description: 'Certyfikowana jakość' },
+  { name: 'Target', label: 'Precyzja', category: 'jakość', description: 'Precyzyjna realizacja' },
+
+  // Technologia
+  { name: 'Lightbulb', label: 'Innowacyjność', category: 'technologia', description: 'Innowacyjne rozwiązania' },
+  { name: 'Zap', label: 'Energia', category: 'technologia', description: 'Pełna energii' },
+  { name: 'Radio', label: 'Sprzęt', category: 'technologia', description: 'Profesjonalny sprzęt' },
+  { name: 'Settings', label: 'Konfiguracja', category: 'technologia', description: 'Dopasowana konfiguracja' },
+  { name: 'Mic', label: 'Audio', category: 'technologia', description: 'Profesjonalne audio' },
+
+  // Realizacja
+  { name: 'CheckCircle2', label: 'Kompleksowość', category: 'realizacja', description: 'Kompleksowa realizacja' },
+  { name: 'Package', label: 'Kompletność', category: 'realizacja', description: 'Kompletne wyposażenie' },
+  { name: 'Truck', label: 'Logistyka', category: 'realizacja', description: 'Sprawna logistyka' },
+  { name: 'Wrench', label: 'Serwis', category: 'realizacja', description: 'Pełen serwis' },
+
+  // Sukces
+  { name: 'TrendingUp', label: 'Wzrost', category: 'sukces', description: 'Rosnące wyniki' },
+  { name: 'ThumbsUp', label: 'Zadowolenie', category: 'sukces', description: 'Zadowolony klient' },
+  { name: 'Heart', label: 'Pasja', category: 'sukces', description: 'Z pasją i zaangażowaniem' },
+  { name: 'Sparkles', label: 'Wyjątkowość', category: 'sukces', description: 'Wyjątkowe wydarzenie' },
+];
+
 export default function PortfolioFeaturesEditor({
   projectId,
   features,
   onChange
 }: PortfolioFeaturesEditorProps) {
-  const [availableIcons, setAvailableIcons] = useState<AvailableIcon[]>([]);
   const [showIconPicker, setShowIconPicker] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  useEffect(() => {
-    fetchAvailableIcons();
-  }, []);
-
-  const fetchAvailableIcons = async () => {
-    try {
-      console.log('🔍 Fetching icons from Supabase using RPC...');
-
-      const { data, error } = await supabase
-        .rpc('get_available_icons');
-
-      if (error) {
-        console.error('❌ Error fetching icons:', error);
-        console.error('📋 Error details:', JSON.stringify(error, null, 2));
-        return;
-      }
-
-      console.log('✅ Loaded icons:', data?.length || 0);
-      console.log('📦 First 3 icons:', data?.slice(0, 3));
-      setAvailableIcons(data || []);
-    } catch (err) {
-      console.error('💥 Exception while fetching icons:', err);
-    }
-  };
-
-  const categories = ['all', ...new Set(availableIcons.map(icon => icon.category))];
+  const categories = ['all', ...new Set(AVAILABLE_ICONS.map(icon => icon.category))];
 
   const filteredIcons = selectedCategory === 'all'
-    ? availableIcons
-    : availableIcons.filter(icon => icon.category === selectedCategory);
+    ? AVAILABLE_ICONS
+    : AVAILABLE_ICONS.filter(icon => icon.category === selectedCategory);
 
   const addFeature = () => {
     const newFeature: PortfolioProjectFeature = {
@@ -149,7 +167,7 @@ export default function PortfolioFeaturesEditor({
                   </div>
                   <div>
                     <div className="text-white font-medium">
-                      {availableIcons.find(i => i.name === feature.icon_name)?.label || feature.icon_name}
+                      {AVAILABLE_ICONS.find(i => i.name === feature.icon_name)?.label || feature.icon_name}
                     </div>
                     <div className="text-sm text-gray-400">Kliknij aby zmienić</div>
                   </div>
@@ -159,7 +177,7 @@ export default function PortfolioFeaturesEditor({
                   <div className="absolute z-[100] mt-2 w-full min-w-[500px] bg-gray-900 border-2 border-yellow-500 rounded-lg shadow-2xl p-4">
                     {/* Debug Info */}
                     <div className="text-xs text-gray-500 mb-2">
-                      Załadowano: {availableIcons.length} ikon | Widoczne: {filteredIcons.length}
+                      Załadowano: {AVAILABLE_ICONS.length} ikon | Widoczne: {filteredIcons.length}
                     </div>
 
                     {/* Category Filter */}
@@ -184,14 +202,12 @@ export default function PortfolioFeaturesEditor({
                     <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
                       {filteredIcons.length === 0 ? (
                         <div className="col-span-4 text-center py-8 text-gray-400">
-                          {availableIcons.length === 0
-                            ? 'Ładowanie ikon...'
-                            : 'Brak ikon w tej kategorii'}
+                          Brak ikon w tej kategorii
                         </div>
                       ) : (
                         filteredIcons.map(icon => (
                           <button
-                            key={icon.id}
+                            key={icon.name}
                             type="button"
                             onClick={() => {
                               updateFeature(index, { icon_name: icon.name });
