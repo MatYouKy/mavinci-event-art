@@ -36,7 +36,7 @@ export async function PUT(
       .update(updateData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('[API PUT] Supabase error:', error);

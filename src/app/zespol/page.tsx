@@ -14,75 +14,6 @@ import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { PageHeroImage } from '@/components/PageHeroImage';
 
-const MOCK_TEAM: TeamMember[] = [
-  {
-    id: 'mock-1',
-    name: 'Anna Kowalska',
-    position: 'CEO & Founder',
-    image: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=800',
-    bio: 'Pasjonatka eventów z 15-letnim doświadczeniem w branży. Specjalizuje się w zarządzaniu dużymi projektami i budowaniu relacji z klientami.',
-    email: 'anna.kowalska@mavinci.pl',
-    order_index: 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-2',
-    name: 'Piotr Nowak',
-    position: 'Creative Director',
-    image: 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=800',
-    bio: 'Kreatywny umysł stojący za najciekawszymi koncepcjami eventowymi. Łączy nowoczesne technologie z artystyczną wizją.',
-    email: 'piotr.nowak@mavinci.pl',
-    order_index: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-3',
-    name: 'Maria Wiśniewska',
-    position: 'Event Manager',
-    image: 'https://images.pexels.com/photos/733872/pexels-photo-733872.jpeg?auto=compress&cs=tinysrgb&w=800',
-    bio: 'Ekspertka w planowaniu i koordynacji eventów. Dbała o każdy szczegół, zapewnia płynny przebieg każdego wydarzenia.',
-    email: 'maria.wisniewska@mavinci.pl',
-    order_index: 3,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-4',
-    name: 'Jakub Kamiński',
-    position: 'Technical Director',
-    image: 'https://images.pexels.com/photos/1516680/pexels-photo-1516680.jpeg?auto=compress&cs=tinysrgb&w=800',
-    bio: 'Specjalista od techniki scenicznej i multimediów. Odpowiada za najwyższą jakość realizacji technicznej naszych eventów.',
-    email: 'jakub.kaminski@mavinci.pl',
-    order_index: 4,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-5',
-    name: 'Katarzyna Lewandowska',
-    position: 'Marketing Manager',
-    image: 'https://images.pexels.com/photos/762020/pexels-photo-762020.jpeg?auto=compress&cs=tinysrgb&w=800',
-    bio: 'Odpowiedzialna za marketing i komunikację. Tworzy strategie promocyjne, które przyciągają uwagę i budują zasięgi.',
-    email: 'katarzyna.lewandowska@mavinci.pl',
-    order_index: 5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-6',
-    name: 'Tomasz Dąbrowski',
-    position: 'Production Manager',
-    image: 'https://images.pexels.com/photos/1080213/pexels-photo-1080213.jpeg?auto=compress&cs=tinysrgb&w=800',
-    bio: 'Koordynuje produkcję eventów od strony logistycznej. Zapewnia, że wszystkie elementy są na swoim miejscu we właściwym czasie.',
-    email: 'tomasz.dabrowski@mavinci.pl',
-    order_index: 6,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 export default function TeamPage() {
   const { isEditMode } = useEditMode();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -99,10 +30,10 @@ export default function TeamPage() {
     try {
       const response = await fetch('/api/team-members', { cache: 'no-store' });
       const data = await response.json();
-      setTeam(data && data.length > 0 ? data : MOCK_TEAM);
+      setTeam(data || []);
     } catch (error) {
       console.error('Error fetching team:', error);
-      setTeam(MOCK_TEAM);
+      setTeam([]);
     }
     setLoading(false);
   };
