@@ -308,21 +308,31 @@ function AddEmailAccountModal({
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('employee_email_accounts').insert([
+      console.log('Attempting to insert email account:', { ...formData, employee_id: employeeId });
+
+      const { data, error } = await supabase.from('employee_email_accounts').insert([
         {
           ...formData,
           employee_id: employeeId,
         },
-      ]);
+      ]).select();
 
-      if (error) throw error;
+      console.log('Insert result:', { data, error });
+
+      if (error) {
+        console.error('Supabase error details:', error);
+        throw error;
+      }
 
       alert('✅ Konto email zostało pomyślnie dodane!');
       onAdded();
       onClose();
     } catch (err) {
       console.error('Error adding email account:', err);
-      alert('❌ Błąd podczas dodawania konta email: ' + (err as Error).message);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const errorDetails = JSON.stringify(err, null, 2);
+      console.error('Full error details:', errorDetails);
+      alert('❌ Błąd podczas dodawania konta email:\n\n' + errorMessage + '\n\nSprawdź konsolę dla szczegółów.');
     } finally {
       setSaving(false);
     }
