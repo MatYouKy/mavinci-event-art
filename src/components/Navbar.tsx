@@ -371,9 +371,6 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 </button>
               </>
             )}
-            <Link href="/#kontakt" className="bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors duration-200">
-              Skontaktuj się
-            </Link>
           </div>
 
           <button
