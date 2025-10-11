@@ -59,6 +59,7 @@ export interface PortfolioProject {
   alt?: string;
   image_metadata?: ImageMetadata;
   description: string;
+  detailed_description?: string;
   order_index: number;
   gallery?: GalleryImage[];
   hero_image_section?: string;
