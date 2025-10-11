@@ -12,6 +12,7 @@ import { SnackbarProvider } from '@/contexts/SnackbarContext';
 const navigation = [
   { name: 'Dashboard', href: '/crm', icon: LayoutDashboard },
   { name: 'Kalendarz', href: '/crm/calendar', icon: Calendar },
+  { name: 'Wiadomości', href: '/crm/messages', icon: Mail },
   { name: 'Klienci', href: '/crm/clients', icon: Building2 },
   { name: 'Eventy', href: '/crm/events', icon: Calendar },
   { name: 'Oferty', href: '/crm/offers', icon: FileText },
@@ -20,7 +21,6 @@ const navigation = [
   { name: 'Pracownicy', href: '/crm/employees', icon: Users },
   { name: 'Sprzęt', href: '/crm/equipment', icon: Package },
   { name: 'Zadania', href: '/crm/tasks', icon: CheckSquare },
-  { name: 'Mailing', href: '/crm/mailing', icon: Mail },
 ];
 
 export default function CRMLayout({ children }: { children: React.ReactNode }) {

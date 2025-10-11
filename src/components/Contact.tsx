@@ -126,7 +126,7 @@ export default function Contact() {
             </div>
           </div>
 
-          <ContactForm />
+          <ContactForm category="event_inquiry" />
         </div>
       </div>
 
