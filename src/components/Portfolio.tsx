@@ -164,12 +164,12 @@ export default function Portfolio() {
             <p className="text-[#e5e4e2]/60">Brak projektów do wyświetlenia</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+          <div className="flex flex-wrap justify-center gap-6 md:gap-8">
             {filteredProjects.map((project, index) => (
             <Link
               href={`/portfolio/${project.id}`}
               key={project.id}
-              className="group relative overflow-hidden rounded-2xl cursor-pointer block"
+              className="group relative overflow-hidden rounded-2xl cursor-pointer block w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.33rem)]"
               style={{
                 animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
               }}

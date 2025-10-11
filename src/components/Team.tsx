@@ -139,11 +139,11 @@ export default function Team() {
             <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="flex flex-wrap justify-center gap-8">
             {teamMembers.map((member, index) => (
             <div
               key={member.id}
-              className="group relative"
+              className="group relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(25%-1.5rem)]"
               style={{
                 animation: `fadeInUp 0.6s ease-out ${index * 0.15}s both`,
               }}
