@@ -310,12 +310,26 @@ function AddEmailAccountModal({
     try {
       console.log('Attempting to insert email account:', { ...formData, employee_id: employeeId });
 
-      const { data, error } = await supabase.from('employee_email_accounts').insert([
-        {
-          ...formData,
-          employee_id: employeeId,
-        },
-      ]).select();
+      // Use RPC function as workaround for schema cache issue
+      const { data, error } = await supabase.rpc('add_email_account', {
+        p_employee_id: employeeId,
+        p_account_name: formData.account_name,
+        p_from_name: formData.from_name,
+        p_email_address: formData.email_address,
+        p_imap_host: formData.imap_host,
+        p_imap_port: formData.imap_port,
+        p_imap_username: formData.imap_username,
+        p_imap_password: formData.imap_password,
+        p_imap_use_ssl: formData.imap_use_ssl,
+        p_smtp_host: formData.smtp_host,
+        p_smtp_port: formData.smtp_port,
+        p_smtp_username: formData.smtp_username,
+        p_smtp_password: formData.smtp_password,
+        p_smtp_use_tls: formData.smtp_use_tls,
+        p_signature: formData.signature || null,
+        p_is_default: formData.is_default || false,
+        p_is_active: formData.is_active !== false
+      });
 
       console.log('Insert result:', { data, error });
 
