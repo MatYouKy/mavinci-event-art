@@ -28,16 +28,28 @@ export default function TeamPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const fetchTeam = async () => {
+    console.log('[fetchTeam] START');
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members', { cache: 'no-store' });
+      const timestamp = Date.now();
+      const response = await fetch(`/api/team-members?t=${timestamp}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+      console.log('[fetchTeam] Response status:', response.status);
       const data = await response.json();
+      console.log('[fetchTeam] Received data:', data);
+      console.log('[fetchTeam] Number of members:', data?.length);
       setTeam(data || []);
     } catch (error) {
-      console.error('Error fetching team:', error);
+      console.error('[fetchTeam] Error:', error);
       setTeam([]);
     }
     setLoading(false);
+    console.log('[fetchTeam] END');
   };
 
   const handleSave = async (values: any, isNew: boolean, memberId?: string) => {
@@ -140,11 +152,15 @@ export default function TeamPage() {
           }
           throw new Error(errorData.error || 'Failed to update');
         }
+        const responseData = await response.json();
+        console.log('[handleSave] Response data:', responseData);
         showSnackbar('Członek zespołu zaktualizowany pomyślnie', 'success');
         setEditingId(null);
       }
 
+      console.log('[handleSave] Calling fetchTeam...');
       await fetchTeam();
+      console.log('[handleSave] fetchTeam completed');
     } catch (error: any) {
       console.error('Save error:', error);
       showSnackbar('Błąd: ' + error.message, 'error');
@@ -295,7 +311,11 @@ export default function TeamPage() {
                           mode="square"
                           multiplier={1}
                           onSave={async (payload) => {
-                            await setFieldValue('imageData', payload);
+                            console.log('[onSave NEW] Payload from ImageEditorField:', payload);
+                            await setFieldValue('imageData', payload.image);
+                            if (payload.file) {
+                              await setFieldValue('imageData.file', payload.file);
+                            }
                           }}
                         />
                       </div>
@@ -396,7 +416,11 @@ export default function TeamPage() {
                                   },
                                 }}
                                 onSave={async (payload) => {
-                                  await setFieldValue('imageData', payload);
+                                  console.log('[onSave] Payload from ImageEditorField:', payload);
+                                  await setFieldValue('imageData', payload.image);
+                                  if (payload.file) {
+                                    await setFieldValue('imageData.file', payload.file);
+                                  }
                                   await submitForm();
                                 }}
                               />
