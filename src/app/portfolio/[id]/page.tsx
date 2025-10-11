@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -51,6 +51,8 @@ export default function ProjectDetailPage() {
   const [previewImage, setPreviewImage] = useState<string>('');
   const [heroOpacity, setHeroOpacity] = useState(0.2);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
     fetchProject();
@@ -171,6 +173,36 @@ export default function ProjectDetailPage() {
     const date = new Date(dateString);
     return date.toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric' });
   };
+
+  const openLightbox = (index: number) => {
+    setCurrentImageIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => {
+    setLightboxOpen(false);
+  };
+
+  const goToPrevious = () => {
+    setCurrentImageIndex((prev) => (prev === 0 ? gallery.length - 1 : prev - 1));
+  };
+
+  const goToNext = () => {
+    setCurrentImageIndex((prev) => (prev === gallery.length - 1 ? 0 : prev + 1));
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!lightboxOpen) return;
+
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') goToPrevious();
+      if (e.key === 'ArrowRight') goToNext();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxOpen, gallery.length]);
 
   if (loading) {
     return (
@@ -479,7 +511,8 @@ export default function ProjectDetailPage() {
                   {gallery.map((image, index) => (
                     <div
                       key={index}
-                      className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300"
+                      onClick={() => openLightbox(index)}
+                      className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300 cursor-pointer"
                     >
                       <img
                         src={image.image_metadata?.desktop?.src || image.src}
@@ -536,6 +569,66 @@ export default function ProjectDetailPage() {
               </a>
             </div>
           </section>
+        )}
+
+        {/* Fullscreen Lightbox */}
+        {lightboxOpen && gallery.length > 0 && (
+          <div className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center">
+            {/* Close Button */}
+            <button
+              onClick={closeLightbox}
+              className="absolute top-4 right-4 text-white hover:text-[#d3bb73] transition-colors z-10"
+              aria-label="Zamknij"
+            >
+              <XCircle className="w-10 h-10" />
+            </button>
+
+            {/* Previous Button */}
+            {gallery.length > 1 && (
+              <button
+                onClick={goToPrevious}
+                className="absolute left-4 text-white hover:text-[#d3bb73] transition-colors z-10"
+                aria-label="Poprzednie zdjęcie"
+              >
+                <ChevronLeft className="w-12 h-12" />
+              </button>
+            )}
+
+            {/* Image */}
+            <div className="relative max-w-7xl max-h-[90vh] mx-4">
+              <img
+                src={gallery[currentImageIndex]?.image_metadata?.desktop?.src || gallery[currentImageIndex]?.src}
+                alt={gallery[currentImageIndex]?.alt || `Zdjęcie ${currentImageIndex + 1}`}
+                className="max-w-full max-h-[90vh] object-contain"
+              />
+
+              {/* Image Caption */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+                <p className="text-white text-center">
+                  {gallery[currentImageIndex]?.alt || `Zdjęcie ${currentImageIndex + 1}`}
+                </p>
+                <p className="text-white/60 text-sm text-center mt-2">
+                  {currentImageIndex + 1} / {gallery.length}
+                </p>
+              </div>
+            </div>
+
+            {/* Next Button */}
+            {gallery.length > 1 && (
+              <button
+                onClick={goToNext}
+                className="absolute right-4 text-white hover:text-[#d3bb73] transition-colors z-10"
+                aria-label="Następne zdjęcie"
+              >
+                <ChevronRight className="w-12 h-12" />
+              </button>
+            )}
+
+            {/* Keyboard Hints */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white/60 text-sm">
+              <p>Użyj strzałek ← → aby nawigować | ESC aby zamknąć</p>
+            </div>
+          </div>
         )}
       </main>
       <Footer />
