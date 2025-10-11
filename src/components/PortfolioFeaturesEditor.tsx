@@ -25,19 +25,28 @@ export default function PortfolioFeaturesEditor({
   }, []);
 
   const fetchAvailableIcons = async () => {
-    const { data, error } = await supabase
-      .from('available_icons')
-      .select('*')
-      .order('category', { ascending: true })
-      .order('label', { ascending: true });
+    try {
+      console.log('🔍 Fetching icons from Supabase...');
+      console.log('📍 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
 
-    if (error) {
-      console.error('Error fetching icons:', error);
-      return;
+      const { data, error } = await supabase
+        .from('available_icons')
+        .select('*')
+        .order('category', { ascending: true })
+        .order('label', { ascending: true });
+
+      if (error) {
+        console.error('❌ Error fetching icons:', error);
+        console.error('📋 Error details:', JSON.stringify(error, null, 2));
+        return;
+      }
+
+      console.log('✅ Loaded icons:', data?.length || 0);
+      console.log('📦 First 3 icons:', data?.slice(0, 3));
+      setAvailableIcons(data || []);
+    } catch (err) {
+      console.error('💥 Exception while fetching icons:', err);
     }
-
-    console.log('Loaded icons:', data?.length || 0);
-    setAvailableIcons(data || []);
   };
 
   const categories = ['all', ...new Set(availableIcons.map(icon => icon.category))];
