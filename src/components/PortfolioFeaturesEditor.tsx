@@ -36,6 +36,7 @@ export default function PortfolioFeaturesEditor({
       return;
     }
 
+    console.log('Loaded icons:', data?.length || 0);
     setAvailableIcons(data || []);
   };
 
@@ -150,7 +151,12 @@ export default function PortfolioFeaturesEditor({
                 </button>
 
                 {showIconPicker === index && (
-                  <div className="absolute z-50 mt-2 w-full bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4">
+                  <div className="absolute z-[100] mt-2 w-full min-w-[500px] bg-gray-900 border-2 border-yellow-500 rounded-lg shadow-2xl p-4">
+                    {/* Debug Info */}
+                    <div className="text-xs text-gray-500 mb-2">
+                      Załadowano: {availableIcons.length} ikon | Widoczne: {filteredIcons.length}
+                    </div>
+
                     {/* Category Filter */}
                     <div className="flex gap-2 mb-3 flex-wrap">
                       {categories.map(cat => (
@@ -171,25 +177,33 @@ export default function PortfolioFeaturesEditor({
 
                     {/* Icon Grid */}
                     <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
-                      {filteredIcons.map(icon => (
-                        <button
-                          key={icon.id}
-                          type="button"
-                          onClick={() => {
-                            updateFeature(index, { icon_name: icon.name });
-                            setShowIconPicker(null);
-                          }}
-                          className={`p-3 rounded-lg flex flex-col items-center gap-1 transition-colors ${
-                            feature.icon_name === icon.name
-                              ? 'bg-yellow-600 text-white'
-                              : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                          }`}
-                          title={icon.description}
-                        >
-                          {renderIcon(icon.name, 'w-6 h-6')}
-                          <span className="text-xs text-center line-clamp-2">{icon.label}</span>
-                        </button>
-                      ))}
+                      {filteredIcons.length === 0 ? (
+                        <div className="col-span-4 text-center py-8 text-gray-400">
+                          {availableIcons.length === 0
+                            ? 'Ładowanie ikon...'
+                            : 'Brak ikon w tej kategorii'}
+                        </div>
+                      ) : (
+                        filteredIcons.map(icon => (
+                          <button
+                            key={icon.id}
+                            type="button"
+                            onClick={() => {
+                              updateFeature(index, { icon_name: icon.name });
+                              setShowIconPicker(null);
+                            }}
+                            className={`p-3 rounded-lg flex flex-col items-center gap-1 transition-colors ${
+                              feature.icon_name === icon.name
+                                ? 'bg-yellow-600 text-white'
+                                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                            }`}
+                            title={icon.description}
+                          >
+                            {renderIcon(icon.name, 'w-6 h-6')}
+                            <span className="text-xs text-center line-clamp-2">{icon.label}</span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
