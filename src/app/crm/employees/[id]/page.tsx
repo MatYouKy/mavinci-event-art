@@ -99,24 +99,19 @@ export default function EmployeeDetailPage() {
 
   const checkUserRole = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('crm_users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      if (data) {
-        setCurrentUserRole(data.role);
+      if (typeof window !== 'undefined') {
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+          const user = JSON.parse(savedUser);
+          setCurrentUserRole(user.user_role || 'operator');
+        }
       }
     } catch (err) {
       console.error('Error checking user role:', err);
     }
   };
 
-  const isAdmin = currentUserRole === 'admin';
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'manager';
 
   const fetchEmployeeDetails = async () => {
     try {
