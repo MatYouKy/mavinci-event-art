@@ -4,65 +4,6 @@ import { useState, useEffect } from 'react';
 import { Linkedin, Mail } from 'lucide-react';
 import { TeamMember, supabase } from '../lib/supabase';
 
-const MOCK_TEAM: TeamMember[] = [
-  {
-    id: 'mock-1',
-    name: 'Anna Kowalska',
-    role: 'Event Manager',
-    position: 'Event Manager',
-    image: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=600',
-    bio: 'Specjalistka od organizacji wydarzeń z 8-letnim doświadczeniem',
-    linkedin: '',
-    instagram: '',
-    facebook: '',
-    order_index: 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-2',
-    name: 'Marek Nowak',
-    role: 'Creative Director',
-    position: 'Creative Director',
-    image: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=600',
-    bio: 'Wizjoner i twórca niezapomnianych koncepcji eventowych',
-    linkedin: '',
-    instagram: '',
-    facebook: '',
-    order_index: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-3',
-    name: 'Katarzyna Wiśniewska',
-    role: 'PR Specialist',
-    position: 'PR Specialist',
-    image: 'https://images.pexels.com/photos/733872/pexels-photo-733872.jpeg?auto=compress&cs=tinysrgb&w=600',
-    bio: 'Ekspertka w budowaniu relacji z mediami i promocji wydarzeń',
-    linkedin: '',
-    instagram: '',
-    facebook: '',
-    order_index: 3,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-4',
-    name: 'Piotr Zieliński',
-    role: 'Technical Director',
-    position: 'Technical Director',
-    image: 'https://images.pexels.com/photos/1516680/pexels-photo-1516680.jpeg?auto=compress&cs=tinysrgb&w=600',
-    bio: 'Odpowiada za całą stronę techniczną i logistyczną eventów',
-    linkedin: '',
-    instagram: '',
-    facebook: '',
-    order_index: 4,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 export default function Team() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -87,10 +28,10 @@ export default function Team() {
       }
 
       console.log('Fetched team members:', data);
-      setTeamMembers(data && data.length > 0 ? data : MOCK_TEAM);
+      setTeamMembers(data || []);
     } catch (error) {
       console.error('Error fetching team members:', error);
-      setTeamMembers(MOCK_TEAM);
+      setTeamMembers([]);
     }
     setLoading(false);
   };

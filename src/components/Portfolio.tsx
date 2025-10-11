@@ -5,69 +5,6 @@ import { Eye, ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
 import { PortfolioProject, supabase } from '../lib/supabase';
 
-const MOCK_PROJECTS: PortfolioProject[] = [
-  {
-    id: 'mock-1',
-    title: 'Targi Branżowe Olsztyn 2024',
-    category: 'Targi i Wystawy',
-    image: 'https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Kompleksowa organizacja targów branżowych w Olsztynie - obsługa 200 wystawców, catering, multimedia',
-    order_index: 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-2',
-    title: 'Integracja Firmowa - Mazury',
-    category: 'Integracja Pracownicza',
-    image: 'https://images.pexels.com/photos/2788488/pexels-photo-2788488.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Dwudniowa integracja dla 150 pracowników z team buildingiem nad Jeziorakami w województwie warmińsko-mazurskim',
-    order_index: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-3',
-    title: 'Konferencja Biznesowa Gdańsk',
-    category: 'Konferencje',
-    image: 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Międzynarodowa konferencja biznesowa w Gdańsku - 500 uczestników, tłumaczenia symultaniczne, strefy networkingowe',
-    order_index: 3,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-4',
-    title: 'Gala Biznesowa Warszawa',
-    category: 'Eventy Korporacyjne',
-    image: 'https://images.pexels.com/photos/1112080/pexels-photo-1112080.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Ekskluzywna gala biznesowa w Warszawie dla 300 gości - profesjonalna scenografia i catering premium',
-    order_index: 4,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-5',
-    title: 'Event Marketingowy Toruń',
-    category: 'Event Marketing',
-    image: 'https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Kampania eventowa w Toruniu - road show, degustacje produktu, aktywacja marki, obsługa influencerów',
-    order_index: 5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-6',
-    title: 'Festiwal Muzyczny',
-    category: 'Festival',
-    image: 'https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Wielki festiwal muzyczny z profesjonalną sceną i kompleksową obsługą eventową',
-    order_index: 6,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 export default function Portfolio() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
@@ -92,10 +29,10 @@ export default function Portfolio() {
       }
 
       console.log('Fetched portfolio projects:', data);
-      setProjects(data && data.length > 0 ? data : MOCK_PROJECTS);
+      setProjects(data || []);
     } catch (error) {
       console.error('Error fetching projects:', error);
-      setProjects(MOCK_PROJECTS);
+      setProjects([]);
     }
     setLoading(false);
   };
