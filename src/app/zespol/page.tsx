@@ -6,6 +6,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { TeamMember } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 import Draggable from 'react-draggable';
 import { ImageEditorField } from '@/components/ImageEditorField';
 import { Formik, Form, Field } from 'formik';
@@ -16,6 +17,7 @@ import { PageHeroImage } from '@/components/PageHeroImage';
 
 export default function TeamPage() {
   const { isEditMode } = useEditMode();
+  const { showSnackbar } = useSnackbar();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,11 +41,14 @@ export default function TeamPage() {
   };
 
   const handleSave = async (values: any, isNew: boolean, memberId?: string) => {
+    console.log('[handleSave] START - isNew:', isNew, 'memberId:', memberId);
+    console.log('[handleSave] values:', JSON.stringify(values, null, 2));
+
     try {
       let imageUrl = values.image;
       let imageMetadata: any = {};
 
-      console.log('[handleSave] values:', values);
+      console.log('[handleSave] Initial imageUrl:', imageUrl);
       console.log('[handleSave] values.imageData:', values.imageData);
 
       if (values.imageData?.file) {
@@ -115,6 +120,7 @@ export default function TeamPage() {
           }
           throw new Error(errorData.error || 'Failed to create');
         }
+        showSnackbar('Członek zespołu dodany pomyślnie', 'success');
         setIsAdding(false);
       } else {
         const response = await fetch(`/api/team-members/${memberId}`, {
@@ -134,13 +140,14 @@ export default function TeamPage() {
           }
           throw new Error(errorData.error || 'Failed to update');
         }
+        showSnackbar('Członek zespołu zaktualizowany pomyślnie', 'success');
         setEditingId(null);
       }
 
       await fetchTeam();
     } catch (error: any) {
       console.error('Save error:', error);
-      alert('Błąd: ' + error.message);
+      showSnackbar('Błąd: ' + error.message, 'error');
     }
   };
 
@@ -150,9 +157,10 @@ export default function TeamPage() {
     try {
       const response = await fetch(`/api/team-members/${id}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Failed to delete');
+      showSnackbar('Członek zespołu usunięty pomyślnie', 'success');
       fetchTeam();
     } catch (error: any) {
-      alert('Błąd: ' + error.message);
+      showSnackbar('Błąd: ' + error.message, 'error');
     }
   };
 
@@ -276,7 +284,7 @@ export default function TeamPage() {
                   }}
                   onSubmit={(values) => handleSave(values, true)}
                 >
-                  {({ submitForm }) => (
+                  {({ submitForm, setFieldValue }) => (
                     <Form>
                       <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Nowy Członek Zespołu</h3>
 
@@ -286,7 +294,9 @@ export default function TeamPage() {
                           isAdmin={true}
                           mode="square"
                           multiplier={1}
-                          onSave={async () => {}}
+                          onSave={async (payload) => {
+                            await setFieldValue('imageData', payload);
+                          }}
                         />
                       </div>
 
@@ -364,7 +374,7 @@ export default function TeamPage() {
                         }}
                         onSubmit={(values) => handleSave(values, false, member.id)}
                       >
-                        {({ submitForm }) => (
+                        {({ submitForm, setFieldValue }) => (
                           <Form>
                             <div className="mb-4">
                               <ImageEditorField
@@ -385,7 +395,10 @@ export default function TeamPage() {
                                     },
                                   },
                                 }}
-                                onSave={submitForm}
+                                onSave={async (payload) => {
+                                  await setFieldValue('imageData', payload);
+                                  await submitForm();
+                                }}
                               />
                             </div>
 
