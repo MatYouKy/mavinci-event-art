@@ -7,13 +7,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+interface SmtpConfig {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  useTls: boolean;
+  from: string;
+  fromName: string;
+}
+
 interface EmailRequest {
   to: string;
   subject: string;
   body: string;
   replyTo?: string;
   messageId?: string;
-  emailAccountId: string;
+  emailAccountId?: string;
+  smtpConfig?: SmtpConfig;
 }
 
 interface EmailAccount {
@@ -35,56 +46,67 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig }: EmailRequest = await req.json();
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      throw new Error("Missing authorization header");
+    if (!to || !subject || !body) {
+      throw new Error("Missing required fields: to, subject, body");
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    let smtpSettings: {
+      host: string;
+      port: number;
+      username: string;
+      password: string;
+      useTls: boolean;
+      from: string;
+      fromName: string;
+    };
 
-    if (authError || !user) {
-      throw new Error("Unauthorized");
+    if (smtpConfig) {
+      smtpSettings = smtpConfig;
+    } else if (emailAccountId) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: emailAccount, error: accountError } = await supabase
+        .from("employee_email_accounts")
+        .select("*")
+        .eq("id", emailAccountId)
+        .maybeSingle();
+
+      if (accountError || !emailAccount) {
+        throw new Error("Email account not found");
+      }
+
+      const account = emailAccount as EmailAccount;
+      smtpSettings = {
+        host: account.smtp_host,
+        port: account.smtp_port,
+        username: account.smtp_username,
+        password: account.smtp_password,
+        useTls: account.smtp_use_tls,
+        from: account.email_address,
+        fromName: account.from_name,
+      };
+    } else {
+      throw new Error("Either emailAccountId or smtpConfig must be provided");
     }
 
-    const { to, subject, body, replyTo, messageId, emailAccountId }: EmailRequest = await req.json();
-
-    if (!to || !subject || !body || !emailAccountId) {
-      throw new Error("Missing required fields");
-    }
-
-    const { data: emailAccount, error: accountError } = await supabase
-      .from("employee_email_accounts")
-      .select("*")
-      .eq("id", emailAccountId)
-      .maybeSingle();
-
-    if (accountError || !emailAccount) {
-      throw new Error("Email account not found");
-    }
-
-    const account = emailAccount as EmailAccount;
-
-    // Use nodemailer through npm
     const nodemailer = await import("npm:nodemailer@6.9.7");
 
     const transporter = nodemailer.default.createTransport({
-      host: account.smtp_host,
-      port: account.smtp_port,
-      secure: account.smtp_use_tls,
+      host: smtpSettings.host,
+      port: smtpSettings.port,
+      secure: smtpSettings.useTls,
       auth: {
-        user: account.smtp_username,
-        pass: account.smtp_password,
+        user: smtpSettings.username,
+        pass: smtpSettings.password,
       },
     });
 
     const mailOptions: any = {
-      from: `${account.from_name} <${account.email_address}>`,
+      from: `${smtpSettings.fromName} <${smtpSettings.from}>`,
       to: to,
       subject: subject,
       html: body,
@@ -96,10 +118,14 @@ Deno.serve(async (req: Request) => {
 
     const info = await transporter.sendMail(mailOptions);
 
-    if (messageId) {
+    if (messageId && emailAccountId) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
       await supabase
         .from("contact_messages")
-        .update({ 
+        .update({
           status: "replied",
           replied_at: new Date().toISOString()
         })
