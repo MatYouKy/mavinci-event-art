@@ -50,6 +50,23 @@ export interface GalleryImage {
   image_metadata?: ImageMetadata;
 }
 
+export interface AvailableIcon {
+  id: string;
+  name: string;
+  label: string;
+  category: string;
+  description?: string;
+}
+
+export interface PortfolioProjectFeature {
+  id?: string;
+  project_id?: string;
+  icon_name: string;
+  title: string;
+  description?: string;
+  order_index: number;
+}
+
 export interface PortfolioProject {
   _id?: string;
   id?: string;
@@ -62,6 +79,7 @@ export interface PortfolioProject {
   detailed_description?: string;
   order_index: number;
   gallery?: GalleryImage[];
+  features?: PortfolioProjectFeature[];
   hero_image_section?: string;
   location?: string;
   event_date?: string;

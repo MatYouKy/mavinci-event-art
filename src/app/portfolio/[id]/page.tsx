@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle, Users, Clock, Award, Target } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { PortfolioProject, GalleryImage, supabase } from '@/lib/supabase';
+import { PortfolioProject, GalleryImage, PortfolioProjectFeature, supabase } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
+import PortfolioFeaturesEditor from '@/components/PortfolioFeaturesEditor';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 
@@ -52,6 +54,7 @@ export default function ProjectDetailPage() {
   const [heroOpacity, setHeroOpacity] = useState(0.2);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
   const [detailedDescription, setDetailedDescription] = useState('');
+  const [features, setFeatures] = useState<PortfolioProjectFeature[]>([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -71,6 +74,7 @@ export default function ProjectDetailPage() {
       if (!error && data) {
         setProject(data);
         loadProjectData(data);
+        await fetchProjectFeatures(id);
       } else {
         const mockProject = MOCK_PROJECTS.find(p => p.id === id);
         if (mockProject) {
@@ -89,6 +93,18 @@ export default function ProjectDetailPage() {
       }
     }
     setLoading(false);
+  };
+
+  const fetchProjectFeatures = async (projectId: string) => {
+    const { data, error } = await supabase
+      .from('portfolio_project_features')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('order_index', { ascending: true });
+
+    if (!error && data) {
+      setFeatures(data);
+    }
   };
 
   const loadProjectData = (proj: PortfolioProject) => {
@@ -159,6 +175,27 @@ export default function ProjectDetailPage() {
         .eq('id', id);
 
       if (error) throw error;
+
+      await supabase
+        .from('portfolio_project_features')
+        .delete()
+        .eq('project_id', id);
+
+      if (features.length > 0) {
+        const featuresToInsert = features.map(f => ({
+          project_id: id,
+          icon_name: f.icon_name,
+          title: f.title,
+          description: f.description || null,
+          order_index: f.order_index,
+        }));
+
+        const { error: featuresError } = await supabase
+          .from('portfolio_project_features')
+          .insert(featuresToInsert);
+
+        if (featuresError) throw featuresError;
+      }
 
       showSnackbar('Wydarzenie zaktualizowane pomyślnie', 'success');
       setIsEditing(false);
@@ -493,49 +530,51 @@ export default function ProjectDetailPage() {
               </div>
 
               {isEditing ? (
-                <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
-                  <label className="block text-[#e5e4e2] text-sm font-medium mb-3">
-                    Szczegółowy opis wydarzenia (SEO-friendly z długim ogonem słów kluczowych)
-                  </label>
-                  <textarea
-                    value={detailedDescription}
-                    onChange={(e) => setDetailedDescription(e.target.value)}
-                    placeholder="Np: Organizacja konferencji biznesowej w Warszawie dla 300 uczestników. Zapewniliśmy profesjonalne nagłośnienie sceny, oświetlenie LED, tłumaczenia symultaniczne na 5 języków, catering premium dla gości VIP, strefy networkingowe z meblami eventowymi, rejestrację wideo 4K, transmisję online na żywo, kompleksową obsługę techniczną wydarzenia oraz dedykowanego koordynatora projektu..."
-                    className="w-full bg-[#0a0c15] text-[#e5e4e2] px-4 py-4 rounded-lg border border-[#d3bb73]/20 outline-none focus:border-[#d3bb73] transition-colors resize-none font-light leading-relaxed"
-                    rows={8}
-                  />
-                  <p className="text-[#e5e4e2]/50 text-xs mt-2">
-                    Tip: Używaj konkretnych słów kluczowych jak "organizacja eventów firmowych", "catering na konferencje", "nagłośnienie sceny", "oświetlenie eventowe" itp.
-                  </p>
-                </div>
+                <>
+                  <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
+                    <label className="block text-[#e5e4e2] text-sm font-medium mb-3">
+                      Szczegółowy opis wydarzenia (SEO-friendly z długim ogonem słów kluczowych)
+                    </label>
+                    <textarea
+                      value={detailedDescription}
+                      onChange={(e) => setDetailedDescription(e.target.value)}
+                      placeholder="Np: Organizacja konferencji biznesowej w Warszawie dla 300 uczestników. Zapewniliśmy profesjonalne nagłośnienie sceny, oświetlenie LED, tłumaczenia symultaniczne na 5 języków, catering premium dla gości VIP, strefy networkingowe z meblami eventowymi, rejestrację wideo 4K, transmisję online na żywo, kompleksową obsługę techniczną wydarzenia oraz dedykowanego koordynatora projektu..."
+                      className="w-full bg-[#0a0c15] text-[#e5e4e2] px-4 py-4 rounded-lg border border-[#d3bb73]/20 outline-none focus:border-[#d3bb73] transition-colors resize-none font-light leading-relaxed"
+                      rows={8}
+                    />
+                    <p className="text-[#e5e4e2]/50 text-xs mt-2">
+                      Tip: Używaj konkretnych słów kluczowych jak "organizacja eventów firmowych", "catering na konferencje", "nagłośnienie sceny", "oświetlenie eventowe" itp.
+                    </p>
+                  </div>
+
+                  <div className="mt-8 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
+                    <PortfolioFeaturesEditor
+                      projectId={id}
+                      features={features}
+                      onChange={setFeatures}
+                    />
+                  </div>
+                </>
               ) : (
                 <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 md:p-12">
-                  <div className="grid md:grid-cols-4 gap-6 mb-8">
-                    <div className="text-center">
-                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
-                        <Users className="w-8 h-8 text-[#d3bb73]" />
-                      </div>
-                      <h3 className="text-[#e5e4e2] font-light text-sm">Profesjonalna Obsługa</h3>
+                  {features.length > 0 && (
+                    <div className="grid md:grid-cols-4 gap-6 mb-8">
+                      {features.map((feature, idx) => {
+                        const IconComponent = (Icons as any)[feature.icon_name];
+                        return (
+                          <div key={idx} className="text-center">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
+                              {IconComponent && <IconComponent className="w-8 h-8 text-[#d3bb73]" />}
+                            </div>
+                            <h3 className="text-[#e5e4e2] font-light text-sm">{feature.title}</h3>
+                            {feature.description && (
+                              <p className="text-[#e5e4e2]/60 text-xs mt-1">{feature.description}</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="text-center">
-                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
-                        <Clock className="w-8 h-8 text-[#d3bb73]" />
-                      </div>
-                      <h3 className="text-[#e5e4e2] font-light text-sm">Terminowość</h3>
-                    </div>
-                    <div className="text-center">
-                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
-                        <Award className="w-8 h-8 text-[#d3bb73]" />
-                      </div>
-                      <h3 className="text-[#e5e4e2] font-light text-sm">Najwyższa Jakość</h3>
-                    </div>
-                    <div className="text-center">
-                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
-                        <Target className="w-8 h-8 text-[#d3bb73]" />
-                      </div>
-                      <h3 className="text-[#e5e4e2] font-light text-sm">Kompleksowa Realizacja</h3>
-                    </div>
-                  </div>
+                  )}
 
                   <div className="prose prose-invert max-w-none">
                     <p className="text-[#e5e4e2]/80 text-base md:text-lg font-light leading-relaxed whitespace-pre-line">
