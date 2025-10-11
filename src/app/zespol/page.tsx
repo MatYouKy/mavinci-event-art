@@ -399,12 +399,12 @@ export default function TeamPage() {
                 <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
               </div>
             ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="flex flex-wrap justify-center gap-8">
                 {team.map((member, index) => (
                   editingId === member.id && isEditMode ? (
                     <div
                       key={member.id}
-                      className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-6"
+                      className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-6 w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.33rem)]"
                     >
                       <Formik
                         enableReinitialize={false}
@@ -490,7 +490,7 @@ export default function TeamPage() {
                   ) : (
                   <div
                     key={member.id}
-                    className={`group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 ${
+                    className={`group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-300 w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.33rem)] ${
                       isEditMode
                         ? 'border-[#d3bb73]/30 cursor-move'
                         : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
