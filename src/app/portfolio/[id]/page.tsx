@@ -74,7 +74,6 @@ export default function ProjectDetailPage() {
       if (!error && data) {
         setProject(data);
         loadProjectData(data);
-        await fetchProjectFeatures(id);
       } else {
         const mockProject = MOCK_PROJECTS.find(p => p.id === id);
         if (mockProject) {
@@ -95,18 +94,6 @@ export default function ProjectDetailPage() {
     setLoading(false);
   };
 
-  const fetchProjectFeatures = async (projectId: string) => {
-    const { data, error } = await supabase
-      .from('portfolio_project_features')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('order_index', { ascending: true });
-
-    if (!error && data) {
-      setFeatures(data);
-    }
-  };
-
   const loadProjectData = (proj: PortfolioProject) => {
     setTitle(proj.title);
     setCategory(proj.category);
@@ -117,6 +104,7 @@ export default function ProjectDetailPage() {
     setOrderIndex(proj.order_index || 0);
     setPreviewImage(proj.image_metadata?.desktop?.src || proj.image);
     setGallery(proj.gallery || []);
+    setFeatures(proj.features || []);
   };
 
   const handleImageSelect = (data: IUploadImage) => {
@@ -167,6 +155,7 @@ export default function ProjectDetailPage() {
         location,
         event_date: eventDate,
         gallery,
+        features,
       };
 
       const { error } = await supabase
@@ -175,27 +164,6 @@ export default function ProjectDetailPage() {
         .eq('id', id);
 
       if (error) throw error;
-
-      await supabase
-        .from('portfolio_project_features')
-        .delete()
-        .eq('project_id', id);
-
-      if (features.length > 0) {
-        const featuresToInsert = features.map(f => ({
-          project_id: id,
-          icon_name: f.icon_name,
-          title: f.title,
-          description: f.description || null,
-          order_index: f.order_index,
-        }));
-
-        const { error: featuresError } = await supabase
-          .from('portfolio_project_features')
-          .insert(featuresToInsert);
-
-        if (featuresError) throw featuresError;
-      }
 
       showSnackbar('Wydarzenie zaktualizowane pomyślnie', 'success');
       setIsEditing(false);
