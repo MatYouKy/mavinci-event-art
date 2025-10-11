@@ -26,14 +26,10 @@ export default function PortfolioFeaturesEditor({
 
   const fetchAvailableIcons = async () => {
     try {
-      console.log('🔍 Fetching icons from Supabase...');
-      console.log('📍 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+      console.log('🔍 Fetching icons from Supabase using RPC...');
 
       const { data, error } = await supabase
-        .from('available_icons')
-        .select('*')
-        .order('category', { ascending: true })
-        .order('label', { ascending: true });
+        .rpc('get_available_icons');
 
       if (error) {
         console.error('❌ Error fetching icons:', error);
