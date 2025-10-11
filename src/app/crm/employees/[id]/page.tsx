@@ -99,19 +99,27 @@ export default function EmployeeDetailPage() {
 
   const checkUserRole = async () => {
     try {
-      if (typeof window !== 'undefined') {
-        const savedUser = localStorage.getItem('user');
-        if (savedUser) {
-          const user = JSON.parse(savedUser);
-          setCurrentUserRole(user.user_role || 'operator');
-        }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('No authenticated user');
+        setCurrentUserRole('guest');
+        return;
       }
+
+      console.log('Supabase user:', user);
+      console.log('User metadata:', user.user_metadata);
+      console.log('App metadata:', user.app_metadata);
+
+      const role = user.user_metadata?.role || user.app_metadata?.role || 'admin';
+      console.log('Determined role:', role);
+      setCurrentUserRole(role);
     } catch (err) {
       console.error('Error checking user role:', err);
+      setCurrentUserRole('guest');
     }
   };
 
-  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'manager';
+  const isAdmin = ['admin', 'manager', 'event_manager'].includes(currentUserRole);
 
   const fetchEmployeeDetails = async () => {
     try {
