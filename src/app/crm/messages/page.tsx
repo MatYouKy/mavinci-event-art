@@ -76,9 +76,13 @@ export default function MessagesPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [replyText, setReplyText] = useState('');
   const [notesText, setNotesText] = useState('');
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
+  const [selectedEmailAccount, setSelectedEmailAccount] = useState<string>('');
 
   useEffect(() => {
     fetchMessages();
+    fetchEmailAccounts();
   }, []);
 
   useEffect(() => {
@@ -99,6 +103,26 @@ export default function MessagesPage() {
       console.error('Error fetching messages:', error);
     }
     setLoading(false);
+  };
+
+  const fetchEmailAccounts = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('employee_email_accounts')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      setEmailAccounts(data || []);
+      if (data && data.length > 0) {
+        setSelectedEmailAccount(data[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
+    }
   };
 
   const filterMessages = () => {
@@ -194,6 +218,52 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Error deleting message:', error);
       alert('Błąd podczas usuwania wiadomości');
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!selectedMessage || !replyText.trim() || !selectedEmailAccount) {
+      alert('Wypełnij wszystkie pola');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('Musisz być zalogowany');
+        return;
+      }
+
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: selectedMessage.email,
+          subject: `Re: ${selectedMessage.subject || 'Twoje zapytanie'}`,
+          body: replyText,
+          messageId: selectedMessage.id,
+          emailAccountId: selectedEmailAccount,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Nie udało się wysłać wiadomości');
+      }
+
+      alert('Odpowiedź została wysłana!');
+      setReplyText('');
+      setShowReplyModal(false);
+      await fetchMessages();
+    } catch (error) {
+      console.error('Error sending reply:', error);
+      alert(`Błąd podczas wysyłania odpowiedzi: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -404,6 +474,13 @@ export default function MessagesPage() {
                   </div>
 
                   <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => setShowReplyModal(true)}
+                      className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium flex items-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      Odpowiedz
+                    </button>
                     {selectedMessage.status !== 'replied' && (
                       <button
                         onClick={() => updateMessageStatus(selectedMessage.id, 'replied')}
@@ -478,6 +555,83 @@ export default function MessagesPage() {
             )}
           </div>
         </div>
+
+        {showReplyModal && selectedMessage && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-[#1c1f33] rounded-xl border border-[#d3bb73]/20 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-[#d3bb73]/20">
+                <h2 className="text-2xl font-bold text-white">Odpowiedz na wiadomość</h2>
+                <p className="text-gray-400 mt-1">Do: {selectedMessage.email}</p>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Konto email
+                  </label>
+                  <select
+                    value={selectedEmailAccount}
+                    onChange={(e) => setSelectedEmailAccount(e.target.value)}
+                    className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                  >
+                    {emailAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.from_name} ({account.email_address})
+                      </option>
+                    ))}
+                  </select>
+                  {emailAccounts.length === 0 && (
+                    <p className="text-yellow-400 text-sm mt-2">
+                      Brak skonfigurowanych kont email. Przejdź do ustawień, aby dodać konto.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Oryginalna wiadomość
+                  </label>
+                  <div className="bg-[#0f1119] rounded-lg p-4 border border-[#d3bb73]/10">
+                    <p className="text-gray-400 text-sm whitespace-pre-wrap">{selectedMessage.message}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Twoja odpowiedź
+                  </label>
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Napisz swoją odpowiedź..."
+                    className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#d3bb73] resize-none"
+                    rows={8}
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-[#d3bb73]/20 flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowReplyModal(false);
+                    setReplyText('');
+                  }}
+                  className="px-6 py-2 bg-gray-500/20 text-gray-400 rounded-lg hover:bg-gray-500/30 transition-colors"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={handleSendReply}
+                  disabled={!replyText.trim() || !selectedEmailAccount || emailAccounts.length === 0}
+                  className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  Wyślij odpowiedź
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

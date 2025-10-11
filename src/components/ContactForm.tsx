@@ -5,6 +5,7 @@ import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import confetti from 'canvas-confetti';
 
 export interface ContactFormProps {
   category?: string;
@@ -92,6 +93,39 @@ export default function ContactForm({
       if (error) throw error;
 
       setIsSuccess(true);
+
+      // Trigger confetti animation
+      const duration = 3000;
+      const animationEnd = Date.now() + duration;
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+      const randomInRange = (min: number, max: number) => {
+        return Math.random() * (max - min) + min;
+      };
+
+      const interval: any = setInterval(() => {
+        const timeLeft = animationEnd - Date.now();
+
+        if (timeLeft <= 0) {
+          return clearInterval(interval);
+        }
+
+        const particleCount = 50 * (timeLeft / duration);
+
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
+          colors: ['#d3bb73', '#e5e4e2', '#1c1f33']
+        });
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
+          colors: ['#d3bb73', '#e5e4e2', '#1c1f33']
+        });
+      }, 250);
+
       resetForm();
       setTimeout(() => setIsSuccess(false), 5000);
     } catch (error) {
