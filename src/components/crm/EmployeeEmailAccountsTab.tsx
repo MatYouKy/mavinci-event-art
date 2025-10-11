@@ -44,7 +44,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('email_accounts')
+        .from('employee_email_accounts')
         .select('*')
         .eq('employee_id', employeeId)
         .order('is_default', { ascending: false });
@@ -68,11 +68,12 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
 
     try {
       const { error } = await supabase
-        .from('email_accounts')
+        .from('employee_email_accounts')
         .delete()
         .eq('id', id);
 
       if (error) throw error;
+      alert('Konto email zostało usunięte');
       fetchAccounts();
     } catch (err) {
       console.error('Error deleting account:', err);
@@ -85,19 +86,21 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
 
     try {
       await supabase
-        .from('email_accounts')
+        .from('employee_email_accounts')
         .update({ is_default: false })
         .eq('employee_id', employeeId);
 
       const { error } = await supabase
-        .from('email_accounts')
+        .from('employee_email_accounts')
         .update({ is_default: true })
         .eq('id', id);
 
       if (error) throw error;
+      alert('Konto domyślne zostało zmienione');
       fetchAccounts();
     } catch (err) {
       console.error('Error updating default:', err);
+      alert('Błąd podczas zmiany konta domyślnego');
     }
   };
 
@@ -276,6 +279,7 @@ function AddEmailAccountModal({
 }) {
   const [formData, setFormData] = useState({
     account_name: '',
+    from_name: '',
     email_address: '',
     imap_host: 'imap.gmail.com',
     imap_port: 993,
@@ -291,31 +295,89 @@ function AddEmailAccountModal({
     is_default: false,
     is_active: true,
   });
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSubmit = async () => {
-    if (!formData.account_name || !formData.email_address) {
-      alert('Wypełnij wymagane pola');
+    if (!formData.account_name || !formData.from_name || !formData.email_address) {
+      alert('Wypełnij wymagane pola (Nazwa konta, Nazwa wyświetlana, Adres email)');
       return;
     }
 
+    setSaving(true);
     try {
-      const { error } = await supabase.from('email_accounts').insert([
+      const { error } = await supabase.from('employee_email_accounts').insert([
         {
           ...formData,
           employee_id: employeeId,
-          user_email: employeeEmail,
         },
       ]);
 
       if (error) throw error;
 
+      alert('✅ Konto email zostało pomyślnie dodane!');
       onAdded();
       onClose();
     } catch (err) {
       console.error('Error adding email account:', err);
-      alert('Błąd podczas dodawania konta email');
+      alert('❌ Błąd podczas dodawania konta email: ' + (err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!formData.smtp_host || !formData.smtp_username || !formData.smtp_password) {
+      alert('Wypełnij dane SMTP aby przetestować połączenie');
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('Musisz być zalogowany');
+        return;
+      }
+
+      // Create temporary account for testing
+      const tempAccount = {
+        id: 'test-' + Date.now(),
+        ...formData,
+        employee_id: employeeId,
+      };
+
+      // Try to send a test email using our send-email function
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: formData.email_address,
+          subject: 'Test połączenia SMTP',
+          body: '<p>To jest testowa wiadomość sprawdzająca poprawność konfiguracji SMTP.</p>',
+          emailAccountId: tempAccount.id,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert('✅ Połączenie SMTP działa poprawnie! Test email został wysłany.');
+      } else {
+        alert('❌ Test połączenia nie powiódł się: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error testing connection:', error);
+      alert('❌ Błąd podczas testowania połączenia: ' + (error as Error).message);
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -337,15 +399,26 @@ function AddEmailAccountModal({
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Adres email *</label>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa wyświetlana *</label>
               <input
-                type="email"
-                value={formData.email_address}
-                onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
+                type="text"
+                value={formData.from_name}
+                onChange={(e) => setFormData({ ...formData, from_name: e.target.value })}
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                placeholder="biuro@firma.pl"
+                placeholder="np. Jan Kowalski"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Adres email *</label>
+            <input
+              type="email"
+              value={formData.email_address}
+              onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              placeholder="biuro@firma.pl"
+            />
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
@@ -458,13 +531,15 @@ function AddEmailAccountModal({
         <div className="flex gap-3 pt-6 mt-6 border-t border-[#d3bb73]/10">
           <button
             onClick={handleSubmit}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90"
+            disabled={saving}
+            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Dodaj konto
+            {saving ? 'Zapisywanie...' : 'Dodaj konto'}
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+            disabled={saving || testing}
+            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
           >
             Anuluj
           </button>
