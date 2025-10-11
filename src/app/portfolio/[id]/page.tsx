@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle, Users, Clock, Award, Target } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -51,6 +51,7 @@ export default function ProjectDetailPage() {
   const [previewImage, setPreviewImage] = useState<string>('');
   const [heroOpacity, setHeroOpacity] = useState(0.2);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
+  const [detailedDescription, setDetailedDescription] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -96,6 +97,7 @@ export default function ProjectDetailPage() {
     setLocation(proj.location || 'Polska');
     setEventDate(proj.event_date || new Date().toISOString().split('T')[0]);
     setDescription(proj.description);
+    setDetailedDescription(proj.detailed_description || '');
     setOrderIndex(proj.order_index || 0);
     setPreviewImage(proj.image_metadata?.desktop?.src || proj.image);
     setGallery(proj.gallery || []);
@@ -144,6 +146,7 @@ export default function ProjectDetailPage() {
         alt: imageData?.alt || title,
         image_metadata: imageMetadata,
         description,
+        detailed_description: detailedDescription,
         order_index: orderIndex,
         location,
         event_date: eventDate,
@@ -477,6 +480,73 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </section>
+
+        {/* Detailed Description Section */}
+        {(detailedDescription || isEditing) && (
+          <section className="py-16 bg-[#0f1119] border-y border-[#d3bb73]/10">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+                  Szczegóły <span className="text-[#d3bb73]">Realizacji</span>
+                </h2>
+                <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
+              </div>
+
+              {isEditing ? (
+                <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
+                  <label className="block text-[#e5e4e2] text-sm font-medium mb-3">
+                    Szczegółowy opis wydarzenia (SEO-friendly z długim ogonem słów kluczowych)
+                  </label>
+                  <textarea
+                    value={detailedDescription}
+                    onChange={(e) => setDetailedDescription(e.target.value)}
+                    placeholder="Np: Organizacja konferencji biznesowej w Warszawie dla 300 uczestników. Zapewniliśmy profesjonalne nagłośnienie sceny, oświetlenie LED, tłumaczenia symultaniczne na 5 języków, catering premium dla gości VIP, strefy networkingowe z meblami eventowymi, rejestrację wideo 4K, transmisję online na żywo, kompleksową obsługę techniczną wydarzenia oraz dedykowanego koordynatora projektu..."
+                    className="w-full bg-[#0a0c15] text-[#e5e4e2] px-4 py-4 rounded-lg border border-[#d3bb73]/20 outline-none focus:border-[#d3bb73] transition-colors resize-none font-light leading-relaxed"
+                    rows={8}
+                  />
+                  <p className="text-[#e5e4e2]/50 text-xs mt-2">
+                    Tip: Używaj konkretnych słów kluczowych jak "organizacja eventów firmowych", "catering na konferencje", "nagłośnienie sceny", "oświetlenie eventowe" itp.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 md:p-12">
+                  <div className="grid md:grid-cols-4 gap-6 mb-8">
+                    <div className="text-center">
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
+                        <Users className="w-8 h-8 text-[#d3bb73]" />
+                      </div>
+                      <h3 className="text-[#e5e4e2] font-light text-sm">Profesjonalna Obsługa</h3>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
+                        <Clock className="w-8 h-8 text-[#d3bb73]" />
+                      </div>
+                      <h3 className="text-[#e5e4e2] font-light text-sm">Terminowość</h3>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
+                        <Award className="w-8 h-8 text-[#d3bb73]" />
+                      </div>
+                      <h3 className="text-[#e5e4e2] font-light text-sm">Najwyższa Jakość</h3>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 flex items-center justify-center">
+                        <Target className="w-8 h-8 text-[#d3bb73]" />
+                      </div>
+                      <h3 className="text-[#e5e4e2] font-light text-sm">Kompleksowa Realizacja</h3>
+                    </div>
+                  </div>
+
+                  <div className="prose prose-invert max-w-none">
+                    <p className="text-[#e5e4e2]/80 text-base md:text-lg font-light leading-relaxed whitespace-pre-line">
+                      {detailedDescription}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Gallery Section */}
         {isEditing ? (

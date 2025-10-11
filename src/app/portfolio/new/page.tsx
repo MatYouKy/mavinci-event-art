@@ -23,6 +23,7 @@ export default function NewPortfolioPage() {
   const [location, setLocation] = useState('Polska');
   const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
+  const [detailedDescription, setDetailedDescription] = useState('');
   const [orderIndex, setOrderIndex] = useState(0);
   const [imageData, setImageData] = useState<IUploadImage | null>(null);
   const [previewImage, setPreviewImage] = useState<string>('https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920');
@@ -56,6 +57,7 @@ export default function NewPortfolioPage() {
         image: imageUrl,
         alt: imageData.alt || title,
         description,
+        detailed_description: detailedDescription,
         order_index: orderIndex,
         location,
         event_date: eventDate,
@@ -239,6 +241,43 @@ export default function NewPortfolioPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Detailed Description Section */}
+        <section className="py-16 bg-[#0f1119] border-y border-[#d3bb73]/10">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-light text-[#e5e4e2] mb-2">
+                Szczegóły <span className="text-[#d3bb73]">Realizacji</span>
+              </h2>
+              <p className="text-[#e5e4e2]/60 text-sm">
+                Dodaj szczegółowy opis z konkretnymi słowami kluczowymi dla SEO
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
+              <label className="block text-[#e5e4e2] text-sm font-medium mb-3">
+                Szczegółowy opis wydarzenia (opcjonalny, ale zalecany dla SEO)
+              </label>
+              <textarea
+                value={detailedDescription}
+                onChange={(e) => setDetailedDescription(e.target.value)}
+                placeholder="Np: Organizacja konferencji biznesowej w Warszawie dla 300 uczestników. Zapewniliśmy profesjonalne nagłośnienie sceny, oświetlenie LED, tłumaczenia symultaniczne na 5 języków, catering premium dla gości VIP, strefy networkingowe z meblami eventowymi, rejestrację wideo 4K, transmisję online na żywo, kompleksową obsługę techniczną wydarzenia oraz dedykowanego koordynatora projektu. Event obejmował panel dyskusyjny z ekspertami branżowymi, warsztaty praktyczne oraz uroczystą galę wieczorną..."
+                className="w-full bg-[#0a0c15] text-[#e5e4e2] px-4 py-4 rounded-lg border border-[#d3bb73]/20 outline-none focus:border-[#d3bb73] transition-colors resize-none font-light leading-relaxed"
+                rows={8}
+              />
+              <div className="mt-4 p-4 bg-[#d3bb73]/5 border border-[#d3bb73]/20 rounded-lg">
+                <p className="text-[#e5e4e2]/70 text-xs mb-2 font-medium">Przykłady słów kluczowych z długim ogonem:</p>
+                <ul className="text-[#e5e4e2]/60 text-xs space-y-1">
+                  <li>• "organizacja eventów firmowych w [miasto]"</li>
+                  <li>• "profesjonalne nagłośnienie i oświetlenie sceny"</li>
+                  <li>• "catering na konferencje biznesowe"</li>
+                  <li>• "wynajem sprzętu eventowego"</li>
+                  <li>• "kompleksowa obsługa imprez korporacyjnych"</li>
+                </ul>
               </div>
             </div>
           </div>
