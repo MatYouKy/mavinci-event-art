@@ -527,7 +527,17 @@ export default function ProjectDetailPage() {
                 <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 md:p-12">
                   {features.length > 0 && (
                     <div className="flex justify-center mb-8">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl">
+                      <div
+                        className={`grid gap-6 max-w-4xl ${
+                          features.length === 1
+                            ? 'grid-cols-1'
+                            : features.length === 2
+                            ? 'grid-cols-1 md:grid-cols-2'
+                            : features.length === 3
+                            ? 'grid-cols-1 md:grid-cols-3'
+                            : 'grid-cols-2 md:grid-cols-4'
+                        }`}
+                      >
                         {features.map((feature, idx) => {
                           const IconComponent = (Icons as any)[feature.icon_name];
                           return (
