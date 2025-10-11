@@ -182,13 +182,14 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
           transform: isVisible || isHovered ? 'translateY(0)' : 'translateY(-100%)'
         }}
       >
-      <div className="max-w-7xl mx-auto bg-[#1c1f33]/95 backdrop-blur-md rounded-full px-6 md:px-8 border border-[#d3bb73]/20 shadow-lg">
-        <div className="flex items-center justify-between h-14 md:h-16">
-          <Link href="/" className="flex items-center">
+      <div className="max-w-7xl mx-auto bg-[#1c1f33]/95 backdrop-blur-md rounded-full px-4 md:px-8 border border-[#d3bb73]/20 shadow-lg">
+        <div className="flex items-center justify-between h-14 md:h-16 gap-2 md:gap-4">
+          <Link href="/" className="flex items-center flex-shrink-0">
             <img
               src="/logo mavinci.svg"
               alt="MAVINCI event & art"
-              className="h-8 md:h-10 w-auto"
+              className="h-8 w-auto"
+              style={{ minWidth: '120px' }}
             />
           </Link>
 
@@ -250,7 +251,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                       </span>
                     </div>
                   )}
-                  <span className="text-[#d3bb73]">{displayName}</span>
+                  <span className="text-[#d3bb73] truncate max-w-[120px]">{displayName}</span>
                   <ChevronDown className={`w-4 h-4 text-[#d3bb73] transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -278,7 +279,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                       </div>
                       {employee?.role && (
                         <span className="inline-block px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full text-xs">
-                          {employee.role === 'admin' ? 'Administrator' : employee.role === 'manager' ? 'Manager' : 'Pracownik'}
+                          {employee.role}
                         </span>
                       )}
                     </div>
@@ -473,6 +474,22 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                   >
                     <Settings className="w-4 h-4 text-[#d3bb73]" />
                     Panel Admina
+                  </button>
+                )}
+                {(crmUser || authUser) && (
+                  <button
+                    onClick={() => {
+                      toggleEditMode();
+                      setIsMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors ${isEditMode ? 'bg-[#d3bb73]/10' : ''}`}
+                  >
+                    {isEditMode ? (
+                      <Eye className="w-4 h-4 text-[#d3bb73]" />
+                    ) : (
+                      <Edit3 className="w-4 h-4 text-[#d3bb73]" />
+                    )}
+                    {isEditMode ? 'Wyłącz tryb edycji' : 'Włącz tryb edycji'}
                   </button>
                 )}
                 <button
