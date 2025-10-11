@@ -61,7 +61,6 @@ Deno.serve(async (req: Request) => {
 
     const account = emailAccount as EmailAccount;
 
-    // Use imap library through npm
     const { default: Imap } = await import("npm:imap@0.8.19");
     const { inspect } = await import("node:util");
     const { simpleParser } = await import("npm:mailparser@3.6.5");
@@ -86,7 +85,6 @@ Deno.serve(async (req: Request) => {
               return;
             }
 
-            // Fetch last 50 emails
             const fetchLimit = 50;
             const totalMessages = box.messages.total;
             const start = Math.max(1, totalMessages - fetchLimit + 1);
