@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Mail, Phone, MapPin, Briefcase, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Upload, Download, Camera } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Briefcase, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Upload, Download, Camera, Image as ImageIcon, Lock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab';
+import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
 
 interface Employee {
   id: string;
@@ -14,6 +16,7 @@ interface Employee {
   phone_number: string | null;
   phone_private: string | null;
   avatar_url: string | null;
+  background_image_url: string | null;
   role: string;
   access_level: string;
   occupation: string | null;
@@ -82,6 +85,7 @@ export default function EmployeeDetailPage() {
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('operator');
   const [showAvatarUpload, setShowAvatarUpload] = useState(false);
+  const [showBackgroundUpload, setShowBackgroundUpload] = useState(false);
 
   useEffect(() => {
     if (employeeId) {
@@ -239,6 +243,42 @@ export default function EmployeeDetailPage() {
     }
   };
 
+  const handleBackgroundUpload = async (file: File) => {
+    if (!isAdmin) {
+      alert('Tylko administrator może zmieniać zdjęcia');
+      return;
+    }
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${employeeId}-bg-${Date.now()}.${fileExt}`;
+      const filePath = `backgrounds/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('public')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('public')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('employees')
+        .update({ background_image_url: publicUrl })
+        .eq('id', employeeId);
+
+      if (updateError) throw updateError;
+
+      setEmployee({ ...employee!, background_image_url: publicUrl });
+      setShowBackgroundUpload(false);
+    } catch (err) {
+      console.error('Error uploading background:', err);
+      alert('Błąd podczas przesyłania zdjęcia');
+    }
+  };
+
   const handleDeleteDocument = async (docId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć ten dokument?')) return;
 
@@ -386,7 +426,24 @@ export default function EmployeeDetailPage() {
       </div>
 
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-        <div className="relative h-32 bg-gradient-to-r from-[#d3bb73]/20 to-[#d3bb73]/5">
+        <div className="relative h-32 bg-gradient-to-r from-[#d3bb73]/20 to-[#d3bb73]/5 group">
+          {employee.background_image_url && (
+            <img
+              src={employee.background_image_url}
+              alt="Background"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#1c1f33]/50" />
+          {isAdmin && (
+            <button
+              onClick={() => setShowBackgroundUpload(true)}
+              className="absolute top-4 right-4 bg-[#1c1f33]/80 backdrop-blur-sm text-[#e5e4e2] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 text-sm"
+            >
+              <ImageIcon className="w-4 h-4" />
+              Zmień tło
+            </button>
+          )}
           <div className="absolute -bottom-12 left-6 group">
             {employee.avatar_url ? (
               <img
@@ -454,6 +511,8 @@ export default function EmployeeDetailPage() {
       <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         {[
           { id: 'overview', label: 'Przegląd', icon: User },
+          { id: 'emails', label: 'Konta Email', icon: Mail },
+          { id: 'permissions', label: 'Uprawnienia', icon: Lock },
           { id: 'documents', label: 'Dokumenty', icon: FileText },
           { id: 'tasks', label: 'Zadania', icon: CheckSquare },
           { id: 'events', label: 'Wydarzenia', icon: Calendar },
@@ -472,6 +531,21 @@ export default function EmployeeDetailPage() {
           </button>
         ))}
       </div>
+
+      {activeTab === 'emails' && (
+        <EmployeeEmailAccountsTab
+          employeeId={employeeId}
+          employeeEmail={employee.email}
+          isAdmin={isAdmin}
+        />
+      )}
+
+      {activeTab === 'permissions' && (
+        <EmployeePermissionsTab
+          employeeId={employeeId}
+          isAdmin={isAdmin}
+        />
+      )}
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -917,6 +991,16 @@ export default function EmployeeDetailPage() {
           isOpen={showAvatarUpload}
           onClose={() => setShowAvatarUpload(false)}
           onUpload={handleAvatarUpload}
+          title="Zmień zdjęcie profilowe"
+        />
+      )}
+
+      {showBackgroundUpload && (
+        <AvatarUploadModal
+          isOpen={showBackgroundUpload}
+          onClose={() => setShowBackgroundUpload(false)}
+          onUpload={handleBackgroundUpload}
+          title="Zmień zdjęcie tła"
         />
       )}
     </div>
@@ -1082,10 +1166,12 @@ function AvatarUploadModal({
   isOpen,
   onClose,
   onUpload,
+  title = 'Zmień zdjęcie',
 }: {
   isOpen: boolean;
   onClose: () => void;
   onUpload: (file: File) => void;
+  title?: string;
 }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -1116,7 +1202,7 @@ function AvatarUploadModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
         <h2 className="text-xl font-light text-[#e5e4e2] mb-6">
-          Zmień zdjęcie profilowe
+          {title}
         </h2>
 
         <div className="space-y-4">
