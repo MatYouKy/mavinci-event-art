@@ -508,9 +508,6 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 Zaloguj się
               </button>
             )}
-            <Link href="/#kontakt" onClick={() => setIsMenuOpen(false)} className="block w-full bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-full text-sm font-medium mt-4 text-center">
-              Skontaktuj się
-            </Link>
           </div>
         </div>
       )}
