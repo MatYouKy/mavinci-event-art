@@ -68,6 +68,19 @@ export default function UserMenu() {
 
       if (!error && employeeData) {
         setEmployee(employeeData);
+      } else {
+        // Fallback - jeśli nie ma danych w tabeli employees, utwórz domyślny obiekt admina
+        const emailParts = session.user.email?.split('@') || [];
+        const name = emailParts[0] || 'Administrator';
+        setEmployee({
+          id: session.user.id,
+          name: name.charAt(0).toUpperCase() + name.slice(1),
+          surname: 'Systemu',
+          email: session.user.email || '',
+          role: 'admin',
+          access_level: 'admin',
+          avatar_url: null,
+        });
       }
 
       setLoading(false);
@@ -115,6 +128,8 @@ export default function UserMenu() {
 
   const getAccessLevelColor = (level: string) => {
     const colors: Record<string, string> = {
+      admin: 'text-green-400',
+      manager: 'text-green-400',
       full: 'text-green-400',
       limited: 'text-yellow-400',
       read_only: 'text-blue-400',
@@ -202,16 +217,18 @@ export default function UserMenu() {
                   <span className="px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full">
                     {getRoleName(employee.role)}
                   </span>
-                  {employee.access_level && (
+                  {employee.access_level && employee.role !== 'admin' && employee.access_level !== 'admin' && (
                     <span
                       className={`px-2 py-1 bg-[#0f1119] rounded-full ${getAccessLevelColor(
                         employee.access_level
                       )}`}
                     >
-                      {employee.access_level === 'full'
+                      {employee.access_level === 'full' || employee.access_level === 'admin'
                         ? 'Pełny dostęp'
                         : employee.access_level === 'limited'
                         ? 'Ograniczony'
+                        : employee.access_level === 'manager'
+                        ? 'Manager'
                         : 'Tylko odczyt'}
                     </span>
                   )}
