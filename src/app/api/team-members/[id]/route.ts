@@ -4,11 +4,11 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await request.json();
-    const { id } = params;
+    const { id } = await params;
 
     console.log('[API PUT] Received body:', JSON.stringify(body, null, 2));
     console.log('[API PUT] ID:', id);
@@ -23,6 +23,11 @@ export async function PUT(
     if (body.email !== undefined) updateData.email = body.email || null;
     if (body.image_metadata !== undefined) updateData.image_metadata = body.image_metadata;
     if (body.order_index !== undefined) updateData.order_index = body.order_index;
+    if (body.is_visible !== undefined) updateData.is_visible = body.is_visible;
+    if (body.bio !== undefined) updateData.bio = body.bio;
+    if (body.linkedin !== undefined) updateData.linkedin = body.linkedin;
+    if (body.instagram !== undefined) updateData.instagram = body.instagram;
+    if (body.facebook !== undefined) updateData.facebook = body.facebook;
 
     console.log('[API PUT] Update data:', JSON.stringify(updateData, null, 2));
 
@@ -62,10 +67,10 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const { error } = await supabaseAdmin
       .from('team_members')

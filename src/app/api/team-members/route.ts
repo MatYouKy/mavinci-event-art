@@ -34,6 +34,11 @@ export async function POST(request: Request) {
       email: body.email || null,
       image_metadata: body.image_metadata || {},
       order_index: body.order_index || 0,
+      is_visible: body.is_visible !== undefined ? body.is_visible : true,
+      bio: body.bio || null,
+      linkedin: body.linkedin || null,
+      instagram: body.instagram || null,
+      facebook: body.facebook || null,
     };
 
     const { data, error } = await supabaseAdmin
