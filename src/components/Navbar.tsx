@@ -130,7 +130,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   };
 
   const handleDashboardClick = () => {
-    router.push('/admin/dashboard');
+    router.push('/crm/dashboard');
     setIsDropdownOpen(false);
   };
 
