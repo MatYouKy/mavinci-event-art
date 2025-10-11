@@ -303,8 +303,8 @@ function AddEmailAccountModal({
     imap_username: '',
     imap_password: '',
     imap_use_ssl: true,
-    smtp_host: 'smtp.gmail.com',
-    smtp_port: 587,
+    smtp_host: '',
+    smtp_port: 465,
     smtp_username: '',
     smtp_password: '',
     smtp_use_tls: true,
@@ -519,15 +519,19 @@ function AddEmailAccountModal({
                   value={formData.smtp_host}
                   onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
                   className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  placeholder="smtp.example.com"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Port</label>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Port <span className="text-xs text-[#d3bb73]">(465=SSL, 587=TLS)</span>
+                </label>
                 <input
                   type="number"
                   value={formData.smtp_port}
                   onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
                   className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  placeholder="465 lub 587"
                 />
               </div>
               <div>
@@ -831,15 +835,19 @@ function EditEmailAccountModal({
                   value={formData.smtp_host}
                   onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
                   className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  placeholder="smtp.example.com"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Port</label>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Port <span className="text-xs text-[#d3bb73]">(465=SSL, 587=TLS)</span>
+                </label>
                 <input
                   type="number"
                   value={formData.smtp_port}
                   onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
                   className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  placeholder="465 lub 587"
                 />
               </div>
               <div>

@@ -98,11 +98,14 @@ Deno.serve(async (req: Request) => {
     const transporter = nodemailer.default.createTransport({
       host: smtpSettings.host,
       port: smtpSettings.port,
-      secure: smtpSettings.useTls,
+      secure: smtpSettings.port === 465,
       auth: {
         user: smtpSettings.username,
         pass: smtpSettings.password,
       },
+      tls: {
+        rejectUnauthorized: false
+      }
     });
 
     const mailOptions: any = {
