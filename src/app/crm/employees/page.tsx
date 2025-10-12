@@ -286,52 +286,31 @@ function AddEmployeeModal({
 
     setIsCreating(true);
     try {
-      // Step 1: Create Supabase Auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            name: formData.name,
-            surname: formData.surname,
-          },
+      // Call Edge Function to create employee (uses Admin API)
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/create-employee`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
         },
+        body: JSON.stringify(formData),
       });
 
-      if (authError) {
-        console.error('Error creating auth user:', authError);
-        alert(`Błąd podczas tworzenia konta: ${authError.message}`);
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        console.error('Error creating employee:', result.error);
+        alert(`Błąd podczas tworzenia pracownika: ${result.error}`);
         setIsCreating(false);
         return;
       }
 
-      if (!authData.user) {
-        alert('Nie udało się utworzyć użytkownika auth');
-        setIsCreating(false);
-        return;
-      }
-
-      // Step 2: Insert employee data with auth user ID
-      const { password, ...employeeData } = formData;
-      const insertData = {
-        id: authData.user.id, // Use auth user ID as primary key
-        ...employeeData,
-        is_active: true,
-        show_on_website: false,
-      };
-
-      const { error: employeeError } = await supabase
-        .from('employees')
-        .insert([insertData]);
-
-      if (employeeError) {
-        console.error('Error adding employee:', employeeError);
-        alert(`Błąd podczas dodawania danych pracownika: ${employeeError.message}`);
-        setIsCreating(false);
-        return;
-      }
-
-      alert(`Pracownik ${formData.name} ${formData.surname} został dodany pomyślnie!\n\nEmail: ${formData.email}\nHasło tymczasowe: ${formData.password}\n\nPracownik może się teraz zalogować i zmienić hasło.`);
+      alert(`Pracownik ${formData.name} ${formData.surname} został dodany pomyślnie!\n\nEmail: ${formData.email}\nHasło tymczasowe: ${formData.password}\n\nPracownik może się teraz zalogować do CRM.`);
       onAdded();
       onClose();
     } catch (err: any) {
