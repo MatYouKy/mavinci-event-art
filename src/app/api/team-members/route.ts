@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: Request) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('team_members')
       .select('*')
       .order('order_index', { ascending: true });
@@ -42,8 +41,7 @@ export async function POST(request: Request) {
       facebook: body.facebook || null,
     };
 
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('team_members')
       .insert([insertData])
       .select()

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export async function PUT(
   request: Request,
@@ -31,8 +31,7 @@ export async function PUT(
 
     console.log('[API PUT] Update data:', JSON.stringify(updateData, null, 2));
 
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('team_members')
       .update(updateData)
       .eq('id', id)
@@ -73,8 +72,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const supabaseAdmin = getSupabaseAdmin();
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from('team_members')
       .delete()
       .eq('id', id);
