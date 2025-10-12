@@ -42,8 +42,18 @@ export default function TeamPage() {
       console.log('[fetchTeam] Response status:', response.status);
       const data = await response.json();
       console.log('[fetchTeam] Received data:', data);
+      console.log('[fetchTeam] Data type:', typeof data);
+      console.log('[fetchTeam] Is array?:', Array.isArray(data));
       console.log('[fetchTeam] Number of members:', data?.length);
-      setTeam(data || []);
+
+      if (!response.ok || !Array.isArray(data)) {
+        console.error('[fetchTeam] Invalid response:', data);
+        showSnackbar('Błąd podczas pobierania zespołu', 'error');
+        setTeam([]);
+        return;
+      }
+
+      setTeam(data);
     } catch (error) {
       console.error('[fetchTeam] Error:', error);
       setTeam([]);
