@@ -463,8 +463,8 @@ export default function EmployeeDetailPage() {
       >
         {() => (
           <Form>
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-              <div className="relative h-48" style={{ zIndex: isEditing ? 100 : 1 }}>
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
+              <div className="relative h-48 overflow-hidden rounded-t-xl" style={{ zIndex: isEditing ? 100 : 1 }}>
                 <ImageEditorField
                   fieldName="background"
                   image={backgroundImageData}
@@ -475,9 +475,11 @@ export default function EmployeeDetailPage() {
                   multiplier={3}
                   onSave={(payload) => handleSaveImage('background', payload)}
                 />
-                <div className="absolute -bottom-16 left-6" style={{ zIndex: isEditing ? 9999 : 10 }}>
-                  <div className="w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] relative">
-                    <div className="absolute inset-0 rounded-full overflow-hidden">
+              </div>
+              <div className="relative">
+                <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 9999 : 10 }}>
+                  <div className="relative" style={{ width: '128px', height: '128px' }}>
+                    <div className="w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden">
                       <ImageEditorField
                         fieldName="avatar"
                         image={avatarImageData}
