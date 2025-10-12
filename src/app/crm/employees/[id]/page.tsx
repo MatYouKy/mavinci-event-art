@@ -475,18 +475,20 @@ export default function EmployeeDetailPage() {
                   multiplier={3}
                   onSave={(payload) => handleSaveImage('background', payload)}
                 />
-                <div className="absolute -bottom-16 left-6" style={{ zIndex: isEditing ? 99 : 10 }}>
-                  <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[#1c1f33] bg-[#1c1f33]">
-                    <ImageEditorField
-                      fieldName="avatar"
-                      image={avatarImageData}
-                      isAdmin={isEditing}
-                      withMenu={isEditing}
-                      mode="vertical"
-                      menuPosition="right-bottom"
-                      multiplier={1}
-                      onSave={(payload) => handleSaveImage('avatar', payload)}
-                    />
+                <div className="absolute -bottom-16 left-6" style={{ zIndex: isEditing ? 9999 : 10 }}>
+                  <div className="w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] relative">
+                    <div className="absolute inset-0 rounded-full overflow-hidden">
+                      <ImageEditorField
+                        fieldName="avatar"
+                        image={avatarImageData}
+                        isAdmin={isEditing}
+                        withMenu={isEditing}
+                        mode="vertical"
+                        menuPosition="right-bottom"
+                        multiplier={1}
+                        onSave={(payload) => handleSaveImage('avatar', payload)}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
