@@ -109,7 +109,6 @@ export default function EmployeeDetailPage() {
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('operator');
-  const [editingImages, setEditingImages] = useState(false);
 
   useEffect(() => {
     if (employeeId) {
@@ -423,23 +422,14 @@ export default function EmployeeDetailPage() {
             {employee.occupation || getRoleLabel(employee.role)}
           </p>
         </div>
-        {isAdmin && !isEditing && !editingImages ? (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
-            >
-              <Edit className="w-4 h-4" />
-              Edytuj dane
-            </button>
-            <button
-              onClick={() => setEditingImages(true)}
-              className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] border border-[#d3bb73]/20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#1c1f33]/80"
-            >
-              <Edit className="w-4 h-4" />
-              Edytuj zdjęcia
-            </button>
-          </div>
+        {isAdmin && !isEditing ? (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+          >
+            <Edit className="w-4 h-4" />
+            Edytuj
+          </button>
         ) : isEditing ? (
           <div className="flex gap-2">
             <button
@@ -460,14 +450,6 @@ export default function EmployeeDetailPage() {
               Anuluj
             </button>
           </div>
-        ) : editingImages ? (
-          <button
-            onClick={() => setEditingImages(false)}
-            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700"
-          >
-            <X className="w-4 h-4" />
-            Zakończ edycję zdjęć
-          </button>
         ) : null}
       </div>
 
@@ -482,24 +464,24 @@ export default function EmployeeDetailPage() {
         {() => (
           <Form>
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-              <div className="relative h-48">
+              <div className="relative h-48" style={{ zIndex: isEditing ? 100 : 1 }}>
                 <ImageEditorField
                   fieldName="background"
                   image={backgroundImageData}
-                  isAdmin={editingImages}
-                  withMenu={editingImages}
+                  isAdmin={isEditing}
+                  withMenu={isEditing}
                   mode="horizontal"
                   menuPosition="right-top"
                   multiplier={3}
                   onSave={(payload) => handleSaveImage('background', payload)}
                 />
-                <div className="absolute -bottom-16 left-6 z-10">
+                <div className="absolute -bottom-16 left-6" style={{ zIndex: isEditing ? 99 : 10 }}>
                   <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[#1c1f33] bg-[#1c1f33]">
                     <ImageEditorField
                       fieldName="avatar"
                       image={avatarImageData}
-                      isAdmin={editingImages}
-                      withMenu={editingImages}
+                      isAdmin={isEditing}
+                      withMenu={isEditing}
                       mode="vertical"
                       menuPosition="right-bottom"
                       multiplier={1}
