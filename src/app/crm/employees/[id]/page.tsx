@@ -485,12 +485,12 @@ export default function EmployeeDetailPage() {
         {() => (
           <Form>
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-              <div className="relative h-48 overflow-hidden rounded-t-xl" style={{ zIndex: isEditing ? 100 : 1 }}>
+              <div className="relative h-48 rounded-t-xl" style={{ zIndex: isEditing ? 100 : 1, overflow: isEditing ? 'visible' : 'hidden' }}>
                 <ImageEditorField
                   fieldName="background"
                   image={backgroundImageData}
-                  isAdmin={isEditing}
-                  withMenu={isEditing}
+                  isAdmin={isEditing && (isAdmin || isViewingOwnProfile)}
+                  withMenu={isEditing && (isAdmin || isViewingOwnProfile)}
                   mode="horizontal"
                   menuPosition="right-top"
                   multiplier={3}
@@ -499,13 +499,13 @@ export default function EmployeeDetailPage() {
               </div>
               <div className="relative" style={{ zIndex: isEditing ? 50 : 10 }}>
                 <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 50 : 10 }}>
-                  <div className="relative w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33]" style={{ overflow: isEditing ? 'visible' : 'hidden', zIndex: isEditing ? 50 : 10 }}>
-                    <div className="absolute inset-0 rounded-full overflow-hidden">
+                  <div className="relative w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33]" style={{ overflow: isEditing && isAdmin ? 'visible' : 'hidden', zIndex: isEditing && isAdmin ? 50 : 10 }}>
+                    <div className="absolute inset-0 rounded-full" style={{ overflow: isEditing && isAdmin ? 'visible' : 'hidden' }}>
                       <ImageEditorField
                         fieldName="avatar"
                         image={avatarImageData}
-                        isAdmin={isEditing}
-                        withMenu={isEditing}
+                        isAdmin={isEditing && isAdmin}
+                        withMenu={isEditing && isAdmin}
                         mode="vertical"
                         menuPosition="right-bottom"
                         multiplier={1}
