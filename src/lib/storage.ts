@@ -113,3 +113,59 @@ export const deleteImage = async (url: string): Promise<void> => {
     console.error('Delete image error:', error);
   }
 };
+
+export const uploadImageToStorage = async (
+  file: File,
+  folder: string = 'site-images'
+): Promise<{ success: boolean; url?: string; error?: string }> => {
+  try {
+    let fileToUpload = file;
+
+    if (file.size > 2 * 1024 * 1024) {
+      console.log('Image too large, compressing...');
+      fileToUpload = await compressImage(file, 2);
+      console.log(
+        `Compressed from ${(file.size / 1024 / 1024).toFixed(2)}MB to ${(
+          fileToUpload.size /
+          1024 /
+          1024
+        ).toFixed(2)}MB`
+      );
+    }
+
+    const fileExt = 'jpg';
+    const fileName = `${folder}/${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(7)}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from('site-images')
+      .upload(fileName, fileToUpload, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (error) {
+      console.error('Upload error:', error);
+      return {
+        success: false,
+        error: `Upload failed: ${error.message}`,
+      };
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('site-images')
+      .getPublicUrl(data.path);
+
+    return {
+      success: true,
+      url: urlData.publicUrl,
+    };
+  } catch (error) {
+    console.error('Upload error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};

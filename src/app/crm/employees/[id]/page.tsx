@@ -6,6 +6,12 @@ import { ArrowLeft, User, Mail, Phone, MapPin, Briefcase, Shield, Calendar, File
 import { supabase } from '@/lib/supabase';
 import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab';
 import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
+import { EmployeeImageEditor } from '@/components/EmployeeImageEditor';
+
+interface ImageMetadata {
+  object_fit?: 'cover' | 'contain' | 'fill' | 'scale-down';
+  object_position?: string;
+}
 
 interface Employee {
   id: string;
@@ -16,7 +22,9 @@ interface Employee {
   phone_number: string | null;
   phone_private: string | null;
   avatar_url: string | null;
+  avatar_metadata: ImageMetadata | null;
   background_image_url: string | null;
+  background_metadata: ImageMetadata | null;
   role: string;
   access_level: string;
   occupation: string | null;
@@ -84,8 +92,6 @@ export default function EmployeeDetailPage() {
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('operator');
-  const [showAvatarUpload, setShowAvatarUpload] = useState(false);
-  const [showBackgroundUpload, setShowBackgroundUpload] = useState(false);
 
   useEffect(() => {
     if (employeeId) {
@@ -210,77 +216,6 @@ export default function EmployeeDetailPage() {
     }
   };
 
-  const handleAvatarUpload = async (file: File) => {
-    if (!isAdmin) {
-      alert('Tylko administrator może zmieniać zdjęcia');
-      return;
-    }
-
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${employeeId}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('public')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('public')
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from('employees')
-        .update({ avatar_url: publicUrl })
-        .eq('id', employeeId);
-
-      if (updateError) throw updateError;
-
-      setEmployee({ ...employee!, avatar_url: publicUrl });
-      setShowAvatarUpload(false);
-    } catch (err) {
-      console.error('Error uploading avatar:', err);
-      alert('Błąd podczas przesyłania zdjęcia');
-    }
-  };
-
-  const handleBackgroundUpload = async (file: File) => {
-    if (!isAdmin) {
-      alert('Tylko administrator może zmieniać zdjęcia');
-      return;
-    }
-
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${employeeId}-bg-${Date.now()}.${fileExt}`;
-      const filePath = `backgrounds/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('public')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('public')
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from('employees')
-        .update({ background_image_url: publicUrl })
-        .eq('id', employeeId);
-
-      if (updateError) throw updateError;
-
-      setEmployee({ ...employee!, background_image_url: publicUrl });
-      setShowBackgroundUpload(false);
-    } catch (err) {
-      console.error('Error uploading background:', err);
-      alert('Błąd podczas przesyłania zdjęcia');
-    }
-  };
 
   const handleDeleteDocument = async (docId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć ten dokument?')) return;
@@ -434,25 +369,36 @@ export default function EmployeeDetailPage() {
             <img
               src={employee.background_image_url}
               alt="Background"
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full"
+              style={{
+                objectFit: employee.background_metadata?.object_fit || 'cover',
+                objectPosition: employee.background_metadata?.object_position || 'center',
+              }}
             />
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#1c1f33]/50" />
           {isAdmin && (
-            <button
-              onClick={() => setShowBackgroundUpload(true)}
-              className="absolute top-4 right-4 bg-[#1c1f33]/80 backdrop-blur-sm text-[#e5e4e2] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 text-sm"
-            >
-              <ImageIcon className="w-4 h-4" />
-              Zmień tło
-            </button>
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <EmployeeImageEditor
+                employeeId={employeeId}
+                currentImageUrl={employee.background_image_url}
+                metadata={employee.background_metadata}
+                onUpdate={fetchEmployeeDetails}
+                imageType="background"
+                title="Zmień tło"
+              />
+            </div>
           )}
           <div className="absolute -bottom-12 left-6 group">
             {employee.avatar_url ? (
               <img
                 src={employee.avatar_url}
                 alt={`${employee.name} ${employee.surname}`}
-                className="w-24 h-24 rounded-full border-4 border-[#1c1f33] object-cover"
+                className="w-24 h-24 rounded-full border-4 border-[#1c1f33]"
+                style={{
+                  objectFit: employee.avatar_metadata?.object_fit || 'cover',
+                  objectPosition: employee.avatar_metadata?.object_position || 'center',
+                }}
               />
             ) : (
               <div className="w-24 h-24 rounded-full border-4 border-[#1c1f33] bg-[#d3bb73]/20 flex items-center justify-center">
@@ -460,12 +406,16 @@ export default function EmployeeDetailPage() {
               </div>
             )}
             {isAdmin && (
-              <button
-                onClick={() => setShowAvatarUpload(true)}
-                className="absolute bottom-0 right-0 bg-[#d3bb73] text-[#1c1f33] p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Camera className="w-4 h-4" />
-              </button>
+              <div className="absolute bottom-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <EmployeeImageEditor
+                  employeeId={employeeId}
+                  currentImageUrl={employee.avatar_url}
+                  metadata={employee.avatar_metadata}
+                  onUpdate={fetchEmployeeDetails}
+                  imageType="avatar"
+                  title="Zmień zdjęcie"
+                />
+              </div>
             )}
           </div>
         </div>
@@ -988,24 +938,6 @@ export default function EmployeeDetailPage() {
           onAdded={fetchDocuments}
         />
       )}
-
-      {showAvatarUpload && (
-        <AvatarUploadModal
-          isOpen={showAvatarUpload}
-          onClose={() => setShowAvatarUpload(false)}
-          onUpload={handleAvatarUpload}
-          title="Zmień zdjęcie profilowe"
-        />
-      )}
-
-      {showBackgroundUpload && (
-        <AvatarUploadModal
-          isOpen={showBackgroundUpload}
-          onClose={() => setShowBackgroundUpload(false)}
-          onUpload={handleBackgroundUpload}
-          title="Zmień zdjęcie tła"
-        />
-      )}
     </div>
   );
 }
@@ -1165,102 +1097,3 @@ function AddDocumentModal({
   );
 }
 
-function AvatarUploadModal({
-  isOpen,
-  onClose,
-  onUpload,
-  title = 'Zmień zdjęcie',
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onUpload: (file: File) => void;
-  title?: string;
-}) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-
-  if (!isOpen) return null;
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleUpload = () => {
-    if (selectedFile) {
-      onUpload(selectedFile);
-      setSelectedFile(null);
-      setPreview(null);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
-        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">
-          {title}
-        </h2>
-
-        <div className="space-y-4">
-          {preview ? (
-            <div className="flex flex-col items-center">
-              <img
-                src={preview}
-                alt="Podgląd"
-                className="w-40 h-40 rounded-full object-cover border-4 border-[#d3bb73]/20 mb-4"
-              />
-              <button
-                onClick={() => {
-                  setSelectedFile(null);
-                  setPreview(null);
-                }}
-                className="text-sm text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-              >
-                Wybierz inne zdjęcie
-              </button>
-            </div>
-          ) : (
-            <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-[#d3bb73]/20 rounded-lg cursor-pointer hover:border-[#d3bb73]/40 transition-colors">
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <Upload className="w-12 h-12 text-[#d3bb73] mb-4" />
-                <p className="mb-2 text-sm text-[#e5e4e2]">
-                  <span className="font-semibold">Kliknij aby wybrać</span> lub przeciągnij plik
-                </p>
-                <p className="text-xs text-[#e5e4e2]/60">PNG, JPG (MAX. 5MB)</p>
-              </div>
-              <input
-                type="file"
-                className="hidden"
-                accept="image/*"
-                onChange={handleFileSelect}
-              />
-            </label>
-          )}
-
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={handleUpload}
-              disabled={!selectedFile}
-              className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Zapisz
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
-            >
-              Anuluj
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
