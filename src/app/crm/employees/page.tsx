@@ -220,7 +220,7 @@ export default function EmployeesPage() {
                 )}
               </div>
 
-              {employee.skills && employee.skills.length > 0 && (
+              {employee.skills && Array.isArray(employee.skills) && employee.skills.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
                   <div className="flex flex-wrap gap-1">
                     {employee.skills.slice(0, 3).map((skill, idx) => (
