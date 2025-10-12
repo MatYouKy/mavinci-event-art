@@ -8,9 +8,15 @@ import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab'
 import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
 import { EmployeeImageEditor } from '@/components/EmployeeImageEditor';
 
+interface ImagePosition {
+  posX: number;
+  posY: number;
+  scale: number;
+}
+
 interface ImageMetadata {
+  position?: ImagePosition;
   object_fit?: 'cover' | 'contain' | 'fill' | 'scale-down';
-  object_position?: string;
 }
 
 interface Employee {
@@ -366,15 +372,17 @@ export default function EmployeeDetailPage() {
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
         <div className="relative h-32 bg-gradient-to-r from-[#d3bb73]/20 to-[#d3bb73]/5 group">
           {employee.background_image_url && (
-            <img
-              src={employee.background_image_url}
-              alt="Background"
-              className="absolute inset-0 w-full h-full"
-              style={{
-                objectFit: employee.background_metadata?.object_fit || 'cover',
-                objectPosition: employee.background_metadata?.object_position || 'center',
-              }}
-            />
+            <div className="absolute inset-0 overflow-hidden">
+              <img
+                src={employee.background_image_url}
+                alt="Background"
+                className="w-full h-full"
+                style={{
+                  objectFit: employee.background_metadata?.object_fit || 'cover',
+                  transform: `translate(${employee.background_metadata?.position?.posX || 0}%, ${employee.background_metadata?.position?.posY || 0}%) scale(${employee.background_metadata?.position?.scale || 1})`,
+                }}
+              />
+            </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#1c1f33]/50" />
           {isAdmin && (
@@ -391,15 +399,17 @@ export default function EmployeeDetailPage() {
           )}
           <div className="absolute -bottom-12 left-6 group">
             {employee.avatar_url ? (
-              <img
-                src={employee.avatar_url}
-                alt={`${employee.name} ${employee.surname}`}
-                className="w-24 h-24 rounded-full border-4 border-[#1c1f33]"
-                style={{
-                  objectFit: employee.avatar_metadata?.object_fit || 'cover',
-                  objectPosition: employee.avatar_metadata?.object_position || 'center',
-                }}
-              />
+              <div className="w-24 h-24 rounded-full border-4 border-[#1c1f33] overflow-hidden">
+                <img
+                  src={employee.avatar_url}
+                  alt={`${employee.name} ${employee.surname}`}
+                  className="w-full h-full"
+                  style={{
+                    objectFit: employee.avatar_metadata?.object_fit || 'cover',
+                    transform: `translate(${employee.avatar_metadata?.position?.posX || 0}%, ${employee.avatar_metadata?.position?.posY || 0}%) scale(${employee.avatar_metadata?.position?.scale || 1})`,
+                  }}
+                />
+              </div>
             ) : (
               <div className="w-24 h-24 rounded-full border-4 border-[#1c1f33] bg-[#d3bb73]/20 flex items-center justify-center">
                 <User className="w-12 h-12 text-[#d3bb73]" />

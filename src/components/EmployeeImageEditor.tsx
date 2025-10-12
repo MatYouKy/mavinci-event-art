@@ -4,10 +4,17 @@ import { useState } from 'react';
 import { Upload, X, Save } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImageToStorage } from '@/lib/storage';
+import { SliderX, SliderY, SliderScale } from './UI/Slider/Slider';
+
+interface ImagePosition {
+  posX: number;
+  posY: number;
+  scale: number;
+}
 
 interface ImageMetadata {
+  position?: ImagePosition;
   object_fit?: 'cover' | 'contain' | 'fill' | 'scale-down';
-  object_position?: string;
 }
 
 interface EmployeeImageEditorProps {
@@ -31,9 +38,11 @@ export function EmployeeImageEditor({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(currentImageUrl);
   const [objectFit, setObjectFit] = useState<string>(metadata?.object_fit || 'cover');
-  const [objectPosition, setObjectPosition] = useState<string>(
-    metadata?.object_position || 'center'
-  );
+  const [position, setPosition] = useState<ImagePosition>({
+    posX: metadata?.position?.posX || 0,
+    posY: metadata?.position?.posY || 0,
+    scale: metadata?.position?.scale || 1,
+  });
   const [uploading, setUploading] = useState(false);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,8 +80,12 @@ export function EmployeeImageEditor({
       }
 
       const newMetadata = {
+        position: {
+          posX: position.posX,
+          posY: position.posY,
+          scale: position.scale,
+        },
         object_fit: objectFit,
-        object_position: objectPosition,
       };
 
       const updateData: any = {};
@@ -115,13 +128,24 @@ export function EmployeeImageEditor({
     );
   }
 
+  const getTransformStyle = () => {
+    return {
+      transform: `translate(${position.posX}%, ${position.posY}%) scale(${position.scale})`,
+      transition: 'transform 0.1s ease-out',
+    };
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-light text-[#e5e4e2]">{title}</h2>
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={() => {
+              setIsOpen(false);
+              setFile(null);
+              setPreview(currentImageUrl);
+            }}
             className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
           >
             <X className="w-5 h-5 text-[#e5e4e2]" />
@@ -135,21 +159,23 @@ export function EmployeeImageEditor({
             </label>
             {preview ? (
               <div className="relative aspect-[16/9] overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]">
-                <img
-                  src={preview}
-                  alt="Podgląd"
-                  className="w-full h-full"
-                  style={{
-                    objectFit: objectFit as any,
-                    objectPosition: objectPosition,
-                  }}
-                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <img
+                    src={preview}
+                    alt="Podgląd"
+                    className="w-full h-full"
+                    style={{
+                      objectFit: objectFit as any,
+                      ...getTransformStyle(),
+                    }}
+                  />
+                </div>
                 <button
                   onClick={() => {
                     setFile(null);
                     setPreview(currentImageUrl);
                   }}
-                  className="absolute top-2 right-2 p-2 bg-[#800020] text-[#e5e4e2] rounded-lg hover:bg-[#800020]/90 transition-colors"
+                  className="absolute top-2 right-2 p-2 bg-[#800020] text-[#e5e4e2] rounded-lg hover:bg-[#800020]/90 transition-colors z-10"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -173,46 +199,68 @@ export function EmployeeImageEditor({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Dopasowanie
-              </label>
-              <select
-                value={objectFit}
-                onChange={(e) => setObjectFit(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="cover">Wypełnij (Cover)</option>
-                <option value="contain">Zmieść (Contain)</option>
-                <option value="fill">Rozciągnij (Fill)</option>
-                <option value="scale-down">Zmniejsz (Scale Down)</option>
-              </select>
-            </div>
+          {preview && (
+            <>
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Dopasowanie
+                </label>
+                <select
+                  value={objectFit}
+                  onChange={(e) => setObjectFit(e.target.value)}
+                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                >
+                  <option value="cover">Wypełnij (Cover)</option>
+                  <option value="contain">Zmieść (Contain)</option>
+                  <option value="fill">Rozciągnij (Fill)</option>
+                  <option value="scale-down">Zmniejsz (Scale Down)</option>
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Pozycja
-              </label>
-              <select
-                value={objectPosition}
-                onChange={(e) => setObjectPosition(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="center">Środek</option>
-                <option value="top">Góra</option>
-                <option value="bottom">Dół</option>
-                <option value="left">Lewo</option>
-                <option value="right">Prawo</option>
-                <option value="top left">Góra lewo</option>
-                <option value="top right">Góra prawo</option>
-                <option value="bottom left">Dół lewo</option>
-                <option value="bottom right">Dół prawo</option>
-              </select>
-            </div>
-          </div>
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-[#e5e4e2]">Pozycjonowanie</h3>
 
-          <div className="flex gap-3 pt-4">
+                <div>
+                  <label className="block text-xs text-[#e5e4e2]/60 mb-2">
+                    Pozycja X (lewo/prawo)
+                  </label>
+                  <SliderX
+                    value={position.posX}
+                    onChange={(value) => setPosition({ ...position, posX: value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[#e5e4e2]/60 mb-2">
+                    Pozycja Y (góra/dół)
+                  </label>
+                  <SliderY
+                    value={position.posY}
+                    onChange={(value) => setPosition({ ...position, posY: value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[#e5e4e2]/60 mb-2">
+                    Skala (zoom)
+                  </label>
+                  <SliderScale
+                    value={position.scale}
+                    onChange={(value) => setPosition({ ...position, scale: value })}
+                  />
+                </div>
+
+                <button
+                  onClick={() => setPosition({ posX: 0, posY: 0, scale: 1 })}
+                  className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
+                >
+                  Resetuj pozycję
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 pt-4 border-t border-[#d3bb73]/10">
             <button
               onClick={handleSave}
               disabled={uploading || (!file && currentImageUrl === preview)}
@@ -226,6 +274,11 @@ export function EmployeeImageEditor({
                 setIsOpen(false);
                 setFile(null);
                 setPreview(currentImageUrl);
+                setPosition({
+                  posX: metadata?.position?.posX || 0,
+                  posY: metadata?.position?.posY || 0,
+                  scale: metadata?.position?.scale || 1,
+                });
               }}
               className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
             >
