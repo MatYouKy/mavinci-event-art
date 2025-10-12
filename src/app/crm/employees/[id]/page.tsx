@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Mail, Phone, MapPin, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Download, Lock } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Download, Lock, Camera } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab';
 import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
 import { Formik, Form } from 'formik';
 import { ImageEditorField } from '@/components/ImageEditorField';
+import { AvatarEditorModal } from '@/components/AvatarEditorModal';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 
@@ -108,6 +109,7 @@ export default function EmployeeDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('operator');
 
   useEffect(() => {
@@ -476,24 +478,35 @@ export default function EmployeeDetailPage() {
                   onSave={(payload) => handleSaveImage('background', payload)}
                 />
               </div>
-              <div className="relative" style={{ overflow: 'visible' }}>
-                <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 9999 : 10, overflow: 'visible' }}>
-                  <div className="relative" style={{ width: '128px', height: '128px', overflow: 'visible' }}>
-                    <div className="absolute inset-0 w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden" style={{ zIndex: 1 }}></div>
-                    <div className="relative w-32 h-32 rounded-full" style={{ zIndex: 2, overflow: 'visible' }}>
-                      <div className="absolute inset-0 rounded-full overflow-hidden" style={{ zIndex: 1 }}>
-                        <ImageEditorField
-                          fieldName="avatar"
-                          image={avatarImageData}
-                          isAdmin={isEditing}
-                          withMenu={isEditing}
-                          mode="vertical"
-                          menuPosition="right-bottom"
-                          multiplier={1}
-                          onSave={(payload) => handleSaveImage('avatar', payload)}
+              <div className="relative">
+                <div className="absolute -top-16 left-6">
+                  <div className="relative w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden group">
+                    {avatarImageData?.url ? (
+                      <div
+                        className="absolute inset-0"
+                        style={{
+                          transform: `translate(${avatarImageData.posX || 0}%, ${avatarImageData.posY || 0}%) scale(${avatarImageData.scale || 1})`,
+                        }}
+                      >
+                        <img
+                          src={avatarImageData.url}
+                          alt={avatarImageData.alt || 'Avatar'}
+                          className="w-full h-full object-cover"
                         />
                       </div>
-                    </div>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center bg-[#0f1117]">
+                        <User className="w-12 h-12 text-[#e5e4e2]/20" />
+                      </div>
+                    )}
+                    {isEditing && (
+                      <button
+                        onClick={() => setShowAvatarModal(true)}
+                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        <Camera className="w-8 h-8 text-white" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1019,6 +1032,16 @@ export default function EmployeeDetailPage() {
           onAdded={fetchDocuments}
         />
       )}
+
+      <AvatarEditorModal
+        open={showAvatarModal}
+        onClose={() => setShowAvatarModal(false)}
+        image={avatarImageData}
+        onSave={async (payload) => {
+          await handleSaveImage('avatar', payload);
+          setShowAvatarModal(false);
+        }}
+      />
     </div>
   );
 }
