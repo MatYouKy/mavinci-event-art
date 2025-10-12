@@ -8,8 +8,9 @@ import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab'
 import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
 import { Formik, Form } from 'formik';
 import { ImageEditorField } from '@/components/ImageEditorField';
+import { AvatarEditorModal } from '@/components/AvatarEditorModal';
 import { uploadImage } from '@/lib/storage';
-import { IUploadImage } from '@/types/image';
+import { IUploadImage, IImage } from '@/types/image';
 
 interface ImagePosition {
   posX: number;
@@ -114,6 +115,7 @@ export default function EmployeeDetailPage() {
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<{id: string, isAdmin: boolean} | null>(null);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   useEffect(() => {
     checkCurrentUser();
@@ -499,19 +501,34 @@ export default function EmployeeDetailPage() {
               </div>
               <div className="relative" style={{ zIndex: isEditing ? 50 : 10 }}>
                 <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 50 : 10 }}>
-                  <div className="relative w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33]" style={{ overflow: isEditing && isAdmin ? 'visible' : 'hidden', zIndex: isEditing && isAdmin ? 50 : 10 }}>
-                    <div className="absolute inset-0 rounded-full" style={{ overflow: isEditing && isAdmin ? 'visible' : 'hidden' }}>
-                      <ImageEditorField
-                        fieldName="avatar"
-                        image={avatarImageData}
-                        isAdmin={isEditing && isAdmin}
-                        withMenu={isEditing && isAdmin}
-                        mode="vertical"
-                        menuPosition="right-bottom"
-                        multiplier={1}
-                        onSave={(payload) => handleSaveImage('avatar', payload)}
+                  <div
+                    className={`relative w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden ${isEditing && isAdmin ? 'cursor-pointer hover:ring-2 hover:ring-[#d3bb73] transition-all' : ''}`}
+                    onClick={() => {
+                      if (isEditing && isAdmin) {
+                        setShowAvatarModal(true);
+                      }
+                    }}
+                  >
+                    {employee.avatar_url ? (
+                      <img
+                        src={employee.avatar_url}
+                        alt={employee.name}
+                        className="w-full h-full object-cover"
+                        style={{
+                          objectFit: employee.avatar_metadata?.desktop?.objectFit as any || 'cover',
+                          transform: `translate(${employee.avatar_metadata?.desktop?.position?.posX || 0}%, ${employee.avatar_metadata?.desktop?.position?.posY || 0}%) scale(${employee.avatar_metadata?.desktop?.position?.scale || 1})`,
+                        }}
                       />
-                    </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl text-[#e5e4e2]/40 bg-[#1c1f33]">
+                        {employee.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {isEditing && isAdmin && (
+                      <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-white text-sm font-medium">Edytuj</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1167,6 +1184,14 @@ export default function EmployeeDetailPage() {
           onAdded={fetchDocuments}
         />
       )}
+
+      <AvatarEditorModal
+        open={showAvatarModal}
+        onClose={() => setShowAvatarModal(false)}
+        image={avatarImageData}
+        onSave={(payload) => handleSaveImage('avatar', payload)}
+        employeeName={`${employee?.name} ${employee?.surname}`}
+      />
     </div>
   );
 }
