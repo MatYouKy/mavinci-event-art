@@ -2,11 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Mail, Phone, MapPin, Briefcase, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Upload, Download, Camera, Image as ImageIcon, Lock } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Download, Lock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab';
 import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
-import { EmployeeImageEditor } from '@/components/EmployeeImageEditor';
+import { Formik, Form } from 'formik';
+import { ImageEditorField } from '@/components/ImageEditorField';
+import { uploadImage } from '@/lib/storage';
+import { IUploadImage } from '@/types/image';
 
 interface ImagePosition {
   posX: number;
@@ -15,8 +18,16 @@ interface ImagePosition {
 }
 
 interface ImageMetadata {
-  position?: ImagePosition;
-  object_fit?: 'cover' | 'contain' | 'fill' | 'scale-down';
+  desktop?: {
+    src?: string;
+    position?: ImagePosition;
+    objectFit?: string;
+  };
+  mobile?: {
+    src?: string;
+    position?: ImagePosition;
+    objectFit?: string;
+  };
 }
 
 interface Employee {
@@ -98,6 +109,7 @@ export default function EmployeeDetailPage() {
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('operator');
+  const [editingImages, setEditingImages] = useState(false);
 
   useEffect(() => {
     if (employeeId) {
@@ -113,17 +125,10 @@ export default function EmployeeDetailPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('No authenticated user');
         setCurrentUserRole('guest');
         return;
       }
-
-      console.log('Supabase user:', user);
-      console.log('User metadata:', user.user_metadata);
-      console.log('App metadata:', user.app_metadata);
-
       const role = user.user_metadata?.role || user.app_metadata?.role || 'admin';
-      console.log('Determined role:', role);
       setCurrentUserRole(role);
     } catch (err) {
       console.error('Error checking user role:', err);
@@ -222,6 +227,54 @@ export default function EmployeeDetailPage() {
     }
   };
 
+  const handleSaveImage = async (
+    imageType: 'avatar' | 'background',
+    payload: { file?: File; image: IUploadImage }
+  ) => {
+    try {
+      let imageUrl = imageType === 'avatar' ? employee?.avatar_url : employee?.background_image_url;
+      let imageMetadata = payload.image.image_metadata;
+
+      if (payload.file) {
+        const folder = imageType === 'avatar' ? 'employee-avatars' : 'employee-backgrounds';
+        imageUrl = await uploadImage(payload.file, folder);
+
+        imageMetadata = {
+          desktop: {
+            src: imageUrl,
+            position: payload.image.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+            objectFit: payload.image.image_metadata?.desktop?.objectFit || 'cover',
+          },
+          mobile: {
+            src: imageUrl,
+            position: payload.image.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+            objectFit: payload.image.image_metadata?.mobile?.objectFit || 'cover',
+          },
+        };
+      }
+
+      const updateData: any = {};
+      if (imageType === 'avatar') {
+        updateData.avatar_url = imageUrl;
+        updateData.avatar_metadata = imageMetadata;
+      } else {
+        updateData.background_image_url = imageUrl;
+        updateData.background_metadata = imageMetadata;
+      }
+
+      const { error } = await supabase
+        .from('employees')
+        .update(updateData)
+        .eq('id', employeeId);
+
+      if (error) throw error;
+
+      await fetchEmployeeDetails();
+    } catch (err) {
+      console.error('Error saving image:', err);
+      throw err;
+    }
+  };
 
   const handleDeleteDocument = async (docId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć ten dokument?')) return;
@@ -321,6 +374,38 @@ export default function EmployeeDetailPage() {
     );
   }
 
+  const avatarImageData: IUploadImage = {
+    alt: employee.name,
+    image_metadata: employee.avatar_metadata || {
+      desktop: {
+        src: employee.avatar_url || '',
+        position: { posX: 0, posY: 0, scale: 1 },
+        objectFit: 'cover',
+      },
+      mobile: {
+        src: employee.avatar_url || '',
+        position: { posX: 0, posY: 0, scale: 1 },
+        objectFit: 'cover',
+      },
+    },
+  };
+
+  const backgroundImageData: IUploadImage = {
+    alt: `${employee.name} tło`,
+    image_metadata: employee.background_metadata || {
+      desktop: {
+        src: employee.background_image_url || '',
+        position: { posX: 0, posY: 0, scale: 1 },
+        objectFit: 'cover',
+      },
+      mobile: {
+        src: employee.background_image_url || '',
+        position: { posX: 0, posY: 0, scale: 1 },
+        objectFit: 'cover',
+      },
+    },
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -338,14 +423,23 @@ export default function EmployeeDetailPage() {
             {employee.occupation || getRoleLabel(employee.role)}
           </p>
         </div>
-        {isAdmin && !isEditing ? (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
-          >
-            <Edit className="w-4 h-4" />
-            Edytuj
-          </button>
+        {isAdmin && !isEditing && !editingImages ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+            >
+              <Edit className="w-4 h-4" />
+              Edytuj dane
+            </button>
+            <button
+              onClick={() => setEditingImages(true)}
+              className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] border border-[#d3bb73]/20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#1c1f33]/80"
+            >
+              <Edit className="w-4 h-4" />
+              Edytuj zdjęcia
+            </button>
+          </div>
         ) : isEditing ? (
           <div className="flex gap-2">
             <button
@@ -366,110 +460,98 @@ export default function EmployeeDetailPage() {
               Anuluj
             </button>
           </div>
+        ) : editingImages ? (
+          <button
+            onClick={() => setEditingImages(false)}
+            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700"
+          >
+            <X className="w-4 h-4" />
+            Zakończ edycję zdjęć
+          </button>
         ) : null}
       </div>
 
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-        <div className="relative h-32 bg-gradient-to-r from-[#d3bb73]/20 to-[#d3bb73]/5 group">
-          {employee.background_image_url && (
-            <div className="absolute inset-0 overflow-hidden">
-              <img
-                src={employee.background_image_url}
-                alt="Background"
-                className="w-full h-full"
-                style={{
-                  objectFit: employee.background_metadata?.object_fit || 'cover',
-                  transform: `translate(${employee.background_metadata?.position?.posX || 0}%, ${employee.background_metadata?.position?.posY || 0}%) scale(${employee.background_metadata?.position?.scale || 1})`,
-                }}
-              />
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#1c1f33]/50" />
-          {isAdmin && (
-            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-              <EmployeeImageEditor
-                employeeId={employeeId}
-                currentImageUrl={employee.background_image_url}
-                metadata={employee.background_metadata}
-                onUpdate={fetchEmployeeDetails}
-                imageType="background"
-                title="Zmień tło"
-              />
-            </div>
-          )}
-          <div className="absolute -bottom-12 left-6 group">
-            {employee.avatar_url ? (
-              <div className="w-24 h-24 rounded-full border-4 border-[#1c1f33] overflow-hidden">
-                <img
-                  src={employee.avatar_url}
-                  alt={`${employee.name} ${employee.surname}`}
-                  className="w-full h-full"
-                  style={{
-                    objectFit: employee.avatar_metadata?.object_fit || 'cover',
-                    transform: `translate(${employee.avatar_metadata?.position?.posX || 0}%, ${employee.avatar_metadata?.position?.posY || 0}%) scale(${employee.avatar_metadata?.position?.scale || 1})`,
-                  }}
+      <Formik
+        initialValues={{
+          avatar: avatarImageData,
+          background: backgroundImageData,
+        }}
+        onSubmit={() => {}}
+        enableReinitialize
+      >
+        {() => (
+          <Form>
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+              <div className="relative h-48">
+                <ImageEditorField
+                  fieldName="background"
+                  image={backgroundImageData}
+                  isAdmin={editingImages}
+                  withMenu={editingImages}
+                  mode="horizontal"
+                  menuPosition="right-top"
+                  multiplier={3}
+                  onSave={(payload) => handleSaveImage('background', payload)}
                 />
+                <div className="absolute -bottom-16 left-6 z-10">
+                  <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[#1c1f33] bg-[#1c1f33]">
+                    <ImageEditorField
+                      fieldName="avatar"
+                      image={avatarImageData}
+                      isAdmin={editingImages}
+                      withMenu={editingImages}
+                      mode="vertical"
+                      menuPosition="right-bottom"
+                      multiplier={1}
+                      onSave={(payload) => handleSaveImage('avatar', payload)}
+                    />
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="w-24 h-24 rounded-full border-4 border-[#1c1f33] bg-[#d3bb73]/20 flex items-center justify-center">
-                <User className="w-12 h-12 text-[#d3bb73]" />
-              </div>
-            )}
-            {isAdmin && (
-              <div className="absolute bottom-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                <EmployeeImageEditor
-                  employeeId={employeeId}
-                  currentImageUrl={employee.avatar_url}
-                  metadata={employee.avatar_metadata}
-                  onUpdate={fetchEmployeeDetails}
-                  imageType="avatar"
-                  title="Zmień zdjęcie"
-                />
-              </div>
-            )}
-          </div>
-        </div>
 
-        <div className="pt-16 px-6 pb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <span
-              className={`px-3 py-1 rounded-full text-xs ${
-                employee.is_active
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'bg-red-500/20 text-red-400'
-              }`}
-            >
-              {employee.is_active ? 'Aktywny' : 'Nieaktywny'}
-            </span>
-            <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs">
-              <Shield className="w-3 h-3 inline mr-1" />
-              {getAccessLevelLabel(employee.access_level)}
-            </span>
-            <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-xs">
-              {getRoleLabel(employee.role)}
-            </span>
-          </div>
+              <div className="pt-20 px-6 pb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs ${
+                      employee.is_active
+                        ? 'bg-green-500/20 text-green-400'
+                        : 'bg-red-500/20 text-red-400'
+                    }`}
+                  >
+                    {employee.is_active ? 'Aktywny' : 'Nieaktywny'}
+                  </span>
+                  <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs">
+                    <Shield className="w-3 h-3 inline mr-1" />
+                    {getAccessLevelLabel(employee.access_level)}
+                  </span>
+                  <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-xs">
+                    {getRoleLabel(employee.role)}
+                  </span>
+                </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div className="flex items-center gap-2 text-[#e5e4e2]/70">
-              <Mail className="w-4 h-4" />
-              <span>{employee.email}</span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="flex items-center gap-2 text-[#e5e4e2]/70">
+                    <Mail className="w-4 h-4" />
+                    <span>{employee.email}</span>
+                  </div>
+                  {employee.phone_number && (
+                    <div className="flex items-center gap-2 text-[#e5e4e2]/70">
+                      <Phone className="w-4 h-4" />
+                      <span>{employee.phone_number}</span>
+                    </div>
+                  )}
+                  {employee.region && (
+                    <div className="flex items-center gap-2 text-[#e5e4e2]/70">
+                      <MapPin className="w-4 h-4" />
+                      <span>{employee.region}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-            {employee.phone_number && (
-              <div className="flex items-center gap-2 text-[#e5e4e2]/70">
-                <Phone className="w-4 h-4" />
-                <span>{employee.phone_number}</span>
-              </div>
-            )}
-            {employee.region && (
-              <div className="flex items-center gap-2 text-[#e5e4e2]/70">
-                <MapPin className="w-4 h-4" />
-                <span>{employee.region}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+          </Form>
+        )}
+      </Formik>
 
       <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         {[
@@ -1106,4 +1188,3 @@ function AddDocumentModal({
     </div>
   );
 }
-
