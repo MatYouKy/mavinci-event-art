@@ -487,14 +487,14 @@ export default function EmployeeDetailPage() {
         {() => (
           <Form>
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-              <div className="relative h-48 rounded-t-xl" style={{ zIndex: isEditing ? 100 : 1, overflow: isEditing ? 'visible' : 'hidden' }}>
+              <div className="relative h-48 rounded-t-xl overflow-hidden" style={{ zIndex: isEditing ? 100 : 1 }}>
                 <ImageEditorField
                   fieldName="background"
                   image={backgroundImageData}
                   isAdmin={isEditing && (isAdmin || isViewingOwnProfile)}
                   withMenu={isEditing && (isAdmin || isViewingOwnProfile)}
                   mode="horizontal"
-                  menuPosition="right-top"
+                  menuPosition="left-top"
                   multiplier={3}
                   onSave={(payload) => handleSaveImage('background', payload)}
                 />

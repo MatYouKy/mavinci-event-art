@@ -1,6 +1,6 @@
 'use client';
 
-import { Dialog, Avatar } from '@mui/material';
+import { Dialog } from '@mui/material';
 import { X } from 'lucide-react';
 import React, { useState } from 'react';
 import { IImage, IUploadImage } from '../types/image';
@@ -77,12 +77,13 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
         <Formik initialValues={initialValues} onSubmit={() => {}}>
           {({ values }) => (
             <Form>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="text-sm text-[#e5e4e2]/60 mb-2">
-                    Edytuj zdjęcie
-                  </div>
-                  <div className="relative w-full aspect-square bg-white rounded-lg overflow-visible border border-[#d3bb73]/20">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="text-sm text-[#e5e4e2]/60 mb-2 text-center">
+                  Ustaw zdjęcie profilowe - obszar w okręgu będzie widoczny
+                </div>
+
+                <div className="relative w-full max-w-lg aspect-square">
+                  <div className="relative w-full h-full bg-white rounded-lg overflow-visible border border-[#d3bb73]/20">
                     <ImageEditorField
                       fieldName="avatar"
                       image={values.avatar}
@@ -94,57 +95,29 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
                       onSave={handleSaveFromEditor}
                     />
                   </div>
-                  <div className="text-xs text-[#e5e4e2]/40 text-center">
-                    Kwadratowy widok edycji
-                  </div>
+
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background: 'radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.75) 40%)',
+                      borderRadius: '8px',
+                    }}
+                  />
+
+                  <div
+                    className="absolute inset-0 pointer-events-none border-2 border-[#d3bb73] rounded-full"
+                    style={{
+                      width: '80%',
+                      height: '80%',
+                      top: '10%',
+                      left: '10%',
+                    }}
+                  />
                 </div>
 
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="text-sm text-[#e5e4e2]/60 mb-2">
-                    Podgląd okrągłego avatara
-                  </div>
-                  <div className="relative">
-                    <Avatar
-                      sx={{
-                        width: 280,
-                        height: 280,
-                        border: '4px solid #1c1f33',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                      }}
-                    >
-                      {values.avatar?.url ? (
-                        <div
-                          className="w-full h-full"
-                          style={{
-                            position: 'relative',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <img
-                            src={values.avatar.url}
-                            alt={values.avatar.alt || employeeName}
-                            style={{
-                              position: 'absolute',
-                              top: '50%',
-                              left: '50%',
-                              width: '100%',
-                              height: '100%',
-                              objectFit: values.avatar.objectFit || 'cover',
-                              transform: `translate(calc(-50% + ${values.avatar.posX || 0}%), calc(-50% + ${values.avatar.posY || 0}%)) scale(${values.avatar.scale || 1})`,
-                              opacity: values.avatar.opacity ?? 1,
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <div className="text-6xl text-[#e5e4e2]/20">
-                          {employeeName.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                    </Avatar>
-                  </div>
-                  <div className="text-xs text-[#e5e4e2]/40 text-center max-w-xs">
-                    Tak będzie wyglądać avatar w systemie CRM i na stronie
-                  </div>
+                <div className="text-xs text-[#e5e4e2]/40 text-center max-w-md">
+                  Okrąg pokazuje jak avatar będzie wyglądać w systemie CRM i na stronie.
+                  Użyj sliderów i menu aby dopasować pozycję zdjęcia.
                 </div>
               </div>
 
