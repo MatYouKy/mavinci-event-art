@@ -82,15 +82,15 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
                   Ustaw zdjęcie profilowe - obszar w okręgu będzie widoczny
                 </div>
 
-                <div className="relative w-full max-w-lg aspect-square">
-                  <div className="relative w-full h-full bg-white rounded-lg overflow-visible border border-[#d3bb73]/20">
+                <div className="relative w-full max-w-lg aspect-square overflow-hidden rounded-lg">
+                  <div className="relative w-full h-full bg-white">
                     <ImageEditorField
                       fieldName="avatar"
                       image={values.avatar}
                       isAdmin={true}
                       withMenu={true}
                       mode="vertical"
-                      menuPosition="right-top"
+                      menuPosition="left-top"
                       multiplier={1}
                       onSave={handleSaveFromEditor}
                     />

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Mail, Phone, Briefcase, Shield, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 
 interface Employee {
   id: string;
@@ -13,6 +14,7 @@ interface Employee {
   email: string;
   phone_number: string | null;
   avatar_url: string | null;
+  avatar_metadata?: any;
   role: string;
   access_level: string;
   occupation: string | null;
@@ -158,17 +160,15 @@ export default function EmployeesPage() {
               className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
             >
               <div className="flex flex-col items-center text-center mb-4">
-                {employee.avatar_url ? (
-                  <img
-                    src={employee.avatar_url}
-                    alt={`${employee.name} ${employee.surname}`}
-                    className="w-20 h-20 rounded-full object-cover mb-4 border-2 border-[#d3bb73]/20"
+                <div className="mb-4">
+                  <EmployeeAvatar
+                    avatarUrl={employee.avatar_url}
+                    avatarMetadata={employee.avatar_metadata}
+                    employeeName={`${employee.name} ${employee.surname}`}
+                    size={80}
+                    className="border-2 border-[#d3bb73]/20"
                   />
-                ) : (
-                  <div className="w-20 h-20 rounded-full bg-[#d3bb73]/20 flex items-center justify-center mb-4 border-2 border-[#d3bb73]/20">
-                    <User className="w-10 h-10 text-[#d3bb73]" />
-                  </div>
-                )}
+                </div>
                 <h3 className="text-lg font-medium text-[#e5e4e2]">
                   {employee.name} {employee.surname}
                 </h3>

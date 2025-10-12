@@ -9,6 +9,7 @@ import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
 import { Formik, Form } from 'formik';
 import { ImageEditorField } from '@/components/ImageEditorField';
 import { AvatarEditorModal } from '@/components/AvatarEditorModal';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage, IImage } from '@/types/image';
 
@@ -398,16 +399,16 @@ export default function EmployeeDetailPage() {
 
   const avatarImageData: IUploadImage = {
     alt: employee.name,
-    image_metadata: employee.avatar_metadata || {
+    image_metadata: {
       desktop: {
         src: employee.avatar_url || '',
-        position: { posX: 0, posY: 0, scale: 1 },
-        objectFit: 'cover',
+        position: employee.avatar_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+        objectFit: employee.avatar_metadata?.desktop?.objectFit || 'cover',
       },
       mobile: {
         src: employee.avatar_url || '',
-        position: { posX: 0, posY: 0, scale: 1 },
-        objectFit: 'cover',
+        position: employee.avatar_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+        objectFit: employee.avatar_metadata?.mobile?.objectFit || 'cover',
       },
     },
   };
@@ -501,35 +502,18 @@ export default function EmployeeDetailPage() {
               </div>
               <div className="relative" style={{ zIndex: isEditing ? 50 : 10 }}>
                 <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 50 : 10 }}>
-                  <div
-                    className={`relative w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden ${isEditing && isAdmin ? 'cursor-pointer hover:ring-2 hover:ring-[#d3bb73] transition-all' : ''}`}
+                  <EmployeeAvatar
+                    avatarUrl={employee.avatar_url}
+                    avatarMetadata={employee.avatar_metadata}
+                    employeeName={employee.name}
+                    size={128}
                     onClick={() => {
                       if (isEditing && isAdmin) {
                         setShowAvatarModal(true);
                       }
                     }}
-                  >
-                    {employee.avatar_url ? (
-                      <img
-                        src={employee.avatar_url}
-                        alt={employee.name}
-                        className="w-full h-full object-cover"
-                        style={{
-                          objectFit: employee.avatar_metadata?.desktop?.objectFit as any || 'cover',
-                          transform: `translate(${employee.avatar_metadata?.desktop?.position?.posX || 0}%, ${employee.avatar_metadata?.desktop?.position?.posY || 0}%) scale(${employee.avatar_metadata?.desktop?.position?.scale || 1})`,
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl text-[#e5e4e2]/40 bg-[#1c1f33]">
-                        {employee.name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    {isEditing && isAdmin && (
-                      <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">Edytuj</span>
-                      </div>
-                    )}
-                  </div>
+                    showHoverEffect={isEditing && isAdmin}
+                  />
                 </div>
               </div>
 
