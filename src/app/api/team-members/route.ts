@@ -10,68 +10,42 @@ function isAdminRequest(request: Request): boolean {
 
 export async function GET(request: Request) {
   try {
+    // Fetch employees marked as show_on_website=true for public display
     const { data, error } = await supabase
-      .from('team_members')
-      .select('*')
-      .order('order_index', { ascending: true });
+      .from('employees')
+      .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, created_at')
+      .eq('show_on_website', true)
+      .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching team members:', error);
+      console.error('Error fetching employees:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data || []);
+    // Transform employees data to match team_members structure for compatibility
+    const teamMembers = (data || []).map((emp: any, index: number) => ({
+      id: emp.id,
+      name: `${emp.name || ''} ${emp.surname || ''}`.trim() || emp.nickname || 'Pracownik',
+      position: emp.occupation || emp.role || '',
+      role: emp.role || emp.occupation || '',
+      email: emp.email,
+      image: emp.avatar_url,
+      image_metadata: emp.avatar_metadata,
+      alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
+      order_index: index,
+      bio: emp.website_bio,
+      linkedin: emp.linkedin_url,
+      instagram: emp.instagram_url,
+      facebook: emp.facebook_url,
+      is_visible: emp.show_on_website,
+    }));
+
+    return NextResponse.json(teamMembers);
   } catch (error) {
     console.error('Unexpected error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-export async function POST(request: Request) {
-  if (!isAdminRequest(request)) {
-    return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
-  }
-
-  try {
-    const body = await request.json();
-
-    const insertData: any = {
-      name: body.name,
-      role: body.role,
-      position: body.position,
-      image: body.image,
-      alt: body.alt || null,
-      email: body.email || null,
-      image_metadata: body.image_metadata || {},
-      order_index: body.order_index || 0,
-      is_visible: body.is_visible !== undefined ? body.is_visible : true,
-      bio: body.bio || null,
-      linkedin: body.linkedin || null,
-      instagram: body.instagram || null,
-      facebook: body.facebook || null,
-    };
-
-    const { data, error } = await supabase
-      .from('team_members')
-      .insert([insertData])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating team member:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    try {
-      revalidatePath('/');
-      revalidatePath('/zespol');
-    } catch (revalidateError) {
-      console.warn('[API POST] Revalidate warning (safe to ignore in dev):', revalidateError);
-    }
-
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+// POST removed - use /crm/employees to add new employees instead
+// This endpoint is read-only for displaying website team members

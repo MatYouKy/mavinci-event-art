@@ -283,19 +283,29 @@ function AddEmployeeModal({
     }
 
     try {
-      const { error } = await supabase.from('employees').insert([formData]);
+      // Generate UUID for employee ID
+      const employeeId = crypto.randomUUID();
+
+      const insertData = {
+        id: employeeId,
+        ...formData,
+        is_active: true,
+        show_on_website: false, // Default to hidden on website
+      };
+
+      const { error } = await supabase.from('employees').insert([insertData]);
 
       if (error) {
         console.error('Error adding employee:', error);
-        alert('Błąd podczas dodawania pracownika');
+        alert(`Błąd podczas dodawania pracownika: ${error.message}`);
         return;
       }
 
       onAdded();
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error:', err);
-      alert('Wystąpił błąd');
+      alert(`Wystąpił błąd: ${err.message}`);
     }
   };
 
