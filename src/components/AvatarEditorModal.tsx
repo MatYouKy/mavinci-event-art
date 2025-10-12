@@ -27,14 +27,26 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
   });
 
   React.useEffect(() => {
-    if (image && !previewUrl) {
+    if (open && image && !previewUrl) {
       setPositions({
         posX: image.posX ?? 0,
         posY: image.posY ?? 0,
         scale: image.scale ?? 1,
       });
     }
-  }, [image, previewUrl]);
+  }, [open, image, previewUrl]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setUploadedFile(null);
+      setPreviewUrl(null);
+      setPositions({
+        posX: image?.posX ?? 0,
+        posY: image?.posY ?? 0,
+        scale: image?.scale ?? 1,
+      });
+    }
+  }, [open, image]);
   const [isPositioning, setIsPositioning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +89,16 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
 
   const displayUrl = previewUrl || image?.url;
 
+  React.useEffect(() => {
+    console.log('AvatarEditorModal state:', {
+      previewUrl,
+      imageUrl: image?.url,
+      displayUrl,
+      uploadedFile: uploadedFile?.name,
+      positions,
+    });
+  }, [previewUrl, image?.url, displayUrl, uploadedFile, positions]);
+
   return (
     <Dialog
       open={open}
@@ -101,28 +123,29 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
 
         <div className="relative w-full aspect-square mb-6 bg-[#0f1117] rounded-lg overflow-hidden">
           {displayUrl ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div
+            <div
+              className="absolute inset-0"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <img
+                src={displayUrl}
+                alt="Avatar preview"
                 style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  width: 'auto',
+                  height: 'auto',
+                  objectFit: 'contain',
                   transform: `translate(${positions.posX}%, ${positions.posY}%) scale(${positions.scale})`,
                   transition: 'transform 0.1s ease-out',
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                 }}
-              >
-                <img
-                  src={displayUrl}
-                  alt="Avatar preview"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                  }}
-                />
-              </div>
+                onLoad={() => console.log('Image loaded:', displayUrl)}
+                onError={(e) => console.error('Image failed to load:', displayUrl, e)}
+              />
             </div>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-[#e5e4e2]/40">
