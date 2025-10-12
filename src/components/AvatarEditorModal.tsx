@@ -82,7 +82,7 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
                   <div className="text-sm text-[#e5e4e2]/60 mb-2">
                     Edytuj zdjęcie
                   </div>
-                  <div className="relative w-full aspect-square bg-[#0f1117] rounded-lg overflow-visible border border-[#d3bb73]/20">
+                  <div className="relative w-full aspect-square bg-white rounded-lg overflow-visible border border-[#d3bb73]/20">
                     <ImageEditorField
                       fieldName="avatar"
                       image={values.avatar}
