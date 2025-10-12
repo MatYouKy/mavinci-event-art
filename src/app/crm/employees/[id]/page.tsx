@@ -482,17 +482,27 @@ export default function EmployeeDetailPage() {
                 <div className="absolute -top-16 left-6">
                   <div className="relative w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden group">
                     {avatarImageData?.url ? (
-                      <div
-                        className="absolute inset-0"
-                        style={{
-                          transform: `translate(${avatarImageData.posX || 0}%, ${avatarImageData.posY || 0}%) scale(${avatarImageData.scale || 1})`,
-                        }}
-                      >
-                        <img
-                          src={avatarImageData.url}
-                          alt={avatarImageData.alt || 'Avatar'}
-                          className="w-full h-full object-cover"
-                        />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div
+                          style={{
+                            transform: `translate(${avatarImageData.posX || 0}%, ${avatarImageData.posY || 0}%) scale(${avatarImageData.scale || 1})`,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <img
+                            src={avatarImageData.url}
+                            alt={avatarImageData.alt || 'Avatar'}
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: '100%',
+                              objectFit: 'contain',
+                            }}
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center bg-[#0f1117]">
@@ -502,7 +512,7 @@ export default function EmployeeDetailPage() {
                     {isEditing && (
                       <button
                         onClick={() => setShowAvatarModal(true)}
-                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10"
                       >
                         <Camera className="w-8 h-8 text-white" />
                       </button>

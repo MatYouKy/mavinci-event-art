@@ -21,10 +21,20 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [positions, setPositions] = useState({
-    posX: image?.posX ?? 0,
-    posY: image?.posY ?? 0,
-    scale: image?.scale ?? 1,
+    posX: 0,
+    posY: 0,
+    scale: 1,
   });
+
+  React.useEffect(() => {
+    if (image && !previewUrl) {
+      setPositions({
+        posX: image.posX ?? 0,
+        posY: image.posY ?? 0,
+        scale: image.scale ?? 1,
+      });
+    }
+  }, [image, previewUrl]);
   const [isPositioning, setIsPositioning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +59,7 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
         posY: positions.posY,
         scale: positions.scale,
         opacity: image?.opacity ?? 1,
-        objectFit: image?.objectFit || 'cover',
+        objectFit: 'contain',
       };
 
       await onSave({
@@ -91,18 +101,28 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
 
         <div className="relative w-full aspect-square mb-6 bg-[#0f1117] rounded-lg overflow-hidden">
           {displayUrl ? (
-            <div
-              className="absolute inset-0"
-              style={{
-                transform: `translate(${positions.posX}%, ${positions.posY}%) scale(${positions.scale})`,
-                transition: 'transform 0.1s ease-out',
-              }}
-            >
-              <img
-                src={displayUrl}
-                alt="Avatar preview"
-                className="w-full h-full object-cover"
-              />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                style={{
+                  transform: `translate(${positions.posX}%, ${positions.posY}%) scale(${positions.scale})`,
+                  transition: 'transform 0.1s ease-out',
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src={displayUrl}
+                  alt="Avatar preview"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                  }}
+                />
+              </div>
             </div>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-[#e5e4e2]/40">
