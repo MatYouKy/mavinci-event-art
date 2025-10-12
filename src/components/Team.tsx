@@ -17,18 +17,34 @@ export default function Team() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('team_members')
-        .select('*')
-        .eq('is_visible', true)
-        .order('order_index', { ascending: true });
+        .from('employees')
+        .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, occupation, role, website_bio, linkedin_url, instagram_url, facebook_url')
+        .eq('show_on_website', true)
+        .order('created_at', { ascending: true });
 
       if (error) {
         console.error('Supabase error:', error);
         throw error;
       }
 
-      console.log('Fetched team members:', data);
-      setTeamMembers(data || []);
+      // Transform employees to team members format
+      const transformed = (data || []).map((emp: any) => ({
+        id: emp.id,
+        name: `${emp.name || ''} ${emp.surname || ''}`.trim() || emp.nickname || 'Pracownik',
+        position: emp.occupation || emp.role || '',
+        role: emp.role || emp.occupation || '',
+        email: emp.email,
+        image: emp.avatar_url,
+        image_metadata: emp.avatar_metadata,
+        alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
+        bio: emp.website_bio,
+        linkedin: emp.linkedin_url,
+        instagram: emp.instagram_url,
+        facebook: emp.facebook_url,
+      }));
+
+      console.log('Fetched team members from employees:', transformed);
+      setTeamMembers(transformed);
     } catch (error) {
       console.error('Error fetching team members:', error);
       setTeamMembers([]);

@@ -272,40 +272,73 @@ function AddEmployeeModal({
     role: 'unassigned',
     access_level: 'unassigned',
     occupation: '',
+    password: '', // Temporary password for first login
   });
+  const [isCreating, setIsCreating] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.surname || !formData.email) {
-      alert('Wypełnij wszystkie wymagane pola');
+    if (!formData.name || !formData.surname || !formData.email || !formData.password) {
+      alert('Wypełnij wszystkie wymagane pola (imię, nazwisko, email, hasło)');
       return;
     }
 
+    setIsCreating(true);
     try {
-      // Generate UUID for employee ID
-      const employeeId = crypto.randomUUID();
+      // Step 1: Create Supabase Auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            name: formData.name,
+            surname: formData.surname,
+          },
+        },
+      });
 
-      const insertData = {
-        id: employeeId,
-        ...formData,
-        is_active: true,
-        show_on_website: false, // Default to hidden on website
-      };
-
-      const { error } = await supabase.from('employees').insert([insertData]);
-
-      if (error) {
-        console.error('Error adding employee:', error);
-        alert(`Błąd podczas dodawania pracownika: ${error.message}`);
+      if (authError) {
+        console.error('Error creating auth user:', authError);
+        alert(`Błąd podczas tworzenia konta: ${authError.message}`);
+        setIsCreating(false);
         return;
       }
 
+      if (!authData.user) {
+        alert('Nie udało się utworzyć użytkownika auth');
+        setIsCreating(false);
+        return;
+      }
+
+      // Step 2: Insert employee data with auth user ID
+      const { password, ...employeeData } = formData;
+      const insertData = {
+        id: authData.user.id, // Use auth user ID as primary key
+        ...employeeData,
+        is_active: true,
+        show_on_website: false,
+      };
+
+      const { error: employeeError } = await supabase
+        .from('employees')
+        .insert([insertData]);
+
+      if (employeeError) {
+        console.error('Error adding employee:', employeeError);
+        alert(`Błąd podczas dodawania danych pracownika: ${employeeError.message}`);
+        setIsCreating(false);
+        return;
+      }
+
+      alert(`Pracownik ${formData.name} ${formData.surname} został dodany pomyślnie!\n\nEmail: ${formData.email}\nHasło tymczasowe: ${formData.password}\n\nPracownik może się teraz zalogować i zmienić hasło.`);
       onAdded();
       onClose();
     } catch (err: any) {
       console.error('Error:', err);
       alert(`Wystąpił błąd: ${err.message}`);
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -366,6 +399,23 @@ function AddEmployeeModal({
             />
           </div>
           <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Hasło tymczasowe *
+            </label>
+            <input
+              type="password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              placeholder="Min. 6 znaków"
+            />
+            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+              Pracownik otrzyma to hasło do pierwszego logowania
+            </p>
+          </div>
+          <div>
             <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rola</label>
             <select
               value={formData.role}
@@ -421,9 +471,10 @@ function AddEmployeeModal({
         <div className="flex gap-3">
           <button
             onClick={handleSubmit}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90"
+            disabled={isCreating}
+            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Dodaj pracownika
+            {isCreating ? 'Tworzenie konta...' : 'Dodaj pracownika'}
           </button>
           <button
             onClick={onClose}
