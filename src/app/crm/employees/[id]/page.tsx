@@ -476,20 +476,23 @@ export default function EmployeeDetailPage() {
                   onSave={(payload) => handleSaveImage('background', payload)}
                 />
               </div>
-              <div className="relative">
-                <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 9999 : 10 }}>
-                  <div className="relative" style={{ width: '128px', height: '128px' }}>
-                    <div className="w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden">
-                      <ImageEditorField
-                        fieldName="avatar"
-                        image={avatarImageData}
-                        isAdmin={isEditing}
-                        withMenu={isEditing}
-                        mode="vertical"
-                        menuPosition="right-bottom"
-                        multiplier={1}
-                        onSave={(payload) => handleSaveImage('avatar', payload)}
-                      />
+              <div className="relative" style={{ overflow: 'visible' }}>
+                <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 9999 : 10, overflow: 'visible' }}>
+                  <div className="relative" style={{ width: '128px', height: '128px', overflow: 'visible' }}>
+                    <div className="absolute inset-0 w-32 h-32 rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] overflow-hidden" style={{ zIndex: 1 }}></div>
+                    <div className="relative w-32 h-32 rounded-full" style={{ zIndex: 2, overflow: 'visible' }}>
+                      <div className="absolute inset-0 rounded-full overflow-hidden" style={{ zIndex: 1 }}>
+                        <ImageEditorField
+                          fieldName="avatar"
+                          image={avatarImageData}
+                          isAdmin={isEditing}
+                          withMenu={isEditing}
+                          mode="vertical"
+                          menuPosition="right-bottom"
+                          multiplier={1}
+                          onSave={(payload) => handleSaveImage('avatar', payload)}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
