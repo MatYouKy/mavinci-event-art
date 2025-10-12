@@ -113,34 +113,52 @@ export default function EmployeeDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
-  const [currentUserRole, setCurrentUserRole] = useState<string>('operator');
+  const [currentUser, setCurrentUser] = useState<{id: string, isAdmin: boolean} | null>(null);
 
   useEffect(() => {
-    if (employeeId) {
+    checkCurrentUser();
+  }, []);
+
+  useEffect(() => {
+    if (employeeId && currentUser) {
       fetchEmployeeDetails();
       fetchDocuments();
       fetchTasks();
       fetchEvents();
-      checkUserRole();
     }
-  }, [employeeId]);
+  }, [employeeId, currentUser]);
 
-  const checkUserRole = async () => {
+  const checkCurrentUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        setCurrentUserRole('guest');
+        setCurrentUser(null);
         return;
       }
-      const role = user.user_metadata?.role || user.app_metadata?.role || 'admin';
-      setCurrentUserRole(role);
+
+      // Check if current user is admin by looking at employees table
+      const { data: employeeData, error } = await supabase
+        .from('employees')
+        .select('access_level, role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching current user employee data:', error);
+        setCurrentUser({ id: user.id, isAdmin: false });
+        return;
+      }
+
+      const isAdmin = employeeData?.access_level === 'admin' || employeeData?.role === 'admin';
+      setCurrentUser({ id: user.id, isAdmin });
     } catch (err) {
-      console.error('Error checking user role:', err);
-      setCurrentUserRole('guest');
+      console.error('Error checking current user:', err);
+      setCurrentUser(null);
     }
   };
 
-  const isAdmin = ['admin', 'manager', 'event_manager'].includes(currentUserRole);
+  const isAdmin = currentUser?.isAdmin || false;
+  const isViewingOwnProfile = currentUser?.id === employeeId;
 
   const fetchEmployeeDetails = async () => {
     try {
@@ -425,7 +443,7 @@ export default function EmployeeDetailPage() {
             {employee.occupation || getRoleLabel(employee.role)}
           </p>
         </div>
-        {isAdmin && !isEditing ? (
+        {(isAdmin || isViewingOwnProfile) && !isEditing ? (
           <button
             onClick={() => setIsEditing(true)}
             className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
