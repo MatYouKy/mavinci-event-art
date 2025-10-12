@@ -242,6 +242,49 @@ export default function TeamPage() {
     fetchTeam();
   }, [isEditMode]);
 
+  // TEST FUNCTION - usuń później
+  const testDirectUpdate = async () => {
+    const firstMember = team[0];
+    if (!firstMember) {
+      alert('Brak członków zespołu');
+      return;
+    }
+
+    console.log('TEST: Aktualizuję pierwszego członka:', firstMember.id);
+
+    const testPayload = {
+      name: 'TEST ' + firstMember.name,
+      position: firstMember.position,
+      email: firstMember.email,
+      image: firstMember.image,
+      image_metadata: firstMember.image_metadata,
+      role: firstMember.role,
+      order_index: firstMember.order_index,
+    };
+
+    try {
+      const response = await fetch(`/api/team-members/${firstMember.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testPayload),
+      });
+
+      console.log('TEST: Response status:', response.status);
+      const data = await response.json();
+      console.log('TEST: Response data:', data);
+
+      if (response.ok) {
+        showSnackbar('Test zakończony sukcesem - sprawdź czy imię ma TEST', 'success');
+        await fetchTeam();
+      } else {
+        showSnackbar('Test nieudany: ' + JSON.stringify(data), 'error');
+      }
+    } catch (error: any) {
+      console.error('TEST ERROR:', error);
+      showSnackbar('Test error: ' + error.message, 'error');
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -273,7 +316,13 @@ export default function TeamPage() {
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {isEditMode && (
-              <div className="mb-8 flex justify-end">
+              <div className="mb-8 flex justify-between items-center">
+                <button
+                  onClick={testDirectUpdate}
+                  className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  TEST Direct API Update
+                </button>
                 <button
                   onClick={() => setIsAdding(true)}
                   className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
