@@ -2,10 +2,20 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabase } from '@/lib/supabase';
 
+function isAdminRequest(request: Request): boolean {
+  const adminToken = request.headers.get('x-admin-token');
+  const validToken = process.env.ADMIN_API_TOKEN || 'mavinci-admin-secret-2025';
+  return adminToken === validToken;
+}
+
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { id } = await params;
@@ -69,6 +79,10 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
 

@@ -91,6 +91,7 @@ export default function AdminTeamPanel() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Admin-Token': process.env.NEXT_PUBLIC_ADMIN_API_TOKEN || 'mavinci-admin-secret-2025',
           },
           body: JSON.stringify(payload),
         });
@@ -101,6 +102,7 @@ export default function AdminTeamPanel() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'X-Admin-Token': process.env.NEXT_PUBLIC_ADMIN_API_TOKEN || 'mavinci-admin-secret-2025',
           },
           body: JSON.stringify(payload),
         });
@@ -122,6 +124,9 @@ export default function AdminTeamPanel() {
     try {
       const response = await fetch(`/api/team-members/${id}`, {
         method: 'DELETE',
+        headers: {
+          'X-Admin-Token': process.env.NEXT_PUBLIC_ADMIN_API_TOKEN || 'mavinci-admin-secret-2025',
+        },
       });
       if (!response.ok) throw new Error('Failed to delete');
       fetchMembers();

@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabase } from '@/lib/supabase';
 
+function isAdminRequest(request: Request): boolean {
+  const adminToken = request.headers.get('x-admin-token');
+  const validToken = process.env.ADMIN_API_TOKEN || 'mavinci-admin-secret-2025';
+  return adminToken === validToken;
+}
+
 export async function GET(request: Request) {
   try {
     const { data, error } = await supabase
@@ -22,6 +28,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
 
