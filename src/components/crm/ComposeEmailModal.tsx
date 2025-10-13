@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Send, Eye, Code, RefreshCw } from 'lucide-react';
+import { generateEmailSignature } from './EmailSignatureGenerator';
 
 interface ComposeEmailModalProps {
   isOpen: boolean;
@@ -90,61 +91,7 @@ export default function ComposeEmailModal({
       return signature.custom_html;
     }
 
-    return `
-      <table role="presentation" style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; margin-top: 20px;">
-        <tr>
-          <td style="padding: 20px; background-color: #f8f8f8; border: 1px solid #e0e0e0;">
-            <table role="presentation" style="width: 100%; border-collapse: collapse;">
-              <tr>
-                ${sig.avatar_url ? `
-                <td style="width: 80px; vertical-align: top; padding-right: 20px;">
-                  <img src="${sig.avatar_url}" alt="${sig.full_name}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #d3bb73;">
-                </td>
-                ` : ''}
-                <td style="vertical-align: top;">
-                  <h3 style="margin: 0 0 5px 0; color: #1c1f33; font-size: 18px; font-weight: bold;">${sig.full_name}</h3>
-                  ${sig.position ? `<p style="margin: 0 0 10px 0; color: #666; font-size: 14px; font-style: italic;">${sig.position}</p>` : ''}
-
-                  <table role="presentation" style="border-collapse: collapse; font-size: 14px; color: #333;">
-                    ${sig.email ? `
-                    <tr>
-                      <td style="padding: 3px 10px 3px 0; vertical-align: middle;">
-                        <span style="color: #d3bb73;">✉</span>
-                      </td>
-                      <td style="padding: 3px 0;">
-                        <a href="mailto:${sig.email}" style="color: #d3bb73; text-decoration: none;">${sig.email}</a>
-                      </td>
-                    </tr>
-                    ` : ''}
-                    ${sig.phone ? `
-                    <tr>
-                      <td style="padding: 3px 10px 3px 0; vertical-align: middle;">
-                        <span style="color: #d3bb73;">📞</span>
-                      </td>
-                      <td style="padding: 3px 0;">
-                        <a href="tel:${sig.phone}" style="color: #333; text-decoration: none;">${sig.phone}</a>
-                      </td>
-                    </tr>
-                    ` : ''}
-                    ${sig.website ? `
-                    <tr>
-                      <td style="padding: 3px 10px 3px 0; vertical-align: middle;">
-                        <span style="color: #d3bb73;">🌐</span>
-                      </td>
-                      <td style="padding: 3px 0;">
-                        <a href="${sig.website}" style="color: #d3bb73; text-decoration: none;">${sig.website}</a>
-                      </td>
-                    </tr>
-                    ` : ''}
-                  </table>
-                </td>
-              </tr>
-            </table>
-            ${!signature ? `<p style="margin: 10px 0 0 0; padding: 10px; background-color: #fff3cd; border-left: 3px solid #d3bb73; color: #856404; font-size: 12px;"><strong>Wskazówka:</strong> Możesz dostosować tę stopkę w <a href="/crm/employees/signature" style="color: #d3bb73;">ustawieniach stopki</a></p>` : ''}
-          </td>
-        </tr>
-      </table>
-    `;
+    return generateEmailSignature(sig);
   };
 
   const generatePreview = () => {
