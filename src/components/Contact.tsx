@@ -105,25 +105,6 @@ export default function Contact() {
                 </div>
               </div>
             </div>
-
-            <div className="pt-8">
-              <h3 className="text-[#e5e4e2] font-light text-lg mb-4">Znajdź nas w mediach społecznościowych</h3>
-              <div className="flex gap-4">
-                {[
-                  { icon: Facebook, href: '#' },
-                  { icon: Instagram, href: '#' },
-                  { icon: Linkedin, href: '#' },
-                ].map((social, index) => (
-                  <a
-                    key={index}
-                    href={social.href}
-                    className="w-12 h-12 rounded-full bg-[#d3bb73]/10 flex items-center justify-center hover:bg-[#d3bb73] transition-all duration-300 hover:scale-110 hover:rotate-12 group"
-                  >
-                    <social.icon className="w-6 h-6 text-[#d3bb73] group-hover:text-[#1c1f33] transition-colors duration-300" />
-                  </a>
-                ))}
-              </div>
-            </div>
           </div>
 
           <ContactForm category="event_inquiry" />
