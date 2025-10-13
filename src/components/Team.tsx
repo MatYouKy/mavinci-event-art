@@ -111,15 +111,9 @@ export default function Team() {
               <div className="relative overflow-hidden rounded-2xl">
                 <div className="aspect-[3/4] relative bg-[#800020]/10" style={{ overflow: 'hidden' }}>
 <img
-                    src={member.image || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800'}
+                    src={member.image}
                     alt={member.alt || member.name}
                     className="transition-all duration-700"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      if (target.src !== 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800') {
-                        target.src = 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=800';
-                      }
-                    }}
                     style={{
                       position: 'absolute',
                       top: 0,
