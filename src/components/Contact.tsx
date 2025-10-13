@@ -75,7 +75,7 @@ export default function Contact() {
                 <div>
                   <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Telefon</h3>
                   <a href="tel:+48123456789" className="text-[#e5e4e2]/70 hover:text-[#d3bb73] transition-colors duration-300">
-                    +48 123 456 789
+                    +48 698 212 279
                   </a>
                 </div>
               </div>
@@ -87,7 +87,7 @@ export default function Contact() {
                 <div>
                   <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Email</h3>
                   <a href="mailto:kontakt@mavinci.pl" className="text-[#e5e4e2]/70 hover:text-[#d3bb73] transition-colors duration-300">
-                    kontakt@mavinci.pl
+                    biuro@mavinci.pl
                   </a>
                 </div>
               </div>
@@ -99,8 +99,8 @@ export default function Contact() {
                 <div>
                   <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Adres</h3>
                   <p className="text-[#e5e4e2]/70">
-                    ul. Eventowa 12<br />
-                    00-001 Warszawa
+                    ul. Hugona Kołłątaja 5, p. 320<br />
+                    11-041 Olsztyn
                   </p>
                 </div>
               </div>
