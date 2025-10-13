@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 
@@ -19,6 +19,7 @@ interface EquipmentStock {
   in_use_quantity: number;
   damaged_quantity: number;
   in_service_quantity: number;
+  company_stock_quantity: number;
   storage_location: string | null;
   min_stock_level: number;
   last_inventory_date: string | null;
@@ -305,43 +306,7 @@ export default function EquipmentDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
-        <TabButton
-          active={activeTab === 'details'}
-          onClick={() => setActiveTab('details')}
-          label="Podstawowe"
-        />
-        <TabButton
-          active={activeTab === 'technical'}
-          onClick={() => setActiveTab('technical')}
-          label="Parametry techniczne"
-        />
-        <TabButton
-          active={activeTab === 'purchase'}
-          onClick={() => setActiveTab('purchase')}
-          label="Informacje zakupowe"
-        />
-        <TabButton
-          active={activeTab === 'components'}
-          onClick={() => setActiveTab('components')}
-          label={`Skład zestawu (${equipment.equipment_components.length})`}
-        />
-        <TabButton
-          active={activeTab === 'gallery'}
-          onClick={() => setActiveTab('gallery')}
-          label={`Galeria (${equipment.equipment_gallery.length})`}
-        />
-        <TabButton
-          active={activeTab === 'stock'}
-          onClick={() => setActiveTab('stock')}
-          label="Stan magazynowy"
-        />
-        <TabButton
-          active={activeTab === 'history'}
-          onClick={() => setActiveTab('history')}
-          label="Historia"
-        />
-      </div>
+      <TabCarousel activeTab={activeTab} setActiveTab={setActiveTab} equipment={equipment} />
 
       {activeTab === 'details' && (
         <DetailsTab
@@ -401,18 +366,102 @@ export default function EquipmentDetailPage() {
   );
 }
 
-function TabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+function TabCarousel({ activeTab, setActiveTab, equipment }: any) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [visibleTabs, setVisibleTabs] = useState(5);
+
+  const tabs = [
+    { id: 'details', label: 'Podstawowe' },
+    { id: 'technical', label: 'Parametry techniczne' },
+    { id: 'purchase', label: 'Informacje zakupowe' },
+    { id: 'components', label: `Skład zestawu (${equipment.equipment_components.length})` },
+    { id: 'gallery', label: `Galeria (${equipment.equipment_gallery.length})` },
+    { id: 'stock', label: 'Stan magazynowy' },
+    { id: 'history', label: 'Historia' },
+  ];
+
+  useEffect(() => {
+    const updateVisibleTabs = () => {
+      if (window.innerWidth < 640) {
+        setVisibleTabs(2);
+      } else if (window.innerWidth < 1024) {
+        setVisibleTabs(3);
+      } else {
+        setVisibleTabs(5);
+      }
+    };
+
+    updateVisibleTabs();
+    window.addEventListener('resize', updateVisibleTabs);
+    return () => window.removeEventListener('resize', updateVisibleTabs);
+  }, []);
+
+  useEffect(() => {
+    const activeIndex = tabs.findIndex(tab => tab.id === activeTab);
+    if (activeIndex !== -1) {
+      if (activeIndex < currentIndex) {
+        setCurrentIndex(activeIndex);
+      } else if (activeIndex >= currentIndex + visibleTabs) {
+        setCurrentIndex(activeIndex - visibleTabs + 1);
+      }
+    }
+  }, [activeTab, visibleTabs]);
+
+  const canScrollLeft = currentIndex > 0;
+  const canScrollRight = currentIndex < tabs.length - visibleTabs;
+
+  const scrollLeft = () => {
+    if (canScrollLeft) {
+      setCurrentIndex(prev => prev - 1);
+    }
+  };
+
+  const scrollRight = () => {
+    if (canScrollRight) {
+      setCurrentIndex(prev => prev + 1);
+    }
+  };
+
+  const visibleTabsArray = tabs.slice(currentIndex, currentIndex + visibleTabs);
+
   return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 text-sm whitespace-nowrap transition-colors ${
-        active
-          ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
-          : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-      }`}
-    >
-      {label}
-    </button>
+    <div className="relative border-b border-[#d3bb73]/10">
+      <div className="flex items-center">
+        {canScrollLeft && (
+          <button
+            onClick={scrollLeft}
+            className="absolute left-0 z-10 p-2 bg-gradient-to-r from-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5 text-[#d3bb73]" />
+          </button>
+        )}
+
+        <div className="flex gap-2 flex-1 justify-center px-10">
+          {visibleTabsArray.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-4 py-2 text-sm whitespace-nowrap transition-colors ${
+                activeTab === tab.id
+                  ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {canScrollRight && (
+          <button
+            onClick={scrollRight}
+            className="absolute right-0 z-10 p-2 bg-gradient-to-l from-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors"
+          >
+            <ChevronRight className="w-5 h-5 text-[#d3bb73]" />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1050,6 +1099,7 @@ function StockTab({ equipment, stock, onUpdate }: any) {
   const [stockEdit, setStockEdit] = useState({
     storage_location: stock?.storage_location || '',
     min_stock_level: stock?.min_stock_level || 0,
+    company_stock_quantity: stock?.company_stock_quantity || 0,
   });
 
   const handleStockChange = async () => {
@@ -1093,6 +1143,7 @@ function StockTab({ equipment, stock, onUpdate }: any) {
         .update({
           storage_location: stockEdit.storage_location || null,
           min_stock_level: parseInt(stockEdit.min_stock_level as any) || 0,
+          company_stock_quantity: parseInt(stockEdit.company_stock_quantity as any) || 0,
         })
         .eq('id', stock.id);
 
@@ -1128,10 +1179,15 @@ function StockTab({ equipment, stock, onUpdate }: any) {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
           <div className="text-sm text-[#e5e4e2]/60 mb-2">Łącznie</div>
           <div className="text-3xl font-light text-[#e5e4e2]">{stock.total_quantity}</div>
+        </div>
+
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
+          <div className="text-sm text-[#e5e4e2]/60 mb-2">Na firmie</div>
+          <div className="text-3xl font-light text-[#d3bb73]">{stock.company_stock_quantity}</div>
         </div>
 
         <div className="bg-[#1c1f33] border border-green-500/10 rounded-xl p-6">
@@ -1193,7 +1249,21 @@ function StockTab({ equipment, stock, onUpdate }: any) {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <div className="text-sm text-[#e5e4e2]/60 mb-1">Stan na firmie</div>
+            {editingStock ? (
+              <input
+                type="number"
+                value={stockEdit.company_stock_quantity}
+                onChange={(e) => setStockEdit(prev => ({ ...prev, company_stock_quantity: parseInt(e.target.value) || 0 }))}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                min="0"
+              />
+            ) : (
+              <div className="text-[#e5e4e2]">{stock.company_stock_quantity}</div>
+            )}
+          </div>
           <div>
             <div className="text-sm text-[#e5e4e2]/60 mb-1">Lokalizacja</div>
             {editingStock ? (

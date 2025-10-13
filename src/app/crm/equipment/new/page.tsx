@@ -49,6 +49,7 @@ export default function NewEquipmentPage() {
     barcode: '',
     notes: '',
     initial_quantity: '0',
+    company_stock_quantity: '0',
     storage_location: '',
     min_stock_level: '0',
   });
@@ -158,12 +159,14 @@ export default function NewEquipmentPage() {
       if (equipmentError) throw equipmentError;
 
       const initialQty = parseInt(formData.initial_quantity) || 0;
-      if (initialQty > 0) {
+      const companyQty = parseInt(formData.company_stock_quantity) || 0;
+      if (initialQty > 0 || companyQty > 0) {
         const { error: stockError } = await supabase
           .from('equipment_stock')
           .update({
             total_quantity: initialQty,
             available_quantity: initialQty,
+            company_stock_quantity: companyQty,
             storage_location: formData.storage_location || null,
             min_stock_level: parseInt(formData.min_stock_level) || 0,
           })
@@ -485,13 +488,25 @@ export default function NewEquipmentPage() {
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
           <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Stan magazynowy</h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Początkowa ilość</label>
               <input
                 type="number"
                 name="initial_quantity"
                 value={formData.initial_quantity}
+                onChange={handleInputChange}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                placeholder="0"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stan na firmie</label>
+              <input
+                type="number"
+                name="company_stock_quantity"
+                value={formData.company_stock_quantity}
                 onChange={handleInputChange}
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 placeholder="0"
@@ -510,7 +525,7 @@ export default function NewEquipmentPage() {
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja w magazynie</label>
               <input
                 type="text"
