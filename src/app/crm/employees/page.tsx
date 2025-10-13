@@ -21,6 +21,7 @@ interface Employee {
   region: string | null;
   is_active: boolean;
   skills: string[] | null;
+  order_index: number;
 }
 
 export default function EmployeesPage() {
@@ -40,6 +41,7 @@ export default function EmployeesPage() {
       const { data, error } = await supabase
         .from('employees')
         .select('*')
+        .order('order_index', { ascending: true })
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -180,7 +182,7 @@ export default function EmployeesPage() {
                 <p className="text-sm text-[#d3bb73] mb-2">
                   {employee.occupation || getRoleLabel(employee.role)}
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-center">
                   <span
                     className={`px-3 py-1 rounded-full text-xs ${
                       employee.is_active
@@ -197,6 +199,9 @@ export default function EmployeesPage() {
                   >
                     <Shield className="w-3 h-3 inline mr-1" />
                     {getAccessLevelLabel(employee.access_level)}
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-xs bg-[#d3bb73]/20 text-[#d3bb73]">
+                    #{employee.order_index}
                   </span>
                 </div>
               </div>

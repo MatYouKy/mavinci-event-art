@@ -63,6 +63,7 @@ interface Employee {
   linkedin_url: string | null;
   instagram_url: string | null;
   facebook_url: string | null;
+  order_index: number;
 }
 
 interface Document {
@@ -837,6 +838,28 @@ export default function EmployeeDetailPage() {
                   </label>
                 </div>
 
+                <div>
+                  <label className="text-xs text-[#e5e4e2]/60 block mb-1">
+                    Kolejność wyświetlania (0 = pierwszy)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editedData.order_index ?? 999}
+                    onChange={(e) =>
+                      setEditedData({
+                        ...editedData,
+                        order_index: parseInt(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2]"
+                    placeholder="0"
+                  />
+                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                    Niższa liczba = wyżej na liście. Admini mają automatycznie 0.
+                  </p>
+                </div>
+
                 {editedData.show_on_website && (
                   <>
                     <div>
@@ -918,6 +941,10 @@ export default function EmployeeDetailPage() {
                 <InfoRow
                   label="Status"
                   value={employee.show_on_website ? '✓ Widoczny na stronie' : '✗ Ukryty'}
+                />
+                <InfoRow
+                  label="Kolejność"
+                  value={`${employee.order_index} ${employee.order_index === 0 ? '(pierwszy)' : ''}`}
                 />
                 {employee.show_on_website && (
                   <>
