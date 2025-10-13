@@ -1,34 +1,47 @@
 #!/bin/bash
 set -euo pipefail
 
-# 🖥️ Ustawienia
 REMOTE="root@83.150.236.238"
 REMOTE_DIR="/var/www/mavinci/frontend"
-BUILD_DIR=".next"  # jeśli używasz next export → zmień na "out"
 
-echo "🚀 Budowanie frontendu Next.js..."
+echo "🚀 Buduję Next.js (standalone)…"
 yarn build
 
-echo "📦 Wysyłanie plików na VPS (${REMOTE})..."
-# Wysyłamy tylko potrzebne katalogi (bez node_modules)
+# sanity check
+if [ ! -d ".next/standalone" ]; then
+  echo "❌ Brak .next/standalone — dodaj output: 'standalone' w next.config.js i zbuduj ponownie."
+  exit 1
+fi
+
+echo "📂 Tworzę strukturę na VPS (jeśli brak)…"
+ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/.next/standalone' '${REMOTE_DIR}/.next/static' '${REMOTE_DIR}/public'"
+
+echo "📦 Wysyłka artefaktów…"
+# 1) standalone serwer (bez .env)
+rsync -avz --delete --exclude='.env' \
+  .next/standalone/ "${REMOTE}:${REMOTE_DIR}/.next/standalone/"
+
+# 2) statyki Nexta
 rsync -avz --delete \
-  --exclude='.git' \
-  --exclude='node_modules' \
-  --exclude='.env*' \
-  ${BUILD_DIR}/ "${REMOTE}:${REMOTE_DIR}/${BUILD_DIR}/"
+  .next/static/ "${REMOTE}:${REMOTE_DIR}/.next/static/"
 
-# Dodatkowo statyczne zasoby (public)
-rsync -avz --delete public/ "${REMOTE}:${REMOTE_DIR}/public/"
+# 3) public/
+rsync -avz --delete \
+  public/ "${REMOTE}:${REMOTE_DIR}/public/"
 
-echo "🔧 Kopiowanie pliku package.json (jeśli potrzebny do startu Next.js)"
-rsync -avz package.json yarn.lock "${REMOTE}:${REMOTE_DIR}/"
+# 4) (opcjonalnie) package.json / yarn.lock — tylko jeśli istnieją
+if [ -f package.json ]; then
+  rsync -avz package.json "${REMOTE}:${REMOTE_DIR}/"
+fi
+if [ -f yarn.lock ]; then
+  rsync -avz yarn.lock "${REMOTE}:${REMOTE_DIR}/"
+fi
 
-echo "📂 Uaktualnianie zależności i restart frontu..."
+echo "🚦 PM2 reload frontu…"
 ssh "${REMOTE}" "
-  cd ${REMOTE_DIR} && \
-  yarn install --production && \
-  /root/.nvm/versions/node/v20.11.0/bin/pm2 startOrReload ecosystem.config.js --update-env && \
+  cd '${REMOTE_DIR}' && \
+  /root/.nvm/versions/node/v20.11.0/bin/pm2 startOrReload ecosystem.frontend.config.js --update-env && \
   /root/.nvm/versions/node/v20.11.0/bin/pm2 save
 "
 
-echo "✅ Deploy zakończony pomyślnie."
+echo "✅ Deploy frontu OK."
