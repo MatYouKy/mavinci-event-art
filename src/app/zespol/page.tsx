@@ -20,29 +20,42 @@ export default function TeamPage() {
     console.log('[fetchTeam] START');
     setLoading(true);
     try {
-      const timestamp = Date.now();
-      const response = await fetch(`/api/team-members?t=${timestamp}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      });
-      console.log('[fetchTeam] Response status:', response.status);
-      const data = await response.json();
-      console.log('[fetchTeam] Received data:', data);
-      console.log('[fetchTeam] Data type:', typeof data);
-      console.log('[fetchTeam] Is array?:', Array.isArray(data));
-      console.log('[fetchTeam] Number of members:', data?.length);
+      // Fetch directly from Supabase instead of API route
+      // This works during build time and runtime
+      const { supabase } = await import('@/lib/supabase');
 
-      if (!response.ok || !Array.isArray(data)) {
-        console.error('[fetchTeam] Invalid response:', data);
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index')
+        .eq('show_on_website', true)
+        .order('order_index', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('[fetchTeam] Supabase error:', error);
         showSnackbar('Błąd podczas pobierania zespołu', 'error');
         setTeam([]);
         return;
       }
 
-      setTeam(data);
+      // Transform employees data to team members format
+      const teamMembers = (data || []).map((emp: any) => ({
+        id: emp.id,
+        name: `${emp.name || ''} ${emp.surname || ''}`.trim() || emp.nickname || 'Pracownik',
+        position: emp.occupation || emp.role || '',
+        role: emp.role || emp.occupation || '',
+        email: emp.email,
+        image: emp.avatar_url,
+        image_metadata: emp.avatar_metadata,
+        alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
+        bio: emp.website_bio,
+        linkedin: emp.linkedin_url,
+        instagram: emp.instagram_url,
+        facebook: emp.facebook_url,
+      }));
+
+      console.log('[fetchTeam] Fetched team members:', teamMembers.length);
+      setTeam(teamMembers);
     } catch (error) {
       console.error('[fetchTeam] Error:', error);
       setTeam([]);
