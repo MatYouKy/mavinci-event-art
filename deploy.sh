@@ -2,46 +2,37 @@
 set -euo pipefail
 
 REMOTE="root@83.150.236.238"
-REMOTE_DIR="/var/www/mavinci/frontend"
+BASE="/var/www/mavinci/frontend"
+STAND="${BASE}/.next/standalone"
 
-echo "🚀 Buduję Next.js (standalone)…"
+echo "🚀 Build (standalone)…"
 yarn build
 
-# sanity check
-if [ ! -d ".next/standalone" ]; then
-  echo "❌ Brak .next/standalone — dodaj output: 'standalone' w next.config.js i zbuduj ponownie."
-  exit 1
-fi
+[ -d ".next/standalone" ] || { echo "❌ Brak .next/standalone"; exit 1; }
 
-echo "📂 Tworzę strukturę na VPS (jeśli brak)…"
-ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/.next/standalone' '${REMOTE_DIR}/.next/static' '${REMOTE_DIR}/public'"
+echo "📂 Tworzę strukturę na VPS…"
+ssh "$REMOTE" "mkdir -p '${STAND}/.next/static' '${STAND}/public'"
 
-echo "📦 Wysyłka artefaktów…"
-# 1) standalone serwer (bez .env)
+echo "📦 Wysyłam standalone + static + public (we właściwe miejsca)…"
+# server + minimalne node_modules
 rsync -avz --delete --exclude='.env' \
-  .next/standalone/ "${REMOTE}:${REMOTE_DIR}/.next/standalone/"
+  .next/standalone/ "${REMOTE}:${STAND}/"
 
-# 2) statyki Nexta
+# statyki MUSZĄ być względem server.js → .next/standalone/.next/static
 rsync -avz --delete \
-  .next/static/ "${REMOTE}:${REMOTE_DIR}/.next/static/"
+  .next/static/ "${REMOTE}:${STAND}/.next/static/"
 
-# 3) public/
+# public również względem server.js
 rsync -avz --delete \
-  public/ "${REMOTE}:${REMOTE_DIR}/public/"
+  public/ "${REMOTE}:${STAND}/public/"
 
-# 4) (opcjonalnie) package.json / yarn.lock — tylko jeśli istnieją
-if [ -f package.json ]; then
-  rsync -avz package.json "${REMOTE}:${REMOTE_DIR}/"
-fi
-if [ -f yarn.lock ]; then
-  rsync -avz yarn.lock "${REMOTE}:${REMOTE_DIR}/"
-fi
-
-echo "🚦 PM2 reload frontu…"
+echo "🚦 PM2 reload…"
 ssh "${REMOTE}" "
-  cd '${REMOTE_DIR}' && \
-  /root/.nvm/versions/node/v20.11.0/bin/pm2 startOrReload ecosystem.frontend.config.js --update-env && \
+  /root/.nvm/versions/node/v20.11.0/bin/pm2 startOrReload ${BASE}/ecosystem.frontend.config.js --update-env && \
   /root/.nvm/versions/node/v20.11.0/bin/pm2 save
 "
 
-echo "✅ Deploy frontu OK."
+echo "🩺 Health check…"
+ssh "${REMOTE}" "curl -Is http://127.0.0.1:3001/_next/static/css/ | head -n1 || true"
+
+echo "✅ Deploy OK."
