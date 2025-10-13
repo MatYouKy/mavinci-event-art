@@ -296,6 +296,9 @@ export default function EquipmentDetailPage() {
 
   const stock = equipment.equipment_stock[0];
 
+  const availableUnits = units.filter((u: EquipmentUnit) => u.status === 'available').length;
+  const totalUnits = units.length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -307,7 +310,12 @@ export default function EquipmentDetailPage() {
             <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
           </button>
           <div>
-            <h2 className="text-2xl font-light text-[#e5e4e2]">{equipment.name}</h2>
+            <h2 className="text-2xl font-light text-[#e5e4e2] flex items-center gap-3">
+              {equipment.name}
+              <span className="text-lg font-normal text-[#d3bb73]">
+                {availableUnits}/{totalUnits}
+              </span>
+            </h2>
             {(equipment.brand || equipment.model) && (
               <p className="text-sm text-[#e5e4e2]/60 mt-1">
                 {equipment.brand} {equipment.model}
@@ -400,14 +408,6 @@ export default function EquipmentDetailPage() {
         />
       )}
 
-      {activeTab === 'stock' && (
-        <StockTab
-          equipment={equipment}
-          stock={stock}
-          onUpdate={fetchEquipment}
-        />
-      )}
-
       {activeTab === 'history' && (
         <HistoryTab history={stockHistory} />
       )}
@@ -426,7 +426,6 @@ function TabCarousel({ activeTab, setActiveTab, equipment }: any) {
     { id: 'components', label: `Skład zestawu (${equipment.equipment_components.length})` },
     { id: 'units', label: 'Jednostki' },
     { id: 'gallery', label: `Galeria (${equipment.equipment_gallery.length})` },
-    { id: 'stock', label: 'Stan magazynowy' },
     { id: 'history', label: 'Historia' },
   ];
 
@@ -1963,17 +1962,28 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
 
       if (eventError) throw eventError;
 
-      if (eventForm.event_type === 'repair') {
+      if (eventForm.event_type === 'repair' || eventForm.event_type === 'service') {
+        const updateData: any = {
+          last_service_date: new Date().toISOString().split('T')[0],
+        };
+
+        if (eventForm.event_type === 'repair') {
+          updateData.status = 'available';
+          updateData.estimated_repair_date = null;
+        }
+
         const { error: updateError } = await supabase
           .from('equipment_units')
-          .update({
-            status: 'available',
-            estimated_repair_date: null,
-          })
+          .update(updateData)
           .eq('id', unit.id);
 
         if (updateError) throw updateError;
-        alert('Jednostka została naprawiona i jest znowu dostępna!');
+
+        if (eventForm.event_type === 'repair') {
+          alert('Jednostka została naprawiona i jest znowu dostępna!');
+        } else {
+          alert('Data ostatniego serwisu została zaktualizowana!');
+        }
       }
 
       if (eventForm.event_type === 'sold') {

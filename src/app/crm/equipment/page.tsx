@@ -23,6 +23,12 @@ interface EquipmentStock {
   storage_location: string | null;
 }
 
+interface EquipmentUnit {
+  id: string;
+  equipment_id: string;
+  status: 'available' | 'damaged' | 'in_service' | 'retired';
+}
+
 interface Equipment {
   id: string;
   name: string;
@@ -34,6 +40,7 @@ interface Equipment {
   is_active: boolean;
   equipment_stock: EquipmentStock[];
   equipment_categories: Category | null;
+  equipment_units: EquipmentUnit[];
 }
 
 export default function EquipmentPage() {
@@ -69,7 +76,8 @@ export default function EquipmentPage() {
         .select(`
           *,
           equipment_categories(*),
-          equipment_stock(*)
+          equipment_stock(*),
+          equipment_units(id, equipment_id, status)
         `)
         .eq('is_active', true)
         .order('name');
@@ -93,14 +101,18 @@ export default function EquipmentPage() {
     return matchesSearch && matchesCategory;
   });
 
-  const getStockStatus = (stock: EquipmentStock | undefined) => {
-    if (!stock || stock.total_quantity === 0) return { color: 'text-gray-400', label: 'Brak' };
-    const percentage = (stock.available_quantity / stock.total_quantity) * 100;
+  const getStockInfo = (item: Equipment) => {
+    const totalUnits = item.equipment_units.length;
+    const availableUnits = item.equipment_units.filter(u => u.status === 'available').length;
 
-    if (percentage === 0) return { color: 'text-red-400', label: 'Niedostępne' };
-    if (percentage < 30) return { color: 'text-orange-400', label: 'Niski stan' };
-    if (percentage < 70) return { color: 'text-yellow-400', label: 'Średni stan' };
-    return { color: 'text-green-400', label: 'Dostępne' };
+    if (totalUnits === 0) return { available: 0, total: 0, color: 'text-gray-400', label: 'Brak' };
+
+    const percentage = (availableUnits / totalUnits) * 100;
+
+    if (percentage === 0) return { available: availableUnits, total: totalUnits, color: 'text-red-400', label: 'Niedostępne' };
+    if (percentage < 30) return { available: availableUnits, total: totalUnits, color: 'text-orange-400', label: 'Niski stan' };
+    if (percentage < 70) return { available: availableUnits, total: totalUnits, color: 'text-yellow-400', label: 'Średni stan' };
+    return { available: availableUnits, total: totalUnits, color: 'text-green-400', label: 'Dostępne' };
   };
 
   if (loading) {
@@ -205,8 +217,7 @@ export default function EquipmentPage() {
       ) : (
         <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
           {filteredEquipment.map((item) => {
-            const stock = item.equipment_stock[0];
-            const status = getStockStatus(stock);
+            const stockInfo = getStockInfo(item);
 
             return (
               <div
@@ -245,24 +256,25 @@ export default function EquipmentPage() {
 
                   <div className="text-right">
                     <div className="text-2xl font-light text-[#e5e4e2] mb-1">
-                      {stock?.available_quantity || 0} / {stock?.total_quantity || 0}
+                      {stockInfo.available} / {stockInfo.total}
                     </div>
-                    <div className={`text-sm ${status.color}`}>{status.label}</div>
+                    <div className={`text-sm ${stockInfo.color}`}>{stockInfo.label}</div>
                   </div>
                 </div>
 
-                {stock && stock.total_quantity > 0 && (
+                {stockInfo.total > 0 && (
                   <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
                     <div className="flex justify-between text-xs text-[#e5e4e2]/60 mb-2">
-                      <span>W użyciu: {stock.in_use_quantity}</span>
-                      <span>Uszkodzone: {stock.damaged_quantity}</span>
-                      <span>Zarezerwowane: {stock.reserved_quantity}</span>
+                      <span>Dostępne: {item.equipment_units.filter(u => u.status === 'available').length}</span>
+                      <span>Uszkodzone: {item.equipment_units.filter(u => u.status === 'damaged').length}</span>
+                      <span>Serwis: {item.equipment_units.filter(u => u.status === 'in_service').length}</span>
+                      <span>Wycofane: {item.equipment_units.filter(u => u.status === 'retired').length}</span>
                     </div>
                     <div className="h-2 bg-[#0f1119] rounded-full overflow-hidden">
                       <div
                         className="h-full bg-[#d3bb73] rounded-full transition-all"
                         style={{
-                          width: `${(stock.available_quantity / stock.total_quantity) * 100}%`,
+                          width: `${(stockInfo.available / stockInfo.total) * 100}%`,
                         }}
                       />
                     </div>
