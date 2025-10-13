@@ -9,18 +9,25 @@ import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
 import { SnackbarProvider } from '@/contexts/SnackbarContext';
 
-const navigation = [
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: any;
+  permission?: string;
+}
+
+const allNavigation: NavigationItem[] = [
   { name: 'Dashboard', href: '/crm', icon: LayoutDashboard },
-  { name: 'Kalendarz', href: '/crm/calendar', icon: Calendar },
-  { name: 'Wiadomości', href: '/crm/messages', icon: Mail },
-  { name: 'Klienci', href: '/crm/clients', icon: Building2 },
-  { name: 'Eventy', href: '/crm/events', icon: Calendar },
-  { name: 'Oferty', href: '/crm/offers', icon: FileText },
-  { name: 'Umowy', href: '/crm/contracts', icon: FileSignature },
-  { name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles },
-  { name: 'Pracownicy', href: '/crm/employees', icon: Users },
-  { name: 'Sprzęt', href: '/crm/equipment', icon: Package },
-  { name: 'Zadania', href: '/crm/tasks', icon: CheckSquare },
+  { name: 'Kalendarz', href: '/crm/calendar', icon: Calendar, permission: 'can_view_calendar' },
+  { name: 'Wiadomości', href: '/crm/messages', icon: Mail, permission: 'can_view_messages' },
+  { name: 'Klienci', href: '/crm/clients', icon: Building2, permission: 'can_view_clients' },
+  { name: 'Eventy', href: '/crm/events', icon: Calendar, permission: 'can_view_events' },
+  { name: 'Oferty', href: '/crm/offers', icon: FileText, permission: 'can_view_offers' },
+  { name: 'Umowy', href: '/crm/contracts', icon: FileSignature, permission: 'can_view_contracts' },
+  { name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, permission: 'can_view_attractions' },
+  { name: 'Pracownicy', href: '/crm/employees', icon: Users, permission: 'can_view_employees' },
+  { name: 'Sprzęt', href: '/crm/equipment', icon: Package, permission: 'can_view_equipment' },
+  { name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, permission: 'can_view_tasks' },
 ];
 
 export default function CRMLayout({ children }: { children: React.ReactNode }) {
@@ -28,6 +35,8 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [permissions, setPermissions] = useState<any>(null);
+  const [navigation, setNavigation] = useState<NavigationItem[]>(allNavigation);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -45,6 +54,34 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
       if (!session && pathname !== '/crm/login') {
         router.push('/crm/login');
         return;
+      }
+
+      if (session?.user) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id, role')
+          .eq('email', session.user.email)
+          .maybeSingle();
+
+        if (employee) {
+          const { data: perms } = await supabase
+            .from('employee_permissions')
+            .select('*')
+            .eq('employee_id', employee.id)
+            .maybeSingle();
+
+          setPermissions(perms);
+
+          if (perms && employee.role !== 'admin') {
+            const filteredNav = allNavigation.filter(item => {
+              if (!item.permission) return true;
+              return perms[item.permission] === true;
+            });
+            setNavigation(filteredNav);
+          } else {
+            setNavigation(allNavigation);
+          }
+        }
       }
 
       setUser(session?.user || null);
