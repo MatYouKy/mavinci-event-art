@@ -13,7 +13,6 @@ const navigation = [
   { name: 'Dashboard', href: '/crm', icon: LayoutDashboard },
   { name: 'Kalendarz', href: '/crm/calendar', icon: Calendar },
   { name: 'Wiadomości', href: '/crm/messages', icon: Mail },
-  { name: 'Poczta Email', href: '/crm/email', icon: Mail },
   { name: 'Klienci', href: '/crm/clients', icon: Building2 },
   { name: 'Eventy', href: '/crm/events', icon: Calendar },
   { name: 'Oferty', href: '/crm/offers', icon: FileText },

@@ -79,6 +79,8 @@ export default function MessagesPage() {
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [selectedEmailAccount, setSelectedEmailAccount] = useState<string>('');
+  const [showNewMessageModal, setShowNewMessageModal] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<string>('contact_form');
 
   useEffect(() => {
     fetchMessages();
