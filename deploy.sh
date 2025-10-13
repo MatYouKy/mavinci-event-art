@@ -1,4 +1,5 @@
 #!/bin/bash
+chmod +x deploy.sh
 set -euo pipefail
 
 REMOTE="root@83.150.236.238"
