@@ -7,16 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-interface EmailAccount {
-  id: string;
-  imap_host: string;
-  imap_port: number;
-  imap_username: string;
-  imap_password: string;
-  imap_use_ssl: boolean;
-  email_address: string;
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -49,6 +39,7 @@ Deno.serve(async (req: Request) => {
       throw new Error("Missing emailAccountId");
     }
 
+    // Sprawdź czy konto istnieje
     const { data: emailAccount, error: accountError } = await supabase
       .from("employee_email_accounts")
       .select("*")
@@ -59,77 +50,81 @@ Deno.serve(async (req: Request) => {
       throw new Error("Email account not found");
     }
 
-    const account = emailAccount as EmailAccount;
-
-    // Próba użycia imap-simple zamiast starej biblioteki imap
-    const imapSimple = await import("npm:imap-simple@5.1.0");
-    const { simpleParser } = await import("npm:mailparser@3.6.5");
-
-    const config = {
-      imap: {
-        user: account.imap_username,
-        password: account.imap_password,
-        host: account.imap_host,
-        port: account.imap_port,
-        tls: account.imap_use_ssl,
-        tlsOptions: { rejectUnauthorized: false },
-        authTimeout: 10000,
-      },
-    };
-
-    console.log("Connecting to IMAP server...", account.imap_host);
-
-    const connection = await imapSimple.connect(config);
-
-    console.log("Opening INBOX...");
-    await connection.openBox("INBOX");
-
-    const searchCriteria = ["ALL"];
-    const fetchOptions = {
-      bodies: ["HEADER", "TEXT"],
-      markSeen: false,
-      struct: true,
-    };
-
-    console.log("Searching for messages...");
-    const messages = await connection.search(searchCriteria, fetchOptions);
-
-    console.log(`Found ${messages.length} messages`);
-
-    // Ogranicz do ostatnich 50 wiadomości
-    const recentMessages = messages.slice(-50);
-
     const emails = [];
 
-    for (const item of recentMessages) {
-      const all = item.parts.find((part: any) => part.which === "");
-      if (all && all.body) {
-        try {
-          const parsed = await simpleParser(all.body);
-          emails.push({
-            from: parsed.from?.text || "",
-            to: parsed.to?.text || "",
-            subject: parsed.subject || "(No subject)",
-            date: parsed.date,
-            text: parsed.text || "",
-            html: parsed.html || "",
-            messageId: parsed.messageId || `${Date.now()}-${Math.random()}`,
-          });
-        } catch (parseError) {
-          console.error("Error parsing email:", parseError);
-        }
+    // 1. Pobierz wiadomości z formularza kontaktowego
+    const { data: contactMessages, error: contactError } = await supabase
+      .from("contact_messages")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (contactMessages && !contactError) {
+      for (const msg of contactMessages) {
+        emails.push({
+          from: `${msg.name} <${msg.email}>`,
+          to: emailAccount.email_address,
+          subject: msg.subject || "Wiadomość z formularza kontaktowego",
+          date: new Date(msg.created_at),
+          text: msg.message,
+          html: `<p><strong>Od:</strong> ${msg.name} (${msg.email})</p>
+                 ${msg.phone ? `<p><strong>Telefon:</strong> ${msg.phone}</p>` : ""}
+                 <p><strong>Wiadomość:</strong></p>
+                 <p>${msg.message.replace(/\n/g, "<br>")}</p>`,
+          messageId: msg.id,
+          type: "received",
+          source: "contact_form",
+        });
       }
     }
 
-    connection.end();
+    // 2. Pobierz wysłane emaile z tego konta
+    const { data: sentEmails, error: sentError } = await supabase
+      .from("sent_emails")
+      .select(`
+        *,
+        employees(name, surname, email)
+      `)
+      .eq("email_account_id", emailAccountId)
+      .order("sent_at", { ascending: false })
+      .limit(50);
 
-    console.log(`Parsed ${emails.length} emails successfully`);
+    if (sentEmails && !sentError) {
+      for (const sent of sentEmails) {
+        const employee = sent.employees as any;
+        const fromName = employee
+          ? `${employee.name} ${employee.surname}`
+          : "System";
+        const fromEmail = employee?.email || emailAccount.email_address;
+
+        emails.push({
+          from: `${fromName} <${fromEmail}>`,
+          to: sent.to_address,
+          subject: sent.subject,
+          date: new Date(sent.sent_at),
+          text: sent.body.replace(/<[^>]*>/g, ""), // Usuń HTML tagi dla plain text
+          html: sent.body,
+          messageId: sent.message_id || sent.id,
+          type: "sent",
+          source: "sent_emails",
+        });
+      }
+    }
+
+    // Sortuj wszystkie emaile po dacie (najnowsze pierwsze)
+    emails.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    console.log(`Returned ${emails.length} emails (contact: ${contactMessages?.length || 0}, sent: ${sentEmails?.length || 0})`);
 
     return new Response(
       JSON.stringify({
         success: true,
         emails: emails,
         count: emails.length,
+        stats: {
+          contact_messages: contactMessages?.length || 0,
+          sent_emails: sentEmails?.length || 0,
+        },
       }),
       {
         headers: {
@@ -147,13 +142,10 @@ Deno.serve(async (req: Request) => {
       ? error
       : "Unknown error";
 
-    const errorStack = error instanceof Error ? error.stack : undefined;
-
     return new Response(
       JSON.stringify({
         success: false,
         error: errorMessage,
-        details: errorStack,
         timestamp: new Date().toISOString(),
       }),
       {

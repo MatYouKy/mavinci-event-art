@@ -121,11 +121,33 @@ Deno.serve(async (req: Request) => {
 
     const info = await transporter.sendMail(mailOptions);
 
-    if (messageId && emailAccountId) {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Zapisz wysłany email w bazie
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader && emailAccountId) {
+      const { data: { user } } = await supabase.auth.getUser(
+        authHeader.replace("Bearer ", "")
+      );
+
+      if (user) {
+        await supabase.from("sent_emails").insert({
+          employee_id: user.id,
+          email_account_id: emailAccountId,
+          to_address: to,
+          subject: subject,
+          body: body,
+          reply_to: replyTo,
+          message_id: info.messageId,
+          sent_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Zaktualizuj status wiadomości kontaktowej jeśli to odpowiedź
+    if (messageId && emailAccountId) {
       await supabase
         .from("contact_messages")
         .update({
