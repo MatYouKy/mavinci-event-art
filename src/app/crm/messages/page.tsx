@@ -4,13 +4,12 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   Mail,
-  Send,
   RefreshCw,
   Search,
   Plus,
   Inbox,
-  X,
 } from 'lucide-react';
+import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 
 interface UnifiedMessage {
   id: string;
@@ -189,12 +188,7 @@ export default function MessagesPage() {
     fetchMessages();
   };
 
-  const handleSendNewMessage = async () => {
-    if (!newMessage.to || !newMessage.subject || !newMessage.body) {
-      alert('Wypełnij wszystkie pola');
-      return;
-    }
-
+  const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string }) => {
     if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
       alert('Wybierz konto email do wysłania');
       return;
@@ -217,9 +211,9 @@ export default function MessagesPage() {
         },
         body: JSON.stringify({
           emailAccountId: selectedAccount,
-          to: newMessage.to,
-          subject: newMessage.subject,
-          body: newMessage.body.replace(/\n/g, '<br>'),
+          to: data.to,
+          subject: data.subject,
+          body: data.bodyHtml,
         }),
       });
 
@@ -465,68 +459,14 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {showNewMessageModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] rounded-lg max-w-2xl w-full border border-[#d3bb73]/20">
-            <div className="p-6 border-b border-[#d3bb73]/20 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-white">Nowa Wiadomość</h2>
-              <button
-                onClick={() => setShowNewMessageModal(false)}
-                className="text-[#e5e4e2]/60 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Do:</label>
-                <input
-                  type="email"
-                  value={newMessage.to}
-                  onChange={(e) => setNewMessage({ ...newMessage, to: e.target.value })}
-                  placeholder="email@example.com"
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Temat:</label>
-                <input
-                  type="text"
-                  value={newMessage.subject}
-                  onChange={(e) => setNewMessage({ ...newMessage, subject: e.target.value })}
-                  placeholder="Temat wiadomości"
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Wiadomość:</label>
-                <textarea
-                  value={newMessage.body}
-                  onChange={(e) => setNewMessage({ ...newMessage, body: e.target.value })}
-                  placeholder="Treść wiadomości..."
-                  rows={10}
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none resize-none"
-                />
-              </div>
-            </div>
-            <div className="p-6 border-t border-[#d3bb73]/20 flex justify-end gap-4">
-              <button
-                onClick={() => setShowNewMessageModal(false)}
-                className="px-6 py-3 bg-[#0f1119] text-white rounded-lg hover:bg-[#1a1d2e] transition-colors"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={handleSendNewMessage}
-                className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors flex items-center gap-2"
-              >
-                <Send className="w-5 h-5" />
-                Wyślij
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ComposeEmailModal
+        isOpen={showNewMessageModal}
+        onClose={() => setShowNewMessageModal(false)}
+        onSend={handleSendNewMessage}
+        initialTo={newMessage.to}
+        initialSubject={newMessage.subject}
+        selectedAccountId={selectedAccount}
+      />
     </div>
   );
 }
