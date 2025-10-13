@@ -161,7 +161,9 @@ export default function Team() {
                     </button>
                   </div>
 
-                  <div className="absolute bottom-0 left-0 right-0 p-6 transform transition-all duration-500">
+                  <div className={`absolute bottom-0 left-0 right-0 p-6 transform transition-all duration-500 ${
+                    hoveredId === member.id ? '-translate-y-4' : 'translate-y-0'
+                  }`}>
                     <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-1 group-hover:text-[#d3bb73] transition-colors duration-300">
                       {member.name}
                     </h3>
