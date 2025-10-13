@@ -106,7 +106,7 @@ export default function Portfolio() {
             <Link
               href={`/portfolio/${project.id}`}
               key={project.id}
-              className="group relative overflow-hidden rounded-2xl cursor-pointer block w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.33rem)]"
+              className="group relative overflow-hidden rounded-2xl cursor-pointer block w-full md:w-[calc(33.333%-1.33rem)]"
               style={{
                 animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
               }}
