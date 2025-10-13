@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Mail, Plus, Trash2, Eye, EyeOff, Edit, Save, X } from 'lucide-react';
+import { Mail, Plus, Trash2, Eye, EyeOff, Edit, Save, X, FileSignature } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { generateEmailSignature } from './EmailSignatureGenerator';
 
 interface EmailAccount {
   id: string;
@@ -30,15 +32,33 @@ interface Props {
 }
 
 export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, isAdmin }: Props) {
+  const router = useRouter();
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [employee, setEmployee] = useState<any>(null);
 
   useEffect(() => {
     fetchAccounts();
+    fetchEmployee();
   }, [employeeId]);
+
+  const fetchEmployee = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('id', employeeId)
+        .maybeSingle();
+
+      if (error) throw error;
+      setEmployee(data);
+    } catch (err) {
+      console.error('Error fetching employee:', err);
+    }
+  };
 
   const fetchAccounts = async () => {
     try {
@@ -108,6 +128,44 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     return <div className="text-[#e5e4e2]/60 text-center py-8">Ładowanie...</div>;
   }
 
+  const handleGenerateSignature = async () => {
+    if (!employee) return;
+
+    const signatureData = {
+      full_name: `${employee.name} ${employee.surname}`,
+      position: employee.occupation || '',
+      phone: employee.phone_number || '',
+      email: employee.email,
+      avatar_url: employee.avatar_url || '',
+      website: 'https://mavinci.pl',
+    };
+
+    const signatureHtml = generateEmailSignature(signatureData);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('employee_signatures')
+        .upsert({
+          employee_id: employeeId,
+          ...signatureData,
+          custom_html: signatureHtml,
+          use_custom_html: true,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+
+      alert('✅ Automatyczna stopka została wygenerowana! Możesz ją teraz edytować.');
+      router.push(`/crm/employees/signature`);
+    } catch (err) {
+      console.error('Error generating signature:', err);
+      alert('❌ Błąd podczas generowania stopki');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -117,15 +175,24 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
             Zarządzaj kontami email przypisanymi do pracownika
           </p>
         </div>
-        {isAdmin && (
+        <div className="flex gap-2">
           <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+            onClick={() => router.push('/crm/employees/signature')}
+            className="flex items-center gap-2 bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30"
           >
-            <Plus className="w-4 h-4" />
-            Dodaj konto
+            <FileSignature className="w-4 h-4" />
+            Zarządzaj stopką
           </button>
-        )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj konto
+            </button>
+          )}
+        </div>
       </div>
 
       {accounts.length === 0 ? (
@@ -556,13 +623,29 @@ function AddEmailAccountModal({
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Podpis email</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm text-[#e5e4e2]/60">Podpis email (HTML)</label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Czy chcesz przejść do kreatora stopki? Możesz tam wygenerować profesjonalną stopkę HTML.')) {
+                    window.open('/crm/employees/signature', '_blank');
+                  }
+                }}
+                className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 underline"
+              >
+                Otwórz kreator stopki
+              </button>
+            </div>
             <textarea
               value={formData.signature}
               onChange={(e) => setFormData({ ...formData, signature: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px]"
-              placeholder="Pozdrawiam,&#10;Jan Kowalski"
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px] font-mono text-xs"
+              placeholder="<div>Twoja stopka HTML...</div>"
             />
+            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+              Możesz wkleić tutaj HTML wygenerowany w kreatorze stopki lub napisać własny
+            </p>
           </div>
 
           <div className="flex items-center gap-4">
@@ -872,13 +955,29 @@ function EditEmailAccountModal({
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Podpis email</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm text-[#e5e4e2]/60">Podpis email (HTML)</label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Czy chcesz przejść do kreatora stopki? Możesz tam wygenerować profesjonalną stopkę HTML.')) {
+                    window.open('/crm/employees/signature', '_blank');
+                  }
+                }}
+                className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 underline"
+              >
+                Otwórz kreator stopki
+              </button>
+            </div>
             <textarea
               value={formData.signature}
               onChange={(e) => setFormData({ ...formData, signature: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px]"
-              placeholder="Pozdrawiam,&#10;Jan Kowalski"
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px] font-mono text-xs"
+              placeholder="<div>Twoja stopka HTML...</div>"
             />
+            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+              Możesz wkleić tutaj HTML wygenerowany w kreatorze stopki lub napisać własny
+            </p>
           </div>
 
           <div className="flex items-center gap-4">
