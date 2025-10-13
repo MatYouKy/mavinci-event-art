@@ -59,6 +59,7 @@ interface EquipmentUnit {
   condition_notes: string | null;
   purchase_date: string | null;
   last_service_date: string | null;
+  estimated_repair_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1421,6 +1422,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
     condition_notes: '',
     purchase_date: '',
     last_service_date: '',
+    estimated_repair_date: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -1453,6 +1455,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
         condition_notes: unit.condition_notes || '',
         purchase_date: unit.purchase_date || '',
         last_service_date: unit.last_service_date || '',
+        estimated_repair_date: unit.estimated_repair_date || '',
       });
     } else {
       setEditingUnit(null);
@@ -1463,6 +1466,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
         condition_notes: '',
         purchase_date: '',
         last_service_date: '',
+        estimated_repair_date: '',
       });
     }
     setShowModal(true);
@@ -1481,6 +1485,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
             condition_notes: unitForm.condition_notes || null,
             purchase_date: unitForm.purchase_date || null,
             last_service_date: unitForm.last_service_date || null,
+            estimated_repair_date: unitForm.estimated_repair_date || null,
           })
           .eq('id', editingUnit.id);
 
@@ -1496,6 +1501,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
             condition_notes: unitForm.condition_notes || null,
             purchase_date: unitForm.purchase_date || null,
             last_service_date: unitForm.last_service_date || null,
+            estimated_repair_date: unitForm.estimated_repair_date || null,
           });
 
         if (error) throw error;
@@ -1594,14 +1600,20 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
         </div>
       ) : (
         <div className="space-y-3">
-          {units.map((unit: EquipmentUnit) => (
+          {units.map((unit: EquipmentUnit) => {
+            const isUnavailable = unit.status === 'damaged' || unit.status === 'in_service';
+            return (
             <div
               key={unit.id}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4"
+              className={`bg-[#1c1f33] border rounded-xl p-4 ${
+                isUnavailable
+                  ? 'border-red-500/20 opacity-60'
+                  : 'border-[#d3bb73]/10'
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     {unit.unit_serial_number && (
                       <span className="font-mono text-[#e5e4e2] font-medium">
                         SN: {unit.unit_serial_number}
@@ -1613,6 +1625,16 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                     <span className={`px-2 py-1 rounded text-xs ${statusColors[unit.status]}`}>
                       {statusLabels[unit.status]}
                     </span>
+                    {isUnavailable && (
+                      <span className="px-2 py-1 rounded text-xs bg-red-500/20 text-red-300 border border-red-500/30">
+                        Niedostępny
+                      </span>
+                    )}
+                    {unit.estimated_repair_date && isUnavailable && (
+                      <span className="text-xs text-[#e5e4e2]/60">
+                        Szac. dostępność: {new Date(unit.estimated_repair_date).toLocaleDateString('pl-PL')}
+                      </span>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -1670,7 +1692,8 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1734,7 +1757,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                   />
                 </div>
 
-                <div className="md:col-span-2">
+                <div>
                   <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ostatni serwis</label>
                   <input
                     type="date"
@@ -1742,6 +1765,22 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                     onChange={(e) => setUnitForm(prev => ({ ...prev, last_service_date: e.target.value }))}
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Szacowana dostępność
+                  </label>
+                  <input
+                    type="date"
+                    value={unitForm.estimated_repair_date}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, estimated_repair_date: e.target.value }))}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    disabled={unitForm.status !== 'damaged' && unitForm.status !== 'in_service'}
+                  />
+                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                    Dla jednostek uszkodzonych lub w serwisie
+                  </p>
                 </div>
 
                 <div className="md:col-span-2">
