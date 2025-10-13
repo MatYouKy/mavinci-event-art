@@ -1,0 +1,16 @@
+{
+  "name": "mavinci-imap-sync",
+  "version": "1.0.0",
+  "description": "IMAP email synchronization worker for Mavinci CRM",
+  "main": "sync.js",
+  "scripts": {
+    "start": "node sync.js",
+    "dev": "node sync.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "imap-simple": "^5.1.0",
+    "mailparser": "^3.6.5",
+    "dotenv": "^17.2.3"
+  }
+}
