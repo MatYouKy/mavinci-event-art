@@ -8,23 +8,102 @@
   <!-- Strona główna -->
   <url>
     <loc>https://mavinci.pl/</loc>
-    <lastmod>2025-01-10</lastmod>
+    <lastmod>2025-10-13</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
 
   <!-- Portfolio -->
   <url>
-    <loc>https://mavinci.pl/#portfolio</loc>
-    <lastmod>2025-01-10</lastmod>
+    <loc>https://mavinci.pl/portfolio</loc>
+    <lastmod>2025-10-13</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
 
-  <!-- Kontakt -->
+  <!-- O nas -->
   <url>
-    <loc>https://mavinci.pl/#kontakt</loc>
-    <lastmod>2025-01-10</lastmod>
+    <loc>https://mavinci.pl/o-nas</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Zespół -->
+  <url>
+    <loc>https://mavinci.pl/zespol</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Usługi -->
+  <url>
+    <loc>https://mavinci.pl/uslugi</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/naglosnienie</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/technika-sceniczna</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/streaming</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/konferencje</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/integracje</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/wieczory-tematyczne</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/kasyno</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/symulatory-vr</loc>
+    <lastmod>2025-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://mavinci.pl/uslugi/quizy-teleturnieje</loc>
+    <lastmod>2025-10-13</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>

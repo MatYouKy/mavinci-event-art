@@ -1,9 +1,23 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
-Disallow: /admin/login
-Disallow: /admin/dashboard
+Disallow: /crm/
+Disallow: /api/
 
 Sitemap: https://mavinci.pl/sitemap.xml
+
+# Szczególne ustawienia dla Google
+User-agent: Googlebot
+Allow: /
+Disallow: /admin/
+Disallow: /crm/
+Disallow: /api/
+
+# Szczególne ustawienia dla Bing
+User-agent: Bingbot
+Allow: /
+Disallow: /admin/
+Disallow: /crm/
+Disallow: /api/
 
 Crawl-delay: 0
