@@ -33,7 +33,7 @@ export default function Footer() {
                 />
               </Link>
               <p className="text-[#e5e4e2]/60 text-sm font-light leading-relaxed">
-                Event & ART - Sztuka Tworzenia Eventów
+                Sztuka Tworzenia Eventów
               </p>
             </div>
             <div className="flex gap-3">
