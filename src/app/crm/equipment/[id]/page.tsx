@@ -50,6 +50,19 @@ interface StockHistory {
   employees: { name: string; surname: string } | null;
 }
 
+interface EquipmentUnit {
+  id: string;
+  equipment_id: string;
+  unit_serial_number: string | null;
+  status: 'available' | 'in_use' | 'reserved' | 'damaged' | 'in_service';
+  location: string | null;
+  condition_notes: string | null;
+  purchase_date: string | null;
+  last_service_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface Equipment {
   id: string;
   name: string;
@@ -85,10 +98,11 @@ export default function EquipmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'technical' | 'purchase' | 'components' | 'gallery' | 'stock' | 'history'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'technical' | 'purchase' | 'components' | 'units' | 'gallery' | 'stock' | 'history'>('details');
 
   const [editForm, setEditForm] = useState<any>({});
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
+  const [units, setUnits] = useState<EquipmentUnit[]>([]);
 
   useEffect(() => {
     fetchEquipment();
@@ -98,6 +112,8 @@ export default function EquipmentDetailPage() {
   useEffect(() => {
     if (activeTab === 'history') {
       fetchStockHistory();
+    } else if (activeTab === 'units') {
+      fetchUnits();
     }
   }, [activeTab]);
 
@@ -156,6 +172,16 @@ export default function EquipmentDetailPage() {
       .limit(50);
 
     if (data) setStockHistory(data);
+  };
+
+  const fetchUnits = async () => {
+    const { data, error } = await supabase
+      .from('equipment_units')
+      .select('*')
+      .eq('equipment_id', equipmentId)
+      .order('created_at', { ascending: false });
+
+    if (data) setUnits(data);
   };
 
   const handleEdit = () => {
@@ -344,6 +370,14 @@ export default function EquipmentDetailPage() {
         />
       )}
 
+      {activeTab === 'units' && (
+        <UnitsTab
+          equipment={equipment}
+          units={units}
+          onUpdate={fetchUnits}
+        />
+      )}
+
       {activeTab === 'gallery' && (
         <GalleryTab
           equipment={equipment}
@@ -375,6 +409,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment }: any) {
     { id: 'technical', label: 'Parametry techniczne' },
     { id: 'purchase', label: 'Informacje zakupowe' },
     { id: 'components', label: `Skład zestawu (${equipment.equipment_components.length})` },
+    { id: 'units', label: 'Jednostki' },
     { id: 'gallery', label: `Galeria (${equipment.equipment_gallery.length})` },
     { id: 'stock', label: 'Stan magazynowy' },
     { id: 'history', label: 'Historia' },
@@ -1350,6 +1385,351 @@ function StockTab({ equipment, stock, onUpdate }: any) {
               </button>
               <button
                 onClick={handleStockChange}
+                disabled={saving}
+                className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Zapisywanie...' : 'Zapisz'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnitsTab({ equipment, units, onUpdate }: any) {
+  const [showModal, setShowModal] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
+  const [unitForm, setUnitForm] = useState({
+    unit_serial_number: '',
+    status: 'available' as const,
+    location: '',
+    condition_notes: '',
+    purchase_date: '',
+    last_service_date: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const statusColors: Record<string, string> = {
+    available: 'text-green-400 bg-green-500/10',
+    in_use: 'text-blue-400 bg-blue-500/10',
+    reserved: 'text-yellow-400 bg-yellow-500/10',
+    damaged: 'text-red-400 bg-red-500/10',
+    in_service: 'text-orange-400 bg-orange-500/10',
+  };
+
+  const statusLabels: Record<string, string> = {
+    available: 'Dostępny',
+    in_use: 'W użyciu',
+    reserved: 'Zarezerwowany',
+    damaged: 'Uszkodzony',
+    in_service: 'W serwisie',
+  };
+
+  const handleOpenModal = (unit?: EquipmentUnit) => {
+    if (unit) {
+      setEditingUnit(unit);
+      setUnitForm({
+        unit_serial_number: unit.unit_serial_number || '',
+        status: unit.status,
+        location: unit.location || '',
+        condition_notes: unit.condition_notes || '',
+        purchase_date: unit.purchase_date || '',
+        last_service_date: unit.last_service_date || '',
+      });
+    } else {
+      setEditingUnit(null);
+      setUnitForm({
+        unit_serial_number: '',
+        status: 'available',
+        location: '',
+        condition_notes: '',
+        purchase_date: '',
+        last_service_date: '',
+      });
+    }
+    setShowModal(true);
+  };
+
+  const handleSaveUnit = async () => {
+    setSaving(true);
+    try {
+      if (editingUnit) {
+        const { error } = await supabase
+          .from('equipment_units')
+          .update({
+            unit_serial_number: unitForm.unit_serial_number || null,
+            status: unitForm.status,
+            location: unitForm.location || null,
+            condition_notes: unitForm.condition_notes || null,
+            purchase_date: unitForm.purchase_date || null,
+            last_service_date: unitForm.last_service_date || null,
+          })
+          .eq('id', editingUnit.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('equipment_units')
+          .insert({
+            equipment_id: equipment.id,
+            unit_serial_number: unitForm.unit_serial_number || null,
+            status: unitForm.status,
+            location: unitForm.location || null,
+            condition_notes: unitForm.condition_notes || null,
+            purchase_date: unitForm.purchase_date || null,
+            last_service_date: unitForm.last_service_date || null,
+          });
+
+        if (error) throw error;
+      }
+
+      setShowModal(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Error saving unit:', error);
+      alert('Błąd podczas zapisywania jednostki');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteUnit = async (unitId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tę jednostkę?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('equipment_units')
+        .delete()
+        .eq('id', unitId);
+
+      if (error) throw error;
+      onUpdate();
+    } catch (error) {
+      console.error('Error deleting unit:', error);
+      alert('Błąd podczas usuwania jednostki');
+    }
+  };
+
+  const groupedUnits = {
+    available: units.filter((u: EquipmentUnit) => u.status === 'available'),
+    in_use: units.filter((u: EquipmentUnit) => u.status === 'in_use'),
+    reserved: units.filter((u: EquipmentUnit) => u.status === 'reserved'),
+    damaged: units.filter((u: EquipmentUnit) => u.status === 'damaged'),
+    in_service: units.filter((u: EquipmentUnit) => u.status === 'in_service'),
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-medium text-[#e5e4e2]">Zarządzanie jednostkami</h3>
+        <button
+          onClick={() => handleOpenModal()}
+          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Dodaj jednostkę
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-[#1c1f33] border border-green-500/10 rounded-xl p-4">
+          <div className="text-sm text-[#e5e4e2]/60 mb-1">Dostępne</div>
+          <div className="text-2xl font-light text-green-400">{groupedUnits.available.length}</div>
+        </div>
+        <div className="bg-[#1c1f33] border border-blue-500/10 rounded-xl p-4">
+          <div className="text-sm text-[#e5e4e2]/60 mb-1">W użyciu</div>
+          <div className="text-2xl font-light text-blue-400">{groupedUnits.in_use.length}</div>
+        </div>
+        <div className="bg-[#1c1f33] border border-yellow-500/10 rounded-xl p-4">
+          <div className="text-sm text-[#e5e4e2]/60 mb-1">Zarezerwowane</div>
+          <div className="text-2xl font-light text-yellow-400">{groupedUnits.reserved.length}</div>
+        </div>
+        <div className="bg-[#1c1f33] border border-red-500/10 rounded-xl p-4">
+          <div className="text-sm text-[#e5e4e2]/60 mb-1">Uszkodzone</div>
+          <div className="text-2xl font-light text-red-400">{groupedUnits.damaged.length}</div>
+        </div>
+        <div className="bg-[#1c1f33] border border-orange-500/10 rounded-xl p-4">
+          <div className="text-sm text-[#e5e4e2]/60 mb-1">W serwisie</div>
+          <div className="text-2xl font-light text-orange-400">{groupedUnits.in_service.length}</div>
+        </div>
+      </div>
+
+      {units.length === 0 ? (
+        <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
+          <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <p className="text-[#e5e4e2]/60 mb-2">Brak jednostek</p>
+          <p className="text-sm text-[#e5e4e2]/40">Dodaj pierwszą jednostkę sprzętu</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {units.map((unit: EquipmentUnit) => (
+            <div
+              key={unit.id}
+              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    {unit.unit_serial_number && (
+                      <span className="font-mono text-[#e5e4e2] font-medium">
+                        SN: {unit.unit_serial_number}
+                      </span>
+                    )}
+                    {!unit.unit_serial_number && (
+                      <span className="text-[#e5e4e2]/60 italic">Bez numeru seryjnego</span>
+                    )}
+                    <span className={`px-2 py-1 rounded text-xs ${statusColors[unit.status]}`}>
+                      {statusLabels[unit.status]}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    {unit.location && (
+                      <div>
+                        <span className="text-[#e5e4e2]/60">Lokalizacja:</span>{' '}
+                        <span className="text-[#e5e4e2]">{unit.location}</span>
+                      </div>
+                    )}
+                    {unit.purchase_date && (
+                      <div>
+                        <span className="text-[#e5e4e2]/60">Zakup:</span>{' '}
+                        <span className="text-[#e5e4e2]">
+                          {new Date(unit.purchase_date).toLocaleDateString('pl-PL')}
+                        </span>
+                      </div>
+                    )}
+                    {unit.last_service_date && (
+                      <div>
+                        <span className="text-[#e5e4e2]/60">Ostatni serwis:</span>{' '}
+                        <span className="text-[#e5e4e2]">
+                          {new Date(unit.last_service_date).toLocaleDateString('pl-PL')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {unit.condition_notes && (
+                    <div className="mt-2 text-sm text-[#e5e4e2]/60">
+                      <span className="font-medium">Notatki:</span> {unit.condition_notes}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 ml-4">
+                  <button
+                    onClick={() => handleOpenModal(unit)}
+                    className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteUnit(unit.id)}
+                    className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-light text-[#e5e4e2] mb-4">
+              {editingUnit ? 'Edytuj jednostkę' : 'Dodaj nową jednostkę'}
+            </h3>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Numer seryjny (opcjonalny)
+                  </label>
+                  <input
+                    type="text"
+                    value={unitForm.unit_serial_number}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, unit_serial_number: e.target.value }))}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="np. SN123456"
+                  />
+                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                    Pozostaw puste dla sprzętu bez numeru seryjnego
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Status</label>
+                  <select
+                    value={unitForm.status}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, status: e.target.value as any }))}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  >
+                    <option value="available">Dostępny</option>
+                    <option value="in_use">W użyciu</option>
+                    <option value="reserved">Zarezerwowany</option>
+                    <option value="damaged">Uszkodzony</option>
+                    <option value="in_service">W serwisie</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja</label>
+                  <input
+                    type="text"
+                    value={unitForm.location}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, location: e.target.value }))}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="np. Magazyn A3, U klienta XYZ"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data zakupu</label>
+                  <input
+                    type="date"
+                    value={unitForm.purchase_date}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, purchase_date: e.target.value }))}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ostatni serwis</label>
+                  <input
+                    type="date"
+                    value={unitForm.last_service_date}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, last_service_date: e.target.value }))}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki o stanie</label>
+                  <textarea
+                    value={unitForm.condition_notes}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, condition_notes: e.target.value }))}
+                    rows={3}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="Notatki o stanie technicznym, usterki, naprawy..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowModal(false)}
+                className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleSaveUnit}
                 disabled={saving}
                 className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
               >
