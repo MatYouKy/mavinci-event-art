@@ -7,16 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-interface EmailAccount {
-  id: string;
-  imap_host: string;
-  imap_port: number;
-  imap_username: string;
-  imap_password: string;
-  imap_use_ssl: boolean;
-  email_address: string;
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -49,6 +39,7 @@ Deno.serve(async (req: Request) => {
       throw new Error("Missing emailAccountId");
     }
 
+    // Sprawdź czy konto istnieje
     const { data: emailAccount, error: accountError } = await supabase
       .from("employee_email_accounts")
       .select("*")
@@ -59,106 +50,28 @@ Deno.serve(async (req: Request) => {
       throw new Error("Email account not found");
     }
 
-    const account = emailAccount as EmailAccount;
-
-    const { default: Imap } = await import("npm:imap@0.8.19");
-    const { inspect } = await import("node:util");
-    const { simpleParser } = await import("npm:mailparser@3.6.5");
-
-    const imap = new Imap({
-      user: account.imap_username,
-      password: account.imap_password,
-      host: account.imap_host,
-      port: account.imap_port,
-      tls: account.imap_use_ssl,
-      tlsOptions: { rejectUnauthorized: false },
-    });
-
-    const emails: any[] = [];
-
-    const fetchEmails = () => {
-      return new Promise((resolve, reject) => {
-        imap.once("ready", () => {
-          imap.openBox("INBOX", true, (err: any, box: any) => {
-            if (err) {
-              reject(err);
-              return;
-            }
-
-            const fetchLimit = 50;
-            const totalMessages = box.messages.total;
-            const start = Math.max(1, totalMessages - fetchLimit + 1);
-            const end = totalMessages;
-
-            if (totalMessages === 0) {
-              resolve([]);
-              imap.end();
-              return;
-            }
-
-            const fetch = imap.seq.fetch(`${start}:${end}`, {
-              bodies: "",
-              struct: true,
-            });
-
-            fetch.on("message", (msg: any, seqno: number) => {
-              let buffer = "";
-
-              msg.on("body", (stream: any) => {
-                stream.on("data", (chunk: any) => {
-                  buffer += chunk.toString("utf8");
-                });
-              });
-
-              msg.once("end", async () => {
-                try {
-                  const parsed = await simpleParser(buffer);
-                  emails.push({
-                    from: parsed.from?.text || "",
-                    to: parsed.to?.text || "",
-                    subject: parsed.subject || "(No subject)",
-                    date: parsed.date,
-                    text: parsed.text || "",
-                    html: parsed.html || "",
-                    messageId: parsed.messageId,
-                  });
-                } catch (parseError) {
-                  console.error("Error parsing email:", parseError);
-                }
-              });
-            });
-
-            fetch.once("error", (err: any) => {
-              reject(err);
-            });
-
-            fetch.once("end", () => {
-              imap.end();
-            });
-          });
-        });
-
-        imap.once("error", (err: any) => {
-          reject(err);
-        });
-
-        imap.once("end", () => {
-          resolve(emails);
-        });
-
-        imap.connect();
-      });
-    };
-
-    const fetchedEmails = await fetchEmails();
+    // UWAGA: Biblioteki IMAP nie działają w Supabase Edge Functions
+    // Zwracamy informacyjną wiadomość z instrukcją
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        emails: fetchedEmails,
-        count: fetchedEmails.length
+      JSON.stringify({
+        success: false,
+        error: "IMAP libraries are not compatible with Supabase Edge Functions",
+        message: "Pobieranie emaili przez IMAP nie jest obecnie możliwe w środowisku Supabase Edge Functions. Zalecane rozwiązania:",
+        solutions: [
+          "1. Użyj Gmail API (wymaga OAuth2)",
+          "2. Użyj zewnętrznego serwisu do synchronizacji emaili",
+          "3. Skonfiguruj przekierowanie emaili do Supabase przez webhook",
+          "4. Użyj dedykowanego serwera z Node.js do pobierania emaili"
+        ],
+        accountInfo: {
+          email: emailAccount.email_address,
+          host: emailAccount.imap_host,
+          port: emailAccount.imap_port
+        }
       }),
       {
+        status: 501,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",
@@ -166,7 +79,7 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error("Error fetching emails:", error);
+    console.error("Error in fetch-emails:", error);
 
     const errorMessage = error instanceof Error
       ? error.message
@@ -174,13 +87,10 @@ Deno.serve(async (req: Request) => {
       ? error
       : "Unknown error";
 
-    const errorStack = error instanceof Error ? error.stack : undefined;
-
     return new Response(
       JSON.stringify({
         success: false,
         error: errorMessage,
-        details: errorStack,
         timestamp: new Date().toISOString()
       }),
       {

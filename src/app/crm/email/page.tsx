@@ -56,50 +56,36 @@ export default function EmailPage() {
   };
 
   const fetchEmails = async () => {
-    if (!selectedAccount) {
-      alert('Wybierz konto email');
-      return;
-    }
-
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        alert('Musisz być zalogowany');
-        return;
-      }
+      // Pobierz wiadomości z formularza kontaktowego jako tymczasowe rozwiązanie
+      const { data, error } = await supabase
+        .from('contact_messages')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-emails`;
+      if (error) throw error;
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          emailAccountId: selectedAccount,
-        }),
-      });
+      // Przekształć wiadomości kontaktowe na format emaila
+      const formattedEmails = (data || []).map((msg: any) => ({
+        from: `${msg.name} <${msg.email}>`,
+        to: selectedAccount ? emailAccounts.find(a => a.id === selectedAccount)?.email_address || '' : '',
+        subject: msg.subject || 'Wiadomość z formularza kontaktowego',
+        date: new Date(msg.created_at),
+        text: msg.message,
+        html: `<p><strong>Od:</strong> ${msg.name} (${msg.email})</p>
+               ${msg.phone ? `<p><strong>Telefon:</strong> ${msg.phone}</p>` : ''}
+               <p><strong>Wiadomość:</strong></p>
+               <p>${msg.message.replace(/\n/g, '<br>')}</p>`,
+        messageId: msg.id,
+      }));
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Response error:', errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('Fetch result:', result);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Nie udało się pobrać wiadomości');
-      }
-
-      setEmails(result.emails || []);
-      alert(`Pobrano ${result.count || 0} wiadomości`);
+      setEmails(formattedEmails);
+      alert(`Pobrano ${formattedEmails.length} wiadomości z formularza kontaktowego`);
     } catch (error) {
       console.error('Error fetching emails:', error);
-      alert(`Błąd podczas pobierania emaili: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Błąd podczas pobierania wiadomości: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -137,6 +123,12 @@ export default function EmailPage() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-white mb-2">Poczta Email</h1>
           <p className="text-gray-400">Zarządzaj swoją pocztą email</p>
+          <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+            <p className="text-yellow-400 text-sm">
+              <strong>Uwaga:</strong> Obecnie wyświetlane są tylko wiadomości z formularza kontaktowego.
+              Pobieranie emaili przez IMAP nie jest dostępne w środowisku Supabase Edge Functions.
+            </p>
+          </div>
         </div>
 
         <div className="bg-[#1c1f33] rounded-xl border border-[#d3bb73]/20 p-4 mb-6">
@@ -157,7 +149,7 @@ export default function EmailPage() {
 
             <button
               onClick={fetchEmails}
-              disabled={loading || !selectedAccount}
+              disabled={loading}
               className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {loading ? (
@@ -168,7 +160,7 @@ export default function EmailPage() {
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4" />
-                  Pobierz wiadomości
+                  Pobierz wiadomości kontaktowe
                 </>
               )}
             </button>
