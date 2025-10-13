@@ -39,7 +39,6 @@ Deno.serve(async (req: Request) => {
       throw new Error("Missing emailAccountId");
     }
 
-    // Sprawdź czy konto istnieje
     const { data: emailAccount, error: accountError } = await supabase
       .from("employee_email_accounts")
       .select("*")
@@ -52,33 +51,9 @@ Deno.serve(async (req: Request) => {
 
     const emails = [];
 
-    // 1. Pobierz wiadomości z formularza kontaktowego
-    const { data: contactMessages, error: contactError } = await supabase
-      .from("contact_messages")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
+    console.log("Fetching emails for account:", emailAccount.email_address);
 
-    if (contactMessages && !contactError) {
-      for (const msg of contactMessages) {
-        emails.push({
-          from: `${msg.name} <${msg.email}>`,
-          to: emailAccount.email_address,
-          subject: msg.subject || "Wiadomość z formularza kontaktowego",
-          date: new Date(msg.created_at),
-          text: msg.message,
-          html: `<p><strong>Od:</strong> ${msg.name} (${msg.email})</p>
-                 ${msg.phone ? `<p><strong>Telefon:</strong> ${msg.phone}</p>` : ""}
-                 <p><strong>Wiadomość:</strong></p>
-                 <p>${msg.message.replace(/\n/g, "<br>")}</p>`,
-          messageId: msg.id,
-          type: "received",
-          source: "contact_form",
-        });
-      }
-    }
-
-    // 2. Pobierz wysłane emaile z tego konta
+    // 1. Pobierz wysłane emaile z tego konta
     const { data: sentEmails, error: sentError } = await supabase
       .from("sent_emails")
       .select(`
@@ -102,7 +77,7 @@ Deno.serve(async (req: Request) => {
           to: sent.to_address,
           subject: sent.subject,
           date: new Date(sent.sent_at),
-          text: sent.body.replace(/<[^>]*>/g, ""), // Usuń HTML tagi dla plain text
+          text: sent.body.replace(/<[^>]*>/g, ""),
           html: sent.body,
           messageId: sent.message_id || sent.id,
           type: "sent",
@@ -111,10 +86,21 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Sortuj wszystkie emaile po dacie (najnowsze pierwsze)
+    // 2. OPCJONALNIE: Spróbuj pobrać z IMAP (może nie zadziałać)
+    // Zakomentowane bo nie działa w Deno Edge Runtime
+    /*
+    try {
+      const imapSimple = await import("npm:imap-simple@5.1.0");
+      // ... kod IMAP ...
+    } catch (imapError) {
+      console.warn("IMAP not available:", imapError);
+    }
+    */
+
+    // Sortuj wszystkie emaile po dacie
     emails.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    console.log(`Returned ${emails.length} emails (contact: ${contactMessages?.length || 0}, sent: ${sentEmails?.length || 0})`);
+    console.log(`Returned ${emails.length} emails (sent: ${sentEmails?.length || 0})`);
 
     return new Response(
       JSON.stringify({
@@ -122,9 +108,10 @@ Deno.serve(async (req: Request) => {
         emails: emails,
         count: emails.length,
         stats: {
-          contact_messages: contactMessages?.length || 0,
           sent_emails: sentEmails?.length || 0,
+          imap_available: false,
         },
+        message: "UWAGA: Pobieranie przez IMAP nie jest dostępne w środowisku Supabase Edge Functions. Wyświetlane są tylko wysłane emaile.",
       }),
       {
         headers: {

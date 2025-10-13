@@ -11,6 +11,7 @@ import {
   Calendar,
   User,
   Loader2,
+  MessageSquare,
 } from 'lucide-react';
 
 interface Email {
@@ -21,6 +22,8 @@ interface Email {
   text: string;
   html: string;
   messageId: string;
+  type?: 'received' | 'sent';
+  source?: 'contact_form' | 'sent_emails' | 'imap';
 }
 
 export default function EmailPage() {
@@ -28,8 +31,9 @@ export default function EmailPage() {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [loading, setLoading] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState<string>('');
+  const [selectedAccount, setSelectedAccount] = useState<string>('contact_form');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'contact_form' | 'sent' | 'imap'>('all');
 
   useEffect(() => {
     fetchEmailAccounts();
@@ -46,10 +50,13 @@ export default function EmailPage() {
         .eq('is_active', true);
 
       if (error) throw error;
-      setEmailAccounts(data || []);
-      if (data && data.length > 0) {
-        setSelectedAccount(data[0].id);
-      }
+
+      const accounts = [
+        { id: 'contact_form', email_address: 'Wiadomości z formularza', from_name: 'Formularz kontaktowy' },
+        ...(data || [])
+      ];
+
+      setEmailAccounts(accounts);
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     }
@@ -57,12 +64,44 @@ export default function EmailPage() {
 
   const fetchEmails = async () => {
     if (!selectedAccount) {
-      alert('Wybierz konto email');
+      alert('Wybierz źródło wiadomości');
       return;
     }
 
     setLoading(true);
     try {
+      // Jeśli wybrano "Formularz kontaktowy"
+      if (selectedAccount === 'contact_form') {
+        const { data, error } = await supabase
+          .from('contact_messages')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) throw error;
+
+        const formattedEmails: Email[] = (data || []).map((msg: any) => ({
+          from: `${msg.name} <${msg.email}>`,
+          to: 'Formularz kontaktowy',
+          subject: msg.subject || 'Wiadomość z formularza',
+          date: new Date(msg.created_at),
+          text: msg.message,
+          html: `<p><strong>Od:</strong> ${msg.name} (${msg.email})</p>
+                 ${msg.phone ? `<p><strong>Telefon:</strong> ${msg.phone}</p>` : ''}
+                 <p><strong>Wiadomość:</strong></p>
+                 <p>${(msg.message || '').replace(/\n/g, '<br>')}</p>`,
+          messageId: msg.id,
+          type: 'received',
+          source: 'contact_form',
+        }));
+
+        setEmails(formattedEmails);
+        alert(`Pobrano ${formattedEmails.length} wiadomości z formularza`);
+        setLoading(false);
+        return;
+      }
+
+      // Dla innych kont - użyj edge function
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         alert('Musisz być zalogowany');
@@ -93,7 +132,7 @@ export default function EmailPage() {
       alert(`Pobrano ${result.count || 0} wiadomości`);
     } catch (error) {
       console.error('Error fetching emails:', error);
-      alert(`Błąd podczas pobierania emaili: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Błąd: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
