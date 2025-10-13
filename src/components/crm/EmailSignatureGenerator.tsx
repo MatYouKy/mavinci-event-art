@@ -32,10 +32,10 @@ export function generateEmailSignature(data: SignatureData): string {
           <tr>
             <td style="font-size:0;">
               ${data.avatar_url ? `
-              <div style="display:inline-block; width:142px; vertical-align: top;" class="stack-column">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <div style="display:inline-block; width:142px; height:142px; vertical-align: top;" class="stack-column">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="142" height="142">
                   <tr>
-                    <td dir="ltr" style="text-align: center;">
+                    <td dir="ltr" style="text-align: center; width: 142px; height: 142px;">
                       <img src="${data.avatar_url}"
                            width="142"
                            height="142"

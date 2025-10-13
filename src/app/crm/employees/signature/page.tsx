@@ -80,6 +80,11 @@ export default function SignatureCreatorPage() {
       return;
     }
 
+    if (!signature.email || !signature.full_name) {
+      setPreviewHtml('<p style="color: #999; padding: 20px; text-align: center;">Wypełnij imię, nazwisko i email aby zobaczyć podgląd</p>');
+      return;
+    }
+
     const html = generateEmailSignature({
       full_name: signature.full_name,
       position: signature.position,
