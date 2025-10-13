@@ -103,7 +103,7 @@ export default function Team() {
               key={member.id}
               className="group relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(25%-1.5rem)]"
               style={{
-                animation: `fadeInUp 0.6s ease-out ${index * 0.15}s both`,
+                animation: `fadeInUp 0.6s ease-out ${index * 0.2}s both`,
               }}
               onMouseEnter={() => setHoveredId(member.id)}
               onMouseLeave={() => setHoveredId(null)}
