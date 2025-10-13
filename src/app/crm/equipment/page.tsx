@@ -44,9 +44,24 @@ interface Equipment {
   equipment_units: EquipmentUnit[];
 }
 
+interface Kit {
+  id: string;
+  name: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  is_active: boolean;
+  equipment_kit_items: {
+    quantity: number;
+    equipment_items: {
+      equipment_units: EquipmentUnit[];
+    };
+  }[];
+}
+
 export default function EquipmentPage() {
   const router = useRouter();
   const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [kits, setKits] = useState<Kit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,6 +74,7 @@ export default function EquipmentPage() {
   useEffect(() => {
     fetchCategories();
     fetchEquipment();
+    fetchKits();
   }, []);
 
   const fetchCategories = async () => {
@@ -94,6 +110,29 @@ export default function EquipmentPage() {
     }
   };
 
+  const fetchKits = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('equipment_kits')
+        .select(`
+          *,
+          equipment_kit_items(
+            quantity,
+            equipment_items(
+              equipment_units(id, status)
+            )
+          )
+        `)
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setKits(data || []);
+    } catch (error) {
+      console.error('Error fetching kits:', error);
+    }
+  };
+
   const filteredEquipment = equipment.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -102,6 +141,21 @@ export default function EquipmentPage() {
     const matchesCategory = !selectedCategory || item.category_id === selectedCategory;
 
     return matchesSearch && matchesCategory;
+  });
+
+  const filteredKits = kits.filter((kit) => {
+    const matchesSearch = kit.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      kit.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch && !selectedCategory; // zestawy tylko w widoku "Wszystkie"
+  });
+
+  const allItems = [
+    ...filteredEquipment.map(e => ({ type: 'equipment' as const, data: e })),
+    ...filteredKits.map(k => ({ type: 'kit' as const, data: k }))
+  ].sort((a, b) => {
+    const nameA = a.type === 'equipment' ? a.data.name : a.data.name;
+    const nameB = b.type === 'equipment' ? b.data.name : b.data.name;
+    return nameA.localeCompare(nameB);
   });
 
   const getStockInfo = (item: Equipment) => {
@@ -116,6 +170,26 @@ export default function EquipmentPage() {
     if (percentage < 30) return { available: availableUnits, total: totalUnits, color: 'text-orange-400', label: 'Niski stan' };
     if (percentage < 70) return { available: availableUnits, total: totalUnits, color: 'text-yellow-400', label: 'Średni stan' };
     return { available: availableUnits, total: totalUnits, color: 'text-green-400', label: 'Dostępne' };
+  };
+
+  const getKitInfo = (kit: Kit) => {
+    let totalRequired = 0;
+    let totalAvailable = 0;
+
+    kit.equipment_kit_items.forEach(item => {
+      const requiredQty = item.quantity;
+      const availableQty = item.equipment_items.equipment_units.filter(u => u.status === 'available').length;
+      totalRequired += requiredQty;
+      totalAvailable += Math.min(requiredQty, availableQty);
+    });
+
+    if (totalRequired === 0) return { available: 0, total: 0, color: 'text-gray-400', label: 'Brak' };
+
+    const percentage = (totalAvailable / totalRequired) * 100;
+
+    if (percentage === 100) return { available: totalAvailable, total: totalRequired, color: 'text-green-400', label: 'Kompletny' };
+    if (percentage === 0) return { available: totalAvailable, total: totalRequired, color: 'text-red-400', label: 'Niedostępny' };
+    return { available: totalAvailable, total: totalRequired, color: 'text-orange-400', label: 'Niekompletny' };
   };
 
   if (loading) {
@@ -207,7 +281,7 @@ export default function EquipmentPage() {
               : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
           }`}
         >
-          Wszystkie ({equipment.length})
+          Wszystkie ({equipment.length + kits.length})
         </button>
         {categories.map((category) => (
           <button
@@ -224,7 +298,7 @@ export default function EquipmentPage() {
         ))}
       </div>
 
-      {filteredEquipment.length === 0 ? (
+      {allItems.length === 0 ? (
         <div className="text-center py-12">
           <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
           <p className="text-[#e5e4e2]/60">
@@ -233,41 +307,69 @@ export default function EquipmentPage() {
         </div>
       ) : (
         <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
-          {filteredEquipment.map((item) => {
-            const stockInfo = getStockInfo(item);
+          {allItems.map((item) => {
+            const isKit = item.type === 'kit';
+            const stockInfo = isKit ? getKitInfo(item.data) : getStockInfo(item.data);
+            const itemData = item.data as any;
 
             return (
               <div
-                key={item.id}
-                onClick={() => router.push(`/crm/equipment/${item.id}`)}
-                className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+                key={itemData.id}
+                onClick={() => !isKit && router.push(`/crm/equipment/${itemData.id}`)}
+                className={`bg-[#1c1f33] rounded-xl p-6 transition-all ${
+                  isKit
+                    ? 'border-2 border-blue-500/30 cursor-default'
+                    : 'border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 cursor-pointer'
+                }`}
               >
                 <div className="flex items-start gap-4">
-                  {item.thumbnail_url ? (
+                  {itemData.thumbnail_url ? (
                     <img
-                      src={item.thumbnail_url}
-                      alt={item.name}
+                      src={itemData.thumbnail_url}
+                      alt={itemData.name}
                       className="w-16 h-16 rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="w-16 h-16 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Package className="w-8 h-8 text-[#d3bb73]" />
+                    <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      isKit ? 'bg-blue-500/20' : 'bg-[#d3bb73]/20'
+                    }`}>
+                      <Package className={`w-8 h-8 ${isKit ? 'text-blue-400' : 'text-[#d3bb73]'}`} />
                     </div>
                   )}
 
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1 truncate">
-                      {item.name}
-                    </h3>
-                    {(item.brand || item.model) && (
-                      <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                        {item.brand} {item.model}
-                      </p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-lg font-medium text-[#e5e4e2] truncate">
+                        {itemData.name}
+                      </h3>
+                      {isKit && (
+                        <span className="px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30 font-medium">
+                          ZESTAW
+                        </span>
+                      )}
+                    </div>
+                    {isKit ? (
+                      itemData.description && (
+                        <p className="text-sm text-[#e5e4e2]/60 mb-2">
+                          {itemData.description}
+                        </p>
+                      )
+                    ) : (
+                      (itemData.brand || itemData.model) && (
+                        <p className="text-sm text-[#e5e4e2]/60 mb-2">
+                          {itemData.brand} {itemData.model}
+                        </p>
+                      )
                     )}
-                    {item.equipment_categories && (
+                    {!isKit && itemData.equipment_categories && (
                       <span className="inline-block px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73]">
-                        {item.equipment_categories.name}
+                        {itemData.equipment_categories.name}
                       </span>
+                    )}
+                    {isKit && (
+                      <div className="text-xs text-[#e5e4e2]/40">
+                        {itemData.equipment_kit_items.length} pozycji
+                      </div>
                     )}
                   </div>
 
@@ -279,13 +381,13 @@ export default function EquipmentPage() {
                   </div>
                 </div>
 
-                {stockInfo.total > 0 && (
+                {!isKit && stockInfo.total > 0 && (
                   <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
                     <div className="flex justify-between text-xs text-[#e5e4e2]/60 mb-2">
-                      <span>Dostępne: {item.equipment_units.filter(u => u.status === 'available').length}</span>
-                      <span>Uszkodzone: {item.equipment_units.filter(u => u.status === 'damaged').length}</span>
-                      <span>Serwis: {item.equipment_units.filter(u => u.status === 'in_service').length}</span>
-                      <span>Wycofane: {item.equipment_units.filter(u => u.status === 'retired').length}</span>
+                      <span>Dostępne: {itemData.equipment_units.filter((u: any) => u.status === 'available').length}</span>
+                      <span>Uszkodzone: {itemData.equipment_units.filter((u: any) => u.status === 'damaged').length}</span>
+                      <span>Serwis: {itemData.equipment_units.filter((u: any) => u.status === 'in_service').length}</span>
+                      <span>Wycofane: {itemData.equipment_units.filter((u: any) => u.status === 'retired').length}</span>
                     </div>
                     <div className="h-2 bg-[#0f1119] rounded-full overflow-hidden">
                       <div
@@ -319,7 +421,10 @@ export default function EquipmentPage() {
 
       {showKitsModal && (
         <KitsManagementModal
-          onClose={() => setShowKitsModal(false)}
+          onClose={() => {
+            setShowKitsModal(false);
+            fetchKits();
+          }}
           equipment={equipment}
         />
       )}

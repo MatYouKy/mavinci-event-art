@@ -5,12 +5,18 @@ import { Plus, X, Trash2, Package, Search, Edit } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 
+interface EquipmentUnit {
+  id: string;
+  status: 'available' | 'damaged' | 'in_service' | 'retired';
+}
+
 interface Equipment {
   id: string;
   name: string;
   brand: string | null;
   model: string | null;
   thumbnail_url: string | null;
+  equipment_units?: EquipmentUnit[];
 }
 
 interface KitItem {
@@ -137,7 +143,15 @@ export default function KitsManagementModal({
   const handleUpdateKitItem = (index: number, field: 'quantity' | 'notes', value: string | number) => {
     const updated = [...kitItems];
     if (field === 'quantity') {
-      updated[index].quantity = typeof value === 'number' ? value : parseInt(value) || 1;
+      const newQty = typeof value === 'number' ? value : parseInt(value) || 1;
+      const equipmentItem = equipment.find(e => e.id === updated[index].equipment_id);
+      const availableQty = equipmentItem?.equipment_units?.filter(u => u.status === 'available').length || 0;
+
+      if (newQty > availableQty) {
+        alert(`Maksymalna dostępna ilość: ${availableQty} szt.`);
+        return;
+      }
+      updated[index].quantity = newQty;
     } else {
       updated[index].notes = value as string;
     }
@@ -437,10 +451,13 @@ export default function KitsManagementModal({
                               )}
                               <div className="grid grid-cols-2 gap-2 mt-2">
                                 <div>
-                                  <label className="text-xs text-[#e5e4e2]/40">Ilość</label>
+                                  <label className="text-xs text-[#e5e4e2]/40">
+                                    Ilość <span className="text-[#d3bb73]">(maks. {eq?.equipment_units?.filter(u => u.status === 'available').length || 0})</span>
+                                  </label>
                                   <input
                                     type="number"
                                     min="1"
+                                    max={eq?.equipment_units?.filter(u => u.status === 'available').length || 0}
                                     value={item.quantity}
                                     onChange={(e) => handleUpdateKitItem(index, 'quantity', e.target.value)}
                                     className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded px-2 py-1 text-[#e5e4e2] text-sm"
@@ -513,6 +530,9 @@ export default function KitsManagementModal({
                             {item.brand && (
                               <div className="text-xs text-[#e5e4e2]/60">{item.brand} {item.model}</div>
                             )}
+                            <div className="text-xs text-[#d3bb73] mt-1">
+                              Dostępne: {item.equipment_units?.filter(u => u.status === 'available').length || 0} szt.
+                            </div>
                           </div>
                           {isAdded && <span className="text-xs text-green-400">✓ Dodano</span>}
                         </button>
