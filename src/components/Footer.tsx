@@ -112,7 +112,9 @@ export default function Footer() {
               <li className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
                 <span className="text-[#e5e4e2]/60 text-sm font-light">
-                  ul. Marcina Kasprzaka 15/66<br />
+                  root@vm12501:/var/www/mavinci/server/dist# node -p "require.resolve('imap-simple')"
+/var/www/mavinci/server/node_modules/imap-simple/index.js
+root@vm12501:/var/www/mavinci/server/dist#<br />
                   10-057 Olsztyn
                 </span>
               </li>
