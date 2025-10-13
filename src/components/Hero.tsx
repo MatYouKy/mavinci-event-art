@@ -142,7 +142,7 @@ export default function Hero() {
             style={{
               backgroundImage: heroImage
                 ? `url(${isMobile && heroImage.mobile_url ? heroImage.mobile_url : heroImage.desktop_url})`
-                : 'url(https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920)',
+                : 'url(https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg)',
             }}
             role="img"
             aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
