@@ -401,12 +401,12 @@ export default function EmployeeDetailPage() {
     alt: employee.name,
     image_metadata: {
       desktop: {
-        src: employee.avatar_url || '',
+        src: employee.avatar_url,
         position: employee.avatar_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
         objectFit: employee.avatar_metadata?.desktop?.objectFit || 'cover',
       },
       mobile: {
-        src: employee.avatar_url || '',
+        src: employee.avatar_url,
         position: employee.avatar_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
         objectFit: employee.avatar_metadata?.mobile?.objectFit || 'cover',
       },
@@ -417,12 +417,12 @@ export default function EmployeeDetailPage() {
     alt: `${employee.name} tło`,
     image_metadata: employee.background_metadata || {
       desktop: {
-        src: employee.background_image_url || '',
+        src: employee.background_image_url,
         position: { posX: 0, posY: 0, scale: 1 },
         objectFit: 'cover',
       },
       mobile: {
-        src: employee.background_image_url || '',
+        src: employee.background_image_url,
         position: { posX: 0, posY: 0, scale: 1 },
         objectFit: 'cover',
       },

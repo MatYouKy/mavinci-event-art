@@ -102,7 +102,7 @@ export default function ComposeEmailModal({
       const logoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/logo-mavinci.svg`;
 
       let html = template.body_template
-        .replace('{{LOGO_URL}}', logoUrl || 'https://via.placeholder.com/200x50?text=MAVINCI')
+        .replace('{{LOGO_URL}}', logoUrl || '')
         .replace('{{CONTENT}}', contentHtml)
         .replace('{{SIGNATURE}}', signatureHtml);
 

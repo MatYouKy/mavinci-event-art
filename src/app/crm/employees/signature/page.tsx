@@ -62,7 +62,7 @@ export default function SignatureCreatorPage() {
             phone: empData.phone_number || '',
             email: empData.email || '',
             website: 'https://mavinci.pl',
-            avatar_url: empData.avatar_url || '',
+            avatar_url: empData.avatar_url,
             custom_html: '',
             use_custom_html: false,
           });
