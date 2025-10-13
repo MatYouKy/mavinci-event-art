@@ -56,6 +56,7 @@ interface EquipmentUnit {
   unit_serial_number: string | null;
   status: 'available' | 'damaged' | 'in_service' | 'retired';
   location: string | null;
+  location_id: string | null;
   condition_notes: string | null;
   purchase_date: string | null;
   last_service_date: string | null;
@@ -63,6 +64,7 @@ interface EquipmentUnit {
   thumbnail_url: string | null;
   created_at: string;
   updated_at: string;
+  storage_locations?: { name: string } | null;
 }
 
 interface UnitEvent {
@@ -192,7 +194,7 @@ export default function EquipmentDetailPage() {
   const fetchUnits = async () => {
     const { data, error } = await supabase
       .from('equipment_units')
-      .select('*')
+      .select('*, storage_locations(name)')
       .eq('equipment_id', equipmentId)
       .order('created_at', { ascending: false });
 
@@ -1418,7 +1420,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
   const [unitForm, setUnitForm] = useState({
     unit_serial_number: '',
     status: 'available' as const,
-    location: '',
+    location_id: '',
     condition_notes: '',
     purchase_date: '',
     last_service_date: '',
@@ -1427,11 +1429,26 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
   });
   const [saving, setSaving] = useState(false);
   const [uploadingThumb, setUploadingThumb] = useState(false);
+  const [locations, setLocations] = useState<any[]>([]);
 
   const [showEventModal, setShowEventModal] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState<EquipmentUnit | null>(null);
   const [unitEvents, setUnitEvents] = useState<UnitEvent[]>([]);
   const [showEventsHistory, setShowEventsHistory] = useState(false);
+
+  useEffect(() => {
+    fetchLocations();
+  }, []);
+
+  const fetchLocations = async () => {
+    const { data } = await supabase
+      .from('storage_locations')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
+    if (data) setLocations(data);
+  };
 
   const statusColors: Record<string, string> = {
     available: 'text-green-400 bg-green-500/10',
@@ -1453,7 +1470,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
       setUnitForm({
         unit_serial_number: unit.unit_serial_number || '',
         status: unit.status,
-        location: unit.location || '',
+        location_id: unit.location_id || '',
         condition_notes: unit.condition_notes || '',
         purchase_date: unit.purchase_date || '',
         last_service_date: unit.last_service_date || '',
@@ -1465,7 +1482,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
       setUnitForm({
         unit_serial_number: '',
         status: 'available',
-        location: '',
+        location_id: '',
         condition_notes: '',
         purchase_date: '',
         last_service_date: '',
@@ -1501,7 +1518,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
           .update({
             unit_serial_number: unitForm.unit_serial_number || null,
             status: unitForm.status,
-            location: unitForm.location || null,
+            location_id: unitForm.location_id || null,
             condition_notes: unitForm.condition_notes || null,
             purchase_date: unitForm.purchase_date || null,
             last_service_date: unitForm.last_service_date || null,
@@ -1518,7 +1535,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
             equipment_id: equipment.id,
             unit_serial_number: unitForm.unit_serial_number || null,
             status: unitForm.status,
-            location: unitForm.location || null,
+            location_id: unitForm.location_id || null,
             condition_notes: unitForm.condition_notes || null,
             purchase_date: unitForm.purchase_date || null,
             last_service_date: unitForm.last_service_date || null,
@@ -1667,10 +1684,10 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    {unit.location && (
+                    {unit.storage_locations && (
                       <div>
                         <span className="text-[#e5e4e2]/60">Lokalizacja:</span>{' '}
-                        <span className="text-[#e5e4e2]">{unit.location}</span>
+                        <span className="text-[#e5e4e2]">{unit.storage_locations.name}</span>
                       </div>
                     )}
                     {unit.purchase_date && (
@@ -1802,13 +1819,18 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
 
                 <div>
                   <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja</label>
-                  <input
-                    type="text"
-                    value={unitForm.location}
-                    onChange={(e) => setUnitForm(prev => ({ ...prev, location: e.target.value }))}
+                  <select
+                    value={unitForm.location_id}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, location_id: e.target.value }))}
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                    placeholder="np. Magazyn A3, U klienta XYZ"
-                  />
+                  >
+                    <option value="">Brak lokalizacji</option>
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

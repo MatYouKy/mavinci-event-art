@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List } from 'lucide-react';
+import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Category {
@@ -52,6 +52,7 @@ export default function EquipmentPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showLocationsModal, setShowLocationsModal] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -134,6 +135,13 @@ export default function EquipmentPage() {
           >
             <Settings className="w-4 h-4" />
             Kategorie
+          </button>
+          <button
+            onClick={() => setShowLocationsModal(true)}
+            className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+          >
+            <MapPin className="w-4 h-4" />
+            Lokalizacje
           </button>
           <button
             onClick={() => router.push('/crm/equipment/new')}
@@ -293,6 +301,12 @@ export default function EquipmentPage() {
           onUpdate={fetchCategories}
         />
       )}
+
+      {showLocationsModal && (
+        <LocationsManagementModal
+          onClose={() => setShowLocationsModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -401,6 +415,314 @@ function CategoryManagementModal({
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="p-6 border-t border-[#d3bb73]/10">
+          <button
+            onClick={onClose}
+            className="w-full px-6 py-2.5 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+          >
+            Zamknij
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LocationsManagementModal({ onClose }: { onClose: () => void }) {
+  const [locations, setLocations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<any>(null);
+  const [locationForm, setLocationForm] = useState({
+    name: '',
+    address: '',
+    access_info: '',
+    google_maps_url: '',
+    notes: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchLocations();
+  }, []);
+
+  const fetchLocations = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('storage_locations')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setLocations(data || []);
+    } catch (error) {
+      console.error('Error fetching locations:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenForm = (location?: any) => {
+    if (location) {
+      setEditingLocation(location);
+      setLocationForm({
+        name: location.name,
+        address: location.address || '',
+        access_info: location.access_info || '',
+        google_maps_url: location.google_maps_url || '',
+        notes: location.notes || '',
+      });
+    } else {
+      setEditingLocation(null);
+      setLocationForm({
+        name: '',
+        address: '',
+        access_info: '',
+        google_maps_url: '',
+        notes: '',
+      });
+    }
+    setShowAddForm(true);
+  };
+
+  const handleSaveLocation = async () => {
+    if (!locationForm.name.trim()) {
+      alert('Nazwa lokalizacji jest wymagana');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (editingLocation) {
+        const { error } = await supabase
+          .from('storage_locations')
+          .update({
+            name: locationForm.name,
+            address: locationForm.address || null,
+            access_info: locationForm.access_info || null,
+            google_maps_url: locationForm.google_maps_url || null,
+            notes: locationForm.notes || null,
+          })
+          .eq('id', editingLocation.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('storage_locations')
+          .insert({
+            name: locationForm.name,
+            address: locationForm.address || null,
+            access_info: locationForm.access_info || null,
+            google_maps_url: locationForm.google_maps_url || null,
+            notes: locationForm.notes || null,
+          });
+
+        if (error) throw error;
+      }
+
+      setShowAddForm(false);
+      fetchLocations();
+    } catch (error) {
+      console.error('Error saving location:', error);
+      alert('Błąd podczas zapisywania lokalizacji');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteLocation = async (locationId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tę lokalizację?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('storage_locations')
+        .update({ is_active: false })
+        .eq('id', locationId);
+
+      if (error) throw error;
+      fetchLocations();
+    } catch (error) {
+      console.error('Error deleting location:', error);
+      alert('Błąd podczas usuwania lokalizacji');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-[#d3bb73]/10">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-light text-[#e5e4e2]">Zarządzanie lokalizacjami</h3>
+            <button
+              onClick={onClose}
+              className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {!showAddForm ? (
+            <>
+              <button
+                onClick={() => handleOpenForm()}
+                className="w-full mb-4 flex items-center justify-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2.5 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Dodaj lokalizację
+              </button>
+
+              {loading ? (
+                <div className="text-center py-8 text-[#e5e4e2]/60">Ładowanie...</div>
+              ) : locations.length === 0 ? (
+                <div className="text-center py-8">
+                  <MapPin className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                  <p className="text-[#e5e4e2]/60">Brak lokalizacji</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {locations.map((location) => (
+                    <div
+                      key={location.id}
+                      className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="text-[#e5e4e2] font-medium mb-2">{location.name}</h4>
+                          {location.address && (
+                            <p className="text-sm text-[#e5e4e2]/60 mb-1">
+                              <span className="font-medium">Adres:</span> {location.address}
+                            </p>
+                          )}
+                          {location.access_info && (
+                            <p className="text-sm text-[#e5e4e2]/60 mb-1">
+                              <span className="font-medium">Dostęp:</span> {location.access_info}
+                            </p>
+                          )}
+                          {location.google_maps_url && (
+                            <a
+                              href={location.google_maps_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-2"
+                            >
+                              <MapPin className="w-3 h-3" />
+                              Otwórz w Google Maps
+                            </a>
+                          )}
+                          {location.notes && (
+                            <p className="text-sm text-[#e5e4e2]/40 mt-2 italic">
+                              {location.notes}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={() => handleOpenForm(location)}
+                            className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteLocation(location.id)}
+                            className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-4">
+              <h4 className="text-lg font-medium text-[#e5e4e2] mb-4">
+                {editingLocation ? 'Edytuj lokalizację' : 'Nowa lokalizacja'}
+              </h4>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa lokalizacji *</label>
+                <input
+                  type="text"
+                  value={locationForm.name}
+                  onChange={(e) => setLocationForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  placeholder="np. Magazyn główny, Biuro"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Adres</label>
+                <textarea
+                  value={locationForm.address}
+                  onChange={(e) => setLocationForm(prev => ({ ...prev, address: e.target.value }))}
+                  rows={2}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  placeholder="Szczegółowy adres lokalizacji"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Informacje o dostępie</label>
+                <textarea
+                  value={locationForm.access_info}
+                  onChange={(e) => setLocationForm(prev => ({ ...prev, access_info: e.target.value }))}
+                  rows={2}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  placeholder="Kod dostępu, instrukcje wejścia, kontakt"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Link Google Maps</label>
+                <input
+                  type="url"
+                  value={locationForm.google_maps_url}
+                  onChange={(e) => setLocationForm(prev => ({ ...prev, google_maps_url: e.target.value }))}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  placeholder="https://maps.google.com/..."
+                />
+                <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                  Skopiuj link z Google Maps (kliknij prawym i "Kopiuj link")
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki</label>
+                <textarea
+                  value={locationForm.notes}
+                  onChange={(e) => setLocationForm(prev => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  placeholder="Dodatkowe informacje"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => setShowAddForm(false)}
+                  className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={handleSaveLocation}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Zapisywanie...' : 'Zapisz'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="p-6 border-t border-[#d3bb73]/10">
