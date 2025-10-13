@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X } from 'lucide-react';
+import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import KitsManagementModal from '@/components/crm/KitsManagementModal';
 
@@ -70,6 +70,7 @@ export default function EquipmentPage() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showLocationsModal, setShowLocationsModal] = useState(false);
   const [showKitsModal, setShowKitsModal] = useState(false);
+  const [selectedKitId, setSelectedKitId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCategories();
@@ -315,39 +316,46 @@ export default function EquipmentPage() {
             return (
               <div
                 key={itemData.id}
-                onClick={() => !isKit && router.push(`/crm/equipment/${itemData.id}`)}
-                className={`bg-[#1c1f33] rounded-xl p-6 transition-all ${
+                onClick={() => {
+                  if (isKit) {
+                    setSelectedKitId(itemData.id);
+                    setShowKitsModal(true);
+                  } else {
+                    router.push(`/crm/equipment/${itemData.id}`);
+                  }
+                }}
+                className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer ${
                   isKit
-                    ? 'border-2 border-blue-500/30 cursor-default'
-                    : 'border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 cursor-pointer'
+                    ? 'border-2 border-blue-500/30 hover:border-blue-500/50'
+                    : 'border border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
                 }`}
               >
                 <div className="flex items-start gap-4">
-                  {itemData.thumbnail_url ? (
-                    <img
-                      src={itemData.thumbnail_url}
-                      alt={itemData.name}
-                      className="w-16 h-16 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      isKit ? 'bg-blue-500/20' : 'bg-[#d3bb73]/20'
-                    }`}>
-                      <Package className={`w-8 h-8 ${isKit ? 'text-blue-400' : 'text-[#d3bb73]'}`} />
-                    </div>
-                  )}
+                  <div className="relative flex-shrink-0">
+                    {itemData.thumbnail_url ? (
+                      <img
+                        src={itemData.thumbnail_url}
+                        alt={itemData.name}
+                        className="w-16 h-16 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className={`w-16 h-16 rounded-lg flex items-center justify-center ${
+                        isKit ? 'bg-blue-500/20' : 'bg-[#d3bb73]/20'
+                      }`}>
+                        <Package className={`w-8 h-8 ${isKit ? 'text-blue-400' : 'text-[#d3bb73]'}`} />
+                      </div>
+                    )}
+                    {isKit && (
+                      <div className="absolute -top-1 -right-1 bg-blue-500 rounded-full p-1">
+                        <Flag className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+                  </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-medium text-[#e5e4e2] truncate">
-                        {itemData.name}
-                      </h3>
-                      {isKit && (
-                        <span className="px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30 font-medium">
-                          ZESTAW
-                        </span>
-                      )}
-                    </div>
+                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1 truncate">
+                      {itemData.name}
+                    </h3>
                     {isKit ? (
                       itemData.description && (
                         <p className="text-sm text-[#e5e4e2]/60 mb-2">
@@ -423,9 +431,11 @@ export default function EquipmentPage() {
         <KitsManagementModal
           onClose={() => {
             setShowKitsModal(false);
+            setSelectedKitId(null);
             fetchKits();
           }}
           equipment={equipment}
+          initialKitId={selectedKitId}
         />
       )}
     </div>
