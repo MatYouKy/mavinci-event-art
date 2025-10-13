@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import KitsManagementModal from '@/components/crm/KitsManagementModal';
 
 interface Category {
   id: string;
@@ -53,6 +54,7 @@ export default function EquipmentPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showLocationsModal, setShowLocationsModal] = useState(false);
+  const [showKitsModal, setShowKitsModal] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -142,6 +144,13 @@ export default function EquipmentPage() {
           >
             <MapPin className="w-4 h-4" />
             Lokalizacje
+          </button>
+          <button
+            onClick={() => setShowKitsModal(true)}
+            className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+          >
+            <Package className="w-4 h-4" />
+            Zestawy
           </button>
           <button
             onClick={() => router.push('/crm/equipment/new')}
@@ -305,6 +314,13 @@ export default function EquipmentPage() {
       {showLocationsModal && (
         <LocationsManagementModal
           onClose={() => setShowLocationsModal(false)}
+        />
+      )}
+
+      {showKitsModal && (
+        <KitsManagementModal
+          onClose={() => setShowKitsModal(false)}
+          equipment={equipment}
         />
       )}
     </div>
