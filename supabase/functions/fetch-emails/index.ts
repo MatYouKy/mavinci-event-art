@@ -167,10 +167,21 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error) {
     console.error("Error fetching emails:", error);
+
+    const errorMessage = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+      ? error
+      : "Unknown error";
+
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      JSON.stringify({
+        success: false,
+        error: errorMessage,
+        details: errorStack,
+        timestamp: new Date().toISOString()
       }),
       {
         status: 400,

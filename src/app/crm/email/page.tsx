@@ -82,13 +82,21 @@ export default function EmailPage() {
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Response error:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
       const result = await response.json();
+      console.log('Fetch result:', result);
 
       if (!result.success) {
         throw new Error(result.error || 'Nie udało się pobrać wiadomości');
       }
 
       setEmails(result.emails || []);
+      alert(`Pobrano ${result.count || 0} wiadomości`);
     } catch (error) {
       console.error('Error fetching emails:', error);
       alert(`Błąd podczas pobierania emaili: ${error instanceof Error ? error.message : 'Unknown error'}`);
