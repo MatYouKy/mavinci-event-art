@@ -60,6 +60,7 @@ interface EquipmentUnit {
   purchase_date: string | null;
   last_service_date: string | null;
   estimated_repair_date: string | null;
+  thumbnail_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -67,7 +68,7 @@ interface EquipmentUnit {
 interface UnitEvent {
   id: string;
   unit_id: string;
-  event_type: 'damage' | 'repair' | 'service' | 'status_change' | 'note' | 'inspection';
+  event_type: 'damage' | 'repair' | 'service' | 'status_change' | 'note' | 'inspection' | 'sold';
   description: string;
   image_url: string | null;
   old_status: string | null;
@@ -1423,8 +1424,10 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
     purchase_date: '',
     last_service_date: '',
     estimated_repair_date: '',
+    thumbnail_url: '',
   });
   const [saving, setSaving] = useState(false);
+  const [uploadingThumb, setUploadingThumb] = useState(false);
 
   const [showEventModal, setShowEventModal] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState<EquipmentUnit | null>(null);
@@ -1456,6 +1459,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
         purchase_date: unit.purchase_date || '',
         last_service_date: unit.last_service_date || '',
         estimated_repair_date: unit.estimated_repair_date || '',
+        thumbnail_url: unit.thumbnail_url || '',
       });
     } else {
       setEditingUnit(null);
@@ -1467,9 +1471,26 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
         purchase_date: '',
         last_service_date: '',
         estimated_repair_date: '',
+        thumbnail_url: '',
       });
     }
     setShowModal(true);
+  };
+
+  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingThumb(true);
+    try {
+      const url = await uploadImage(file, 'equipment-units');
+      setUnitForm(prev => ({ ...prev, thumbnail_url: url }));
+    } catch (error) {
+      console.error('Error uploading thumbnail:', error);
+      alert('Błąd podczas przesyłania zdjęcia');
+    } finally {
+      setUploadingThumb(false);
+    }
   };
 
   const handleSaveUnit = async () => {
@@ -1486,6 +1507,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
             purchase_date: unitForm.purchase_date || null,
             last_service_date: unitForm.last_service_date || null,
             estimated_repair_date: unitForm.estimated_repair_date || null,
+            thumbnail_url: unitForm.thumbnail_url || null,
           })
           .eq('id', editingUnit.id);
 
@@ -1502,6 +1524,7 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
             purchase_date: unitForm.purchase_date || null,
             last_service_date: unitForm.last_service_date || null,
             estimated_repair_date: unitForm.estimated_repair_date || null,
+            thumbnail_url: unitForm.thumbnail_url || null,
           });
 
         if (error) throw error;
@@ -1611,7 +1634,14 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                   : 'border-[#d3bb73]/10'
               }`}
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-4">
+                {unit.thumbnail_url && (
+                  <img
+                    src={unit.thumbnail_url}
+                    alt="Miniaturka"
+                    className="w-20 h-20 object-cover rounded-lg border border-[#d3bb73]/20"
+                  />
+                )}
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     {unit.unit_serial_number && (
@@ -1705,6 +1735,41 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
             </h3>
 
             <div className="space-y-4">
+              {unitForm.thumbnail_url && (
+                <div className="relative w-32 h-32 mx-auto">
+                  <img
+                    src={unitForm.thumbnail_url}
+                    alt="Miniaturka"
+                    className="w-full h-full object-cover rounded-lg border border-[#d3bb73]/20"
+                  />
+                  <button
+                    onClick={() => setUnitForm(prev => ({ ...prev, thumbnail_url: '' }))}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Miniaturka (opcjonalne)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleThumbnailUpload}
+                  disabled={uploadingThumb}
+                  className="hidden"
+                  id="unit-thumbnail-upload"
+                />
+                <label
+                  htmlFor="unit-thumbnail-upload"
+                  className={`flex items-center justify-center gap-2 w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] cursor-pointer hover:border-[#d3bb73]/30 transition-colors ${uploadingThumb ? 'opacity-50' : ''}`}
+                >
+                  <Upload className="w-4 h-4" />
+                  {uploadingThumb ? 'Przesyłanie...' : unitForm.thumbnail_url ? 'Zmień zdjęcie' : 'Dodaj zdjęcie'}
+                </label>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-[#e5e4e2]/60 mb-2">
@@ -1844,6 +1909,7 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
     status_change: 'Zmiana statusu',
     note: 'Notatka',
     inspection: 'Inspekcja',
+    sold: 'Sprzedaż',
   };
 
   const eventTypeColors: Record<string, string> = {
@@ -1853,6 +1919,7 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
     status_change: 'text-blue-400',
     note: 'text-[#d3bb73]',
     inspection: 'text-purple-400',
+    sold: 'text-pink-400',
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1877,9 +1944,15 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
       return;
     }
 
+    if (eventForm.event_type === 'sold') {
+      if (!confirm('Czy na pewno chcesz oznaczyć tę jednostkę jako sprzedaną? Jednostka zostanie usunięta z systemu.')) {
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error: eventError } = await supabase
         .from('equipment_unit_events')
         .insert({
           unit_id: unit.id,
@@ -1888,7 +1961,33 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
           image_url: eventForm.image_url || null,
         });
 
-      if (error) throw error;
+      if (eventError) throw eventError;
+
+      if (eventForm.event_type === 'repair') {
+        const { error: updateError } = await supabase
+          .from('equipment_units')
+          .update({
+            status: 'available',
+            estimated_repair_date: null,
+          })
+          .eq('id', unit.id);
+
+        if (updateError) throw updateError;
+        alert('Jednostka została naprawiona i jest znowu dostępna!');
+      }
+
+      if (eventForm.event_type === 'sold') {
+        const { error: deleteError } = await supabase
+          .from('equipment_units')
+          .delete()
+          .eq('id', unit.id);
+
+        if (deleteError) throw deleteError;
+        alert('Jednostka została usunięta z systemu jako sprzedana.');
+        onClose();
+        window.location.reload();
+        return;
+      }
 
       setEventForm({
         event_type: 'note',
@@ -1947,10 +2046,21 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     >
                       <option value="note">Notatka</option>
                       <option value="damage">Uszkodzenie</option>
-                      <option value="repair">Naprawa</option>
+                      <option value="repair">Naprawa (anuluje uszkodzenie)</option>
                       <option value="service">Serwis</option>
                       <option value="inspection">Inspekcja</option>
+                      <option value="sold">Sprzedaż (usuwa jednostkę)</option>
                     </select>
+                    {eventForm.event_type === 'repair' && (
+                      <p className="text-xs text-green-400 mt-1">
+                        Status zostanie zmieniony na "Dostępny"
+                      </p>
+                    )}
+                    {eventForm.event_type === 'sold' && (
+                      <p className="text-xs text-red-400 mt-1">
+                        UWAGA: Jednostka zostanie całkowicie usunięta z systemu!
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zdjęcie (opcjonalne)</label>
