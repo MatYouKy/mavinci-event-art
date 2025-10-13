@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "create-admin": "node create-admin.js",
-    "deploy": "./deploy.sh"
+    "send": "./deploy.sh",
+    "deploy": "chmod +x deploy.sh && yarn send"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
