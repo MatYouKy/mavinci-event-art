@@ -29,6 +29,7 @@ export default function ComposeEmailModal({
   const [signature, setSignature] = useState<any>(null);
   const [template, setTemplate] = useState<any>(null);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [employee, setEmployee] = useState<any>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,7 +48,12 @@ export default function ComposeEmailModal({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [sigResult, templateResult] = await Promise.all([
+      const [empResult, sigResult, templateResult] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle(),
         supabase
           .from('employee_signatures')
           .select('*')
@@ -60,6 +66,7 @@ export default function ComposeEmailModal({
           .maybeSingle(),
       ]);
 
+      setEmployee(empResult.data);
       setSignature(sigResult.data);
       setTemplate(templateResult.data);
     } catch (error) {
@@ -68,9 +75,18 @@ export default function ComposeEmailModal({
   };
 
   const generateSignatureHtml = () => {
-    if (!signature) return '';
+    if (!signature && !employee) return '<p style="color: #999; font-style: italic;">Skonfiguruj stopkę w /crm/employees/signature</p>';
 
-    if (signature.use_custom_html && signature.custom_html) {
+    const sig = signature || {
+      full_name: employee ? `${employee.name} ${employee.surname}` : '',
+      position: employee?.occupation || '',
+      phone: employee?.phone_number || '',
+      email: employee?.email || '',
+      website: 'https://mavinci.pl',
+      avatar_url: employee?.avatar_url || '',
+    };
+
+    if (signature && signature.use_custom_html && signature.custom_html) {
       return signature.custom_html;
     }
 
@@ -80,43 +96,43 @@ export default function ComposeEmailModal({
           <td style="padding: 20px; background-color: #f8f8f8; border: 1px solid #e0e0e0;">
             <table role="presentation" style="width: 100%; border-collapse: collapse;">
               <tr>
-                ${signature.avatar_url ? `
+                ${sig.avatar_url ? `
                 <td style="width: 80px; vertical-align: top; padding-right: 20px;">
-                  <img src="${signature.avatar_url}" alt="${signature.full_name}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #d3bb73;">
+                  <img src="${sig.avatar_url}" alt="${sig.full_name}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #d3bb73;">
                 </td>
                 ` : ''}
                 <td style="vertical-align: top;">
-                  <h3 style="margin: 0 0 5px 0; color: #1c1f33; font-size: 18px; font-weight: bold;">${signature.full_name}</h3>
-                  ${signature.position ? `<p style="margin: 0 0 10px 0; color: #666; font-size: 14px; font-style: italic;">${signature.position}</p>` : ''}
+                  <h3 style="margin: 0 0 5px 0; color: #1c1f33; font-size: 18px; font-weight: bold;">${sig.full_name}</h3>
+                  ${sig.position ? `<p style="margin: 0 0 10px 0; color: #666; font-size: 14px; font-style: italic;">${sig.position}</p>` : ''}
 
                   <table role="presentation" style="border-collapse: collapse; font-size: 14px; color: #333;">
-                    ${signature.email ? `
+                    ${sig.email ? `
                     <tr>
                       <td style="padding: 3px 10px 3px 0; vertical-align: middle;">
                         <span style="color: #d3bb73;">✉</span>
                       </td>
                       <td style="padding: 3px 0;">
-                        <a href="mailto:${signature.email}" style="color: #d3bb73; text-decoration: none;">${signature.email}</a>
+                        <a href="mailto:${sig.email}" style="color: #d3bb73; text-decoration: none;">${sig.email}</a>
                       </td>
                     </tr>
                     ` : ''}
-                    ${signature.phone ? `
+                    ${sig.phone ? `
                     <tr>
                       <td style="padding: 3px 10px 3px 0; vertical-align: middle;">
                         <span style="color: #d3bb73;">📞</span>
                       </td>
                       <td style="padding: 3px 0;">
-                        <a href="tel:${signature.phone}" style="color: #333; text-decoration: none;">${signature.phone}</a>
+                        <a href="tel:${sig.phone}" style="color: #333; text-decoration: none;">${sig.phone}</a>
                       </td>
                     </tr>
                     ` : ''}
-                    ${signature.website ? `
+                    ${sig.website ? `
                     <tr>
                       <td style="padding: 3px 10px 3px 0; vertical-align: middle;">
                         <span style="color: #d3bb73;">🌐</span>
                       </td>
                       <td style="padding: 3px 0;">
-                        <a href="${signature.website}" style="color: #d3bb73; text-decoration: none;">${signature.website}</a>
+                        <a href="${sig.website}" style="color: #d3bb73; text-decoration: none;">${sig.website}</a>
                       </td>
                     </tr>
                     ` : ''}
@@ -124,6 +140,7 @@ export default function ComposeEmailModal({
                 </td>
               </tr>
             </table>
+            ${!signature ? `<p style="margin: 10px 0 0 0; padding: 10px; background-color: #fff3cd; border-left: 3px solid #d3bb73; color: #856404; font-size: 12px;"><strong>Wskazówka:</strong> Możesz dostosować tę stopkę w <a href="/crm/employees/signature" style="color: #d3bb73;">ustawieniach stopki</a></p>` : ''}
           </td>
         </tr>
       </table>
@@ -233,10 +250,21 @@ export default function ComposeEmailModal({
                   rows={12}
                   className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none resize-none"
                 />
-                <p className="text-xs text-[#e5e4e2]/50 mt-2">
-                  Stopka zostanie dodana automatycznie
-                  {!signature && ' (skonfiguruj stopkę w ustawieniach pracownika)'}
-                </p>
+                {!signature ? (
+                  <div className="mt-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                    <p className="text-xs text-yellow-400">
+                      ⚠️ Nie masz skonfigurowanej stopki. Użyjemy podstawowych danych z profilu pracownika.
+                      <br />
+                      <a href="/crm/employees/signature" className="underline hover:text-yellow-300">
+                        Kliknij tutaj aby stworzyć profesjonalną stopkę
+                      </a>
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#e5e4e2]/50 mt-2">
+                    ✓ Stopka zostanie dodana automatycznie
+                  </p>
+                )}
               </div>
             </div>
           ) : (
