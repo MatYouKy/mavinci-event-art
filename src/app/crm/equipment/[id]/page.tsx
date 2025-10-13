@@ -1979,6 +1979,8 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
 
     setSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
       const { error: eventError } = await supabase
         .from('equipment_unit_events')
         .insert({
@@ -1986,6 +1988,7 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
           event_type: eventForm.event_type,
           description: eventForm.description,
           image_url: eventForm.image_url || null,
+          employee_id: user?.id || null,
         });
 
       if (eventError) throw eventError;
@@ -2059,10 +2062,24 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
       <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
           <div>
-            <h3 className="text-xl font-light text-[#e5e4e2]">Historia zdarzeń</h3>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+            <h3 className="text-xl font-light text-[#e5e4e2] mb-1">Historia zdarzeń</h3>
+            <p className="text-sm text-[#e5e4e2]/60">
               {unit.unit_serial_number ? `SN: ${unit.unit_serial_number}` : 'Bez numeru seryjnego'}
             </p>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-[#e5e4e2]/40">Aktualny status:</span>
+              <span className={`px-2 py-1 rounded text-xs ${
+                unit.status === 'available' ? 'bg-green-500/20 text-green-400' :
+                unit.status === 'damaged' ? 'bg-red-500/20 text-red-400' :
+                unit.status === 'in_service' ? 'bg-orange-500/20 text-orange-400' :
+                'bg-gray-500/20 text-gray-400'
+              }`}>
+                {unit.status === 'available' ? 'Dostępny' :
+                 unit.status === 'damaged' ? 'Uszkodzony' :
+                 unit.status === 'in_service' ? 'Serwis' :
+                 'Wycofany'}
+              </span>
+            </div>
           </div>
           <div className="flex gap-2">
             <button
@@ -2196,19 +2213,19 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                   className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-xl p-4"
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <span className={`font-medium ${eventTypeColors[event.event_type]}`}>
                         {eventTypeLabels[event.event_type]}
                       </span>
                       <span className="text-xs text-[#e5e4e2]/40">
                         {new Date(event.created_at).toLocaleString('pl-PL')}
                       </span>
+                      {event.employees && (
+                        <span className="text-xs text-[#e5e4e2]/60">
+                          • Zgłosił: {event.employees.name} {event.employees.surname}
+                        </span>
+                      )}
                     </div>
-                    {event.employees && (
-                      <span className="text-xs text-[#e5e4e2]/60">
-                        {event.employees.name} {event.employees.surname}
-                      </span>
-                    )}
                   </div>
 
                   <p className="text-[#e5e4e2] mb-2">{event.description}</p>
