@@ -39,11 +39,14 @@ export default function NotificationCenter() {
           schema: 'public',
           table: 'notifications',
         },
-        () => {
+        (payload) => {
+          console.log('[NotificationCenter] Real-time event:', payload);
           fetchNotifications();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[NotificationCenter] Subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -191,7 +194,7 @@ export default function NotificationCenter() {
             onClick={() => setShowPanel(false)}
           />
 
-          <div className="absolute right-0 top-12 w-96 max-h-[600px] bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl z-50 flex flex-col">
+          <div className="fixed md:absolute right-0 md:right-0 top-16 md:top-12 left-0 md:left-auto w-full md:w-96 max-h-[80vh] md:max-h-[600px] bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl z-50 flex flex-col mx-auto md:mx-0 max-w-md md:max-w-none">
             <div className="p-4 border-b border-[#d3bb73]/20">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold text-[#e5e4e2]">
@@ -255,7 +258,14 @@ export default function NotificationCenter() {
                   {filteredNotifications.map((notification) => (
                     <div
                       key={notification.id}
+                      onClick={() => {
+                        if (notification.action_url) {
+                          handleNotificationClick(notification);
+                        }
+                      }}
                       className={`p-4 hover:bg-[#0f1119]/50 transition-colors ${
+                        notification.action_url ? 'cursor-pointer' : ''
+                      } ${
                         !notification.is_read ? 'bg-[#d3bb73]/5' : ''
                       }`}
                     >

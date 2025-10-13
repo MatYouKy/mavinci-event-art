@@ -265,10 +265,10 @@ export default function TeamPage() {
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <a
-                href="/#kontakt"
+                href="/#kontakt?career=true"
                 className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
               >
-                Skontaktuj się z nami
+                Aplikuj teraz
                 <ArrowRight className="w-4 h-4" />
               </a>
               <a

@@ -1,9 +1,20 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin } from 'lucide-react';
 import ContactForm from './ContactForm';
 
 export default function Contact() {
+  const [formCategory, setFormCategory] = useState<'event_inquiry' | 'team_join'>('event_inquiry');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('career') === 'true') {
+        setFormCategory('team_join');
+      }
+    }
+  }, []);
 
   return (
     <section id="kontakt" className="relative py-24 md:py-32 bg-[#1c1f33] overflow-hidden" aria-labelledby="contact-heading">
@@ -107,7 +118,7 @@ export default function Contact() {
             </div>
           </div>
 
-          <ContactForm category="event_inquiry" />
+          <ContactForm category={formCategory} />
         </div>
       </div>
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
-import { Send } from 'lucide-react';
+import { Send, Upload, FileText, X as XIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
 
@@ -21,6 +21,7 @@ export interface ContactFormData {
   company?: string;
   eventType?: string;
   message: string;
+  cvFile?: File | null;
 }
 
 const validationSchema = Yup.object({
@@ -64,6 +65,7 @@ export default function ContactForm({
     company: '',
     eventType: '',
     message: '',
+    cvFile: null,
   };
 
   const handleSubmit = async (values: ContactFormData, { resetForm }: any) => {
@@ -71,6 +73,42 @@ export default function ContactForm({
     setIsError(false);
     try {
       const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+
+      let cvUrl = null;
+      let cvFilename = null;
+
+      // Check if CV file was uploaded (from DOM input)
+      if (category === 'team_join') {
+        const fileInput = document.getElementById('cvFileUpload') as HTMLInputElement;
+        const file = fileInput?.files?.[0];
+
+        if (file) {
+          console.log('[ContactForm] Uploading CV:', file.name);
+
+          // Upload directly to Supabase Storage
+          const fileName = `cv-uploads/${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`;
+
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('site-images')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error('[ContactForm] CV upload error:', uploadError);
+            throw new Error('Nie udało się przesłać pliku CV');
+          }
+
+          const { data: urlData } = supabase.storage
+            .from('site-images')
+            .getPublicUrl(uploadData.path);
+
+          cvUrl = urlData.publicUrl;
+          cvFilename = file.name;
+          console.log('[ContactForm] CV uploaded:', cvUrl);
+        }
+      }
 
       const { error } = await supabase
         .from('contact_messages')
@@ -85,8 +123,10 @@ export default function ContactForm({
             subject: subject || `${category} - ${values.eventType || 'Nowa wiadomość'}`,
             message: values.message,
             status: 'new',
-            priority: category === 'event_inquiry' ? 'high' : 'normal',
+            priority: category === 'event_inquiry' || category === 'team_join' ? 'high' : 'normal',
             user_agent: userAgent,
+            cv_url: cvUrl,
+            cv_filename: cvFilename,
           }
         ]);
 
@@ -251,24 +291,56 @@ export default function ContactForm({
             </div>
 
             {category === 'team_join' && (
-              <div>
-                <label htmlFor="company" className="block text-[#e5e4e2] text-sm font-light mb-2">
-                  Obecna firma (opcjonalnie)
-                </label>
-                <Field
-                  type="text"
-                  id="company"
-                  name="company"
-                  onFocus={() => setFocusedField('company')}
-                  onBlur={() => setFocusedField(null)}
-                  className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none transition-all duration-300 ${
-                    focusedField === 'company'
-                      ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
-                      : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
-                  }`}
-                  placeholder="Nazwa firmy"
-                />
-              </div>
+              <>
+                <div>
+                  <label htmlFor="company" className="block text-[#e5e4e2] text-sm font-light mb-2">
+                    Obecna firma (opcjonalnie)
+                  </label>
+                  <Field
+                    type="text"
+                    id="company"
+                    name="company"
+                    onFocus={() => setFocusedField('company')}
+                    onBlur={() => setFocusedField(null)}
+                    className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none transition-all duration-300 ${
+                      focusedField === 'company'
+                        ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                        : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                    }`}
+                    placeholder="Nazwa firmy"
+                  />
+                </div>
+
+                {/* CV Upload Field - handled outside Formik */}
+                <div>
+                  <label className="block text-[#e5e4e2] text-sm font-light mb-2">
+                    CV / Portfolio (opcjonalnie)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      id="cvFileUpload"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 10 * 1024 * 1024) {
+                            alert('Plik jest zbyt duży. Maksymalny rozmiar to 10MB.');
+                            e.target.value = '';
+                            return;
+                          }
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-[#1c1f33]/50 border border-[#d3bb73]/20 rounded-xl text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73] transition-all duration-300
+                        file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium
+                        file:bg-[#d3bb73] file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90 file:cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[#e5e4e2]/50 text-xs mt-1">
+                    Prześlij swoje CV lub portfolio. Akceptujemy pliki PDF, DOC, DOCX, JPG, PNG (max 10MB)
+                  </p>
+                </div>
+              </>
             )}
 
             {(category === 'general' || category === 'event_inquiry') && (
