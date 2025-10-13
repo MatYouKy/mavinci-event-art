@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 
@@ -12,6 +12,7 @@ interface Category {
 }
 
 interface EquipmentStock {
+  id: string;
   total_quantity: number;
   available_quantity: number;
   reserved_quantity: number;
@@ -83,12 +84,10 @@ export default function EquipmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'gallery' | 'stock' | 'history'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'technical' | 'purchase' | 'components' | 'gallery' | 'stock' | 'history'>('details');
 
   const [editForm, setEditForm] = useState<any>({});
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
-  const [showStockModal, setShowStockModal] = useState(false);
-  const [showGalleryUpload, setShowGalleryUpload] = useState(false);
 
   useEffect(() => {
     fetchEquipment();
@@ -127,8 +126,16 @@ export default function EquipmentDetailPage() {
         .single();
 
       if (error) throw error;
+
+      const formData = {
+        ...data,
+        dimensions_length: data.dimensions_cm?.length || '',
+        dimensions_width: data.dimensions_cm?.width || '',
+        dimensions_height: data.dimensions_cm?.height || '',
+      };
+
       setEquipment(data);
-      setEditForm(data);
+      setEditForm(formData);
     } catch (error) {
       console.error('Error fetching equipment:', error);
     } finally {
@@ -156,7 +163,13 @@ export default function EquipmentDetailPage() {
 
   const handleCancelEdit = () => {
     setIsEditing(false);
-    setEditForm(equipment);
+    const formData = {
+      ...equipment,
+      dimensions_length: equipment?.dimensions_cm?.length || '',
+      dimensions_width: equipment?.dimensions_cm?.width || '',
+      dimensions_height: equipment?.dimensions_cm?.height || '',
+    };
+    setEditForm(formData);
   };
 
   const handleSave = async () => {
@@ -292,47 +305,42 @@ export default function EquipmentDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-[#d3bb73]/10">
-        <button
+      <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
+        <TabButton
+          active={activeTab === 'details'}
           onClick={() => setActiveTab('details')}
-          className={`px-4 py-2 text-sm transition-colors ${
-            activeTab === 'details'
-              ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          Szczegóły
-        </button>
-        <button
+          label="Podstawowe"
+        />
+        <TabButton
+          active={activeTab === 'technical'}
+          onClick={() => setActiveTab('technical')}
+          label="Parametry techniczne"
+        />
+        <TabButton
+          active={activeTab === 'purchase'}
+          onClick={() => setActiveTab('purchase')}
+          label="Informacje zakupowe"
+        />
+        <TabButton
+          active={activeTab === 'components'}
+          onClick={() => setActiveTab('components')}
+          label={`Skład zestawu (${equipment.equipment_components.length})`}
+        />
+        <TabButton
+          active={activeTab === 'gallery'}
           onClick={() => setActiveTab('gallery')}
-          className={`px-4 py-2 text-sm transition-colors ${
-            activeTab === 'gallery'
-              ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          Galeria ({equipment.equipment_gallery.length})
-        </button>
-        <button
+          label={`Galeria (${equipment.equipment_gallery.length})`}
+        />
+        <TabButton
+          active={activeTab === 'stock'}
           onClick={() => setActiveTab('stock')}
-          className={`px-4 py-2 text-sm transition-colors ${
-            activeTab === 'stock'
-              ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          Stan magazynowy
-        </button>
-        <button
+          label="Stan magazynowy"
+        />
+        <TabButton
+          active={activeTab === 'history'}
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 text-sm transition-colors ${
-            activeTab === 'history'
-              ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          Historia
-        </button>
+          label="Historia"
+        />
       </div>
 
       {activeTab === 'details' && (
@@ -343,6 +351,31 @@ export default function EquipmentDetailPage() {
           categories={categories}
           onInputChange={handleInputChange}
           onThumbnailUpload={handleThumbnailUpload}
+        />
+      )}
+
+      {activeTab === 'technical' && (
+        <TechnicalTab
+          equipment={equipment}
+          editForm={editForm}
+          isEditing={isEditing}
+          onInputChange={handleInputChange}
+        />
+      )}
+
+      {activeTab === 'purchase' && (
+        <PurchaseTab
+          equipment={equipment}
+          editForm={editForm}
+          isEditing={isEditing}
+          onInputChange={handleInputChange}
+        />
+      )}
+
+      {activeTab === 'components' && (
+        <ComponentsTab
+          equipment={equipment}
+          onUpdate={fetchEquipment}
         />
       )}
 
@@ -365,6 +398,21 @@ export default function EquipmentDetailPage() {
         <HistoryTab history={stockHistory} />
       )}
     </div>
+  );
+}
+
+function TabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 text-sm whitespace-nowrap transition-colors ${
+        active
+          ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
+          : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -429,43 +477,29 @@ function DetailsTab({
           )}
 
           <div className="mt-6 space-y-4">
-            {equipment.equipment_categories && (
-              <div>
-                <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria</div>
-                {isEditing ? (
-                  <select
-                    name="category_id"
-                    value={editForm.category_id}
-                    onChange={onInputChange}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  >
-                    {categories.map((cat: any) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="inline-block px-3 py-1 rounded bg-[#d3bb73]/20 text-[#d3bb73]">
-                    {equipment.equipment_categories.name}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {equipment.serial_number && (
-              <div>
-                <div className="text-sm text-[#e5e4e2]/60 mb-1">Numer seryjny</div>
-                <div className="text-[#e5e4e2]">{equipment.serial_number}</div>
-              </div>
-            )}
-
-            {equipment.barcode && (
-              <div>
-                <div className="text-sm text-[#e5e4e2]/60 mb-1">Kod kreskowy</div>
-                <div className="text-[#e5e4e2] font-mono">{equipment.barcode}</div>
-              </div>
-            )}
+            <div>
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria</div>
+              {isEditing ? (
+                <select
+                  name="category_id"
+                  value={editForm.category_id}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                >
+                  {categories.map((cat: any) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              ) : equipment.equipment_categories ? (
+                <div className="inline-block px-3 py-1 rounded bg-[#d3bb73]/20 text-[#d3bb73]">
+                  {equipment.equipment_categories.name}
+                </div>
+              ) : (
+                <div className="text-[#e5e4e2]/60">-</div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -473,8 +507,8 @@ function DetailsTab({
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
           <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Podstawowe informacje</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa</label>
               {isEditing ? (
                 <input
@@ -519,70 +553,393 @@ function DetailsTab({
               )}
             </div>
 
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  name="weight_kg"
-                  value={editForm.weight_kg || ''}
-                  onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                />
-              ) : (
-                <div className="text-[#e5e4e2]">
-                  {equipment.weight_kg ? `${equipment.weight_kg} kg` : '-'}
-                </div>
-              )}
-            </div>
-
-            <div className="col-span-2">
+            <div className="md:col-span-2">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
               {isEditing ? (
                 <textarea
                   name="description"
                   value={editForm.description || ''}
                   onChange={onInputChange}
-                  rows={3}
+                  rows={4}
                   className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.description || '-'}</div>
               )}
             </div>
-          </div>
-        </div>
 
-        {equipment.equipment_components && equipment.equipment_components.length > 0 && (
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Skład zestawu</h3>
-            <div className="space-y-2">
-              {equipment.equipment_components.map((component: Component) => (
-                <div
-                  key={component.id}
-                  className="flex items-center justify-between p-3 bg-[#0f1119] rounded-lg"
-                >
-                  <div className="flex-1">
-                    <div className="text-[#e5e4e2] font-medium">{component.component_name}</div>
-                    {component.description && (
-                      <div className="text-sm text-[#e5e4e2]/60">{component.description}</div>
-                    )}
-                  </div>
-                  <div className="text-[#d3bb73] font-medium">x{component.quantity}</div>
-                </div>
-              ))}
+            <div className="md:col-span-2">
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki</label>
+              {isEditing ? (
+                <textarea
+                  name="notes"
+                  value={editForm.notes || ''}
+                  onChange={onInputChange}
+                  rows={3}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                />
+              ) : (
+                <div className="text-[#e5e4e2]">{equipment.notes || '-'}</div>
+              )}
             </div>
           </div>
-        )}
-
-        {equipment.notes && (
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Notatki</h3>
-            <div className="text-[#e5e4e2]/80">{equipment.notes}</div>
-          </div>
-        )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function TechnicalTab({ equipment, editForm, isEditing, onInputChange }: any) {
+  return (
+    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+      <h3 className="text-lg font-medium text-[#e5e4e2] mb-6">Parametry techniczne</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
+          {isEditing ? (
+            <input
+              type="number"
+              step="0.01"
+              name="weight_kg"
+              value={editForm.weight_kg || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : (
+            <div className="text-[#e5e4e2]">
+              {equipment.weight_kg ? `${equipment.weight_kg} kg` : '-'}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
+          {isEditing ? (
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                type="number"
+                step="0.1"
+                name="dimensions_length"
+                value={editForm.dimensions_length || ''}
+                onChange={onInputChange}
+                placeholder="Długość"
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+              />
+              <input
+                type="number"
+                step="0.1"
+                name="dimensions_width"
+                value={editForm.dimensions_width || ''}
+                onChange={onInputChange}
+                placeholder="Szerokość"
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+              />
+              <input
+                type="number"
+                step="0.1"
+                name="dimensions_height"
+                value={editForm.dimensions_height || ''}
+                onChange={onInputChange}
+                placeholder="Wysokość"
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+              />
+            </div>
+          ) : (
+            <div className="text-[#e5e4e2]">
+              {equipment.dimensions_cm
+                ? `${equipment.dimensions_cm.length || '-'} × ${equipment.dimensions_cm.width || '-'} × ${equipment.dimensions_cm.height || '-'} cm`
+                : '-'}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Numer seryjny</label>
+          {isEditing ? (
+            <input
+              type="text"
+              name="serial_number"
+              value={editForm.serial_number || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : (
+            <div className="text-[#e5e4e2]">{equipment.serial_number || '-'}</div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kod kreskowy</label>
+          {isEditing ? (
+            <input
+              type="text"
+              name="barcode"
+              value={editForm.barcode || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : (
+            <div className="text-[#e5e4e2] font-mono">{equipment.barcode || '-'}</div>
+          )}
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Instrukcja obsługi (URL)</label>
+          {isEditing ? (
+            <input
+              type="url"
+              name="user_manual_url"
+              value={editForm.user_manual_url || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : equipment.user_manual_url ? (
+            <a
+              href={equipment.user_manual_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#d3bb73] hover:underline flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Otwórz instrukcję
+            </a>
+          ) : (
+            <div className="text-[#e5e4e2]/60">-</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
+  return (
+    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+      <h3 className="text-lg font-medium text-[#e5e4e2] mb-6">Informacje zakupowe</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data zakupu</label>
+          {isEditing ? (
+            <input
+              type="date"
+              name="purchase_date"
+              value={editForm.purchase_date || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : (
+            <div className="text-[#e5e4e2]">
+              {equipment.purchase_date
+                ? new Date(equipment.purchase_date).toLocaleDateString('pl-PL')
+                : '-'}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Gwarancja do</label>
+          {isEditing ? (
+            <input
+              type="date"
+              name="warranty_until"
+              value={editForm.warranty_until || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : (
+            <div className="text-[#e5e4e2]">
+              {equipment.warranty_until
+                ? new Date(equipment.warranty_until).toLocaleDateString('pl-PL')
+                : '-'}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena zakupu (zł)</label>
+          {isEditing ? (
+            <input
+              type="number"
+              step="0.01"
+              name="purchase_price"
+              value={editForm.purchase_price || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : (
+            <div className="text-[#e5e4e2]">
+              {equipment.purchase_price
+                ? `${equipment.purchase_price.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł`
+                : '-'}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Obecna wartość (zł)</label>
+          {isEditing ? (
+            <input
+              type="number"
+              step="0.01"
+              name="current_value"
+              value={editForm.current_value || ''}
+              onChange={onInputChange}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          ) : (
+            <div className="text-[#e5e4e2]">
+              {equipment.current_value
+                ? `${equipment.current_value.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł`
+                : '-'}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComponentsTab({ equipment, onUpdate }: any) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [newComponent, setNewComponent] = useState({
+    component_name: '',
+    quantity: 1,
+    description: '',
+  });
+
+  const handleAddComponent = async () => {
+    if (!newComponent.component_name.trim()) {
+      alert('Wprowadź nazwę komponentu');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('equipment_components')
+        .insert({
+          equipment_id: equipment.id,
+          component_name: newComponent.component_name,
+          quantity: newComponent.quantity,
+          description: newComponent.description || null,
+          is_included: true,
+        });
+
+      if (error) throw error;
+
+      setNewComponent({ component_name: '', quantity: 1, description: '' });
+      setIsAdding(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Error adding component:', error);
+      alert('Błąd podczas dodawania komponentu');
+    }
+  };
+
+  const handleDeleteComponent = async (componentId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć ten komponent?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('equipment_components')
+        .delete()
+        .eq('id', componentId);
+
+      if (error) throw error;
+      onUpdate();
+    } catch (error) {
+      console.error('Error deleting component:', error);
+      alert('Błąd podczas usuwania komponentu');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-medium text-[#e5e4e2]">Skład zestawu</h3>
+        <button
+          onClick={() => setIsAdding(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Dodaj komponent
+        </button>
+      </div>
+
+      {isAdding && (
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+          <h4 className="text-[#e5e4e2] font-medium mb-4">Nowy komponent</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <input
+              type="text"
+              value={newComponent.component_name}
+              onChange={(e) => setNewComponent(prev => ({ ...prev, component_name: e.target.value }))}
+              placeholder="Nazwa komponentu"
+              className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+            <input
+              type="number"
+              value={newComponent.quantity}
+              onChange={(e) => setNewComponent(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+              placeholder="Ilość"
+              min="1"
+              className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+            <input
+              type="text"
+              value={newComponent.description}
+              onChange={(e) => setNewComponent(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Opis (opcjonalnie)"
+              className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsAdding(false)}
+              className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+            >
+              Anuluj
+            </button>
+            <button
+              onClick={handleAddComponent}
+              className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            >
+              Zapisz
+            </button>
+          </div>
+        </div>
+      )}
+
+      {equipment.equipment_components.length === 0 ? (
+        <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
+          <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <p className="text-[#e5e4e2]/60">Brak komponentów w zestawie</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {equipment.equipment_components.map((component: Component) => (
+            <div
+              key={component.id}
+              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 flex items-center justify-between"
+            >
+              <div className="flex-1">
+                <div className="text-[#e5e4e2] font-medium">{component.component_name}</div>
+                {component.description && (
+                  <div className="text-sm text-[#e5e4e2]/60 mt-1">{component.description}</div>
+                )}
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-[#d3bb73] font-medium">x{component.quantity}</div>
+                <button
+                  onClick={() => handleDeleteComponent(component.id)}
+                  className="p-2 text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -643,10 +1000,11 @@ function GalleryTab({ equipment, onUpdate }: any) {
             onChange={handleImageUpload}
             className="hidden"
             id="gallery-upload"
+            disabled={uploading}
           />
           <label
             htmlFor="gallery-upload"
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#d3bb73]/90 transition-colors"
+            className={`flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#d3bb73]/90 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <Upload className="w-4 h-4" />
             {uploading ? 'Przesyłanie...' : 'Dodaj zdjęcia'}
@@ -688,6 +1046,11 @@ function StockTab({ equipment, stock, onUpdate }: any) {
   const [quantity, setQuantity] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingStock, setEditingStock] = useState(false);
+  const [stockEdit, setStockEdit] = useState({
+    storage_location: stock?.storage_location || '',
+    min_stock_level: stock?.min_stock_level || 0,
+  });
 
   const handleStockChange = async () => {
     if (!quantity || parseInt(quantity) === 0) {
@@ -720,6 +1083,26 @@ function StockTab({ equipment, stock, onUpdate }: any) {
       alert('Błąd podczas aktualizacji stanu magazynowego');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveStockSettings = async () => {
+    try {
+      const { error } = await supabase
+        .from('equipment_stock')
+        .update({
+          storage_location: stockEdit.storage_location || null,
+          min_stock_level: parseInt(stockEdit.min_stock_level as any) || 0,
+        })
+        .eq('id', stock.id);
+
+      if (error) throw error;
+
+      setEditingStock(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Error updating stock settings:', error);
+      alert('Błąd podczas zapisywania');
     }
   };
 
@@ -778,14 +1161,66 @@ function StockTab({ equipment, stock, onUpdate }: any) {
       </div>
 
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-[#e5e4e2] font-medium">Ustawienia magazynu</h4>
+          {editingStock ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setEditingStock(false);
+                  setStockEdit({
+                    storage_location: stock.storage_location || '',
+                    min_stock_level: stock.min_stock_level || 0,
+                  });
+                }}
+                className="text-sm text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleSaveStockSettings}
+                className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
+              >
+                Zapisz
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditingStock(true)}
+              className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
+            >
+              Edytuj
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-6">
           <div>
             <div className="text-sm text-[#e5e4e2]/60 mb-1">Lokalizacja</div>
-            <div className="text-[#e5e4e2]">{stock.storage_location || '-'}</div>
+            {editingStock ? (
+              <input
+                type="text"
+                value={stockEdit.storage_location}
+                onChange={(e) => setStockEdit(prev => ({ ...prev, storage_location: e.target.value }))}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                placeholder="np. Regał A, Półka 3"
+              />
+            ) : (
+              <div className="text-[#e5e4e2]">{stock.storage_location || '-'}</div>
+            )}
           </div>
           <div>
             <div className="text-sm text-[#e5e4e2]/60 mb-1">Minimalny poziom</div>
-            <div className="text-[#e5e4e2]">{stock.min_stock_level}</div>
+            {editingStock ? (
+              <input
+                type="number"
+                value={stockEdit.min_stock_level}
+                onChange={(e) => setStockEdit(prev => ({ ...prev, min_stock_level: parseInt(e.target.value) || 0 }))}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                min="0"
+              />
+            ) : (
+              <div className="text-[#e5e4e2]">{stock.min_stock_level}</div>
+            )}
           </div>
         </div>
       </div>
