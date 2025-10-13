@@ -1905,8 +1905,14 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
         <UnitEventsModal
           unit={selectedUnit}
           events={unitEvents}
-          onClose={() => setShowEventsHistory(false)}
-          onUpdate={() => fetchUnitEvents(selectedUnit.id)}
+          onClose={() => {
+            setShowEventsHistory(false);
+            onUpdate();
+          }}
+          onUpdate={() => {
+            fetchUnitEvents(selectedUnit.id);
+            onUpdate();
+          }}
         />
       )}
     </div>
@@ -1983,6 +1989,18 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
         });
 
       if (eventError) throw eventError;
+
+      if (eventForm.event_type === 'damage') {
+        const { error: updateError } = await supabase
+          .from('equipment_units')
+          .update({
+            status: 'damaged',
+          })
+          .eq('id', unit.id);
+
+        if (updateError) throw updateError;
+        alert('Status jednostki został zmieniony na "Uszkodzony"');
+      }
 
       if (eventForm.event_type === 'repair' || eventForm.event_type === 'service') {
         const updateData: any = {
@@ -2077,12 +2095,17 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                       className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                     >
                       <option value="note">Notatka</option>
-                      <option value="damage">Uszkodzenie</option>
+                      <option value="damage">Uszkodzenie (zmienia status)</option>
                       <option value="repair">Naprawa (anuluje uszkodzenie)</option>
                       <option value="service">Serwis</option>
                       <option value="inspection">Inspekcja</option>
                       <option value="sold">Sprzedaż (usuwa jednostkę)</option>
                     </select>
+                    {eventForm.event_type === 'damage' && (
+                      <p className="text-xs text-red-400 mt-1">
+                        Status zostanie zmieniony na "Uszkodzony"
+                      </p>
+                    )}
                     {eventForm.event_type === 'repair' && (
                       <p className="text-xs text-green-400 mt-1">
                         Status zostanie zmieniony na "Dostępny"
