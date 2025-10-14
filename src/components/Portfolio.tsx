@@ -101,7 +101,7 @@ export default function Portfolio() {
             <p className="text-[#e5e4e2]/60">Brak projektów do wyświetlenia</p>
           </div>
         ) : (
-          <div className="flex flex-wrap justify-center gap-6 md:gap-8">
+          <div className="flex flex-wrap justify-center gap-3 md:gap-4">
             {filteredProjects.map((project, index) => (
             <Link
               href={`/portfolio/${project.id}`}
