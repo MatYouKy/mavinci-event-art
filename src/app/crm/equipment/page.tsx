@@ -167,7 +167,6 @@ export default function EquipmentPage() {
           .from('equipment_stock')
           .insert({
             equipment_id: newEquipment.id,
-            company_stock_quantity: stock.company_stock_quantity || 0,
             min_stock_level: stock.min_stock_level || 0,
             max_stock_level: stock.max_stock_level || 0,
           });

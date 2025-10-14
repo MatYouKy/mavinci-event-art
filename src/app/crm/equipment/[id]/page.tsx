@@ -19,7 +19,6 @@ interface EquipmentStock {
   in_use_quantity: number;
   damaged_quantity: number;
   in_service_quantity: number;
-  company_stock_quantity: number;
   storage_location: string | null;
   min_stock_level: number;
   last_inventory_date: string | null;
@@ -1150,7 +1149,6 @@ function StockTab({ equipment, stock, onUpdate }: any) {
   const [stockEdit, setStockEdit] = useState({
     storage_location: stock?.storage_location || '',
     min_stock_level: stock?.min_stock_level || 0,
-    company_stock_quantity: stock?.company_stock_quantity || 0,
   });
 
   const handleStockChange = async () => {
@@ -1194,7 +1192,6 @@ function StockTab({ equipment, stock, onUpdate }: any) {
         .update({
           storage_location: stockEdit.storage_location || null,
           min_stock_level: parseInt(stockEdit.min_stock_level as any) || 0,
-          company_stock_quantity: parseInt(stockEdit.company_stock_quantity as any) || 0,
         })
         .eq('id', stock.id);
 
@@ -1238,7 +1235,10 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 
         <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
           <div className="text-sm text-[#e5e4e2]/60 mb-2">Na firmie</div>
-          <div className="text-3xl font-light text-[#d3bb73]">{stock.company_stock_quantity}</div>
+          <div className="text-3xl font-light text-[#d3bb73]">
+            {units.filter(u => ['available', 'damaged', 'in_service'].includes(u.status)).length}
+          </div>
+          <div className="text-xs text-[#e5e4e2]/40 mt-1">z zakładki Jednostki</div>
         </div>
 
         <div className="bg-[#1c1f33] border border-green-500/10 rounded-xl p-6">
@@ -1300,21 +1300,7 @@ function StockTab({ equipment, stock, onUpdate }: any) {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="text-sm text-[#e5e4e2]/60 mb-1">Stan na firmie</div>
-            {editingStock ? (
-              <input
-                type="number"
-                value={stockEdit.company_stock_quantity}
-                onChange={(e) => setStockEdit(prev => ({ ...prev, company_stock_quantity: parseInt(e.target.value) || 0 }))}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                min="0"
-              />
-            ) : (
-              <div className="text-[#e5e4e2]">{stock.company_stock_quantity}</div>
-            )}
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <div className="text-sm text-[#e5e4e2]/60 mb-1">Lokalizacja</div>
             {editingStock ? (
