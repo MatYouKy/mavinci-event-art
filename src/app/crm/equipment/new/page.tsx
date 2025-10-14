@@ -36,6 +36,8 @@ export default function NewEquipmentPage() {
   const [connectorTypes, setConnectorTypes] = useState<ConnectorType[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const [showAddConnectorModal, setShowAddConnectorModal] = useState(false);
+  const [connectorField, setConnectorField] = useState<'in' | 'out' | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -421,38 +423,63 @@ export default function NewEquipmentPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wejściowy</label>
-                  <select
-                    name="cable_connector_in"
-                    value={formData.cable_connector_in}
-                    onChange={handleInputChange}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  >
-                    <option value="">Wybierz wtyk</option>
-                    {connectorTypes.map((connector) => (
-                      <option key={connector.id} value={connector.name} title={connector.description || undefined}>
-                        {connector.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyki</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wejściowy</label>
+                      <div className="flex gap-2">
+                        <select
+                          name="cable_connector_in"
+                          value={formData.cable_connector_in}
+                          onChange={handleInputChange}
+                          className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                        >
+                          <option value="">Wybierz wtyk</option>
+                          {connectorTypes.map((connector) => (
+                            <option key={connector.id} value={connector.name} title={connector.description || undefined}>
+                              {connector.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => { setConnectorField('in'); setShowAddConnectorModal(true); }}
+                          className="px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                          title="Dodaj nowy wtyk"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wyjściowy</label>
-                  <select
-                    name="cable_connector_out"
-                    value={formData.cable_connector_out}
-                    onChange={handleInputChange}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  >
-                    <option value="">Wybierz wtyk</option>
-                    {connectorTypes.map((connector) => (
-                      <option key={connector.id} value={connector.name} title={connector.description || undefined}>
-                        {connector.name}
-                      </option>
-                    ))}
-                  </select>
+                    <div>
+                      <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wyjściowy</label>
+                      <div className="flex gap-2">
+                        <select
+                          name="cable_connector_out"
+                          value={formData.cable_connector_out}
+                          onChange={handleInputChange}
+                          className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                        >
+                          <option value="">Wybierz wtyk</option>
+                          {connectorTypes.map((connector) => (
+                            <option key={connector.id} value={connector.name} title={connector.description || undefined}>
+                              {connector.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => { setConnectorField('out'); setShowAddConnectorModal(true); }}
+                          className="px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                          title="Dodaj nowy wtyk"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </>
             ) : (
@@ -726,6 +753,117 @@ export default function NewEquipmentPage() {
           </button>
         </div>
       </form>
+
+      {showAddConnectorModal && (
+        <AddConnectorModal
+          onClose={() => setShowAddConnectorModal(false)}
+          onAdd={(name) => {
+            if (connectorField === 'in') {
+              setFormData(prev => ({ ...prev, cable_connector_in: name }));
+            } else {
+              setFormData(prev => ({ ...prev, cable_connector_out: name }));
+            }
+            fetchConnectorTypes();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string) => void }) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [commonUses, setCommonUses] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('connector_types')
+        .insert({
+          name: name.trim(),
+          description: description.trim() || null,
+          common_uses: commonUses.trim() || null,
+          is_active: true,
+        });
+
+      if (error) throw error;
+
+      onAdd(name.trim());
+      onClose();
+    } catch (error) {
+      console.error('Error adding connector:', error);
+      alert('Błąd podczas dodawania wtyczki');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-md w-full">
+        <div className="p-6 border-b border-[#d3bb73]/10">
+          <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj nowy wtyk</h3>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa wtyczki *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="np. XLR Male"
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis (opcjonalnie)</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="np. Wtyk XLR męski, 3-pinowy"
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typowe zastosowania (opcjonalnie)</label>
+            <textarea
+              value={commonUses}
+              onChange={(e) => setCommonUses(e.target.value)}
+              placeholder="np. Mikrofony, sygnały audio balanced, DMX"
+              rows={3}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+            />
+          </div>
+
+          <div className="flex gap-3 justify-end pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+            >
+              Anuluj
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !name.trim()}
+              className="px-6 py-2.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Dodawanie...' : 'Dodaj wtyk'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
