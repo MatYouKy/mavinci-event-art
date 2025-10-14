@@ -1,6 +1,6 @@
 'use client';
 
-import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Globe, CreditCard as Edit3, Eye } from 'lucide-react';
+import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Globe, CreditCard as Edit3, Eye, Bell } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEditMode } from '../contexts/EditModeContext';
@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAppSelector } from '../store/hooks';
 import { supabase } from '@/lib/supabase';
+import NotificationCenter from './crm/NotificationCenter';
 
 interface NavbarProps {
   onAdminClick?: () => void;
@@ -232,6 +233,9 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
+            {isAuthenticated && (
+              <NotificationCenter />
+            )}
             {isAuthenticated ? (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -430,6 +434,9 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
             </div>
             {isAuthenticated ? (
               <div className="space-y-2 mt-4">
+                <div className="mb-3 flex justify-center">
+                  <NotificationCenter />
+                </div>
                 <div className="flex items-center gap-3 px-4 py-3 bg-[#d3bb73]/10 rounded-lg">
                   {avatarUrl ? (
                     <img
