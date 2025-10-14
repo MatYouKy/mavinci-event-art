@@ -5,6 +5,7 @@ import { Plus, X, Trash2, Package, Search, Edit, Eye, Printer, Copy } from 'luci
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface EquipmentUnit {
   id: string;
@@ -49,6 +50,9 @@ export default function KitsManagementModal({
   initialKitId?: string | null;
 }) {
   const { showSnackbar } = useSnackbar();
+  const { canManageModule } = useCurrentEmployee();
+  const canManage = canManageModule('equipment');
+
   const [kits, setKits] = useState<Kit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -333,13 +337,15 @@ export default function KitsManagementModal({
                 <p className="text-[#e5e4e2]/60">
                   Zestawy pozwalają na grupowanie sprzętu (np. "Kablarka Standard 1")
                 </p>
-                <button
-                  onClick={() => handleOpenForm()}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Nowy zestaw
-                </button>
+                {canManage && (
+                  <button
+                    onClick={() => handleOpenForm()}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Nowy zestaw
+                  </button>
+                )}
               </div>
 
               {loading ? (
@@ -386,25 +392,29 @@ export default function KitsManagementModal({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDuplicateKit(kit)}
-                            className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
-                            title="Duplikuj zestaw"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleOpenForm(kit)}
-                            className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteKit(kit.id)}
-                            className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canManage && (
+                            <>
+                              <button
+                                onClick={() => handleDuplicateKit(kit)}
+                                className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                                title="Duplikuj zestaw"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleOpenForm(kit)}
+                                className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteKit(kit.id)}
+                                className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 

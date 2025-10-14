@@ -8,6 +8,7 @@ import KitsManagementModal from '@/components/crm/KitsManagementModal';
 import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Category {
   id: string;
@@ -65,6 +66,11 @@ export default function EquipmentPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
+  const { canCreateInModule, canManageModule } = useCurrentEmployee();
+
+  const canAddEquipment = canCreateInModule('equipment');
+  const canManageEquipment = canManageModule('equipment');
+
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [kits, setKits] = useState<Kit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -391,34 +397,40 @@ export default function EquipmentPage() {
         <div className="flex flex-wrap gap-2">
           {activeTab === 'equipment' && (
             <>
-              <button
-                onClick={() => setShowCategoryModal(true)}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
-              >
-                <Settings className="w-5 h-5 md:w-4 md:h-4" />
-                <span className="hidden sm:inline">Kategorie</span>
-              </button>
-              <button
-                onClick={() => setShowLocationsModal(true)}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
-              >
-                <MapPin className="w-5 h-5 md:w-4 md:h-4" />
-                <span className="hidden sm:inline">Lokalizacje</span>
-              </button>
-              <button
-                onClick={() => setShowKitsModal(true)}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
-              >
-                <Package className="w-5 h-5 md:w-4 md:h-4" />
-                <span className="hidden sm:inline">Zestawy</span>
-              </button>
-              <button
-                onClick={() => router.push('/crm/equipment/new')}
-                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors min-h-[44px]"
-              >
-                <Plus className="w-5 h-5 md:w-4 md:h-4" />
-                <span className="hidden sm:inline">Dodaj sprzęt</span>
-              </button>
+              {canManageEquipment && (
+                <>
+                  <button
+                    onClick={() => setShowCategoryModal(true)}
+                    className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
+                  >
+                    <Settings className="w-5 h-5 md:w-4 md:h-4" />
+                    <span className="hidden sm:inline">Kategorie</span>
+                  </button>
+                  <button
+                    onClick={() => setShowLocationsModal(true)}
+                    className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
+                  >
+                    <MapPin className="w-5 h-5 md:w-4 md:h-4" />
+                    <span className="hidden sm:inline">Lokalizacje</span>
+                  </button>
+                  <button
+                    onClick={() => setShowKitsModal(true)}
+                    className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
+                  >
+                    <Package className="w-5 h-5 md:w-4 md:h-4" />
+                    <span className="hidden sm:inline">Zestawy</span>
+                  </button>
+                </>
+              )}
+              {canAddEquipment && (
+                <button
+                  onClick={() => router.push('/crm/equipment/new')}
+                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors min-h-[44px]"
+                >
+                  <Plus className="w-5 h-5 md:w-4 md:h-4" />
+                  <span className="hidden sm:inline">Dodaj sprzęt</span>
+                </button>
+              )}
             </>
           )}
         </div>
@@ -709,7 +721,7 @@ export default function EquipmentPage() {
                   {stockInfo.total}
                 </div>
 
-                {!isKit && (
+                {!isKit && canManageEquipment && (
                   <button
                     onClick={(e) => handleDuplicateEquipment(itemData, e)}
                     className="absolute right-2 p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded hover:bg-purple-500/10 transition-all opacity-0 md:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -856,7 +868,7 @@ export default function EquipmentPage() {
                   </div>
                 </div>
 
-                {!isKit && (
+                {!isKit && canManageEquipment && (
                   <div className="absolute top-2 right-2 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {

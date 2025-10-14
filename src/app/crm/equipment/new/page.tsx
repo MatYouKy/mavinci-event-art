@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, Upload, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Category {
   id: string;
@@ -32,12 +33,22 @@ interface ConnectorType {
 
 export default function NewEquipmentPage() {
   const router = useRouter();
+  const { canCreateInModule, loading: employeeLoading } = useCurrentEmployee();
+
+  const canCreate = canCreateInModule('equipment');
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [connectorTypes, setConnectorTypes] = useState<ConnectorType[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [showAddConnectorModal, setShowAddConnectorModal] = useState(false);
   const [connectorField, setConnectorField] = useState<'in' | 'out' | null>(null);
+
+  useEffect(() => {
+    if (!employeeLoading && !canCreate) {
+      router.push('/crm/equipment');
+    }
+  }, [canCreate, employeeLoading, router]);
 
   const [formData, setFormData] = useState({
     name: '',

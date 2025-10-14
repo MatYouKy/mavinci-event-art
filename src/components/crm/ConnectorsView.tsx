@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Plus, Search, Edit2, Trash2, Image as ImageIcon } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface ConnectorType {
   id: string;
@@ -20,6 +21,9 @@ interface ConnectorsViewProps {
 }
 
 export default function ConnectorsView({ viewMode }: ConnectorsViewProps) {
+  const { canManageModule } = useCurrentEmployee();
+  const canManage = canManageModule('equipment');
+
   const [connectors, setConnectors] = useState<ConnectorType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -208,13 +212,15 @@ export default function ConnectorsView({ viewMode }: ConnectorsViewProps) {
             className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
           />
         </div>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#0f1119] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Dodaj wtyk
-        </button>
+        {canManage && (
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 bg-[#d3bb73] text-[#0f1119] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Dodaj wtyk
+          </button>
+        )}
       </div>
 
       {filteredConnectors.length === 0 ? (
@@ -251,22 +257,24 @@ export default function ConnectorsView({ viewMode }: ConnectorsViewProps) {
                   <div className="text-xs text-[#e5e4e2]/50 line-clamp-1">{connector.description}</div>
                 )}
               </div>
-              <div className="flex items-center justify-center gap-1">
-                <button
-                  onClick={(e) => openEditModal(connector, e)}
-                  className="p-1.5 bg-[#0f1119] text-[#e5e4e2] rounded hover:bg-[#0f1119]/80 transition-colors"
-                  title="Edytuj"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={(e) => handleDelete(connector.id, e)}
-                  className="p-1.5 bg-red-500/10 text-red-400 rounded hover:bg-red-500/20 transition-colors"
-                  title="Usuń"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              {canManage && (
+                <div className="flex items-center justify-center gap-1">
+                  <button
+                    onClick={(e) => openEditModal(connector, e)}
+                    className="p-1.5 bg-[#0f1119] text-[#e5e4e2] rounded hover:bg-[#0f1119]/80 transition-colors"
+                    title="Edytuj"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => handleDelete(connector.id, e)}
+                    className="p-1.5 bg-red-500/10 text-red-400 rounded hover:bg-red-500/20 transition-colors"
+                    title="Usuń"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               <div></div>
             </div>
           ))}
@@ -306,21 +314,23 @@ export default function ConnectorsView({ viewMode }: ConnectorsViewProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#d3bb73]/10">
-                <button
-                  onClick={(e) => openEditModal(connector, e)}
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#0f1119] text-[#e5e4e2] px-3 py-2 rounded-lg hover:bg-[#0f1119]/80 transition-colors text-sm"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  Edytuj
-                </button>
-                <button
-                  onClick={(e) => handleDelete(connector.id, e)}
-                  className="flex items-center justify-center gap-2 bg-red-500/10 text-red-400 px-3 py-2 rounded-lg hover:bg-red-500/20 transition-colors text-sm"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+              {canManage && (
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#d3bb73]/10">
+                  <button
+                    onClick={(e) => openEditModal(connector, e)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-[#0f1119] text-[#e5e4e2] px-3 py-2 rounded-lg hover:bg-[#0f1119]/80 transition-colors text-sm"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Edytuj
+                  </button>
+                  <button
+                    onClick={(e) => handleDelete(connector.id, e)}
+                    className="flex items-center justify-center gap-2 bg-red-500/10 text-red-400 px-3 py-2 rounded-lg hover:bg-red-500/20 transition-colors text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -353,20 +363,22 @@ export default function ConnectorsView({ viewMode }: ConnectorsViewProps) {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => openEditModal(connector, e)}
-                    className="p-2 bg-[#0f1119] text-[#e5e4e2] rounded-lg hover:bg-[#0f1119]/80 transition-colors"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => handleDelete(connector.id, e)}
-                    className="p-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {canManage && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => openEditModal(connector, e)}
+                      className="p-2 bg-[#0f1119] text-[#e5e4e2] rounded-lg hover:bg-[#0f1119]/80 transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => handleDelete(connector.id, e)}
+                      className="p-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
