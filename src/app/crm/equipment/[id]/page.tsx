@@ -5,6 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
+import { useDialog } from '@/contexts/DialogContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Category {
   id: string;
@@ -109,6 +111,8 @@ export default function EquipmentDetailPage() {
   const router = useRouter();
   const params = useParams();
   const equipmentId = params.id as string;
+  const { showConfirm } = useDialog();
+  const { showSnackbar } = useSnackbar();
 
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -279,6 +283,30 @@ export default function EquipmentDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    const confirmed = await showConfirm(
+      `Czy na pewno chcesz usunąć sprzęt "${equipment?.name}"? Ta operacja jest nieodwracalna.`,
+      'Usuń sprzęt'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('equipment_items')
+        .update({ is_active: false })
+        .eq('id', equipmentId);
+
+      if (error) throw error;
+
+      showSnackbar('Sprzęt został usunięty', 'success');
+      router.push('/crm/equipment');
+    } catch (error) {
+      console.error('Error deleting equipment:', error);
+      showSnackbar('Błąd podczas usuwania sprzętu', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -346,13 +374,22 @@ export default function EquipmentDetailPage() {
               </button>
             </>
           ) : (
-            <button
-              onClick={handleEdit}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-            >
-              <Edit className="w-4 h-4" />
-              Edytuj
-            </button>
+            <>
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Usuń
+              </button>
+              <button
+                onClick={handleEdit}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              >
+                <Edit className="w-4 h-4" />
+                Edytuj
+              </button>
+            </>
           )}
         </div>
       </div>
