@@ -627,15 +627,13 @@ export default function EquipmentPage() {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const timeout = setTimeout(() => {
                         setTooltipItem(itemData);
-                        const tooltipHeight = 400;
-                        const spaceBelow = window.innerHeight - rect.bottom;
-                        const spaceAbove = rect.top;
-                        let yPos = rect.top;
-                        if (spaceBelow < tooltipHeight && spaceAbove > spaceBelow) {
-                          yPos = Math.max(10, rect.bottom - tooltipHeight);
+                        const centerY = rect.top + (rect.height / 2);
+                        let yPos = centerY - 20;
+                        if (centerY + 200 > window.innerHeight) {
+                          yPos = Math.max(10, centerY - 200);
                         }
                         setTooltipPosition({
-                          x: rect.right + 10,
+                          x: rect.right + 5,
                           y: yPos,
                         });
                       }, 500);
@@ -759,15 +757,13 @@ export default function EquipmentPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const timeout = setTimeout(() => {
                           setTooltipItem(itemData);
-                          const tooltipHeight = 400;
-                          const spaceBelow = window.innerHeight - rect.bottom;
-                          const spaceAbove = rect.top;
-                          let yPos = rect.top;
-                          if (spaceBelow < tooltipHeight && spaceAbove > spaceBelow) {
-                            yPos = Math.max(10, rect.bottom - tooltipHeight);
+                          const centerY = rect.top + (rect.height / 2);
+                          let yPos = centerY - 20;
+                          if (centerY + 200 > window.innerHeight) {
+                            yPos = Math.max(10, centerY - 200);
                           }
                           setTooltipPosition({
-                            x: rect.right + 10,
+                            x: rect.right + 5,
                             y: yPos,
                           });
                         }, 500);
@@ -968,8 +964,7 @@ export default function EquipmentPage() {
             top: `${tooltipPosition.y}px`,
           }}
         >
-          <div className="absolute left-0 top-0 w-2 h-2 bg-[#d3bb73]/30 transform -translate-x-1/2 translate-y-2" />
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-4 max-w-sm ml-2">
+          <div className="bg-[#1c1f33] border-l-4 border-l-[#d3bb73] border-r border-t border-b border-[#d3bb73]/30 rounded-r-lg shadow-xl p-4 max-w-sm">
           <div className="space-y-2">
             <div className="flex items-start gap-3">
               {tooltipItem.thumbnail_url && (
