@@ -80,6 +80,7 @@ export default function EquipmentPage() {
   const [selectedKitId, setSelectedKitId] = useState<string | null>(null);
   const [tooltipItem, setTooltipItem] = useState<any>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   useEffect(() => {
     loadUserPreferences();
@@ -247,6 +248,56 @@ export default function EquipmentPage() {
     } catch (error) {
       console.error('Error duplicating equipment:', error);
       showSnackbar('Błąd podczas duplikowania sprzętu', 'error');
+    }
+  };
+
+  const handleDeleteEquipment = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    const confirmed = await showConfirm('Czy na pewno chcesz usunąć ten sprzęt? Ta operacja jest nieodwracalna.', 'Usuń sprzęt');
+    if (!confirmed) return;
+
+    try {
+      await supabase.from('equipment_units').delete().eq('equipment_id', id);
+      await supabase.from('equipment_stock_history').delete().eq('equipment_id', id);
+      await supabase.from('equipment_stock').delete().eq('equipment_id', id);
+      await supabase.from('equipment_components').delete().eq('equipment_id', id);
+      await supabase.from('equipment_gallery').delete().eq('equipment_id', id);
+
+      const { error } = await supabase.from('equipment_items').delete().eq('id', id);
+      if (error) throw error;
+
+      showSnackbar('Sprzęt został usunięty', 'success');
+      fetchEquipment();
+    } catch (error) {
+      console.error('Error deleting equipment:', error);
+      showSnackbar('Błąd podczas usuwania sprzętu', 'error');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const confirmed = await showConfirm(
+      `Czy na pewno chcesz usunąć ${selectedItems.length} elementów? Ta operacja jest nieodwracalna.`,
+      'Usuń zaznaczone'
+    );
+    if (!confirmed) return;
+
+    try {
+      for (const id of selectedItems) {
+        await supabase.from('equipment_units').delete().eq('equipment_id', id);
+        await supabase.from('equipment_stock_history').delete().eq('equipment_id', id);
+        await supabase.from('equipment_stock').delete().eq('equipment_id', id);
+        await supabase.from('equipment_components').delete().eq('equipment_id', id);
+        await supabase.from('equipment_gallery').delete().eq('equipment_id', id);
+        await supabase.from('equipment_items').delete().eq('id', id);
+      }
+
+      showSnackbar(`Usunięto ${selectedItems.length} elementów`, 'success');
+      setSelectedItems([]);
+      fetchEquipment();
+    } catch (error) {
+      console.error('Error bulk deleting equipment:', error);
+      showSnackbar('Błąd podczas usuwania sprzętu', 'error');
     }
   };
 
@@ -503,7 +554,21 @@ export default function EquipmentPage() {
         </div>
       ) : viewMode === 'compact' ? (
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0">
+          <div className="grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0">
+            <div className="flex items-center justify-center">
+              <input
+                type="checkbox"
+                checked={selectedItems.length === allItems.filter(i => i.type !== 'kit').length && allItems.filter(i => i.type !== 'kit').length > 0}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedItems(allItems.filter(i => i.type !== 'kit').map(i => i.data.id));
+                  } else {
+                    setSelectedItems([]);
+                  }
+                }}
+                className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/50 cursor-pointer"
+              />
+            </div>
             <div className="w-6"></div>
             <div>Nazwa / Model</div>
             <div>Kategoria</div>
@@ -543,10 +608,26 @@ export default function EquipmentPage() {
                 onMouseLeave={() => {
                   setTooltipItem(null);
                 }}
-                className={`grid grid-cols-[auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group ${
+                className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group ${
                   isKit ? 'bg-blue-500/5' : ''
                 }`}
               >
+                <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                  {!isKit && (
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.includes(itemData.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedItems([...selectedItems, itemData.id]);
+                        } else {
+                          setSelectedItems(selectedItems.filter(id => id !== itemData.id));
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/50 cursor-pointer"
+                    />
+                  )}
+                </div>
                 <div className="relative w-6 h-6 flex-shrink-0">
                   {isKit && (
                     <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
@@ -743,13 +824,32 @@ export default function EquipmentPage() {
                 </div>
 
                 {!isKit && (
-                  <button
-                    onClick={(e) => handleDuplicateEquipment(itemData, e)}
-                    className="absolute top-2 right-2 p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded-lg hover:bg-purple-500/10 transition-all opacity-0 group-hover:opacity-100"
-                    title="Duplikuj sprzęt"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
+                  <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/crm/equipment/${itemData.id}`);
+                      }}
+                      className="p-2 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 transition-all"
+                      title="Edytuj sprzęt"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => handleDuplicateEquipment(itemData, e)}
+                      className="p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded-lg hover:bg-purple-500/10 transition-all"
+                      title="Duplikuj sprzęt"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteEquipment(itemData.id, e)}
+                      className="p-2 bg-[#1c1f33] border border-red-400/30 text-red-400 rounded-lg hover:bg-red-500/10 transition-all"
+                      title="Usuń sprzęt"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
 
                 {!isKit && stockInfo.total > 0 && (
@@ -773,6 +873,27 @@ export default function EquipmentPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {selectedItems.length > 0 && (
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl shadow-2xl p-4 flex items-center gap-4 z-50 animate-slide-up">
+          <span className="text-[#e5e4e2] font-medium">
+            Zaznaczono: <span className="text-[#d3bb73]">{selectedItems.length}</span>
+          </span>
+          <button
+            onClick={handleBulkDelete}
+            className="px-4 py-2 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg hover:bg-red-500/30 transition-all flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Usuń zaznaczone
+          </button>
+          <button
+            onClick={() => setSelectedItems([])}
+            className="px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-all"
+          >
+            Anuluj
+          </button>
         </div>
       )}
 

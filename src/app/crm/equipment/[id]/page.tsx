@@ -499,9 +499,9 @@ function TabCarousel({ activeTab, setActiveTab, equipment }: any) {
     { id: 'details', label: 'Podstawowe' },
     { id: 'technical', label: 'Parametry techniczne' },
     { id: 'purchase', label: 'Informacje zakupowe' },
-    { id: 'components', label: `Skład zestawu (${equipment.equipment_components.length})` },
-    { id: 'units', label: `Jednostki (${units.length})` },
-    { id: 'gallery', label: `Galeria (${equipment.equipment_gallery.length})` },
+    { id: 'components', label: `Skład zestawu (${equipment.equipment_components?.length || 0})` },
+    { id: 'units', label: `Jednostki (${units?.length || 0})` },
+    { id: 'gallery', label: `Galeria (${equipment.equipment_gallery?.length || 0})` },
     { id: 'history', label: 'Historia' },
   ];
 
