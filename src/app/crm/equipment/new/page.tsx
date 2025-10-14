@@ -293,6 +293,29 @@ export default function NewEquipmentPage() {
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
           <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Podstawowe informacje</h3>
 
+          <div className="mb-6">
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Kategoria <span className="text-red-400">*</span>
+            </label>
+            <select
+              name="category_id"
+              value={formData.category_id}
+              onChange={handleInputChange}
+              required
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 text-base"
+            >
+              <option value="">Wybierz kategorię sprzętu</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-[#e5e4e2]/40 mt-2">
+              Wybór kategorii określi dostępne pola w formularzu
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">
@@ -307,26 +330,6 @@ export default function NewEquipmentPage() {
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 placeholder="np. Kolumna RCF ART932a"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Kategoria <span className="text-red-400">*</span>
-              </label>
-              <select
-                name="category_id"
-                value={formData.category_id}
-                onChange={handleInputChange}
-                required
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-              >
-                <option value="">Wybierz kategorię</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div>
