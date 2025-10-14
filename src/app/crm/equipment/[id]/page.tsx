@@ -124,6 +124,8 @@ export default function EquipmentDetailPage() {
   const [connectorField, setConnectorField] = useState<'in' | 'out' | null>(null);
   const [showConnectorPreview, setShowConnectorPreview] = useState(false);
   const [selectedConnector, setSelectedConnector] = useState<any>(null);
+  const [connectorTooltip, setConnectorTooltip] = useState<any>(null);
+  const [connectorTooltipPosition, setConnectorTooltipPosition] = useState({ x: 0, y: 0 });
   const [activeTab, setActiveTab] = useState<'details' | 'technical' | 'purchase' | 'components' | 'units' | 'gallery' | 'stock' | 'history'>('details');
 
   const [editForm, setEditForm] = useState<any>({});
@@ -488,6 +490,42 @@ export default function EquipmentDetailPage() {
 
       {activeTab === 'history' && (
         <HistoryTab history={stockHistory} />
+      )}
+
+      {connectorTooltip && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{
+            left: `${connectorTooltipPosition.x}px`,
+            top: `${connectorTooltipPosition.y}px`,
+          }}
+        >
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-4 max-w-sm ml-2">
+            <div className="space-y-2">
+              <div className="flex items-start gap-3">
+                {connectorTooltip.thumbnail_url && (
+                  <img
+                    src={connectorTooltip.thumbnail_url}
+                    alt={connectorTooltip.name}
+                    className="w-20 h-20 rounded object-cover flex-shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-[#e5e4e2] mb-1">{connectorTooltip.name}</h4>
+                  {connectorTooltip.description && (
+                    <p className="text-xs text-[#e5e4e2]/60">{connectorTooltip.description}</p>
+                  )}
+                </div>
+              </div>
+              {connectorTooltip.common_uses && (
+                <div className="border-t border-[#d3bb73]/10 pt-2">
+                  <div className="text-xs text-[#e5e4e2]/60 mb-1">Typowe zastosowania:</div>
+                  <p className="text-sm text-[#e5e4e2]">{connectorTooltip.common_uses}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -857,12 +895,30 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                   <div>
                     <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wejściowy</label>
                     {equipment.cable_specs?.connector_in ? (
-                      <button
-                        onClick={() => onConnectorClick(equipment.cable_specs.connector_in)}
-                        className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
-                      >
-                        {equipment.cable_specs.connector_in}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {connectorTypes.find(c => c.name === equipment.cable_specs.connector_in)?.thumbnail_url && (
+                          <img
+                            src={connectorTypes.find(c => c.name === equipment.cable_specs.connector_in)?.thumbnail_url}
+                            alt={equipment.cable_specs.connector_in}
+                            className="w-12 h-12 object-cover rounded border border-[#d3bb73]/20"
+                          />
+                        )}
+                        <button
+                          onClick={() => onConnectorClick(equipment.cable_specs.connector_in)}
+                          onMouseEnter={(e) => {
+                            const connector = connectorTypes.find(c => c.name === equipment.cable_specs.connector_in);
+                            if (connector) {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setConnectorTooltip(connector);
+                              setConnectorTooltipPosition({ x: rect.right + 10, y: rect.top });
+                            }
+                          }}
+                          onMouseLeave={() => setConnectorTooltip(null)}
+                          className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
+                        >
+                          {equipment.cable_specs.connector_in}
+                        </button>
+                      </div>
                     ) : (
                       <div className="text-[#e5e4e2]">-</div>
                     )}
@@ -870,12 +926,30 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                   <div>
                     <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wyjściowy</label>
                     {equipment.cable_specs?.connector_out ? (
-                      <button
-                        onClick={() => onConnectorClick(equipment.cable_specs.connector_out)}
-                        className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
-                      >
-                        {equipment.cable_specs.connector_out}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {connectorTypes.find(c => c.name === equipment.cable_specs.connector_out)?.thumbnail_url && (
+                          <img
+                            src={connectorTypes.find(c => c.name === equipment.cable_specs.connector_out)?.thumbnail_url}
+                            alt={equipment.cable_specs.connector_out}
+                            className="w-12 h-12 object-cover rounded border border-[#d3bb73]/20"
+                          />
+                        )}
+                        <button
+                          onClick={() => onConnectorClick(equipment.cable_specs.connector_out)}
+                          onMouseEnter={(e) => {
+                            const connector = connectorTypes.find(c => c.name === equipment.cable_specs.connector_out);
+                            if (connector) {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setConnectorTooltip(connector);
+                              setConnectorTooltipPosition({ x: rect.right + 10, y: rect.top });
+                            }
+                          }}
+                          onMouseLeave={() => setConnectorTooltip(null)}
+                          className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
+                        >
+                          {equipment.cable_specs.connector_out}
+                        </button>
+                      </div>
                     ) : (
                       <div className="text-[#e5e4e2]">-</div>
                     )}
@@ -1598,6 +1672,8 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 function UnitsTab({ equipment, units, onUpdate }: any) {
   const isCable = equipment?.equipment_categories?.name?.toLowerCase().includes('przewod');
   const [showModal, setShowModal] = useState(false);
+  const [editingQuantity, setEditingQuantity] = useState(false);
+  const [newQuantity, setNewQuantity] = useState(units.length);
   const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
   const [unitForm, setUnitForm] = useState({
     unit_serial_number: '',
@@ -1810,35 +1886,74 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
     retired: units.filter((u: EquipmentUnit) => u.status === 'retired'),
   };
 
+  const handleUpdateCableQuantity = async () => {
+    const currentCount = units.length;
+    const diff = newQuantity - currentCount;
+
+    try {
+      if (diff > 0) {
+        const unitsToAdd = Array.from({ length: diff }, () => ({
+          equipment_id: equipment.id,
+          status: 'available',
+        }));
+        await supabase.from('equipment_units').insert(unitsToAdd);
+      } else if (diff < 0) {
+        const unitsToRemove = units.slice(0, Math.abs(diff));
+        await supabase.from('equipment_units').delete().in('id', unitsToRemove.map((u: any) => u.id));
+      }
+      setEditingQuantity(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Error updating cable quantity:', error);
+      alert('Błąd podczas aktualizacji ilości');
+    }
+  };
+
   if (isCable) {
     return (
       <div className="space-y-6">
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
           <div className="text-center">
-            <div className="text-6xl font-light text-[#d3bb73] mb-4">{units.length}</div>
+            {editingQuantity ? (
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <input
+                  type="number"
+                  value={newQuantity}
+                  onChange={(e) => setNewQuantity(parseInt(e.target.value) || 0)}
+                  className="w-32 text-center text-4xl font-light bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg px-4 py-2 text-[#d3bb73] focus:outline-none focus:border-[#d3bb73]"
+                  min="0"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleUpdateCableQuantity}
+                    className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    Zapisz
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingQuantity(false);
+                      setNewQuantity(units.length);
+                    }}
+                    className="px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => setEditingQuantity(true)}
+                className="text-6xl font-light text-[#d3bb73] mb-4 cursor-pointer hover:text-[#d3bb73]/80 transition-colors"
+                title="Kliknij aby edytować"
+              >
+                {units.length}
+              </div>
+            )}
             <div className="text-lg text-[#e5e4e2]/60 mb-2">Liczba jednostek</div>
             <p className="text-sm text-[#e5e4e2]/40 max-w-md mx-auto">
-              Przewody nie wymagają szczegółowego zarządzania jednostkami. Liczba pokazuje ilość dostępnych przewodów.
+              {editingQuantity ? 'Wprowadź nową liczbę przewodów' : 'Kliknij na liczbę aby ją edytować'}
             </p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-            <div className="bg-[#0f1119] border border-green-500/10 rounded-xl p-4 text-center">
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Dostępne</div>
-              <div className="text-2xl font-light text-green-400">{units.filter((u: EquipmentUnit) => u.status === 'available').length}</div>
-            </div>
-            <div className="bg-[#0f1119] border border-red-500/10 rounded-xl p-4 text-center">
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Uszkodzone</div>
-              <div className="text-2xl font-light text-red-400">{units.filter((u: EquipmentUnit) => u.status === 'damaged').length}</div>
-            </div>
-            <div className="bg-[#0f1119] border border-orange-500/10 rounded-xl p-4 text-center">
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Serwis</div>
-              <div className="text-2xl font-light text-orange-400">{units.filter((u: EquipmentUnit) => u.status === 'in_service').length}</div>
-            </div>
-            <div className="bg-[#0f1119] border border-gray-500/10 rounded-xl p-4 text-center">
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Wycofane</div>
-              <div className="text-2xl font-light text-gray-400">{units.filter((u: EquipmentUnit) => u.status === 'retired').length}</div>
-            </div>
           </div>
         </div>
       </div>

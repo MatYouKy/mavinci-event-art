@@ -962,12 +962,14 @@ export default function EquipmentPage() {
 
       {tooltipItem && (
         <div
-          className="fixed bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-4 z-50 pointer-events-none max-w-sm"
+          className="fixed z-50 pointer-events-none"
           style={{
             left: `${tooltipPosition.x}px`,
             top: `${tooltipPosition.y}px`,
           }}
         >
+          <div className="absolute left-0 top-0 w-2 h-2 bg-[#d3bb73]/30 transform -translate-x-1/2 translate-y-2" />
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-4 max-w-sm ml-2">
           <div className="space-y-2">
             <div className="flex items-start gap-3">
               {tooltipItem.thumbnail_url && (
@@ -1046,6 +1048,7 @@ export default function EquipmentPage() {
                 <span className="ml-1 text-[#e5e4e2]">{tooltipItem.storage_location}</span>
               </div>
             )}
+          </div>
           </div>
         </div>
       )}
