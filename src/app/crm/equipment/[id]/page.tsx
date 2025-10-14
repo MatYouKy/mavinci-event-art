@@ -447,6 +447,10 @@ export default function EquipmentDetailPage() {
           isEditing={isEditing}
           onInputChange={handleInputChange}
           connectorTypes={connectorTypes}
+          setConnectorTooltip={setConnectorTooltip}
+          setConnectorTooltipPosition={setConnectorTooltipPosition}
+          setShowAddConnectorModal={setShowAddConnectorModal}
+          setConnectorField={setConnectorField}
           onConnectorClick={(connectorName: string) => {
             const connector = connectorTypes.find((c: any) => c.name === connectorName);
             if (connector) {
@@ -806,7 +810,7 @@ function DetailsTab({
   );
 }
 
-function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes, onConnectorClick }: any) {
+function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes, setConnectorTooltip, setConnectorTooltipPosition, setShowAddConnectorModal, setConnectorField, onConnectorClick }: any) {
   const isCable = equipment.equipment_categories?.name?.toLowerCase().includes('przewod');
 
   return (
