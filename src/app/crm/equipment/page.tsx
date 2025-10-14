@@ -464,15 +464,25 @@ export default function EquipmentPage() {
                   <div className="font-medium text-[#e5e4e2] truncate">
                     {itemData.name}
                   </div>
-                  {!isKit && (itemData.brand || itemData.model) && (
+                  {!isKit && itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
                     <div className="text-xs text-[#e5e4e2]/50 truncate">
-                      {itemData.brand} {itemData.model}
+                      {itemData.cable_specs.length_meters && `${itemData.cable_specs.length_meters}m`}
+                      {itemData.cable_specs.connector_in && ` · ${itemData.cable_specs.connector_in}`}
+                      {itemData.cable_specs.connector_out && ` → ${itemData.cable_specs.connector_out}`}
                     </div>
-                  )}
-                  {isKit && itemData.description && (
-                    <div className="text-xs text-[#e5e4e2]/50 truncate">
-                      {itemData.description}
-                    </div>
+                  ) : (
+                    <>
+                      {!isKit && (itemData.brand || itemData.model) && (
+                        <div className="text-xs text-[#e5e4e2]/50 truncate">
+                          {itemData.brand} {itemData.model}
+                        </div>
+                      )}
+                      {isKit && itemData.description && (
+                        <div className="text-xs text-[#e5e4e2]/50 truncate">
+                          {itemData.description}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -668,6 +678,8 @@ function CategoryManagementModal({
 }) {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [saving, setSaving] = useState(false);
+  const { showConfirm } = useDialog();
+  const { showSnackbar } = useSnackbar();
 
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
@@ -708,6 +720,29 @@ function CategoryManagementModal({
     }
   };
 
+  const handleDeleteCategory = async (id: string, name: string) => {
+    const confirmed = await showConfirm(
+      `Czy na pewno chcesz usunąć kategorię "${name}"? Ta operacja jest nieodwracalna.`,
+      'Usuń kategorię'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('equipment_categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      showSnackbar('Kategoria została usunięta', 'success');
+      onUpdate();
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      showSnackbar('Błąd podczas usuwania kategorii', 'error');
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
@@ -728,16 +763,25 @@ function CategoryManagementModal({
                     <div className="text-sm text-[#e5e4e2]/60">{category.description}</div>
                   )}
                 </div>
-                <button
-                  onClick={() => handleToggleCategory(category.id, category.is_active)}
-                  className={`px-3 py-1 rounded text-sm ${
-                    category.is_active
-                      ? 'bg-green-500/20 text-green-400'
-                      : 'bg-red-500/20 text-red-400'
-                  }`}
-                >
-                  {category.is_active ? 'Aktywna' : 'Nieaktywna'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDeleteCategory(category.id, category.name)}
+                    className="p-2 hover:bg-red-500/10 rounded text-red-400 transition-colors"
+                    title="Usuń kategorię"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleToggleCategory(category.id, category.is_active)}
+                    className={`px-3 py-1 rounded text-sm ${
+                      category.is_active
+                        ? 'bg-green-500/20 text-green-400'
+                        : 'bg-red-500/20 text-red-400'
+                    }`}
+                  >
+                    {category.is_active ? 'Aktywna' : 'Nieaktywna'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

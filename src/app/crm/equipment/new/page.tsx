@@ -23,9 +23,17 @@ interface Component {
   is_included: boolean;
 }
 
+interface ConnectorType {
+  id: string;
+  name: string;
+  description: string | null;
+  common_uses: string | null;
+}
+
 export default function NewEquipmentPage() {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [connectorTypes, setConnectorTypes] = useState<ConnectorType[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
 
@@ -60,6 +68,7 @@ export default function NewEquipmentPage() {
 
   useEffect(() => {
     fetchCategories();
+    fetchConnectorTypes();
   }, []);
 
   const fetchCategories = async () => {
@@ -70,6 +79,16 @@ export default function NewEquipmentPage() {
       .order('order_index');
 
     if (data) setCategories(data);
+  };
+
+  const fetchConnectorTypes = async () => {
+    const { data, error } = await supabase
+      .from('connector_types')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
+    if (data) setConnectorTypes(data);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -400,26 +419,36 @@ export default function NewEquipmentPage() {
 
                 <div>
                   <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wejściowy</label>
-                  <input
-                    type="text"
+                  <select
                     name="cable_connector_in"
                     value={formData.cable_connector_in}
                     onChange={handleInputChange}
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                    placeholder="np. XLR Male"
-                  />
+                  >
+                    <option value="">Wybierz wtyk</option>
+                    {connectorTypes.map((connector) => (
+                      <option key={connector.id} value={connector.name} title={connector.description || undefined}>
+                        {connector.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
                   <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wyjściowy</label>
-                  <input
-                    type="text"
+                  <select
                     name="cable_connector_out"
                     value={formData.cable_connector_out}
                     onChange={handleInputChange}
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                    placeholder="np. XLR Female"
-                  />
+                  >
+                    <option value="">Wybierz wtyk</option>
+                    {connectorTypes.map((connector) => (
+                      <option key={connector.id} value={connector.name} title={connector.description || undefined}>
+                        {connector.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </>
             ) : (
@@ -437,38 +466,40 @@ export default function NewEquipmentPage() {
               </div>
             )}
 
-            <div className="md:col-span-1">
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  name="dimensions_length"
-                  value={formData.dimensions_length}
-                  onChange={handleInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  placeholder="Długość"
-                />
-                <input
-                  type="number"
-                  step="0.1"
-                  name="dimensions_width"
-                  value={formData.dimensions_width}
-                  onChange={handleInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  placeholder="Szerokość"
-                />
-                <input
-                  type="number"
-                  step="0.1"
-                  name="dimensions_height"
-                  value={formData.dimensions_height}
-                  onChange={handleInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  placeholder="Wysokość"
-                />
+            {!categories.find(c => c.id === formData.category_id)?.name?.toLowerCase().includes('przewod') && (
+              <div className="md:col-span-1">
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    name="dimensions_length"
+                    value={formData.dimensions_length}
+                    onChange={handleInputChange}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="Długość"
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    name="dimensions_width"
+                    value={formData.dimensions_width}
+                    onChange={handleInputChange}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="Szerokość"
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    name="dimensions_height"
+                    value={formData.dimensions_height}
+                    onChange={handleInputChange}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="Wysokość"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Numer seryjny</label>
