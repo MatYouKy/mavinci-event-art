@@ -78,6 +78,8 @@ export default function EquipmentPage() {
   const [showLocationsModal, setShowLocationsModal] = useState(false);
   const [showKitsModal, setShowKitsModal] = useState(false);
   const [selectedKitId, setSelectedKitId] = useState<string | null>(null);
+  const [tooltipItem, setTooltipItem] = useState<any>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     loadUserPreferences();
@@ -525,6 +527,22 @@ export default function EquipmentPage() {
                     router.push(`/crm/equipment/${itemData.id}`);
                   }
                 }}
+                onMouseEnter={(e) => {
+                  if (!isKit) {
+                    setTooltipItem(itemData);
+                  }
+                }}
+                onMouseMove={(e) => {
+                  if (!isKit && tooltipItem) {
+                    setTooltipPosition({
+                      x: e.clientX + 20,
+                      y: e.clientY + 10,
+                    });
+                  }
+                }}
+                onMouseLeave={() => {
+                  setTooltipItem(null);
+                }}
                 className={`grid grid-cols-[auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group ${
                   isKit ? 'bg-blue-500/5' : ''
                 }`}
@@ -613,6 +631,22 @@ export default function EquipmentPage() {
             return (
               <div
                 key={itemData.id}
+                onMouseEnter={(e) => {
+                  if (!isKit) {
+                    setTooltipItem(itemData);
+                  }
+                }}
+                onMouseMove={(e) => {
+                  if (!isKit && tooltipItem) {
+                    setTooltipPosition({
+                      x: e.clientX + 20,
+                      y: e.clientY + 10,
+                    });
+                  }
+                }}
+                onMouseLeave={() => {
+                  setTooltipItem(null);
+                }}
                 className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group ${
                   isKit
                     ? 'border-2 border-blue-500/30 hover:border-blue-500/50'
@@ -655,18 +689,38 @@ export default function EquipmentPage() {
                     <h3 className="text-lg font-medium text-[#e5e4e2] mb-1 truncate">
                       {itemData.name}
                     </h3>
-                    {isKit ? (
-                      itemData.description && (
-                        <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                          {itemData.description}
-                        </p>
-                      )
+                    {!isKit && itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
+                      <div className="text-sm text-[#e5e4e2]/60 mb-2">
+                        {itemData.cable_specs.length_meters && (
+                          <span className="font-medium text-[#d3bb73]">{itemData.cable_specs.length_meters}m</span>
+                        )}
+                        {itemData.cable_specs.connector_in && (
+                          <span className="ml-2">
+                            <span className="text-[#e5e4e2]/40">In:</span> {itemData.cable_specs.connector_in}
+                          </span>
+                        )}
+                        {itemData.cable_specs.connector_out && (
+                          <span className="ml-2">
+                            <span className="text-[#e5e4e2]/40">→</span> {itemData.cable_specs.connector_out}
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      (itemData.brand || itemData.model) && (
-                        <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                          {itemData.brand} {itemData.model}
-                        </p>
-                      )
+                      <>
+                        {isKit ? (
+                          itemData.description && (
+                            <p className="text-sm text-[#e5e4e2]/60 mb-2">
+                              {itemData.description}
+                            </p>
+                          )
+                        ) : (
+                          (itemData.brand || itemData.model) && (
+                            <p className="text-sm text-[#e5e4e2]/60 mb-2">
+                              {itemData.brand} {itemData.model}
+                            </p>
+                          )
+                        )}
+                      </>
                     )}
                     {!isKit && itemData.equipment_categories && (
                       <span className="inline-block px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73]">
@@ -746,6 +800,96 @@ export default function EquipmentPage() {
           equipment={equipment}
           initialKitId={selectedKitId}
         />
+      )}
+
+      {tooltipItem && (
+        <div
+          className="fixed bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-4 z-50 pointer-events-none max-w-sm"
+          style={{
+            left: `${tooltipPosition.x}px`,
+            top: `${tooltipPosition.y}px`,
+          }}
+        >
+          <div className="space-y-2">
+            <div className="flex items-start gap-3">
+              {tooltipItem.thumbnail_url && (
+                <img
+                  src={tooltipItem.thumbnail_url}
+                  alt={tooltipItem.name}
+                  className="w-16 h-16 rounded object-cover flex-shrink-0"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-medium text-[#e5e4e2] mb-1">{tooltipItem.name}</h4>
+                {tooltipItem.brand && (
+                  <p className="text-xs text-[#e5e4e2]/60">{tooltipItem.brand} {tooltipItem.model}</p>
+                )}
+              </div>
+            </div>
+
+            {tooltipItem.equipment_categories?.name?.toLowerCase().includes('przewod') && tooltipItem.cable_specs && (
+              <div className="border-t border-[#d3bb73]/10 pt-2">
+                <div className="text-xs text-[#e5e4e2]/60 mb-1">Specyfikacja przewodu:</div>
+                {tooltipItem.cable_specs.length_meters && (
+                  <div className="text-sm text-[#e5e4e2]">
+                    <span className="text-[#e5e4e2]/60">Długość:</span> {tooltipItem.cable_specs.length_meters}m
+                  </div>
+                )}
+                {tooltipItem.cable_specs.connector_in && (
+                  <div className="text-sm text-[#e5e4e2]">
+                    <span className="text-[#e5e4e2]/60">Wejście:</span> {tooltipItem.cable_specs.connector_in}
+                  </div>
+                )}
+                {tooltipItem.cable_specs.connector_out && (
+                  <div className="text-sm text-[#e5e4e2]">
+                    <span className="text-[#e5e4e2]/60">Wyjście:</span> {tooltipItem.cable_specs.connector_out}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tooltipItem.description && (
+              <div className="border-t border-[#d3bb73]/10 pt-2">
+                <div className="text-xs text-[#e5e4e2]/60 mb-1">Opis:</div>
+                <p className="text-sm text-[#e5e4e2] line-clamp-3">{tooltipItem.description}</p>
+              </div>
+            )}
+
+            <div className="border-t border-[#d3bb73]/10 pt-2 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-[#e5e4e2]/60">Dostępne:</span>
+                <span className="ml-1 text-green-400 font-medium">
+                  {tooltipItem.equipment_units?.filter((u: any) => u.status === 'available').length || 0}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#e5e4e2]/60">Razem:</span>
+                <span className="ml-1 text-[#e5e4e2] font-medium">
+                  {tooltipItem.equipment_units?.length || 0}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#e5e4e2]/60">Uszkodzone:</span>
+                <span className="ml-1 text-red-400 font-medium">
+                  {tooltipItem.equipment_units?.filter((u: any) => u.status === 'damaged').length || 0}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#e5e4e2]/60">Serwis:</span>
+                <span className="ml-1 text-orange-400 font-medium">
+                  {tooltipItem.equipment_units?.filter((u: any) => u.status === 'in_service').length || 0}
+                </span>
+              </div>
+            </div>
+
+            {tooltipItem.storage_location && (
+              <div className="border-t border-[#d3bb73]/10 pt-2 text-xs">
+                <span className="text-[#e5e4e2]/60">Lokalizacja:</span>
+                <span className="ml-1 text-[#e5e4e2]">{tooltipItem.storage_location}</span>
+              </div>
+            )}
+          </div>
+        </div>
       )}
         </>
       )}
