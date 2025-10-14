@@ -10,6 +10,11 @@ import {
   Inbox,
 } from 'lucide-react';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
+import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
+import AssignMessageModal from '@/components/crm/AssignMessageModal';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface UnifiedMessage {
   id: string;
@@ -23,10 +28,17 @@ interface UnifiedMessage {
   isRead: boolean;
   isStarred: boolean;
   status?: string;
+  assigned_to?: string | null;
+  assigned_employee?: { name: string; surname: string } | null;
   originalData: any;
 }
 
 export default function MessagesPage() {
+  const { employee: currentEmployee, canManageModule } = useCurrentEmployee();
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+  const canManage = canManageModule('messages');
+
   const [messages, setMessages] = useState<UnifiedMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<UnifiedMessage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,6 +47,9 @@ export default function MessagesPage() {
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<UnifiedMessage | null>(null);
 
   const [newMessage, setNewMessage] = useState({
     to: '',
@@ -81,7 +96,7 @@ export default function MessagesPage() {
       if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
         const { data: contactMessages } = await supabase
           .from('contact_messages')
-          .select('*')
+          .select('*, assigned_employee:employees!assigned_to(name, surname)')
           .order('created_at', { ascending: false })
           .limit(50);
 
@@ -101,6 +116,8 @@ export default function MessagesPage() {
               isRead: msg.status !== 'new',
               isStarred: false,
               status: msg.status,
+              assigned_to: msg.assigned_to,
+              assigned_employee: msg.assigned_employee,
               originalData: msg,
             }))
           );
@@ -141,7 +158,7 @@ export default function MessagesPage() {
 
         const { data: receivedEmails } = await supabase
           .from('received_emails')
-          .select('*')
+          .select('*, assigned_employee:employees!assigned_to(name, surname)')
           .match(accountFilter)
           .order('received_date', { ascending: false })
           .limit(50);
@@ -159,6 +176,8 @@ export default function MessagesPage() {
               date: new Date(msg.received_date),
               isRead: msg.is_read,
               isStarred: msg.is_starred,
+              assigned_to: msg.assigned_to,
+              assigned_employee: msg.assigned_employee,
               originalData: msg,
             }))
           );
@@ -188,16 +207,102 @@ export default function MessagesPage() {
     fetchMessages();
   };
 
+  const handleReply = (message: UnifiedMessage) => {
+    setReplyToMessage(message);
+    setShowNewMessageModal(true);
+  };
+
+  const handleAssign = (messageId: string, messageType: 'contact_form' | 'received', assignedTo: string | null) => {
+    setMessageToAssign({ id: messageId, type: messageType, assignedTo });
+    setShowAssignModal(true);
+  };
+
+  const handleDelete = async (messageId: string, messageType: string) => {
+    const confirmed = await showConfirm({
+      title: 'Usuń wiadomość',
+      message: 'Czy na pewno chcesz usunąć tę wiadomość? Ta operacja jest nieodwracalna.',
+      confirmText: 'Usuń',
+      cancelText: 'Anuluj',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      const tableName = messageType === 'contact_form' ? 'contact_messages'
+                      : messageType === 'received' ? 'received_emails'
+                      : 'sent_emails';
+
+      const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      showSnackbar('Wiadomość została usunięta', 'success');
+      if (selectedMessage?.id === messageId) {
+        setSelectedMessage(null);
+      }
+      fetchMessages();
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      showSnackbar('Błąd podczas usuwania wiadomości', 'error');
+    }
+  };
+
+  const handleMove = async (messageId: string) => {
+    showSnackbar('Funkcja przenoszenia będzie wkrótce dostępna', 'info');
+  };
+
+  const fetchEmailsFromServer = async () => {
+    if (!currentEmployee) {
+      showSnackbar('Musisz być zalogowany', 'error');
+      return;
+    }
+
+    try {
+      showSnackbar('Pobieranie wiadomości z serwera...', 'info');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-emails`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employeeId: currentEmployee.id,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showSnackbar(`Pobrano ${result.count || 0} nowych wiadomości`, 'success');
+        fetchMessages();
+      } else {
+        showSnackbar(`Błąd: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error fetching emails:', error);
+      showSnackbar('Nie udało się pobrać wiadomości', 'error');
+    }
+  };
+
   const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string }) => {
     if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
-      alert('Wybierz konto email do wysłania');
+      showSnackbar('Wybierz konto email do wysłania', 'warning');
       return;
     }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert('Musisz być zalogowany');
+        showSnackbar('Musisz być zalogowany', 'error');
         return;
       }
 
@@ -220,16 +325,17 @@ export default function MessagesPage() {
       const result = await response.json();
 
       if (result.success) {
-        alert('Wiadomość wysłana!');
+        showSnackbar('Wiadomość wysłana!', 'success');
         setShowNewMessageModal(false);
+        setReplyToMessage(null);
         setNewMessage({ to: '', subject: '', body: '' });
         fetchMessages();
       } else {
-        alert(`Błąd: ${result.error}`);
+        showSnackbar(`Błąd: ${result.error}`, 'error');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Nie udało się wysłać wiadomości');
+      showSnackbar('Nie udało się wysłać wiadomości', 'error');
     }
   };
 
