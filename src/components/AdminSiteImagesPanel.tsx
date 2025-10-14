@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Upload, Image as ImageIcon, Save, Trash2, Eye, EyeOff, Plus, CreditCard as Edit2, X } from 'lucide-react';
+import { useDialog } from '../contexts/DialogContext';
 
 interface SiteImage {
   id: string;
@@ -26,6 +27,7 @@ export default function AdminSiteImagesPanel() {
   const [editingImage, setEditingImage] = useState<SiteImage | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { showAlert, showConfirm } = useDialog();
 
   const sections = [
     { value: 'all', label: 'Wszystkie sekcje' },
@@ -104,7 +106,7 @@ export default function AdminSiteImagesPanel() {
       setEditingImage(null);
     } catch (error) {
       console.error('Error saving image:', error);
-      alert('Błąd podczas zapisywania obrazu');
+      showAlert('Wystąpił błąd podczas zapisywania obrazu', 'Błąd', 'error');
     }
     setSaving(false);
   };
@@ -135,13 +137,14 @@ export default function AdminSiteImagesPanel() {
       setEditingImage(null);
     } catch (error) {
       console.error('Error creating image:', error);
-      alert('Błąd podczas tworzenia obrazu');
+      showAlert('Wystąpił błąd podczas tworzenia obrazu', 'Błąd', 'error');
     }
     setSaving(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć ten obraz?')) return;
+    const confirmed = await showConfirm('Czy na pewno chcesz usunąć ten obraz?', 'Usuń obraz');
+    if (!confirmed) return;
 
     try {
       const { error } = await supabase
@@ -153,7 +156,7 @@ export default function AdminSiteImagesPanel() {
       await fetchImages();
     } catch (error) {
       console.error('Error deleting image:', error);
-      alert('Błąd podczas usuwania obrazu');
+      showAlert('Wystąpił błąd podczas usuwania obrazu', 'Błąd', 'error');
     }
   };
 

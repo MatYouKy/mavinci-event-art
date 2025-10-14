@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Search, Mail, Phone, Briefcase, Shield, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface Employee {
   id: string;
@@ -283,9 +284,11 @@ function AddEmployeeModal({
 
   if (!isOpen) return null;
 
+  const { showAlert } = useDialog();
+
   const handleSubmit = async () => {
     if (!formData.name || !formData.surname || !formData.email || !formData.password) {
-      alert('Wypełnij wszystkie wymagane pola (imię, nazwisko, email, hasło)');
+      showAlert('Wypełnij wszystkie wymagane pola (imię, nazwisko, email, hasło)', 'Brak danych', 'warning');
       return;
     }
 
@@ -310,17 +313,21 @@ function AddEmployeeModal({
 
       if (!response.ok || result.error) {
         console.error('Error creating employee:', result.error);
-        alert(`Błąd podczas tworzenia pracownika: ${result.error}`);
+        showAlert(result.error, 'Błąd podczas tworzenia pracownika', 'error');
         setIsCreating(false);
         return;
       }
 
-      alert(`Pracownik ${formData.name} ${formData.surname} został dodany pomyślnie!\n\nEmail: ${formData.email}\nHasło tymczasowe: ${formData.password}\n\nPracownik może się teraz zalogować do CRM.`);
+      showAlert(
+        `Pracownik został dodany pomyślnie!\n\nEmail: ${formData.email}\nHasło tymczasowe: ${formData.password}\n\nPracownik może się teraz zalogować do CRM.`,
+        `${formData.name} ${formData.surname}`,
+        'success'
+      );
       onAdded();
       onClose();
     } catch (err: any) {
       console.error('Error:', err);
-      alert(`Wystąpił błąd: ${err.message}`);
+      showAlert(err.message, 'Wystąpił błąd', 'error');
     } finally {
       setIsCreating(false);
     }

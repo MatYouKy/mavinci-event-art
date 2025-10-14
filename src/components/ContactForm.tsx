@@ -6,6 +6,7 @@ import * as Yup from 'yup';
 import { Send, Upload, FileText, X as XIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
+import { useDialog } from '@/contexts/DialogContext';
 
 export interface ContactFormProps {
   category?: string;
@@ -51,6 +52,7 @@ export default function ContactForm({
   const [isSuccess, setIsSuccess] = useState(false);
   const [isError, setIsError] = useState(false);
   const [sourcePage, setSourcePage] = useState('/');
+  const { showAlert } = useDialog();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -325,7 +327,7 @@ export default function ContactForm({
                         const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 10 * 1024 * 1024) {
-                            alert('Plik jest zbyt duży. Maksymalny rozmiar to 10MB.');
+                            showAlert('Plik jest zbyt duży. Maksymalny rozmiar to 10MB.', 'Plik zbyt duży', 'warning');
                             e.target.value = '';
                             return;
                           }

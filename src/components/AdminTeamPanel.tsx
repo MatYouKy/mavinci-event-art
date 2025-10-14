@@ -9,12 +9,14 @@ import { ImageEditorField } from './ImageEditorField';
 import { FormInput } from './formik/FormInput';
 import { uploadImage } from '../lib/storage';
 import { IUploadImage } from '../types/image';
+import { useDialog } from '../contexts/DialogContext';
 
 export default function AdminTeamPanel() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const { showAlert, showConfirm } = useDialog();
 
   useEffect(() => {
     fetchMembers();
@@ -112,12 +114,13 @@ export default function AdminTeamPanel() {
 
       fetchMembers();
     } catch (error: any) {
-      alert('Błąd: ' + error.message);
+      showAlert(error.message, 'Błąd', 'error');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tego członka zespołu?')) {
+    const confirmed = await showConfirm('Czy na pewno chcesz usunąć tego członka zespołu?', 'Usuń członka zespołu');
+    if (!confirmed) {
       return;
     }
 
@@ -131,7 +134,7 @@ export default function AdminTeamPanel() {
       if (!response.ok) throw new Error('Failed to delete');
       fetchMembers();
     } catch (error: any) {
-      alert('Błąd podczas usuwania: ' + error.message);
+      showAlert(error.message, 'Błąd podczas usuwania', 'error');
     }
   };
 

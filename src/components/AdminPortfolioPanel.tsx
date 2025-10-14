@@ -9,12 +9,14 @@ import { FormInput } from './formik/FormInput';
 import { uploadImage } from '../lib/storage';
 import { IUploadImage } from '../types/image';
 import { PortfolioGalleryEditor } from './PortfolioGalleryEditor';
+import { useDialog } from '../contexts/DialogContext';
 
 export default function AdminPortfolioPanel() {
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const { showAlert, showConfirm } = useDialog();
 
   useEffect(() => {
     fetchProjects();
@@ -95,12 +97,13 @@ export default function AdminPortfolioPanel() {
 
       fetchProjects();
     } catch (error: any) {
-      alert('Błąd: ' + error.message);
+      showAlert(error.message, 'Błąd', 'error');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć ten projekt?')) {
+    const confirmed = await showConfirm('Czy na pewno chcesz usunąć ten projekt?', 'Usuń projekt');
+    if (!confirmed) {
       return;
     }
 
