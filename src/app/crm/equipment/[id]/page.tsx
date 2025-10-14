@@ -500,12 +500,12 @@ function TabCarousel({ activeTab, setActiveTab, equipment }: any) {
     { id: 'technical', label: 'Parametry techniczne' },
     { id: 'purchase', label: 'Informacje zakupowe' },
     { id: 'components', label: `Skład zestawu (${equipment.equipment_components.length})` },
-    { id: 'units', label: 'Jednostki', hiddenFor: 'cable' },
+    { id: 'units', label: `Jednostki (${units.length})` },
     { id: 'gallery', label: `Galeria (${equipment.equipment_gallery.length})` },
     { id: 'history', label: 'Historia' },
   ];
 
-  const tabs = allTabs.filter(tab => !(isCable && tab.hiddenFor === 'cable'));
+  const tabs = allTabs;
 
   useEffect(() => {
     const updateVisibleTabs = () => {
