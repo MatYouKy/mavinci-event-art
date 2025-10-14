@@ -122,6 +122,8 @@ export default function EquipmentDetailPage() {
   const [saving, setSaving] = useState(false);
   const [showAddConnectorModal, setShowAddConnectorModal] = useState(false);
   const [connectorField, setConnectorField] = useState<'in' | 'out' | null>(null);
+  const [showConnectorPreview, setShowConnectorPreview] = useState(false);
+  const [selectedConnector, setSelectedConnector] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'technical' | 'purchase' | 'components' | 'units' | 'gallery' | 'stock' | 'history'>('details');
 
   const [editForm, setEditForm] = useState<any>({});
@@ -440,6 +442,13 @@ export default function EquipmentDetailPage() {
           isEditing={isEditing}
           onInputChange={handleInputChange}
           connectorTypes={connectorTypes}
+          onConnectorClick={(connectorName: string) => {
+            const connector = connectorTypes.find((c: any) => c.name === connectorName);
+            if (connector) {
+              setSelectedConnector(connector);
+              setShowConnectorPreview(true);
+            }
+          }}
         />
       )}
 
@@ -756,7 +765,7 @@ function DetailsTab({
   );
 }
 
-function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes }: any) {
+function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes, onConnectorClick }: any) {
   const isCable = equipment.equipment_categories?.name?.toLowerCase().includes('przewod');
 
   return (
@@ -844,15 +853,29 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wejściowy</label>
-                    <div className="text-[#e5e4e2]">
-                      {equipment.cable_specs?.connector_in || '-'}
-                    </div>
+                    {equipment.cable_specs?.connector_in ? (
+                      <button
+                        onClick={() => onConnectorClick(equipment.cable_specs.connector_in)}
+                        className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
+                      >
+                        {equipment.cable_specs.connector_in}
+                      </button>
+                    ) : (
+                      <div className="text-[#e5e4e2]">-</div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wyjściowy</label>
-                    <div className="text-[#e5e4e2]">
-                      {equipment.cable_specs?.connector_out || '-'}
-                    </div>
+                    {equipment.cable_specs?.connector_out ? (
+                      <button
+                        onClick={() => onConnectorClick(equipment.cable_specs.connector_out)}
+                        className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
+                      >
+                        {equipment.cable_specs.connector_out}
+                      </button>
+                    ) : (
+                      <div className="text-[#e5e4e2]">-</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2529,6 +2552,20 @@ function HistoryTab({ history }: { history: StockHistory[] }) {
           }}
         />
       )}
+
+      {showConnectorPreview && selectedConnector && (
+        <ConnectorPreviewModal
+          connector={selectedConnector}
+          onClose={() => {
+            setShowConnectorPreview(false);
+            setSelectedConnector(null);
+          }}
+          onEdit={() => {
+            setShowConnectorPreview(false);
+            // TODO: Implement edit modal
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2537,7 +2574,25 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [commonUses, setCommonUses] = useState('');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingThumbnail(true);
+    try {
+      const url = await uploadImage(file, 'connector-thumbnails');
+      setThumbnailUrl(url);
+    } catch (error) {
+      console.error('Error uploading thumbnail:', error);
+      alert('Błąd podczas wgrywania zdjęcia');
+    } finally {
+      setUploadingThumbnail(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2551,6 +2606,7 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
           name: name.trim(),
           description: description.trim() || null,
           common_uses: commonUses.trim() || null,
+          thumbnail_url: thumbnailUrl || null,
           is_active: true,
         });
 
@@ -2608,6 +2664,32 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
             />
           </div>
 
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zdjęcie wtyczki (opcjonalnie)</label>
+            <div className="flex gap-4 items-start">
+              {thumbnailUrl && (
+                <div className="w-20 h-20 rounded-lg overflow-hidden bg-[#0f1119] border border-[#d3bb73]/10">
+                  <img src={thumbnailUrl} alt="Miniaturka" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <label className="flex-1 cursor-pointer">
+                <div className="border-2 border-dashed border-[#d3bb73]/20 rounded-lg p-4 text-center hover:border-[#d3bb73]/40 transition-colors">
+                  <Upload className="w-6 h-6 text-[#e5e4e2]/40 mx-auto mb-2" />
+                  <div className="text-sm text-[#e5e4e2]/60">
+                    {uploadingThumbnail ? 'Wgrywanie...' : 'Kliknij aby dodać zdjęcie'}
+                  </div>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleThumbnailUpload}
+                  className="hidden"
+                  disabled={uploadingThumbnail}
+                />
+              </label>
+            </div>
+          </div>
+
           <div className="flex gap-3 justify-end pt-4">
             <button
               type="button"
@@ -2625,6 +2707,74 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function ConnectorPreviewModal({ connector, onClose, onEdit }: { connector: any; onClose: () => void; onEdit: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-lg w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-[#d3bb73]/10 flex justify-between items-center">
+          <h3 className="text-xl font-light text-[#e5e4e2]">{connector.name}</h3>
+          <button
+            onClick={onClose}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {connector.thumbnail_url && (
+            <div className="w-full aspect-video rounded-lg overflow-hidden bg-[#0f1119] border border-[#d3bb73]/10">
+              <img
+                src={connector.thumbnail_url}
+                alt={connector.name}
+                className="w-full h-full object-contain"
+              />
+            </div>
+          )}
+
+          {connector.description && (
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+              <p className="text-[#e5e4e2]">{connector.description}</p>
+            </div>
+          )}
+
+          {connector.common_uses && (
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typowe zastosowania</label>
+              <p className="text-[#e5e4e2]/80">{connector.common_uses}</p>
+            </div>
+          )}
+
+          {!connector.description && !connector.common_uses && !connector.thumbnail_url && (
+            <div className="text-center text-[#e5e4e2]/40 py-8">
+              Brak dodatkowych informacji o tym wtyku
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end">
+          <button
+            onClick={onEdit}
+            className="px-6 py-2.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+          >
+            Edytuj wtyk
+          </button>
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+          >
+            Zamknij
+          </button>
+        </div>
       </div>
     </div>
   );

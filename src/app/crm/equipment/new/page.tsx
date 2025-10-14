@@ -775,7 +775,25 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [commonUses, setCommonUses] = useState('');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingThumbnail(true);
+    try {
+      const url = await uploadImage(file, 'connector-thumbnails');
+      setThumbnailUrl(url);
+    } catch (error) {
+      console.error('Error uploading thumbnail:', error);
+      alert('Błąd podczas wgrywania zdjęcia');
+    } finally {
+      setUploadingThumbnail(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -789,6 +807,7 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
           name: name.trim(),
           description: description.trim() || null,
           common_uses: commonUses.trim() || null,
+          thumbnail_url: thumbnailUrl || null,
           is_active: true,
         });
 
@@ -844,6 +863,32 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
               rows={3}
               className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zdjęcie wtyczki (opcjonalnie)</label>
+            <div className="flex gap-4 items-start">
+              {thumbnailUrl && (
+                <div className="w-20 h-20 rounded-lg overflow-hidden bg-[#0f1119] border border-[#d3bb73]/10">
+                  <img src={thumbnailUrl} alt="Miniaturka" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <label className="flex-1 cursor-pointer">
+                <div className="border-2 border-dashed border-[#d3bb73]/20 rounded-lg p-4 text-center hover:border-[#d3bb73]/40 transition-colors">
+                  <Upload className="w-6 h-6 text-[#e5e4e2]/40 mx-auto mb-2" />
+                  <div className="text-sm text-[#e5e4e2]/60">
+                    {uploadingThumbnail ? 'Wgrywanie...' : 'Kliknij aby dodać zdjęcie'}
+                  </div>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleThumbnailUpload}
+                  className="hidden"
+                  disabled={uploadingThumbnail}
+                />
+              </label>
+            </div>
           </div>
 
           <div className="flex gap-3 justify-end pt-4">
