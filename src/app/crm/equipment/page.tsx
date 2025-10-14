@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag, Copy } from 'lucide-react';
+import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag, Copy, AlignJustify } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import KitsManagementModal from '@/components/crm/KitsManagementModal';
 
@@ -66,7 +66,8 @@ export default function EquipmentPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [searchField, setSearchField] = useState<'all' | 'name' | 'brand'>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'compact'>('list');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showLocationsModal, setShowLocationsModal] = useState(false);
   const [showKitsModal, setShowKitsModal] = useState(false);
@@ -179,9 +180,18 @@ export default function EquipmentPage() {
   };
 
   const filteredEquipment = equipment.filter((item) => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.model?.toLowerCase().includes(searchTerm.toLowerCase());
+    let matchesSearch = false;
+    const lowerSearch = searchTerm.toLowerCase();
+
+    if (searchField === 'all') {
+      matchesSearch = item.name.toLowerCase().includes(lowerSearch) ||
+        item.brand?.toLowerCase().includes(lowerSearch) ||
+        item.model?.toLowerCase().includes(lowerSearch);
+    } else if (searchField === 'name') {
+      matchesSearch = item.name.toLowerCase().includes(lowerSearch);
+    } else if (searchField === 'brand') {
+      matchesSearch = item.brand?.toLowerCase().includes(lowerSearch) || false;
+    }
 
     const matchesCategory = !selectedCategory || item.category_id === selectedCategory;
 
@@ -282,11 +292,25 @@ export default function EquipmentPage() {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4">
+        <select
+          value={searchField}
+          onChange={(e) => setSearchField(e.target.value as any)}
+          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+        >
+          <option value="all">Wszystkie pola</option>
+          <option value="name">Nazwa</option>
+          <option value="brand">Marka</option>
+        </select>
+
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
           <input
             type="text"
-            placeholder="Szukaj sprzętu..."
+            placeholder={
+              searchField === 'all' ? 'Szukaj sprzętu...' :
+              searchField === 'name' ? 'Szukaj po nazwie...' :
+              'Szukaj po marce...'
+            }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
@@ -295,12 +319,24 @@ export default function EquipmentPage() {
 
         <div className="flex gap-2">
           <button
+            onClick={() => setViewMode('compact')}
+            className={`p-2.5 rounded-lg transition-colors ${
+              viewMode === 'compact'
+                ? 'bg-[#d3bb73] text-[#1c1f33]'
+                : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
+            }`}
+            title="Widok kompaktowy"
+          >
+            <AlignJustify className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setViewMode('list')}
             className={`p-2.5 rounded-lg transition-colors ${
               viewMode === 'list'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
             }`}
+            title="Widok listy"
           >
             <List className="w-5 h-5" />
           </button>
@@ -311,6 +347,7 @@ export default function EquipmentPage() {
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
             }`}
+            title="Widok kafelków"
           >
             <Grid className="w-5 h-5" />
           </button>
@@ -349,6 +386,100 @@ export default function EquipmentPage() {
           <p className="text-[#e5e4e2]/60">
             {searchTerm || selectedCategory ? 'Nie znaleziono sprzętu' : 'Brak sprzętu w magazynie'}
           </p>
+        </div>
+      ) : viewMode === 'compact' ? (
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+          <div className="grid grid-cols-[auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0">
+            <div className="w-6"></div>
+            <div>Nazwa / Model</div>
+            <div>Kategoria</div>
+            <div className="text-center">Stan</div>
+            <div className="text-center">Dostępne</div>
+            <div className="text-center">Razem</div>
+          </div>
+          {allItems.map((item) => {
+            const isKit = item.type === 'kit';
+            const stockInfo = isKit ? getKitInfo(item.data) : getStockInfo(item.data);
+            const itemData = item.data as any;
+
+            return (
+              <div
+                key={itemData.id}
+                onClick={() => {
+                  if (isKit) {
+                    setSelectedKitId(itemData.id);
+                    setShowKitsModal(true);
+                  } else {
+                    router.push(`/crm/equipment/${itemData.id}`);
+                  }
+                }}
+                className={`grid grid-cols-[auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group ${
+                  isKit ? 'bg-blue-500/5' : ''
+                }`}
+              >
+                <div className="relative w-6 h-6 flex-shrink-0">
+                  {isKit && (
+                    <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                      <Flag className="w-3 h-3 text-white" />
+                    </div>
+                  )}
+                  {!isKit && itemData.thumbnail_url && (
+                    <img
+                      src={itemData.thumbnail_url}
+                      alt=""
+                      className="w-6 h-6 rounded object-cover"
+                    />
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="font-medium text-[#e5e4e2] truncate">
+                    {itemData.name}
+                  </div>
+                  {!isKit && (itemData.brand || itemData.model) && (
+                    <div className="text-xs text-[#e5e4e2]/50 truncate">
+                      {itemData.brand} {itemData.model}
+                    </div>
+                  )}
+                  {isKit && itemData.description && (
+                    <div className="text-xs text-[#e5e4e2]/50 truncate">
+                      {itemData.description}
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-xs text-[#e5e4e2]/60 truncate">
+                  {isKit ? (
+                    <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs">ZESTAW</span>
+                  ) : (
+                    itemData.equipment_categories?.name || '-'
+                  )}
+                </div>
+
+                <div className={`text-xs ${stockInfo.color} text-center truncate`}>
+                  {stockInfo.label}
+                </div>
+
+                <div className="text-[#e5e4e2] font-medium text-center">
+                  {stockInfo.available}
+                </div>
+
+                <div className="text-[#e5e4e2]/60 text-center">
+                  {stockInfo.total}
+                </div>
+
+                {!isKit && (
+                  <button
+                    onClick={(e) => handleDuplicateEquipment(itemData, e)}
+                    className="absolute right-2 p-1 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded hover:bg-purple-500/10 transition-all opacity-0 group-hover:opacity-100"
+                    title="Duplikuj"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
