@@ -104,7 +104,7 @@ export default function MessagesPage() {
       if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
         const { data: contactMessages } = await supabase
           .from('contact_messages')
-          .select('*, assigned_employee:employees!assigned_to(name, surname)')
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(50);
 
@@ -124,8 +124,8 @@ export default function MessagesPage() {
               isRead: msg.status !== 'new',
               isStarred: false,
               status: msg.status,
-              assigned_to: msg.assigned_to,
-              assigned_employee: msg.assigned_employee,
+              assigned_to: null,
+              assigned_employee: null,
               originalData: msg,
             }))
           );
@@ -164,7 +164,7 @@ export default function MessagesPage() {
 
         const { data: receivedEmails } = await supabase
           .from('received_emails')
-          .select('*, assigned_employee:employees!assigned_to(name, surname)')
+          .select('*')
           .eq('email_account_id', selectedAccount)
           .order('received_date', { ascending: false })
           .limit(50);
@@ -182,8 +182,8 @@ export default function MessagesPage() {
               date: new Date(msg.received_date),
               isRead: msg.is_read,
               isStarred: msg.is_starred,
-              assigned_to: msg.assigned_to,
-              assigned_employee: msg.assigned_employee,
+              assigned_to: null,
+              assigned_employee: null,
               originalData: msg,
             }))
           );
