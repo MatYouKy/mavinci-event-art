@@ -186,6 +186,9 @@ export default function EquipmentDetailPage() {
         dimensions_length: data.dimensions_cm?.length || '',
         dimensions_width: data.dimensions_cm?.width || '',
         dimensions_height: data.dimensions_cm?.height || '',
+        cable_length_meters: data.cable_specs?.length_meters || '',
+        cable_connector_in: data.cable_specs?.connector_in || '',
+        cable_connector_out: data.cable_specs?.connector_out || '',
       };
 
       setEquipment(data);
@@ -1593,6 +1596,7 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 }
 
 function UnitsTab({ equipment, units, onUpdate }: any) {
+  const isCable = equipment?.equipment_categories?.name?.toLowerCase().includes('przewod');
   const [showModal, setShowModal] = useState(false);
   const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
   const [unitForm, setUnitForm] = useState({
@@ -1805,6 +1809,41 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
     in_service: units.filter((u: EquipmentUnit) => u.status === 'in_service'),
     retired: units.filter((u: EquipmentUnit) => u.status === 'retired'),
   };
+
+  if (isCable) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
+          <div className="text-center">
+            <div className="text-6xl font-light text-[#d3bb73] mb-4">{units.length}</div>
+            <div className="text-lg text-[#e5e4e2]/60 mb-2">Liczba jednostek</div>
+            <p className="text-sm text-[#e5e4e2]/40 max-w-md mx-auto">
+              Przewody nie wymagają szczegółowego zarządzania jednostkami. Liczba pokazuje ilość dostępnych przewodów.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+            <div className="bg-[#0f1119] border border-green-500/10 rounded-xl p-4 text-center">
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Dostępne</div>
+              <div className="text-2xl font-light text-green-400">{units.filter((u: EquipmentUnit) => u.status === 'available').length}</div>
+            </div>
+            <div className="bg-[#0f1119] border border-red-500/10 rounded-xl p-4 text-center">
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Uszkodzone</div>
+              <div className="text-2xl font-light text-red-400">{units.filter((u: EquipmentUnit) => u.status === 'damaged').length}</div>
+            </div>
+            <div className="bg-[#0f1119] border border-orange-500/10 rounded-xl p-4 text-center">
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Serwis</div>
+              <div className="text-2xl font-light text-orange-400">{units.filter((u: EquipmentUnit) => u.status === 'in_service').length}</div>
+            </div>
+            <div className="bg-[#0f1119] border border-gray-500/10 rounded-xl p-4 text-center">
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Wycofane</div>
+              <div className="text-2xl font-light text-gray-400">{units.filter((u: EquipmentUnit) => u.status === 'retired').length}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -627,9 +627,16 @@ export default function EquipmentPage() {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const timeout = setTimeout(() => {
                         setTooltipItem(itemData);
+                        const tooltipHeight = 400;
+                        const spaceBelow = window.innerHeight - rect.bottom;
+                        const spaceAbove = rect.top;
+                        let yPos = rect.top;
+                        if (spaceBelow < tooltipHeight && spaceAbove > spaceBelow) {
+                          yPos = Math.max(10, rect.bottom - tooltipHeight);
+                        }
                         setTooltipPosition({
                           x: rect.right + 10,
-                          y: rect.top,
+                          y: yPos,
                         });
                       }, 500);
                       setTooltipTimeout(timeout);
@@ -752,9 +759,16 @@ export default function EquipmentPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const timeout = setTimeout(() => {
                           setTooltipItem(itemData);
+                          const tooltipHeight = 400;
+                          const spaceBelow = window.innerHeight - rect.bottom;
+                          const spaceAbove = rect.top;
+                          let yPos = rect.top;
+                          if (spaceBelow < tooltipHeight && spaceAbove > spaceBelow) {
+                            yPos = Math.max(10, rect.bottom - tooltipHeight);
+                          }
                           setTooltipPosition({
                             x: rect.right + 10,
-                            y: rect.top,
+                            y: yPos,
                           });
                         }, 500);
                         setTooltipTimeout(timeout);
