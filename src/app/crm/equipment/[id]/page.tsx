@@ -204,13 +204,14 @@ export default function EquipmentDetailPage() {
 
   const fetchStockHistory = async () => {
     const { data, error } = await supabase
-      .from('equipment_stock_history')
+      .from('equipment_unit_events')
       .select(`
         *,
+        equipment_units(unit_serial_number, internal_id),
         employees(name, surname)
       `)
-      .eq('equipment_id', equipmentId)
-      .order('created_at', { ascending: false })
+      .eq('equipment_units.equipment_id', equipmentId)
+      .order('event_date', { ascending: false })
       .limit(50);
 
     if (data) setStockHistory(data);
@@ -531,6 +532,33 @@ export default function EquipmentDetailPage() {
           </div>
         </div>
       )}
+
+      {showAddConnectorModal && (
+        <AddConnectorModal
+          onClose={() => setShowAddConnectorModal(false)}
+          onAdd={(name) => {
+            if (connectorField === 'in') {
+              setEditForm((prev: any) => ({ ...prev, cable_connector_in: name }));
+            } else {
+              setEditForm((prev: any) => ({ ...prev, cable_connector_out: name }));
+            }
+            fetchConnectorTypes();
+          }}
+        />
+      )}
+
+      {showConnectorPreview && selectedConnector && (
+        <ConnectorPreviewModal
+          connector={selectedConnector}
+          onClose={() => {
+            setShowConnectorPreview(false);
+            setSelectedConnector(null);
+          }}
+          onEdit={() => {
+            setShowConnectorPreview(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -550,7 +578,9 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
     { id: 'history', label: 'Historia' },
   ];
 
-  const tabs = allTabs;
+  const tabs = isCable
+    ? allTabs.filter(tab => tab.id !== 'components')
+    : allTabs;
 
   useEffect(() => {
     const updateVisibleTabs = () => {
@@ -2625,69 +2655,90 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
   );
 }
 
-function HistoryTab({ history }: { history: StockHistory[] }) {
-  const getChangeTypeLabel = (type: string) => {
+function HistoryTab({ history }: { history: any[] }) {
+  const getEventTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      add: 'Dodano',
-      remove: 'Usunięto',
-      purchase: 'Zakup',
-      rent: 'Wypożyczenie',
-      return: 'Zwrot',
-      damage: 'Uszkodzenie',
+      created: 'Utworzono',
+      status_change: 'Zmiana statusu',
+      location_change: 'Zmiana lokalizacji',
+      maintenance: 'Konserwacja',
       repair: 'Naprawa',
+      damage: 'Uszkodzenie',
+      sold: 'Sprzedano',
+      rented: 'Wypożyczono',
+      returned: 'Zwrócono',
     };
     return labels[type] || type;
   };
 
-  const getChangeTypeColor = (type: string) => {
+  const getEventTypeColor = (type: string) => {
     const colors: Record<string, string> = {
-      add: 'text-green-400',
-      purchase: 'text-green-400',
-      return: 'text-green-400',
-      repair: 'text-green-400',
-      remove: 'text-red-400',
-      rent: 'text-blue-400',
+      created: 'text-green-400',
+      maintenance: 'text-blue-400',
+      repair: 'text-yellow-400',
       damage: 'text-red-400',
+      sold: 'text-purple-400',
+      rented: 'text-cyan-400',
+      returned: 'text-green-400',
+      status_change: 'text-blue-400',
+      location_change: 'text-blue-400',
     };
     return colors[type] || 'text-[#e5e4e2]';
   };
 
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      available: 'Dostępny',
+      in_use: 'W użyciu',
+      maintenance: 'Konserwacja',
+      repair: 'Naprawa',
+      damaged: 'Uszkodzony',
+      sold: 'Sprzedany',
+      rented: 'Wypożyczony',
+    };
+    return labels[status] || status;
+  };
+
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-medium text-[#e5e4e2]">Historia zmian</h3>
+      <h3 className="text-lg font-medium text-[#e5e4e2]">Historia zdarzeń</h3>
 
       {history.length === 0 ? (
         <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
           <History className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60">Brak historii zmian</p>
+          <p className="text-[#e5e4e2]/60">Brak historii zdarzeń</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {history.map((entry) => (
+          {history.map((event) => (
             <div
-              key={entry.id}
+              key={event.id}
               className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4"
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className={`font-medium ${getChangeTypeColor(entry.change_type)}`}>
-                      {getChangeTypeLabel(entry.change_type)}
+                    <span className={`font-medium ${getEventTypeColor(event.event_type)}`}>
+                      {getEventTypeLabel(event.event_type)}
                     </span>
-                    <span className="text-[#e5e4e2]">
-                      {entry.quantity_change > 0 ? '+' : ''}{entry.quantity_change} szt.
-                    </span>
-                    <span className="text-[#e5e4e2]/60 text-sm">
-                      → Stan: {entry.quantity_after}
-                    </span>
+                    {event.equipment_units && (
+                      <span className="text-[#e5e4e2]/60 text-sm">
+                        {event.equipment_units.unit_serial_number || event.equipment_units.internal_id}
+                      </span>
+                    )}
                   </div>
-                  {entry.notes && (
-                    <div className="text-sm text-[#e5e4e2]/60 mb-1">{entry.notes}</div>
+                  {event.new_status && (
+                    <div className="text-sm text-[#e5e4e2]/60 mb-1">
+                      Status: {getStatusLabel(event.new_status)}
+                    </div>
+                  )}
+                  {event.notes && (
+                    <div className="text-sm text-[#e5e4e2]/60 mb-1">{event.notes}</div>
                   )}
                   <div className="text-xs text-[#e5e4e2]/40">
-                    {new Date(entry.created_at).toLocaleString('pl-PL')}
-                    {entry.employees && (
-                      <span> • {entry.employees.name} {entry.employees.surname}</span>
+                    {new Date(event.event_date).toLocaleString('pl-PL')}
+                    {event.employees && (
+                      <span> • {event.employees.name} {event.employees.surname}</span>
                     )}
                   </div>
                 </div>
@@ -2695,34 +2746,6 @@ function HistoryTab({ history }: { history: StockHistory[] }) {
             </div>
           ))}
         </div>
-      )}
-
-      {showAddConnectorModal && (
-        <AddConnectorModal
-          onClose={() => setShowAddConnectorModal(false)}
-          onAdd={(name) => {
-            if (connectorField === 'in') {
-              setEditForm((prev: any) => ({ ...prev, cable_connector_in: name }));
-            } else {
-              setEditForm((prev: any) => ({ ...prev, cable_connector_out: name }));
-            }
-            fetchConnectorTypes();
-          }}
-        />
-      )}
-
-      {showConnectorPreview && selectedConnector && (
-        <ConnectorPreviewModal
-          connector={selectedConnector}
-          onClose={() => {
-            setShowConnectorPreview(false);
-            setSelectedConnector(null);
-          }}
-          onEdit={() => {
-            setShowConnectorPreview(false);
-            // TODO: Implement edit modal
-          }}
-        />
       )}
     </div>
   );
