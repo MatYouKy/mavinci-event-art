@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag, Copy, AlignJustify } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import KitsManagementModal from '@/components/crm/KitsManagementModal';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Category {
   id: string;
@@ -60,6 +61,7 @@ interface Kit {
 
 export default function EquipmentPage() {
   const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [kits, setKits] = useState<Kit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -172,10 +174,10 @@ export default function EquipmentPage() {
       }
 
       fetchEquipment();
-      alert(`Sprzęt "${newName}" został zduplikowany`);
+      showSnackbar(`Sprzęt "${newName}" został zduplikowany`, 'success');
     } catch (error) {
       console.error('Error duplicating equipment:', error);
-      alert('Błąd podczas duplikowania sprzętu');
+      showSnackbar('Błąd podczas duplikowania sprzętu', 'error');
     }
   };
 
@@ -809,7 +811,7 @@ function LocationsManagementModal({ onClose }: { onClose: () => void }) {
 
   const handleSaveLocation = async () => {
     if (!locationForm.name.trim()) {
-      alert('Nazwa lokalizacji jest wymagana');
+      showSnackbar('Nazwa lokalizacji jest wymagana', 'warning');
       return;
     }
 
@@ -844,9 +846,10 @@ function LocationsManagementModal({ onClose }: { onClose: () => void }) {
 
       setShowAddForm(false);
       fetchLocations();
+      showSnackbar('Lokalizacja została zapisana', 'success');
     } catch (error) {
       console.error('Error saving location:', error);
-      alert('Błąd podczas zapisywania lokalizacji');
+      showSnackbar('Błąd podczas zapisywania lokalizacji', 'error');
     } finally {
       setSaving(false);
     }
@@ -863,9 +866,10 @@ function LocationsManagementModal({ onClose }: { onClose: () => void }) {
 
       if (error) throw error;
       fetchLocations();
+      showSnackbar('Lokalizacja została usunięta', 'success');
     } catch (error) {
       console.error('Error deleting location:', error);
-      alert('Błąd podczas usuwania lokalizacji');
+      showSnackbar('Błąd podczas usuwania lokalizacji', 'error');
     }
   };
 

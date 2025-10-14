@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, X, Trash2, Package, Search, Edit, Eye, Printer, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface EquipmentUnit {
   id: string;
@@ -47,6 +48,7 @@ export default function KitsManagementModal({
   equipment: Equipment[];
   initialKitId?: string | null;
 }) {
+  const { showSnackbar } = useSnackbar();
   const [kits, setKits] = useState<Kit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -134,7 +136,7 @@ export default function KitsManagementModal({
       setKitForm(prev => ({ ...prev, thumbnail_url: url }));
     } catch (error) {
       console.error('Error uploading image:', error);
-      alert('Błąd podczas przesyłania zdjęcia');
+      showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
     } finally {
       setUploading(false);
     }
@@ -142,7 +144,7 @@ export default function KitsManagementModal({
 
   const handleAddKitItem = (equipmentId: string) => {
     if (kitItems.some(item => item.equipment_id === equipmentId)) {
-      alert('Ten sprzęt jest już w zestawie');
+      showSnackbar('Ten sprzęt jest już w zestawie', 'warning');
       return;
     }
     setKitItems([...kitItems, { equipment_id: equipmentId, quantity: 1, notes: '' }]);
@@ -160,7 +162,7 @@ export default function KitsManagementModal({
       const availableQty = equipmentItem?.equipment_units?.filter(u => u.status === 'available').length || 0;
 
       if (newQty > availableQty) {
-        alert(`Maksymalna dostępna ilość: ${availableQty} szt.`);
+        showSnackbar(`Maksymalna dostępna ilość: ${availableQty} szt.`, 'warning');
         return;
       }
       updated[index].quantity = newQty;
@@ -172,12 +174,12 @@ export default function KitsManagementModal({
 
   const handleSaveKit = async () => {
     if (!kitForm.name.trim()) {
-      alert('Nazwa zestawu jest wymagana');
+      showSnackbar('Nazwa zestawu jest wymagana', 'warning');
       return;
     }
 
     if (kitItems.length === 0) {
-      alert('Dodaj przynajmniej jedną pozycję do zestawu');
+      showSnackbar('Dodaj przynajmniej jedną pozycję do zestawu', 'warning');
       return;
     }
 
@@ -243,7 +245,7 @@ export default function KitsManagementModal({
       fetchKits();
     } catch (error) {
       console.error('Error saving kit:', error);
-      alert('Błąd podczas zapisywania zestawu');
+      showSnackbar('Błąd podczas zapisywania zestawu', 'error');
     } finally {
       setSaving(false);
     }
@@ -262,7 +264,7 @@ export default function KitsManagementModal({
       fetchKits();
     } catch (error) {
       console.error('Error deleting kit:', error);
-      alert('Błąd podczas usuwania zestawu');
+      showSnackbar('Błąd podczas usuwania zestawu', 'error');
     }
   };
 
@@ -298,10 +300,10 @@ export default function KitsManagementModal({
       if (itemsError) throw itemsError;
 
       fetchKits();
-      alert(`Zestaw "${newKitName}" został zduplikowany`);
+      showSnackbar(`Zestaw "${newKitName}" został zduplikowany`, 'success');
     } catch (error) {
       console.error('Error duplicating kit:', error);
-      alert('Błąd podczas duplikowania zestawu');
+      showSnackbar('Błąd podczas duplikowania zestawu', 'error');
     }
   };
 
