@@ -81,12 +81,19 @@ export default function EquipmentPage() {
   const [tooltipItem, setTooltipItem] = useState<any>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [tooltipTimeout, setTooltipTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadUserPreferences();
     fetchCategories();
     fetchEquipment();
     fetchKits();
+
+    return () => {
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+      }
+    };
   }, []);
 
   const loadUserPreferences = async () => {
@@ -594,18 +601,22 @@ export default function EquipmentPage() {
                 }}
                 onMouseEnter={(e) => {
                   if (!isKit) {
-                    setTooltipItem(itemData);
-                  }
-                }}
-                onMouseMove={(e) => {
-                  if (!isKit && tooltipItem) {
-                    setTooltipPosition({
-                      x: e.clientX + 20,
-                      y: e.clientY + 10,
-                    });
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const timeout = setTimeout(() => {
+                      setTooltipItem(itemData);
+                      setTooltipPosition({
+                        x: rect.right + 10,
+                        y: rect.top,
+                      });
+                    }, 500);
+                    setTooltipTimeout(timeout);
                   }
                 }}
                 onMouseLeave={() => {
+                  if (tooltipTimeout) {
+                    clearTimeout(tooltipTimeout);
+                    setTooltipTimeout(null);
+                  }
                   setTooltipItem(null);
                 }}
                 className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group ${
@@ -714,18 +725,22 @@ export default function EquipmentPage() {
                 key={itemData.id}
                 onMouseEnter={(e) => {
                   if (!isKit) {
-                    setTooltipItem(itemData);
-                  }
-                }}
-                onMouseMove={(e) => {
-                  if (!isKit && tooltipItem) {
-                    setTooltipPosition({
-                      x: e.clientX + 20,
-                      y: e.clientY + 10,
-                    });
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const timeout = setTimeout(() => {
+                      setTooltipItem(itemData);
+                      setTooltipPosition({
+                        x: rect.right + 10,
+                        y: rect.top,
+                      });
+                    }, 500);
+                    setTooltipTimeout(timeout);
                   }
                 }}
                 onMouseLeave={() => {
+                  if (tooltipTimeout) {
+                    clearTimeout(tooltipTimeout);
+                    setTooltipTimeout(null);
+                  }
                   setTooltipItem(null);
                 }}
                 className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group ${
