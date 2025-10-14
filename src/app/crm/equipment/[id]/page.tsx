@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Category {
   id: string;
@@ -131,11 +132,11 @@ export default function EquipmentDetailPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
   const [units, setUnits] = useState<EquipmentUnit[]>([]);
-  const [currentEmployee, setCurrentEmployee] = useState<any>(null);
-  const [canEdit, setCanEdit] = useState(false);
+
+  const { canManageModule, loading: employeeLoading } = useCurrentEmployee();
+  const canEdit = canManageModule('equipment');
 
   useEffect(() => {
-    fetchCurrentEmployee();
     fetchEquipment();
     fetchCategories();
     fetchConnectorTypes();
@@ -148,30 +149,6 @@ export default function EquipmentDetailPage() {
       fetchUnits();
     }
   }, [activeTab]);
-
-  const fetchCurrentEmployee = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('email', user.email)
-        .single();
-
-      if (employee) {
-        setCurrentEmployee(employee);
-        const hasEditPermission =
-          employee.role === 'admin' ||
-          employee.access_level === 'admin' ||
-          employee.permissions?.includes('equipment_manage');
-        setCanEdit(hasEditPermission);
-      }
-    } catch (error) {
-      console.error('Error fetching employee:', error);
-    }
-  };
 
   const fetchCategories = async () => {
     const { data } = await supabase

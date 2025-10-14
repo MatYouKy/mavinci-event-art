@@ -12,6 +12,7 @@ import { AvatarEditorModal } from '@/components/AvatarEditorModal';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage, IImage } from '@/types/image';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface ImagePosition {
   posX: number;
@@ -116,60 +117,19 @@ export default function EmployeeDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{id: string, isAdmin: boolean, canManagePermissions?: boolean} | null>(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
 
-  useEffect(() => {
-    checkCurrentUser();
-  }, []);
+  const { employee: currentEmployee, isAdmin, canManagePermissions, loading: currentUserLoading } = useCurrentEmployee();
 
   useEffect(() => {
-    if (employeeId && currentUser) {
+    if (employeeId && currentEmployee) {
       fetchEmployeeDetails();
       fetchDocuments();
       fetchTasks();
       fetchEvents();
     }
-  }, [employeeId, currentUser]);
+  }, [employeeId, currentEmployee]);
 
-  const checkCurrentUser = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setCurrentUser(null);
-        return;
-      }
-
-      const { data: employeeData, error } = await supabase
-        .from('employees')
-        .select('access_level, role, permissions')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching current user employee data:', error);
-        setCurrentUser({ id: user.id, isAdmin: false });
-        return;
-      }
-
-      const isAdmin =
-        employeeData?.access_level === 'admin' ||
-        employeeData?.role === 'admin' ||
-        employeeData?.permissions?.includes('employees_manage');
-
-      const canManagePermissions =
-        employeeData?.access_level === 'admin' ||
-        employeeData?.role === 'admin' ||
-        employeeData?.permissions?.includes('employees_permissions');
-
-      setCurrentUser({ id: user.id, isAdmin, canManagePermissions });
-    } catch (err) {
-      console.error('Error checking current user:', err);
-      setCurrentUser(null);
-    }
-  };
-
-  const isAdmin = currentUser?.isAdmin || false;
   const canEdit = isAdmin;
 
   const fetchEmployeeDetails = async () => {
@@ -574,7 +534,7 @@ export default function EmployeeDetailPage() {
         {[
           { id: 'overview', label: 'Przegląd', icon: User },
           { id: 'emails', label: 'Konta Email', icon: Mail },
-          ...(currentUser?.canManagePermissions ? [{ id: 'permissions', label: 'Uprawnienia', icon: Lock }] : []),
+          ...(canManagePermissions ? [{ id: 'permissions', label: 'Uprawnienia', icon: Lock }] : []),
           { id: 'documents', label: 'Dokumenty', icon: FileText },
           { id: 'tasks', label: 'Zadania', icon: CheckSquare },
           { id: 'events', label: 'Wydarzenia', icon: Calendar },
@@ -602,7 +562,7 @@ export default function EmployeeDetailPage() {
         />
       )}
 
-      {activeTab === 'permissions' && currentUser?.canManagePermissions && (
+      {activeTab === 'permissions' && canManagePermissions && (
         <EmployeePermissionsTab
           employeeId={employeeId}
           isAdmin={isAdmin}

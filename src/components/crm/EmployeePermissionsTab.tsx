@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Shield, Save, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { MODULES, getAllScopes } from '@/lib/permissions';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface Props {
   employeeId: string;
@@ -30,6 +32,8 @@ const modules: Module[] = [
 ];
 
 export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -89,9 +93,18 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
 
   const handleSave = async () => {
     if (!isAdmin) {
-      alert('Tylko administrator może zmieniać uprawnienia');
+      showSnackbar('Tylko administrator może zmieniać uprawnienia', 'error');
       return;
     }
+
+    const confirmed = await showConfirm({
+      title: 'Zapisać zmiany?',
+      message: 'Czy na pewno chcesz zapisać zmiany w uprawnieniach tego pracownika?',
+      confirmText: 'Zapisz',
+      cancelText: 'Anuluj',
+    });
+
+    if (!confirmed) return;
 
     try {
       setSaving(true);
@@ -104,10 +117,10 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
       if (error) throw error;
 
       setHasChanges(false);
-      alert('Uprawnienia zostały zapisane');
+      showSnackbar('Uprawnienia zostały zapisane', 'success');
     } catch (err) {
       console.error('Error saving permissions:', err);
-      alert('Błąd podczas zapisywania uprawnień');
+      showSnackbar('Błąd podczas zapisywania uprawnień', 'error');
     } finally {
       setSaving(false);
     }

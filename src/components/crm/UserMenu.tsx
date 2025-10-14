@@ -15,6 +15,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface EmployeeData {
   id: string;
