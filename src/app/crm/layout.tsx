@@ -8,26 +8,27 @@ import { supabase } from '@/lib/supabase';
 import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
 import { SnackbarProvider } from '@/contexts/SnackbarContext';
+import { canView, isAdmin, type Employee } from '@/lib/permissions';
 
 interface NavigationItem {
   name: string;
   href: string;
   icon: any;
-  permission?: string;
+  module?: string;
 }
 
 const allNavigation: NavigationItem[] = [
   { name: 'Dashboard', href: '/crm', icon: LayoutDashboard },
-  { name: 'Kalendarz', href: '/crm/calendar', icon: Calendar, permission: 'can_view_calendar' },
-  { name: 'Wiadomości', href: '/crm/messages', icon: Mail, permission: 'can_view_messages' },
-  { name: 'Klienci', href: '/crm/clients', icon: Building2, permission: 'can_view_clients' },
-  { name: 'Eventy', href: '/crm/events', icon: Calendar, permission: 'can_view_events' },
-  { name: 'Oferty', href: '/crm/offers', icon: FileText, permission: 'can_view_offers' },
-  { name: 'Umowy', href: '/crm/contracts', icon: FileSignature, permission: 'can_view_contracts' },
-  { name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, permission: 'can_view_attractions' },
-  { name: 'Pracownicy', href: '/crm/employees', icon: Users, permission: 'can_view_employees' },
-  { name: 'Sprzęt', href: '/crm/equipment', icon: Package, permission: 'can_view_equipment' },
-  { name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, permission: 'can_view_tasks' },
+  { name: 'Kalendarz', href: '/crm/calendar', icon: Calendar, module: 'calendar' },
+  { name: 'Wiadomości', href: '/crm/messages', icon: Mail, module: 'messages' },
+  { name: 'Klienci', href: '/crm/clients', icon: Building2, module: 'clients' },
+  { name: 'Eventy', href: '/crm/events', icon: Calendar, module: 'events' },
+  { name: 'Oferty', href: '/crm/offers', icon: FileText, module: 'offers' },
+  { name: 'Umowy', href: '/crm/contracts', icon: FileSignature, module: 'contracts' },
+  { name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, module: 'attractions' },
+  { name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
+  { name: 'Sprzęt', href: '/crm/equipment', icon: Package, module: 'equipment' },
+  { name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
 ];
 
 export default function CRMLayout({ children }: { children: React.ReactNode }) {
@@ -35,7 +36,7 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [permissions, setPermissions] = useState<any>(null);
+  const [employee, setEmployee] = useState<Employee | null>(null);
   const [navigation, setNavigation] = useState<NavigationItem[]>(allNavigation);
   const pathname = usePathname();
   const router = useRouter();
@@ -57,29 +58,23 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
       }
 
       if (session?.user) {
-        const { data: employee } = await supabase
+        const { data: employeeData } = await supabase
           .from('employees')
-          .select('id, role')
+          .select('id, role, access_level, permissions')
           .eq('email', session.user.email)
           .maybeSingle();
 
-        if (employee) {
-          const { data: perms } = await supabase
-            .from('employee_permissions')
-            .select('*')
-            .eq('employee_id', employee.id)
-            .maybeSingle();
+        if (employeeData) {
+          setEmployee(employeeData);
 
-          setPermissions(perms);
-
-          if (perms && employee.role !== 'admin') {
+          if (isAdmin(employeeData)) {
+            setNavigation(allNavigation);
+          } else {
             const filteredNav = allNavigation.filter(item => {
-              if (!item.permission) return true;
-              return perms[item.permission] === true;
+              if (!item.module) return true;
+              return canView(employeeData, item.module);
             });
             setNavigation(filteredNav);
-          } else {
-            setNavigation(allNavigation);
           }
         }
       }
@@ -214,7 +209,35 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
         </aside>
 
         <main className={`flex-1 overflow-y-auto p-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} transition-all duration-300`}>
-          {children}
+          {(() => {
+            if (pathname === '/crm') return children;
+
+            const currentNav = allNavigation.find(nav => pathname.startsWith(nav.href) && nav.href !== '/crm');
+
+            if (currentNav?.module) {
+              const hasPermission = employee && (isAdmin(employee) || canView(employee, currentNav.module));
+
+              if (!hasPermission) {
+                return (
+                  <div className="flex flex-col items-center justify-center min-h-[400px] px-6">
+                    <div className="text-6xl mb-4">🔒</div>
+                    <h2 className="text-2xl font-light text-[#e5e4e2] mb-2">Brak uprawnień</h2>
+                    <p className="text-[#e5e4e2]/60 text-center max-w-md mb-6">
+                      Nie masz uprawnień do przeglądania tej strony.
+                    </p>
+                    <button
+                      onClick={() => router.push('/crm')}
+                      className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                    >
+                      Wróć do Dashboard
+                    </button>
+                  </div>
+                );
+              }
+            }
+
+            return children;
+          })()}
         </main>
       </div>
 

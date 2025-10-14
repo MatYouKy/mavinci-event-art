@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { canView, isAdmin, type Employee } from '@/lib/permissions';
 
 interface DashboardStats {
   totalEvents: number;
@@ -47,11 +48,32 @@ export default function CRMDashboard() {
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [employee, setEmployee] = useState<Employee | null>(null);
 
   useEffect(() => {
+    fetchEmployee();
     fetchStats();
     fetchRecentActivity();
   }, []);
+
+  const fetchEmployee = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data } = await supabase
+        .from('employees')
+        .select('id, role, access_level, permissions')
+        .eq('email', session.user.email)
+        .maybeSingle();
+
+      if (data) {
+        setEmployee(data);
+      }
+    } catch (error) {
+      console.error('Error fetching employee:', error);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -197,7 +219,7 @@ export default function CRMDashboard() {
     return 999999;
   };
 
-  const statCards = [
+  const allStatCards = [
     {
       name: 'Nadchodzące eventy',
       value: stats.upcomingEvents,
@@ -206,6 +228,7 @@ export default function CRMDashboard() {
       color: 'text-blue-400',
       bgColor: 'bg-blue-400/10',
       href: '/crm/events',
+      module: 'events',
     },
     {
       name: 'Klienci',
@@ -214,6 +237,7 @@ export default function CRMDashboard() {
       color: 'text-purple-400',
       bgColor: 'bg-purple-400/10',
       href: '/crm/clients',
+      module: 'clients',
     },
     {
       name: 'Pracownicy',
@@ -222,6 +246,7 @@ export default function CRMDashboard() {
       color: 'text-orange-400',
       bgColor: 'bg-orange-400/10',
       href: '/crm/employees',
+      module: 'employees',
     },
     {
       name: 'Oczekujące zadania',
@@ -230,8 +255,14 @@ export default function CRMDashboard() {
       color: 'text-red-400',
       bgColor: 'bg-red-400/10',
       href: '/crm/tasks',
+      module: 'tasks',
     },
   ];
+
+  const statCards = allStatCards.filter(card => {
+    if (!employee || !card.module) return true;
+    return isAdmin(employee) || canView(employee, card.module);
+  });
 
   if (loading) {
     return (
