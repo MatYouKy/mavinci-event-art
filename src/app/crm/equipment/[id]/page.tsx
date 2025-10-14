@@ -548,6 +548,7 @@ export default function EquipmentDetailPage() {
           equipment={equipment}
           units={units}
           onUpdate={fetchUnits}
+          canEdit={canEdit}
         />
       )}
 
@@ -1842,7 +1843,7 @@ function StockTab({ equipment, stock, onUpdate }: any) {
   );
 }
 
-function UnitsTab({ equipment, units, onUpdate }: any) {
+function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   const isCable = equipment?.equipment_categories?.name?.toLowerCase().includes('przewod');
   const [showModal, setShowModal] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState(false);
@@ -2116,16 +2117,16 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
               </div>
             ) : (
               <div
-                onClick={() => setEditingQuantity(true)}
-                className="text-6xl font-light text-[#d3bb73] mb-4 cursor-pointer hover:text-[#d3bb73]/80 transition-colors"
-                title="Kliknij aby edytować"
+                onClick={() => canEdit && setEditingQuantity(true)}
+                className={`text-6xl font-light text-[#d3bb73] mb-4 transition-colors ${canEdit ? 'cursor-pointer hover:text-[#d3bb73]/80' : 'cursor-default'}`}
+                title={canEdit ? "Kliknij aby edytować" : "Tylko administrator może edytować"}
               >
                 {units.length}
               </div>
             )}
             <div className="text-lg text-[#e5e4e2]/60 mb-2">Liczba jednostek</div>
             <p className="text-sm text-[#e5e4e2]/40 max-w-md mx-auto">
-              {editingQuantity ? 'Wprowadź nową liczbę przewodów' : 'Kliknij na liczbę aby ją edytować'}
+              {editingQuantity ? 'Wprowadź nową liczbę przewodów' : (canEdit ? 'Kliknij na liczbę aby ją edytować' : 'Tylko odczyt')}
             </p>
           </div>
         </div>
@@ -2137,13 +2138,15 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium text-[#e5e4e2]">Zarządzanie jednostkami</h3>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Dodaj jednostkę
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Dodaj jednostkę
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -2257,25 +2260,29 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                   >
                     <History className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => handleDuplicateUnit(unit)}
-                    className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
-                    title="Duplikuj jednostkę"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleOpenModal(unit)}
-                    className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteUnit(unit.id)}
-                    className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {canEdit && (
+                    <>
+                      <button
+                        onClick={() => handleDuplicateUnit(unit)}
+                        className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                        title="Duplikuj jednostkę"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleOpenModal(unit)}
+                        className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUnit(unit.id)}
+                        className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

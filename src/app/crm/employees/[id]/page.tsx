@@ -116,7 +116,7 @@ export default function EmployeeDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{id: string, isAdmin: boolean} | null>(null);
+  const [currentUser, setCurrentUser] = useState<{id: string, isAdmin: boolean, canManagePermissions?: boolean} | null>(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   useEffect(() => {
@@ -140,10 +140,9 @@ export default function EmployeeDetailPage() {
         return;
       }
 
-      // Check if current user is admin by looking at employees table
       const { data: employeeData, error } = await supabase
         .from('employees')
-        .select('access_level, role')
+        .select('access_level, role, permissions')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -153,8 +152,17 @@ export default function EmployeeDetailPage() {
         return;
       }
 
-      const isAdmin = employeeData?.access_level === 'admin' || employeeData?.role === 'admin';
-      setCurrentUser({ id: user.id, isAdmin });
+      const isAdmin =
+        employeeData?.access_level === 'admin' ||
+        employeeData?.role === 'admin' ||
+        (employeeData?.permissions && Array.isArray(employeeData.permissions) && employeeData.permissions.includes('employee_manage'));
+
+      const canManagePermissions =
+        employeeData?.access_level === 'admin' ||
+        employeeData?.role === 'admin' ||
+        (employeeData?.permissions && Array.isArray(employeeData.permissions) && employeeData.permissions.includes('employee_permissions'));
+
+      setCurrentUser({ id: user.id, isAdmin, canManagePermissions });
     } catch (err) {
       console.error('Error checking current user:', err);
       setCurrentUser(null);
@@ -162,7 +170,7 @@ export default function EmployeeDetailPage() {
   };
 
   const isAdmin = currentUser?.isAdmin || false;
-  const isViewingOwnProfile = currentUser?.id === employeeId;
+  const canEdit = isAdmin;
 
   const fetchEmployeeDetails = async () => {
     try {
@@ -447,7 +455,7 @@ export default function EmployeeDetailPage() {
             {employee.occupation || getRoleLabel(employee.role)}
           </p>
         </div>
-        {(isAdmin || isViewingOwnProfile) && !isEditing ? (
+        {canEdit && !isEditing ? (
           <button
             onClick={() => setIsEditing(true)}
             className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
@@ -493,8 +501,8 @@ export default function EmployeeDetailPage() {
                 <ImageEditorField
                   fieldName="background"
                   image={backgroundImageData}
-                  isAdmin={isEditing && (isAdmin || isViewingOwnProfile)}
-                  withMenu={isEditing && (isAdmin || isViewingOwnProfile)}
+                  isAdmin={isEditing && canEdit}
+                  withMenu={isEditing && canEdit}
                   mode="horizontal"
                   menuPosition="left-top"
                   multiplier={3}
@@ -509,11 +517,11 @@ export default function EmployeeDetailPage() {
                     employeeName={employee.name}
                     size={128}
                     onClick={() => {
-                      if (isEditing && isAdmin) {
+                      if (isEditing && canEdit) {
                         setShowAvatarModal(true);
                       }
                     }}
-                    showHoverEffect={isEditing && isAdmin}
+                    showHoverEffect={isEditing && canEdit}
                   />
                 </div>
               </div>
@@ -566,7 +574,7 @@ export default function EmployeeDetailPage() {
         {[
           { id: 'overview', label: 'Przegląd', icon: User },
           { id: 'emails', label: 'Konta Email', icon: Mail },
-          { id: 'permissions', label: 'Uprawnienia', icon: Lock },
+          ...(currentUser?.canManagePermissions ? [{ id: 'permissions', label: 'Uprawnienia', icon: Lock }] : []),
           { id: 'documents', label: 'Dokumenty', icon: FileText },
           { id: 'tasks', label: 'Zadania', icon: CheckSquare },
           { id: 'events', label: 'Wydarzenia', icon: Calendar },
@@ -594,7 +602,7 @@ export default function EmployeeDetailPage() {
         />
       )}
 
-      {activeTab === 'permissions' && (
+      {activeTab === 'permissions' && currentUser?.canManagePermissions && (
         <EmployeePermissionsTab
           employeeId={employeeId}
           isAdmin={isAdmin}
