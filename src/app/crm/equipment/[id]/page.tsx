@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 
@@ -1573,6 +1573,35 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
     }
   };
 
+  const handleDuplicateUnit = async (unit: EquipmentUnit) => {
+    if (!confirm('Czy na pewno chcesz zduplikować tę jednostkę?')) return;
+
+    try {
+      const newSerialNumber = unit.unit_serial_number ? `${unit.unit_serial_number} (duplikat)` : null;
+
+      const { error } = await supabase
+        .from('equipment_units')
+        .insert({
+          equipment_id: unit.equipment_id,
+          unit_serial_number: newSerialNumber,
+          status: unit.status,
+          location_id: unit.location_id,
+          condition_notes: unit.condition_notes ? `${unit.condition_notes} [DUPLIKAT]` : 'Duplikat jednostki',
+          purchase_date: unit.purchase_date,
+          last_service_date: unit.last_service_date,
+          estimated_repair_date: unit.estimated_repair_date,
+          thumbnail_url: unit.thumbnail_url,
+        });
+
+      if (error) throw error;
+      onUpdate();
+      alert('Jednostka została zduplikowana');
+    } catch (error) {
+      console.error('Error duplicating unit:', error);
+      alert('Błąd podczas duplikowania jednostki');
+    }
+  };
+
   const fetchUnitEvents = async (unitId: string) => {
     const { data, error } = await supabase
       .from('equipment_unit_events')
@@ -1722,6 +1751,13 @@ function UnitsTab({ equipment, units, onUpdate }: any) {
                     title="Historia zdarzeń"
                   >
                     <History className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDuplicateUnit(unit)}
+                    className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                    title="Duplikuj jednostkę"
+                  >
+                    <Copy className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleOpenModal(unit)}

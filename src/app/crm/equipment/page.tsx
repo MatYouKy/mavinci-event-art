@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag } from 'lucide-react';
+import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import KitsManagementModal from '@/components/crm/KitsManagementModal';
 
@@ -131,6 +131,50 @@ export default function EquipmentPage() {
       setKits(data || []);
     } catch (error) {
       console.error('Error fetching kits:', error);
+    }
+  };
+
+  const handleDuplicateEquipment = async (item: Equipment, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (!confirm(`Czy na pewno chcesz zduplikować "${item.name}"?`)) return;
+
+    try {
+      const newName = `${item.name} (duplikat)`;
+
+      const { data: newEquipment, error: equipmentError } = await supabase
+        .from('equipment_items')
+        .insert({
+          name: newName,
+          brand: item.brand,
+          model: item.model,
+          category_id: item.category_id,
+          description: item.description,
+          thumbnail_url: item.thumbnail_url,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (equipmentError) throw equipmentError;
+
+      if (item.equipment_stock && item.equipment_stock.length > 0) {
+        const stock = item.equipment_stock[0];
+        await supabase
+          .from('equipment_stock')
+          .insert({
+            equipment_id: newEquipment.id,
+            company_stock_quantity: stock.company_stock_quantity || 0,
+            min_stock_level: stock.min_stock_level || 0,
+            max_stock_level: stock.max_stock_level || 0,
+          });
+      }
+
+      fetchEquipment();
+      alert(`Sprzęt "${newName}" został zduplikowany`);
+    } catch (error) {
+      console.error('Error duplicating equipment:', error);
+      alert('Błąd podczas duplikowania sprzętu');
     }
   };
 
@@ -316,21 +360,23 @@ export default function EquipmentPage() {
             return (
               <div
                 key={itemData.id}
-                onClick={() => {
-                  if (isKit) {
-                    setSelectedKitId(itemData.id);
-                    setShowKitsModal(true);
-                  } else {
-                    router.push(`/crm/equipment/${itemData.id}`);
-                  }
-                }}
-                className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer ${
+                className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group ${
                   isKit
                     ? 'border-2 border-blue-500/30 hover:border-blue-500/50'
                     : 'border border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
                 }`}
               >
-                <div className="flex items-start gap-4">
+                <div
+                  onClick={() => {
+                    if (isKit) {
+                      setSelectedKitId(itemData.id);
+                      setShowKitsModal(true);
+                    } else {
+                      router.push(`/crm/equipment/${itemData.id}`);
+                    }
+                  }}
+                  className="flex items-start gap-4"
+                >
                   <div className="relative flex-shrink-0">
                     {itemData.thumbnail_url ? (
                       <img
@@ -388,6 +434,16 @@ export default function EquipmentPage() {
                     <div className={`text-sm ${stockInfo.color}`}>{stockInfo.label}</div>
                   </div>
                 </div>
+
+                {!isKit && (
+                  <button
+                    onClick={(e) => handleDuplicateEquipment(itemData, e)}
+                    className="absolute top-2 right-2 p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded-lg hover:bg-purple-500/10 transition-all opacity-0 group-hover:opacity-100"
+                    title="Duplikuj sprzęt"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                )}
 
                 {!isKit && stockInfo.total > 0 && (
                   <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">

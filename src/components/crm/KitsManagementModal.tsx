@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, X, Trash2, Package, Search, Edit, Eye, Printer } from 'lucide-react';
+import { Plus, X, Trash2, Package, Search, Edit, Eye, Printer, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 
@@ -266,6 +266,45 @@ export default function KitsManagementModal({
     }
   };
 
+  const handleDuplicateKit = async (kit: Kit) => {
+    try {
+      const newKitName = `${kit.name} (duplikat)`;
+
+      const { data: newKit, error: kitError } = await supabase
+        .from('equipment_kits')
+        .insert({
+          name: newKitName,
+          description: kit.description,
+          thumbnail_url: kit.thumbnail_url,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (kitError) throw kitError;
+
+      const itemsToInsert = kit.equipment_kit_items.map((item, index) => ({
+        kit_id: newKit.id,
+        equipment_id: item.equipment_id,
+        quantity: item.quantity,
+        notes: item.notes,
+        order_index: index,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('equipment_kit_items')
+        .insert(itemsToInsert);
+
+      if (itemsError) throw itemsError;
+
+      fetchKits();
+      alert(`Zestaw "${newKitName}" został zduplikowany`);
+    } catch (error) {
+      console.error('Error duplicating kit:', error);
+      alert('Błąd podczas duplikowania zestawu');
+    }
+  };
+
   const filteredEquipment = equipment.filter(item =>
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -344,6 +383,13 @@ export default function KitsManagementModal({
                             title="Podgląd i drukowanie"
                           >
                             <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDuplicateKit(kit)}
+                            className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                            title="Duplikuj zestaw"
+                          >
+                            <Copy className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleOpenForm(kit)}
@@ -747,7 +793,10 @@ export default function KitsManagementModal({
                   <th style={{width: '40px'}}>Lp.</th>
                   <th>Nazwa sprzętu</th>
                   <th>Model</th>
-                  <th style={{width: '80px', textAlign: 'right'}}>Ilość</th>
+                  <th style={{width: '60px', textAlign: 'center'}}>Ilość</th>
+                  <th style={{width: '70px', textAlign: 'center'}}>Wydano</th>
+                  <th style={{width: '70px', textAlign: 'center'}}>Zdano</th>
+                  <th style={{width: '120px'}}>Stan na odbiór</th>
                   <th>Notatki</th>
                 </tr>
               </thead>
@@ -758,7 +807,10 @@ export default function KitsManagementModal({
                     <td>{index + 1}</td>
                     <td>{item.equipment_items.name}</td>
                     <td>{item.equipment_items.brand ? `${item.equipment_items.brand} ${item.equipment_items.model || ''}` : '-'}</td>
-                    <td style={{textAlign: 'right'}}>{item.quantity}</td>
+                    <td style={{textAlign: 'center'}}>{item.quantity}</td>
+                    <td style={{textAlign: 'center'}}>_____</td>
+                    <td style={{textAlign: 'center'}}>_____</td>
+                    <td>_________________</td>
                     <td>{item.notes || '-'}</td>
                   </tr>
                 ))}
