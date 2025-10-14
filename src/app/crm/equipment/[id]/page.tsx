@@ -422,7 +422,7 @@ export default function EquipmentDetailPage() {
         </div>
       </div>
 
-      <TabCarousel activeTab={activeTab} setActiveTab={setActiveTab} equipment={equipment} />
+      <TabCarousel activeTab={activeTab} setActiveTab={setActiveTab} equipment={equipment} units={units} />
 
       {activeTab === 'details' && (
         <DetailsTab
@@ -490,7 +490,7 @@ export default function EquipmentDetailPage() {
   );
 }
 
-function TabCarousel({ activeTab, setActiveTab, equipment }: any) {
+function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visibleTabs, setVisibleTabs] = useState(5);
   const isCable = equipment.equipment_categories?.name?.toLowerCase().includes('przewod');
