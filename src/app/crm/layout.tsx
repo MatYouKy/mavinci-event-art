@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight, Plug } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
@@ -27,6 +27,7 @@ const allNavigation: NavigationItem[] = [
   { name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, permission: 'can_view_attractions' },
   { name: 'Pracownicy', href: '/crm/employees', icon: Users, permission: 'can_view_employees' },
   { name: 'Sprzęt', href: '/crm/equipment', icon: Package, permission: 'can_view_equipment' },
+  { name: 'Wtyki', href: '/crm/connectors', icon: Plug, permission: 'can_view_equipment' },
   { name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, permission: 'can_view_tasks' },
 ];
 
