@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight, Copy, MoreVertical } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 import { useDialog } from '@/contexts/DialogContext';
@@ -131,8 +131,11 @@ export default function EquipmentDetailPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
   const [units, setUnits] = useState<EquipmentUnit[]>([]);
+  const [currentEmployee, setCurrentEmployee] = useState<any>(null);
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
+    fetchCurrentEmployee();
     fetchEquipment();
     fetchCategories();
     fetchConnectorTypes();
@@ -145,6 +148,29 @@ export default function EquipmentDetailPage() {
       fetchUnits();
     }
   }, [activeTab]);
+
+  const fetchCurrentEmployee = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('email', user.email)
+        .single();
+
+      if (employee) {
+        setCurrentEmployee(employee);
+        const hasEditPermission =
+          employee.role === 'admin' ||
+          employee.permissions?.equipment_manage === true;
+        setCanEdit(hasEditPermission);
+      }
+    } catch (error) {
+      console.error('Error fetching employee:', error);
+    }
+  };
 
   const fetchCategories = async () => {
     const { data } = await supabase
@@ -227,6 +253,26 @@ export default function EquipmentDetailPage() {
     if (data) setUnits(data);
   };
 
+  const logEquipmentChange = async (fieldName: string, oldValue: any, newValue: any) => {
+    if (!currentEmployee) return;
+    if (oldValue === newValue) return;
+
+    try {
+      await supabase
+        .from('equipment_edit_history')
+        .insert({
+          equipment_id: equipmentId,
+          employee_id: currentEmployee.id,
+          field_name: fieldName,
+          old_value: oldValue !== null && oldValue !== undefined ? String(oldValue) : null,
+          new_value: newValue !== null && newValue !== undefined ? String(newValue) : null,
+          change_type: 'update',
+        });
+    } catch (error) {
+      console.error('Error logging change:', error);
+    }
+  };
+
   const handleEdit = () => {
     setIsEditing(true);
   };
@@ -289,11 +335,29 @@ export default function EquipmentDetailPage() {
 
       if (error) throw error;
 
+      // Log changes
+      const fieldsToLog = [
+        { name: 'name', old: equipment?.name, new: editForm.name },
+        { name: 'category_id', old: equipment?.category_id, new: editForm.category_id },
+        { name: 'brand', old: equipment?.brand, new: editForm.brand },
+        { name: 'model', old: equipment?.model, new: editForm.model },
+        { name: 'description', old: equipment?.description, new: editForm.description },
+        { name: 'weight_kg', old: equipment?.weight_kg, new: editForm.weight_kg ? parseFloat(editForm.weight_kg) : null },
+        { name: 'purchase_date', old: equipment?.purchase_date, new: editForm.purchase_date },
+        { name: 'purchase_price', old: equipment?.purchase_price, new: editForm.purchase_price ? parseFloat(editForm.purchase_price) : null },
+        { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
+      ];
+
+      for (const field of fieldsToLog) {
+        await logEquipmentChange(field.name, field.old, field.new);
+      }
+
       await fetchEquipment();
       setIsEditing(false);
+      showSnackbar('Zmiany zostały zapisane', 'success');
     } catch (error) {
       console.error('Error saving equipment:', error);
-      alert('Błąd podczas zapisywania');
+      showSnackbar('Błąd podczas zapisywania', 'error');
     } finally {
       setSaving(false);
     }
@@ -407,7 +471,7 @@ export default function EquipmentDetailPage() {
                 {saving ? 'Zapisywanie...' : 'Zapisz'}
               </button>
             </>
-          ) : (
+          ) : canEdit ? (
             <>
               <button
                 onClick={handleDelete}
@@ -424,7 +488,7 @@ export default function EquipmentDetailPage() {
                 Edytuj
               </button>
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -474,6 +538,7 @@ export default function EquipmentDetailPage() {
       {activeTab === 'components' && (
         <ComponentsTab
           equipment={equipment}
+          isEditing={isEditing}
           onUpdate={fetchEquipment}
         />
       )}
@@ -626,24 +691,37 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
 
   const visibleTabsArray = tabs.slice(currentIndex, currentIndex + visibleTabs);
 
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollToTab = (direction: 'left' | 'right') => {
+    if (tabsContainerRef.current) {
+      const scrollAmount = 200;
+      tabsContainerRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   return (
     <div className="relative border-b border-[#d3bb73]/10">
       <div className="flex items-center">
-        {canScrollLeft && (
-          <button
-            onClick={scrollLeft}
-            className="absolute left-0 z-10 p-2 bg-gradient-to-r from-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5 text-[#d3bb73]" />
-          </button>
-        )}
+        <button
+          onClick={() => scrollToTab('left')}
+          className="absolute left-0 z-10 p-2 bg-gradient-to-r from-[#0f1119] via-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors md:hidden"
+        >
+          <ChevronLeft className="w-5 h-5 text-[#d3bb73]" />
+        </button>
 
-        <div className="flex gap-2 flex-1 justify-center px-10">
-          {visibleTabsArray.map((tab) => (
+        <div
+          ref={tabsContainerRef}
+          className="flex gap-2 flex-1 overflow-x-auto scrollbar-hide scroll-smooth px-10 md:px-2 md:justify-center"
+        >
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2 text-sm whitespace-nowrap transition-colors ${
+              className={`px-4 py-2 text-sm whitespace-nowrap transition-colors flex-shrink-0 ${
                 activeTab === tab.id
                   ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
                   : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -654,14 +732,12 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
           ))}
         </div>
 
-        {canScrollRight && (
-          <button
-            onClick={scrollRight}
-            className="absolute right-0 z-10 p-2 bg-gradient-to-l from-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors"
-          >
-            <ChevronRight className="w-5 h-5 text-[#d3bb73]" />
-          </button>
-        )}
+        <button
+          onClick={() => scrollToTab('right')}
+          className="absolute right-0 z-10 p-2 bg-gradient-to-l from-[#0f1119] via-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors md:hidden"
+        >
+          <ChevronRight className="w-5 h-5 text-[#d3bb73]" />
+        </button>
       </div>
     </div>
   );
@@ -1201,7 +1277,58 @@ function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
   );
 }
 
-function ComponentsTab({ equipment, onUpdate }: any) {
+function ComponentMenu({ onDelete }: { onDelete: () => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={menuRef} className="relative md:hidden">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl z-50 overflow-hidden">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+              setIsOpen(false);
+            }}
+            className="w-full px-4 py-3 text-left text-red-400 hover:bg-[#d3bb73]/10 transition-colors flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Usuń komponent
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
   const [isAdding, setIsAdding] = useState(false);
   const [newComponent, setNewComponent] = useState({
     component_name: '',
@@ -1256,15 +1383,17 @@ function ComponentsTab({ equipment, onUpdate }: any) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <h3 className="text-lg font-medium text-[#e5e4e2]">Skład zestawu</h3>
-        <button
-          onClick={() => setIsAdding(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Dodaj komponent
-        </button>
+        {isEditing && (
+          <button
+            onClick={() => setIsAdding(true)}
+            className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Dodaj komponent
+          </button>
+        )}
       </div>
 
       {isAdding && (
@@ -1321,22 +1450,32 @@ function ComponentsTab({ equipment, onUpdate }: any) {
           {equipment.equipment_components.map((component: Component) => (
             <div
               key={component.id}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 flex items-center justify-between"
+              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 flex items-center justify-between relative"
             >
-              <div className="flex-1">
+              <div className="flex-1 pr-2">
                 <div className="text-[#e5e4e2] font-medium">{component.component_name}</div>
                 {component.description && (
                   <div className="text-sm text-[#e5e4e2]/60 mt-1">{component.description}</div>
                 )}
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 <div className="text-[#d3bb73] font-medium">x{component.quantity}</div>
-                <button
-                  onClick={() => handleDeleteComponent(component.id)}
-                  className="p-2 text-red-400 hover:text-red-300 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {isEditing && (
+                  <>
+                    {/* Desktop: Direct button */}
+                    <button
+                      onClick={() => handleDeleteComponent(component.id)}
+                      className="hidden md:flex p-2 text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+
+                    {/* Mobile: 3-dot menu */}
+                    <ComponentMenu
+                      onDelete={() => handleDeleteComponent(component.id)}
+                    />
+                  </>
+                )}
               </div>
             </div>
           ))}

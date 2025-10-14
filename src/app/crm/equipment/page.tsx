@@ -526,10 +526,10 @@ export default function EquipmentPage() {
             </div>
           </div>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap md:flex-nowrap md:overflow-x-auto md:scrollbar-hide md:pb-2">
         <button
           onClick={() => setSelectedCategory(null)}
-          className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap ${
+          className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap flex-shrink-0 ${
             selectedCategory === null
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
@@ -541,7 +541,7 @@ export default function EquipmentPage() {
           <button
             key={category.id}
             onClick={() => setSelectedCategory(category.id)}
-            className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap ${
+            className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap flex-shrink-0 ${
               selectedCategory === category.id
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
