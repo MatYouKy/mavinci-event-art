@@ -17,10 +17,17 @@ interface DialogConfig {
   onClose?: () => void;
 }
 
+interface ConfirmOptions {
+  title?: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+}
+
 interface DialogContextValue {
   showDialog: (config: DialogConfig) => void;
   showAlert: (message: string, title?: string, type?: 'info' | 'success' | 'warning' | 'error') => Promise<void>;
-  showConfirm: (message: string, title?: string) => Promise<boolean>;
+  showConfirm: (options: string | ConfirmOptions, title?: string) => Promise<boolean>;
   hideDialog: () => void;
 }
 
@@ -62,16 +69,21 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     });
   }, [hideDialog]);
 
-  const showConfirm = useCallback((message: string, title?: string): Promise<boolean> => {
+  const showConfirm = useCallback((options: string | ConfirmOptions, title?: string): Promise<boolean> => {
     return new Promise((resolve) => {
       setResolvePromise(() => resolve);
+
+      const config = typeof options === 'string'
+        ? { message: options, title: title || 'Potwierdzenie', confirmText: 'Potwierdź', cancelText: 'Anuluj' }
+        : { title: options.title || 'Potwierdzenie', message: options.message, confirmText: options.confirmText || 'Potwierdź', cancelText: options.cancelText || 'Anuluj' };
+
       setDialog({
-        title: title || 'Potwierdzenie',
-        message,
+        title: config.title,
+        message: config.message,
         type: 'confirm',
         buttons: [
           {
-            label: 'Anuluj',
+            label: config.cancelText,
             onClick: () => {
               hideDialog();
               resolve(false);
@@ -79,7 +91,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             variant: 'secondary'
           },
           {
-            label: 'Potwierdź',
+            label: config.confirmText,
             onClick: () => {
               hideDialog();
               resolve(true);
