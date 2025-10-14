@@ -221,6 +221,56 @@ export default function ConnectorsView({ viewMode }: ConnectorsViewProps) {
         <div className="text-center py-12 text-[#e5e4e2]/40">
           {searchQuery ? 'Nie znaleziono wtyków' : 'Brak wtyków w bazie'}
         </div>
+      ) : viewMode === 'compact' ? (
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+          <div className="grid grid-cols-[50px_1fr_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0">
+            <div></div>
+            <div>Nazwa</div>
+            <div className="text-center">Akcje</div>
+            <div></div>
+          </div>
+          {filteredConnectors.map((connector) => (
+            <div
+              key={connector.id}
+              className="grid grid-cols-[50px_1fr_80px_80px] gap-2 px-4 py-3 border-b border-[#d3bb73]/5 hover:bg-[#d3bb73]/5 transition-colors items-center"
+            >
+              <div className="w-10 h-10 bg-[#0f1119] rounded flex items-center justify-center overflow-hidden">
+                {connector.thumbnail_url ? (
+                  <img
+                    src={connector.thumbnail_url}
+                    alt={connector.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <ImageIcon className="w-4 h-4 text-[#e5e4e2]/20" />
+                )}
+              </div>
+              <div>
+                <div className="text-sm font-medium text-[#e5e4e2]">{connector.name}</div>
+                {connector.description && (
+                  <div className="text-xs text-[#e5e4e2]/50 line-clamp-1">{connector.description}</div>
+                )}
+              </div>
+              <div className="flex items-center justify-center gap-1">
+                <button
+                  onClick={(e) => openEditModal(connector, e)}
+                  className="p-1.5 bg-[#0f1119] text-[#e5e4e2] rounded hover:bg-[#0f1119]/80 transition-colors"
+                  title="Edytuj"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={(e) => handleDelete(connector.id, e)}
+                  className="p-1.5 bg-red-500/10 text-red-400 rounded hover:bg-red-500/20 transition-colors"
+                  title="Usuń"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div></div>
+            </div>
+          ))}
+        </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredConnectors.map((connector) => (

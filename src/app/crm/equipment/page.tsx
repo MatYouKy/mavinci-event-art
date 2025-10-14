@@ -80,10 +80,49 @@ export default function EquipmentPage() {
   const [selectedKitId, setSelectedKitId] = useState<string | null>(null);
 
   useEffect(() => {
+    loadUserPreferences();
     fetchCategories();
     fetchEquipment();
     fetchKits();
   }, []);
+
+  const loadUserPreferences = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('preferred_view_mode')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (employee?.preferred_view_mode) {
+        setViewMode(employee.preferred_view_mode as 'grid' | 'list' | 'compact');
+      }
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+    }
+  };
+
+  const saveViewModePreference = async (mode: 'grid' | 'list' | 'compact') => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase
+        .from('employees')
+        .update({ preferred_view_mode: mode })
+        .eq('email', user.email);
+    } catch (error) {
+      console.error('Error saving view mode preference:', error);
+    }
+  };
+
+  const handleViewModeChange = (mode: 'grid' | 'list' | 'compact') => {
+    setViewMode(mode);
+    saveViewModePreference(mode);
+  };
 
   const fetchCategories = async () => {
     const { data, error } = await supabase
@@ -392,7 +431,7 @@ export default function EquipmentPage() {
 
             <div className="flex gap-2">
               <button
-                onClick={() => setViewMode('compact')}
+                onClick={() => handleViewModeChange('compact')}
                 className={`p-2.5 rounded-lg transition-colors ${
                   viewMode === 'compact'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -403,7 +442,7 @@ export default function EquipmentPage() {
                 <AlignJustify className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setViewMode('list')}
+                onClick={() => handleViewModeChange('list')}
                 className={`p-2.5 rounded-lg transition-colors ${
                   viewMode === 'list'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -414,7 +453,7 @@ export default function EquipmentPage() {
                 <List className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setViewMode('grid')}
+                onClick={() => handleViewModeChange('grid')}
                 className={`p-2.5 rounded-lg transition-colors ${
                   viewMode === 'grid'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
