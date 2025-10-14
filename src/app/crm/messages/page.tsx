@@ -439,13 +439,24 @@ export default function MessagesPage() {
                   className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
-              <button
-                onClick={fetchMessages}
-                disabled={loading}
-                className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={fetchEmailsFromServer}
+                  disabled={loading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                  className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Pobierz nowe wiadomości z serwera email"
+                >
+                  <Inbox className="w-5 h-5" />
+                  <span className="hidden sm:inline">Pobierz z serwera</span>
+                </button>
+                <button
+                  onClick={fetchMessages}
+                  disabled={loading}
+                  className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -468,16 +479,18 @@ export default function MessagesPage() {
                     return (
                       <div
                         key={message.id}
-                        onClick={() => {
-                          setSelectedMessage(message);
-                          markAsRead(message);
-                        }}
-                        className={`p-4 cursor-pointer hover:bg-[#d3bb73]/5 transition-colors ${
+                        className={`p-4 hover:bg-[#d3bb73]/5 transition-colors ${
                           selectedMessage?.id === message.id ? 'bg-[#d3bb73]/10' : ''
                         } ${!message.isRead ? 'font-semibold' : ''}`}
                       >
                         <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1 min-w-0">
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={() => {
+                              setSelectedMessage(message);
+                              markAsRead(message);
+                            }}
+                          >
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-white truncate">{message.from}</span>
                               {!message.isRead && (
@@ -486,15 +499,33 @@ export default function MessagesPage() {
                             </div>
                             <p className="text-sm text-[#e5e4e2]/70 truncate">{message.subject}</p>
                           </div>
-                          <span className="text-xs text-[#e5e4e2]/50 ml-2 whitespace-nowrap">
-                            {formatDate(message.date)}
-                          </span>
+                          <div className="flex items-center gap-2 ml-2">
+                            <span className="text-xs text-[#e5e4e2]/50 whitespace-nowrap">
+                              {formatDate(message.date)}
+                            </span>
+                            {(message.type === 'contact_form' || message.type === 'received') && (
+                              <MessageActionsMenu
+                                messageId={message.id}
+                                messageType={message.type}
+                                onReply={() => handleReply(message)}
+                                onAssign={() => handleAssign(message.id, message.type, message.assigned_to || null)}
+                                onDelete={() => handleDelete(message.id, message.type)}
+                                onMove={() => handleMove(message.id)}
+                                canManage={canManage}
+                              />
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className={`text-xs px-2 py-1 rounded ${typeInfo.color} text-white`}>
                             {typeInfo.label}
                           </span>
-                          <p className="text-sm text-[#e5e4e2]/50 truncate">{message.body}</p>
+                          {message.assigned_employee && (
+                            <span className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              Przypisano: {message.assigned_employee.name} {message.assigned_employee.surname}
+                            </span>
+                          )}
+                          <p className="text-sm text-[#e5e4e2]/50 truncate flex-1">{message.body}</p>
                         </div>
                       </div>
                     );
@@ -567,12 +598,30 @@ export default function MessagesPage() {
 
       <ComposeEmailModal
         isOpen={showNewMessageModal}
-        onClose={() => setShowNewMessageModal(false)}
+        onClose={() => {
+          setShowNewMessageModal(false);
+          setReplyToMessage(null);
+        }}
         onSend={handleSendNewMessage}
-        initialTo={newMessage.to}
-        initialSubject={newMessage.subject}
+        initialTo={replyToMessage?.from || newMessage.to}
+        initialSubject={replyToMessage ? `Re: ${replyToMessage.subject}` : newMessage.subject}
         selectedAccountId={selectedAccount}
       />
+
+      {showAssignModal && messageToAssign && (
+        <AssignMessageModal
+          messageId={messageToAssign.id}
+          messageType={messageToAssign.type}
+          currentAssignee={messageToAssign.assignedTo}
+          onClose={() => {
+            setShowAssignModal(false);
+            setMessageToAssign(null);
+          }}
+          onSuccess={() => {
+            fetchMessages();
+          }}
+        />
+      )}
     </div>
   );
 }
