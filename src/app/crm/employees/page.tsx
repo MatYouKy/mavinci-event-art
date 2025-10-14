@@ -6,6 +6,7 @@ import { Plus, Search, Mail, Phone, Briefcase, Shield, User } from 'lucide-react
 import { supabase } from '@/lib/supabase';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Employee {
   id: string;
@@ -31,55 +32,13 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{id: string, isAdmin: boolean, canManagePermissions?: boolean} | null>(null);
+
+  const { canCreateInModule } = useCurrentEmployee();
+  const canAddEmployee = canCreateInModule('employees');
 
   useEffect(() => {
     fetchEmployees();
   }, []);
-
-  useEffect(() => {
-    checkCurrentUser();
-  }, []);
-
-  const checkCurrentUser = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setCurrentUser(null);
-        return;
-      }
-
-      const { data: employeeData, error } = await supabase
-        .from('employees')
-        .select('access_level, role, permissions')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching current user employee data:', error);
-        setCurrentUser({ id: user.id, isAdmin: false });
-        return;
-      }
-
-      const isAdmin =
-        employeeData?.access_level === 'admin' ||
-        employeeData?.role === 'admin' ||
-        employeeData?.permissions?.includes('employees_manage');
-
-      const canManagePermissions =
-        employeeData?.access_level === 'admin' ||
-        employeeData?.role === 'admin' ||
-        employeeData?.permissions?.includes('employees_permissions');
-
-      setCurrentUser({ id: user.id, isAdmin, canManagePermissions });
-    } catch (err) {
-      console.error('Error checking current user:', err);
-      setCurrentUser(null);
-    }
-  };
-
-  const isAdmin = currentUser?.isAdmin || false;
-  const canEdit = isAdmin;
 
   const fetchEmployees = async () => {
     try {
@@ -173,7 +132,7 @@ export default function EmployeesPage() {
             Zarządzaj zespołem i uprawnieniami
           </p>
         </div>
-        {canEdit &&<button
+        {canAddEmployee && <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
         >

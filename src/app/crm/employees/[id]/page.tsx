@@ -119,7 +119,7 @@ export default function EmployeeDetailPage() {
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
 
-  const { employee: currentEmployee, isAdmin, canManagePermissions, loading: currentUserLoading } = useCurrentEmployee();
+  const { employee: currentEmployee, isAdmin, canManagePermissions, canManageModule, loading: currentUserLoading } = useCurrentEmployee();
 
   useEffect(() => {
     if (employeeId && currentEmployee) {
@@ -130,7 +130,7 @@ export default function EmployeeDetailPage() {
     }
   }, [employeeId, currentEmployee]);
 
-  const canEdit = isAdmin;
+  const canEdit = canManageModule('employees');
 
   const fetchEmployeeDetails = async () => {
     try {

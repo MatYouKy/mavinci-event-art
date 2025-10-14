@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { isAdmin as checkIsAdmin, canView, canManage, type Employee } from '@/lib/permissions';
+import { isAdmin as checkIsAdmin, canView, canManage, canCreate, canManagePermissions as checkCanManagePermissions, type Employee } from '@/lib/permissions';
 
 interface CurrentEmployeeData {
   employee: Employee | null;
@@ -10,6 +10,7 @@ interface CurrentEmployeeData {
   hasScope: (scope: string) => boolean;
   canViewModule: (module: string) => boolean;
   canManageModule: (module: string) => boolean;
+  canCreateInModule: (module: string) => boolean;
   refresh: () => Promise<void>;
 }
 
@@ -71,7 +72,7 @@ export function useCurrentEmployee(): CurrentEmployeeData {
   const isAdmin = employee ? checkIsAdmin(employee) : false;
 
   const canManagePermissions = employee
-    ? (checkIsAdmin(employee) || employee.permissions?.includes('employees_permissions'))
+    ? checkCanManagePermissions(employee)
     : false;
 
   const hasScope = (scope: string): boolean => {
@@ -89,6 +90,11 @@ export function useCurrentEmployee(): CurrentEmployeeData {
     return checkIsAdmin(employee) || canManage(employee, module);
   };
 
+  const canCreateInModule = (module: string): boolean => {
+    if (!employee) return false;
+    return checkIsAdmin(employee) || canCreate(employee, module);
+  };
+
   const refresh = async () => {
     cachedEmployee = null;
     cachedUserId = null;
@@ -104,6 +110,7 @@ export function useCurrentEmployee(): CurrentEmployeeData {
     hasScope,
     canViewModule,
     canManageModule,
+    canCreateInModule,
     refresh,
   };
 }

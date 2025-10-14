@@ -67,22 +67,27 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
     return permissions.includes(scope);
   };
 
-  const getPermissionLevel = (module: string): 'none' | 'view' | 'manage' => {
+  const modulesWithCreate = ['equipment', 'employees', 'clients', 'events', 'tasks', 'offers', 'contracts', 'attractions'];
+
+  const getPermissionLevel = (module: string): 'none' | 'view' | 'create' | 'manage' => {
     if (permissions.includes(`${module}_manage`)) return 'manage';
+    if (permissions.includes(`${module}_create`)) return 'create';
     if (permissions.includes(`${module}_view`)) return 'view';
     return 'none';
   };
 
-  const setPermissionLevel = (module: string, level: 'none' | 'view' | 'manage') => {
+  const setPermissionLevel = (module: string, level: 'none' | 'view' | 'create' | 'manage') => {
     if (!isAdmin) return;
 
     setPermissions(prev => {
       const filtered = prev.filter(
-        p => p !== `${module}_view` && p !== `${module}_manage`
+        p => p !== `${module}_view` && p !== `${module}_manage` && p !== `${module}_create`
       );
 
       if (level === 'view') {
         return [...filtered, `${module}_view`];
+      } else if (level === 'create') {
+        return [...filtered, `${module}_create`];
       } else if (level === 'manage') {
         return [...filtered, `${module}_manage`];
       }
@@ -208,13 +213,16 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
               </span>
               <select
                 value={getPermissionLevel(module.key)}
-                onChange={(e) => setPermissionLevel(module.key, e.target.value as 'none' | 'view' | 'manage')}
+                onChange={(e) => setPermissionLevel(module.key, e.target.value as 'none' | 'view' | 'create' | 'manage')}
                 disabled={!isAdmin}
                 className="px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="none">Brak</option>
                 <option value="view">Przeglądanie</option>
-                <option value="manage">Zarządzanie</option>
+                {modulesWithCreate.includes(module.key) && (
+                  <option value="create">Tworzenie</option>
+                )}
+                <option value="manage">Zarządzanie (pełne)</option>
               </select>
             </label>
           </div>
