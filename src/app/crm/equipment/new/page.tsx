@@ -189,6 +189,8 @@ export default function NewEquipmentPage() {
       if (equipmentError) throw equipmentError;
 
       const initialQty = parseInt(formData.initial_quantity) || 0;
+      const isCable = categories.find(c => c.id === formData.category_id)?.name?.toLowerCase().includes('przewod');
+
       if (initialQty > 0) {
         const { error: stockError } = await supabase
           .from('equipment_stock')
@@ -202,19 +204,21 @@ export default function NewEquipmentPage() {
 
         if (stockError) throw stockError;
 
-        const unitsToCreate = Array.from({ length: initialQty }, (_, index) => ({
-          equipment_id: equipmentData.id,
-          unit_serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
-          status: 'available',
-          location: formData.storage_location || null,
-          purchase_date: formData.purchase_date || null,
-        }));
+        if (!isCable) {
+          const unitsToCreate = Array.from({ length: initialQty }, (_, index) => ({
+            equipment_id: equipmentData.id,
+            unit_serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
+            status: 'available',
+            location: formData.storage_location || null,
+            purchase_date: formData.purchase_date || null,
+          }));
 
-        const { error: unitsError } = await supabase
-          .from('equipment_units')
-          .insert(unitsToCreate);
+          const { error: unitsError } = await supabase
+            .from('equipment_units')
+            .insert(unitsToCreate);
 
-        if (unitsError) throw unitsError;
+          if (unitsError) throw unitsError;
+        }
 
         const { error: historyError } = await supabase
           .from('equipment_stock_history')
@@ -223,7 +227,7 @@ export default function NewEquipmentPage() {
             change_type: 'purchase',
             quantity_change: initialQty,
             quantity_after: initialQty,
-            notes: 'Początkowy stan magazynowy',
+            notes: isCable ? 'Początkowy stan magazynowy (drobnica)' : 'Początkowy stan magazynowy',
           });
 
         if (historyError) throw historyError;

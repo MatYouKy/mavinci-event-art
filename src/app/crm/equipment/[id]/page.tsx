@@ -116,6 +116,7 @@ export default function EquipmentDetailPage() {
 
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [connectorTypes, setConnectorTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -128,6 +129,7 @@ export default function EquipmentDetailPage() {
   useEffect(() => {
     fetchEquipment();
     fetchCategories();
+    fetchConnectorTypes();
   }, [equipmentId]);
 
   useEffect(() => {
@@ -146,6 +148,16 @@ export default function EquipmentDetailPage() {
       .order('order_index');
 
     if (data) setCategories(data);
+  };
+
+  const fetchConnectorTypes = async () => {
+    const { data } = await supabase
+      .from('connector_types')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
+    if (data) setConnectorTypes(data);
   };
 
   const fetchEquipment = async () => {
@@ -216,6 +228,9 @@ export default function EquipmentDetailPage() {
       dimensions_length: equipment?.dimensions_cm?.length || '',
       dimensions_width: equipment?.dimensions_cm?.width || '',
       dimensions_height: equipment?.dimensions_cm?.height || '',
+      cable_length_meters: equipment?.cable_specs?.length_meters || '',
+      cable_connector_in: equipment?.cable_specs?.connector_in || '',
+      cable_connector_out: equipment?.cable_specs?.connector_out || '',
     };
     setEditForm(formData);
   };
@@ -231,6 +246,14 @@ export default function EquipmentDetailPage() {
           }
         : null;
 
+      const cableSpecs = editForm.cable_length_meters || editForm.cable_connector_in || editForm.cable_connector_out
+        ? {
+            length_meters: editForm.cable_length_meters ? parseFloat(editForm.cable_length_meters) : null,
+            connector_in: editForm.cable_connector_in || null,
+            connector_out: editForm.cable_connector_out || null,
+          }
+        : null;
+
       const { error } = await supabase
         .from('equipment_items')
         .update({
@@ -242,6 +265,7 @@ export default function EquipmentDetailPage() {
           thumbnail_url: editForm.thumbnail_url || null,
           user_manual_url: editForm.user_manual_url || null,
           weight_kg: editForm.weight_kg ? parseFloat(editForm.weight_kg) : null,
+          cable_specs: cableSpecs,
           dimensions_cm: dimensions,
           purchase_date: editForm.purchase_date || null,
           purchase_price: editForm.purchase_price ? parseFloat(editForm.purchase_price) : null,
@@ -413,6 +437,7 @@ export default function EquipmentDetailPage() {
           editForm={editForm}
           isEditing={isEditing}
           onInputChange={handleInputChange}
+          connectorTypes={connectorTypes}
         />
       )}
 
@@ -457,16 +482,19 @@ export default function EquipmentDetailPage() {
 function TabCarousel({ activeTab, setActiveTab, equipment }: any) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visibleTabs, setVisibleTabs] = useState(5);
+  const isCable = equipment.equipment_categories?.name?.toLowerCase().includes('przewod');
 
-  const tabs = [
+  const allTabs = [
     { id: 'details', label: 'Podstawowe' },
     { id: 'technical', label: 'Parametry techniczne' },
     { id: 'purchase', label: 'Informacje zakupowe' },
     { id: 'components', label: `Skład zestawu (${equipment.equipment_components.length})` },
-    { id: 'units', label: 'Jednostki' },
+    { id: 'units', label: 'Jednostki', hiddenFor: 'cable' },
     { id: 'gallery', label: `Galeria (${equipment.equipment_gallery.length})` },
     { id: 'history', label: 'Historia' },
   ];
+
+  const tabs = allTabs.filter(tab => !(isCable && tab.hiddenFor === 'cable'));
 
   useEffect(() => {
     const updateVisibleTabs = () => {
@@ -726,30 +754,75 @@ function DetailsTab({
   );
 }
 
-function TechnicalTab({ equipment, editForm, isEditing, onInputChange }: any) {
+function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes }: any) {
+  const isCable = equipment.equipment_categories?.name?.toLowerCase().includes('przewod');
+
   return (
     <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
       <h3 className="text-lg font-medium text-[#e5e4e2] mb-6">Parametry techniczne</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {equipment.equipment_categories?.name?.toLowerCase().includes('przewod') ? (
+        {isCable ? (
           <>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Długość</label>
-              <div className="text-[#e5e4e2]">
-                {equipment.cable_specs?.length_meters ? `${equipment.cable_specs.length_meters} m` : '-'}
-              </div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Długość (m)</label>
+              {isEditing ? (
+                <input
+                  type="number"
+                  step="0.5"
+                  name="cable_length_meters"
+                  value={editForm.cable_length_meters || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                />
+              ) : (
+                <div className="text-[#e5e4e2]">
+                  {equipment.cable_specs?.length_meters ? `${equipment.cable_specs.length_meters} m` : '-'}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wejściowy</label>
-              <div className="text-[#e5e4e2]">
-                {equipment.cable_specs?.connector_in || '-'}
-              </div>
+              {isEditing ? (
+                <select
+                  name="cable_connector_in"
+                  value={editForm.cable_connector_in || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                >
+                  <option value="">Wybierz wtyk</option>
+                  {connectorTypes.map((connector: any) => (
+                    <option key={connector.id} value={connector.name}>
+                      {connector.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-[#e5e4e2]">
+                  {equipment.cable_specs?.connector_in || '-'}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wyjściowy</label>
-              <div className="text-[#e5e4e2]">
-                {equipment.cable_specs?.connector_out || '-'}
-              </div>
+              {isEditing ? (
+                <select
+                  name="cable_connector_out"
+                  value={editForm.cable_connector_out || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                >
+                  <option value="">Wybierz wtyk</option>
+                  {connectorTypes.map((connector: any) => (
+                    <option key={connector.id} value={connector.name}>
+                      {connector.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-[#e5e4e2]">
+                  {equipment.cable_specs?.connector_out || '-'}
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -772,6 +845,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange }: any) {
           </div>
         )}
 
+        {!isCable && (
         <div>
           <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
           {isEditing ? (
@@ -812,6 +886,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange }: any) {
             </div>
           )}
         </div>
+        )}
 
         <div>
           <label className="block text-sm text-[#e5e4e2]/60 mb-2">Numer seryjny</label>
