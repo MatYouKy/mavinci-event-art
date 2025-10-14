@@ -58,8 +58,10 @@ export default function MessagesPage() {
   });
 
   useEffect(() => {
-    fetchEmailAccounts();
-  }, []);
+    if (currentEmployee) {
+      fetchEmailAccounts();
+    }
+  }, [currentEmployee]);
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
@@ -68,21 +70,27 @@ export default function MessagesPage() {
   }, [selectedAccount, emailAccounts]);
 
   const fetchEmailAccounts = async () => {
+    if (!currentEmployee) return;
+
     try {
       const { data, error } = await supabase
         .from('employee_email_accounts')
         .select('*')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('employee_id', currentEmployee.id);
 
       if (error) throw error;
 
       const accounts = [
-        { id: 'all', email_address: 'Wszystkie konta', from_name: 'Wszystkie' },
         { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' },
         ...(data || []),
       ];
 
       setEmailAccounts(accounts);
+
+      if (accounts.length > 0) {
+        setSelectedAccount('contact_form');
+      }
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     }
@@ -124,13 +132,11 @@ export default function MessagesPage() {
         }
       }
 
-      if (selectedAccount !== 'contact_form') {
-        const accountFilter = selectedAccount === 'all' ? {} : { email_account_id: selectedAccount };
-
+      if (selectedAccount !== 'contact_form' && currentEmployee) {
         const { data: sentEmails } = await supabase
           .from('sent_emails')
           .select('*, employees(name, surname, email)')
-          .match(accountFilter)
+          .eq('email_account_id', selectedAccount)
           .order('sent_at', { ascending: false })
           .limit(50);
 
@@ -159,7 +165,7 @@ export default function MessagesPage() {
         const { data: receivedEmails } = await supabase
           .from('received_emails')
           .select('*, assigned_employee:employees!assigned_to(name, surname)')
-          .match(accountFilter)
+          .eq('email_account_id', selectedAccount)
           .order('received_date', { ascending: false })
           .limit(50);
 
@@ -461,7 +467,7 @@ export default function MessagesPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 divide-x divide-[#d3bb73]/10">
-            <div className="lg:col-span-2 overflow-y-auto max-h-[600px]">
+            <div className="lg:col-span-2 overflow-y-auto max-h-[600px] relative">
               {loading ? (
                 <div className="p-8 text-center text-[#e5e4e2]/60">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />

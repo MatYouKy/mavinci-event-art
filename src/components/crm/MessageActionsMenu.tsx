@@ -60,7 +60,12 @@ export default function MessageActionsMenu({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl z-50 py-2">
+        <div className="fixed right-4 mt-2 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl z-[100] py-2"
+             style={{
+               top: menuRef.current?.getBoundingClientRect().bottom ?? 0,
+               right: window.innerWidth - (menuRef.current?.getBoundingClientRect().right ?? 0),
+             }}
+        >
           <button
             onClick={() => handleAction(onReply)}
             className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
