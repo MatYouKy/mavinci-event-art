@@ -38,6 +38,9 @@ export default function NewEquipmentPage() {
     thumbnail_url: '',
     user_manual_url: '',
     weight_kg: '',
+    cable_length_meters: '',
+    cable_connector_in: '',
+    cable_connector_out: '',
     dimensions_length: '',
     dimensions_width: '',
     dimensions_height: '',
@@ -131,6 +134,14 @@ export default function NewEquipmentPage() {
           }
         : null;
 
+      const cableSpecs = formData.cable_length_meters || formData.cable_connector_in || formData.cable_connector_out
+        ? {
+            length_meters: formData.cable_length_meters ? parseFloat(formData.cable_length_meters) : null,
+            connector_in: formData.cable_connector_in || null,
+            connector_out: formData.cable_connector_out || null,
+          }
+        : null;
+
       const { data: equipmentData, error: equipmentError } = await supabase
         .from('equipment_items')
         .insert({
@@ -142,6 +153,7 @@ export default function NewEquipmentPage() {
           thumbnail_url: formData.thumbnail_url || null,
           user_manual_url: formData.user_manual_url || null,
           weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
+          cable_specs: cableSpecs,
           dimensions_cm: dimensions,
           purchase_date: formData.purchase_date || null,
           purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
@@ -170,6 +182,20 @@ export default function NewEquipmentPage() {
           .eq('equipment_id', equipmentData.id);
 
         if (stockError) throw stockError;
+
+        const unitsToCreate = Array.from({ length: initialQty }, (_, index) => ({
+          equipment_id: equipmentData.id,
+          unit_serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
+          status: 'available',
+          location: formData.storage_location || null,
+          purchase_date: formData.purchase_date || null,
+        }));
+
+        const { error: unitsError } = await supabase
+          .from('equipment_units')
+          .insert(unitsToCreate);
+
+        if (unitsError) throw unitsError;
 
         const { error: historyError } = await supabase
           .from('equipment_stock_history')
@@ -357,18 +383,59 @@ export default function NewEquipmentPage() {
           <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Parametry techniczne</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
-              <input
-                type="number"
-                step="0.01"
-                name="weight_kg"
-                value={formData.weight_kg}
-                onChange={handleInputChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                placeholder="0.00"
-              />
-            </div>
+            {categories.find(c => c.id === formData.category_id)?.name?.toLowerCase().includes('przewod') ? (
+              <>
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Długość (m)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    name="cable_length_meters"
+                    value={formData.cable_length_meters}
+                    onChange={handleInputChange}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="10"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wejściowy</label>
+                  <input
+                    type="text"
+                    name="cable_connector_in"
+                    value={formData.cable_connector_in}
+                    onChange={handleInputChange}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="np. XLR Male"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wyjściowy</label>
+                  <input
+                    type="text"
+                    name="cable_connector_out"
+                    value={formData.cable_connector_out}
+                    onChange={handleInputChange}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="np. XLR Female"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  name="weight_kg"
+                  value={formData.weight_kg}
+                  onChange={handleInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  placeholder="0.00"
+                />
+              </div>
+            )}
 
             <div className="md:col-span-1">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>

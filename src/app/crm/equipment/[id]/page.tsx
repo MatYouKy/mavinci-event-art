@@ -89,6 +89,7 @@ interface Equipment {
   thumbnail_url: string | null;
   user_manual_url: string | null;
   weight_kg: number | null;
+  cable_specs: any;
   dimensions_cm: any;
   purchase_date: string | null;
   purchase_price: number | null;
@@ -693,23 +694,46 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange }: any) {
     <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
       <h3 className="text-lg font-medium text-[#e5e4e2] mb-6">Parametry techniczne</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
-          {isEditing ? (
-            <input
-              type="number"
-              step="0.01"
-              name="weight_kg"
-              value={editForm.weight_kg || ''}
-              onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-            />
-          ) : (
-            <div className="text-[#e5e4e2]">
-              {equipment.weight_kg ? `${equipment.weight_kg} kg` : '-'}
+        {equipment.equipment_categories?.name?.toLowerCase().includes('przewod') ? (
+          <>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Długość</label>
+              <div className="text-[#e5e4e2]">
+                {equipment.cable_specs?.length_meters ? `${equipment.cable_specs.length_meters} m` : '-'}
+              </div>
             </div>
-          )}
-        </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wejściowy</label>
+              <div className="text-[#e5e4e2]">
+                {equipment.cable_specs?.connector_in || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyk wyjściowy</label>
+              <div className="text-[#e5e4e2]">
+                {equipment.cable_specs?.connector_out || '-'}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
+            {isEditing ? (
+              <input
+                type="number"
+                step="0.01"
+                name="weight_kg"
+                value={editForm.weight_kg || ''}
+                onChange={onInputChange}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              />
+            ) : (
+              <div className="text-[#e5e4e2]">
+                {equipment.weight_kg ? `${equipment.weight_kg} kg` : '-'}
+              </div>
+            )}
+          </div>
+        )}
 
         <div>
           <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
