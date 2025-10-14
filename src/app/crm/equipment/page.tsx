@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag, Copy, AlignJustify } from 'lucide-react';
+import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag, Copy, AlignJustify, Plug } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import KitsManagementModal from '@/components/crm/KitsManagementModal';
+import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 
@@ -68,6 +69,7 @@ export default function EquipmentPage() {
   const [kits, setKits] = useState<Kit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'equipment' | 'connectors'>('equipment');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchField, setSearchField] = useState<'all' | 'name' | 'brand'>('all');
@@ -288,99 +290,142 @@ export default function EquipmentPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn sprzętu</h2>
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowCategoryModal(true)}
-            className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            Kategorie
-          </button>
-          <button
-            onClick={() => setShowLocationsModal(true)}
-            className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
-          >
-            <MapPin className="w-4 h-4" />
-            Lokalizacje
-          </button>
-          <button
-            onClick={() => setShowKitsModal(true)}
-            className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
-          >
-            <Package className="w-4 h-4" />
-            Zestawy
-          </button>
-          <button
-            onClick={() => router.push('/crm/equipment/new')}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Dodaj sprzęt
-          </button>
+          {activeTab === 'equipment' && (
+            <>
+              <button
+                onClick={() => setShowCategoryModal(true)}
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                Kategorie
+              </button>
+              <button
+                onClick={() => setShowLocationsModal(true)}
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+              >
+                <MapPin className="w-4 h-4" />
+                Lokalizacje
+              </button>
+              <button
+                onClick={() => setShowKitsModal(true)}
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+              >
+                <Package className="w-4 h-4" />
+                Zestawy
+              </button>
+              <button
+                onClick={() => router.push('/crm/equipment/new')}
+                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Dodaj sprzęt
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        <select
-          value={searchField}
-          onChange={(e) => setSearchField(e.target.value as any)}
-          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+      <div className="flex gap-2 border-b border-[#d3bb73]/10">
+        <button
+          onClick={() => setActiveTab('equipment')}
+          className={`px-6 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === 'equipment'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
         >
-          <option value="all">Wszystkie pola</option>
-          <option value="name">Nazwa</option>
-          <option value="brand">Marka</option>
-        </select>
-
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
-          <input
-            type="text"
-            placeholder={
-              searchField === 'all' ? 'Szukaj sprzętu...' :
-              searchField === 'name' ? 'Szukaj po nazwie...' :
-              'Szukaj po marce...'
-            }
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => setViewMode('compact')}
-            className={`p-2.5 rounded-lg transition-colors ${
-              viewMode === 'compact'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
-            }`}
-            title="Widok kompaktowy"
-          >
-            <AlignJustify className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`p-2.5 rounded-lg transition-colors ${
-              viewMode === 'list'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
-            }`}
-            title="Widok listy"
-          >
-            <List className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`p-2.5 rounded-lg transition-colors ${
-              viewMode === 'grid'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
-            }`}
-            title="Widok kafelków"
-          >
-            <Grid className="w-5 h-5" />
-          </button>
-        </div>
+          <div className="flex items-center gap-2">
+            <Package className="w-4 h-4" />
+            Sprzęt
+          </div>
+          {activeTab === 'equipment' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('connectors')}
+          className={`px-6 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === 'connectors'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Plug className="w-4 h-4" />
+            Wtyki
+          </div>
+          {activeTab === 'connectors' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
       </div>
+
+      {activeTab === 'connectors' ? (
+        <ConnectorsView viewMode={viewMode} />
+      ) : (
+        <>
+          <div className="flex flex-col lg:flex-row gap-4">
+            <select
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as any)}
+              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+            >
+              <option value="all">Wszystkie pola</option>
+              <option value="name">Nazwa</option>
+              <option value="brand">Marka</option>
+            </select>
+
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+              <input
+                type="text"
+                placeholder={
+                  searchField === 'all' ? 'Szukaj sprzętu...' :
+                  searchField === 'name' ? 'Szukaj po nazwie...' :
+                  'Szukaj po marce...'
+                }
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('compact')}
+                className={`p-2.5 rounded-lg transition-colors ${
+                  viewMode === 'compact'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
+                }`}
+                title="Widok kompaktowy"
+              >
+                <AlignJustify className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2.5 rounded-lg transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
+                }`}
+                title="Widok listy"
+              >
+                <List className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2.5 rounded-lg transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
+                }`}
+                title="Widok kafelków"
+              >
+                <Grid className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
 
       <div className="flex gap-2 flex-wrap">
         <button
@@ -662,6 +707,8 @@ export default function EquipmentPage() {
           equipment={equipment}
           initialKitId={selectedKitId}
         />
+      )}
+        </>
       )}
     </div>
   );
