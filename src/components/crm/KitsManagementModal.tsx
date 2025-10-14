@@ -582,31 +582,79 @@ export default function KitsManagementModal({
       </div>
 
       {viewingKit && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
-              <h3 className="text-xl font-light text-[#e5e4e2]">Podgląd zestawu: {viewingKit.name}</h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    window.print();
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                >
-                  <Printer className="w-4 h-4" />
-                  Drukuj checklistę
-                </button>
-                <button
-                  onClick={() => setViewingKit(null)}
-                  className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-[#e5e4e2]" />
-                </button>
-              </div>
-            </div>
+        <>
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden;
+              }
+              #kit-checklist-print, #kit-checklist-print * {
+                visibility: visible;
+              }
+              #kit-checklist-print {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 20mm;
+                background: white;
+                color: black;
+              }
+              #kit-checklist-print h1 {
+                font-size: 18pt;
+                margin-bottom: 10pt;
+                font-weight: bold;
+              }
+              #kit-checklist-print table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10pt;
+              }
+              #kit-checklist-print th {
+                text-align: left;
+                padding: 8pt 4pt;
+                border-bottom: 2pt solid black;
+                font-weight: bold;
+              }
+              #kit-checklist-print td {
+                padding: 6pt 4pt;
+                border-bottom: 1pt solid #ccc;
+              }
+              #kit-checklist-print .checkbox {
+                width: 15pt;
+                height: 15pt;
+                border: 1.5pt solid black;
+                display: inline-block;
+                margin-right: 8pt;
+              }
+              @page {
+                margin: 15mm;
+              }
+            }
+          `}</style>
 
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="print:block" id="kit-checklist">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4 print:hidden">
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
+                <h3 className="text-xl font-light text-[#e5e4e2]">Podgląd zestawu: {viewingKit.name}</h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    <Printer className="w-4 h-4" />
+                    Drukuj checklistę
+                  </button>
+                  <button
+                    onClick={() => setViewingKit(null)}
+                    className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-[#e5e4e2]" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
                 <div className="mb-6 flex items-start gap-4">
                   {viewingKit.thumbnail_url && (
                     <img
@@ -621,14 +669,14 @@ export default function KitsManagementModal({
                       <p className="text-[#e5e4e2]/60 mb-2">{viewingKit.description}</p>
                     )}
                     <p className="text-sm text-[#e5e4e2]/40">
-                      Utworzono: {new Date(viewingKit.created_at).toLocaleDateString('pl-PL')}
+                      {viewingKit.equipment_kit_items.length} pozycji • Utworzono: {new Date(viewingKit.created_at).toLocaleDateString('pl-PL')}
                     </p>
                   </div>
                 </div>
 
                 <div className="border border-[#d3bb73]/20 rounded-lg overflow-hidden">
                   <div className="bg-[#d3bb73]/10 px-4 py-3 border-b border-[#d3bb73]/20">
-                    <h4 className="text-[#e5e4e2] font-medium">Checklista sprzętu ({viewingKit.equipment_kit_items.length} pozycji)</h4>
+                    <h4 className="text-[#e5e4e2] font-medium">Lista sprzętu</h4>
                   </div>
                   <div className="divide-y divide-[#d3bb73]/10">
                     {viewingKit.equipment_kit_items.map((item, index) => {
@@ -636,17 +684,23 @@ export default function KitsManagementModal({
                       const isAvailable = availableQty >= item.quantity;
 
                       return (
-                        <div key={item.id} className="p-4 hover:bg-[#0f1119] transition-colors flex items-start gap-4">
-                          <div className="flex-shrink-0 w-6 h-6 border-2 border-[#d3bb73]/40 rounded print:border-black" />
+                        <div
+                          key={item.id}
+                          className="p-4 hover:bg-[#0f1119] transition-colors flex items-start gap-4 cursor-pointer group"
+                          onClick={() => {
+                            window.location.href = `/crm/equipment/${item.equipment_id}`;
+                          }}
+                        >
+                          <div className="flex-shrink-0 w-6 h-6 border-2 border-[#d3bb73]/40 rounded" />
                           <div className="flex-1">
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-[#e5e4e2] font-medium">
+                                  <span className="text-[#e5e4e2] font-medium group-hover:text-[#d3bb73]">
                                     {index + 1}. {item.equipment_items.name}
                                   </span>
                                   {!isAvailable && (
-                                    <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 print:hidden">
+                                    <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">
                                       Niewystarczająca ilość
                                     </span>
                                   )}
@@ -666,7 +720,7 @@ export default function KitsManagementModal({
                                 <div className="text-lg font-medium text-[#e5e4e2]">
                                   {item.quantity} szt.
                                 </div>
-                                <div className={`text-xs ${isAvailable ? 'text-green-400' : 'text-red-400'} print:hidden`}>
+                                <div className={`text-xs ${isAvailable ? 'text-green-400' : 'text-red-400'}`}>
                                   Dostępne: {availableQty}
                                 </div>
                               </div>
@@ -677,16 +731,47 @@ export default function KitsManagementModal({
                     })}
                   </div>
                 </div>
-
-                <div className="mt-6 text-sm text-[#e5e4e2]/40 print:block hidden">
-                  <p>Data wydruku: {new Date().toLocaleString('pl-PL')}</p>
-                  <p className="mt-2">Podpis osoby wydającej: _____________________</p>
-                  <p className="mt-2">Podpis osoby odbierającej: _____________________</p>
-                </div>
               </div>
             </div>
           </div>
-        </div>
+
+          {/* Ukryty element do druku */}
+          <div id="kit-checklist-print" className="hidden print:block">
+            <h1>{viewingKit.name}</h1>
+            {viewingKit.description && <p style={{marginBottom: '10pt'}}>{viewingKit.description}</p>}
+
+            <table>
+              <thead>
+                <tr>
+                  <th style={{width: '40px'}}>✓</th>
+                  <th style={{width: '40px'}}>Lp.</th>
+                  <th>Nazwa sprzętu</th>
+                  <th>Model</th>
+                  <th style={{width: '80px', textAlign: 'right'}}>Ilość</th>
+                  <th>Notatki</th>
+                </tr>
+              </thead>
+              <tbody>
+                {viewingKit.equipment_kit_items.map((item, index) => (
+                  <tr key={item.id}>
+                    <td><span className="checkbox"></span></td>
+                    <td>{index + 1}</td>
+                    <td>{item.equipment_items.name}</td>
+                    <td>{item.equipment_items.brand ? `${item.equipment_items.brand} ${item.equipment_items.model || ''}` : '-'}</td>
+                    <td style={{textAlign: 'right'}}>{item.quantity}</td>
+                    <td>{item.notes || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={{marginTop: '30pt', borderTop: '1pt solid #ccc', paddingTop: '15pt'}}>
+              <p>Data: {new Date().toLocaleDateString('pl-PL')}</p>
+              <p style={{marginTop: '20pt'}}>Osoba wydająca: _____________________________</p>
+              <p style={{marginTop: '20pt'}}>Osoba odbierająca: _____________________________</p>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
