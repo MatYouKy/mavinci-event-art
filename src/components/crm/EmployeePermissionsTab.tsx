@@ -63,15 +63,26 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
     return permissions.includes(scope);
   };
 
-  const toggleScope = (scope: string) => {
+  const getPermissionLevel = (module: string): 'none' | 'view' | 'manage' => {
+    if (permissions.includes(`${module}_manage`)) return 'manage';
+    if (permissions.includes(`${module}_view`)) return 'view';
+    return 'none';
+  };
+
+  const setPermissionLevel = (module: string, level: 'none' | 'view' | 'manage') => {
     if (!isAdmin) return;
 
     setPermissions(prev => {
-      if (prev.includes(scope)) {
-        return prev.filter(s => s !== scope);
-      } else {
-        return [...prev, scope];
+      const filtered = prev.filter(
+        p => p !== `${module}_view` && p !== `${module}_manage`
+      );
+
+      if (level === 'view') {
+        return [...filtered, `${module}_view`];
+      } else if (level === 'manage') {
+        return [...filtered, `${module}_manage`];
       }
+      return filtered;
     });
     setHasChanges(true);
   };
@@ -172,68 +183,57 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {modules.map((module) => (
           <div
             key={module.key}
-            className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6"
+            className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4"
           >
-            <h4 className="text-lg font-medium text-[#e5e4e2] mb-4">
-              {module.label}
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={hasScope(`${module.key}_view`)}
-                  onChange={() => toggleScope(`${module.key}_view`)}
-                  disabled={!isAdmin}
-                  className="w-5 h-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <span className="text-sm text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
-                  Przeglądanie
-                </span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={hasScope(`${module.key}_manage`)}
-                  onChange={() => toggleScope(`${module.key}_manage`)}
-                  disabled={!isAdmin}
-                  className="w-5 h-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <span className="text-sm text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
-                  Zarządzanie (edycja i usuwanie)
-                </span>
-              </label>
-            </div>
+            <label className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-[#e5e4e2]">
+                {module.label}
+              </span>
+              <select
+                value={getPermissionLevel(module.key)}
+                onChange={(e) => setPermissionLevel(module.key, e.target.value as 'none' | 'view' | 'manage')}
+                disabled={!isAdmin}
+                className="px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="none">Brak</option>
+                <option value="view">Przeglądanie</option>
+                <option value="manage">Zarządzanie</option>
+              </select>
+            </label>
           </div>
         ))}
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <h4 className="text-lg font-medium text-[#e5e4e2] mb-4">
-            Specjalne uprawnienia
-          </h4>
-          <div className="space-y-3">
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={hasScope('employees_permissions')}
-                onChange={() => toggleScope('employees_permissions')}
-                disabled={!isAdmin}
-                className="w-5 h-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <div>
-                <div className="text-sm text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
-                  Zarządzanie uprawnieniami pracowników
-                </div>
-                <div className="text-xs text-[#e5e4e2]/60">
-                  Pozwala na edycję uprawnień innych pracowników
-                </div>
+        <div className="bg-[#1c1f33] border border-yellow-500/20 rounded-xl p-4">
+          <label className="flex flex-col gap-2">
+            <div>
+              <div className="text-sm font-medium text-[#e5e4e2]">
+                Zarządzanie uprawnieniami
               </div>
-            </label>
-          </div>
+              <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                Pozwala edytować uprawnienia pracowników
+              </div>
+            </div>
+            <select
+              value={hasScope('employees_permissions') ? 'yes' : 'no'}
+              onChange={(e) => {
+                if (e.target.value === 'yes') {
+                  setPermissions(prev => [...prev.filter(p => p !== 'employees_permissions'), 'employees_permissions']);
+                } else {
+                  setPermissions(prev => prev.filter(p => p !== 'employees_permissions'));
+                }
+                setHasChanges(true);
+              }}
+              disabled={!isAdmin}
+              className="px-3 py-2 bg-[#0f1119] border border-yellow-500/30 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="no">Nie</option>
+              <option value="yes">Tak</option>
+            </select>
+          </label>
         </div>
       </div>
 
