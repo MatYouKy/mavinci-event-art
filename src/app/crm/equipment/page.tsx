@@ -386,55 +386,55 @@ export default function EquipmentPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn sprzętu</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {activeTab === 'equipment' && (
             <>
               <button
                 onClick={() => setShowCategoryModal(true)}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
               >
-                <Settings className="w-4 h-4" />
-                Kategorie
+                <Settings className="w-5 h-5 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Kategorie</span>
               </button>
               <button
                 onClick={() => setShowLocationsModal(true)}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
               >
-                <MapPin className="w-4 h-4" />
-                Lokalizacje
+                <MapPin className="w-5 h-5 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Lokalizacje</span>
               </button>
               <button
                 onClick={() => setShowKitsModal(true)}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors"
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
               >
-                <Package className="w-4 h-4" />
-                Zestawy
+                <Package className="w-5 h-5 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Zestawy</span>
               </button>
               <button
                 onClick={() => router.push('/crm/equipment/new')}
-                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors min-h-[44px]"
               >
-                <Plus className="w-4 h-4" />
-                Dodaj sprzęt
+                <Plus className="w-5 h-5 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Dodaj sprzęt</span>
               </button>
             </>
           )}
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-[#d3bb73]/10">
+      <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         <button
           onClick={() => setActiveTab('equipment')}
-          className={`px-6 py-3 text-sm font-medium transition-colors relative ${
+          className={`px-4 md:px-6 py-3 text-sm font-medium transition-colors relative whitespace-nowrap min-h-[44px] ${
             activeTab === 'equipment'
               ? 'text-[#d3bb73]'
               : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Package className="w-4 h-4" />
+            <Package className="w-5 h-5 md:w-4 md:h-4" />
             Sprzęt
           </div>
           {activeTab === 'equipment' && (
@@ -443,14 +443,14 @@ export default function EquipmentPage() {
         </button>
         <button
           onClick={() => setActiveTab('connectors')}
-          className={`px-6 py-3 text-sm font-medium transition-colors relative ${
+          className={`px-4 md:px-6 py-3 text-sm font-medium transition-colors relative whitespace-nowrap min-h-[44px] ${
             activeTab === 'connectors'
               ? 'text-[#d3bb73]'
               : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Plug className="w-4 h-4" />
+            <Plug className="w-5 h-5 md:w-4 md:h-4" />
             Wtyki
           </div>
           {activeTab === 'connectors' && (
@@ -467,15 +467,15 @@ export default function EquipmentPage() {
             <select
               value={searchField}
               onChange={(e) => setSearchField(e.target.value as any)}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 min-h-[44px]"
             >
               <option value="all">Wszystkie pola</option>
               <option value="name">Nazwa</option>
               <option value="brand">Marka</option>
             </select>
 
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+            <div className="flex-1 relative min-h-[44px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40 pointer-events-none" />
               <input
                 type="text"
                 placeholder={
@@ -492,7 +492,7 @@ export default function EquipmentPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => handleViewModeChange('compact')}
-                className={`p-2.5 rounded-lg transition-colors ${
+                className={`p-3 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
                   viewMode === 'compact'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
@@ -503,7 +503,7 @@ export default function EquipmentPage() {
               </button>
               <button
                 onClick={() => handleViewModeChange('list')}
-                className={`p-2.5 rounded-lg transition-colors ${
+                className={`p-3 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
                   viewMode === 'list'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
@@ -514,7 +514,7 @@ export default function EquipmentPage() {
               </button>
               <button
                 onClick={() => handleViewModeChange('grid')}
-                className={`p-2.5 rounded-lg transition-colors ${
+                className={`p-3 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
                   viewMode === 'grid'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
@@ -529,7 +529,7 @@ export default function EquipmentPage() {
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setSelectedCategory(null)}
-          className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+          className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap ${
             selectedCategory === null
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
@@ -541,7 +541,7 @@ export default function EquipmentPage() {
           <button
             key={category.id}
             onClick={() => setSelectedCategory(category.id)}
-            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap ${
               selectedCategory === category.id
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
@@ -560,8 +560,8 @@ export default function EquipmentPage() {
           </p>
         </div>
       ) : viewMode === 'compact' ? (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0">
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden overflow-x-auto">
+          <div className="grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0 min-w-[700px]">
             <div className="flex items-center justify-center">
               <input
                 type="checkbox"
@@ -599,27 +599,7 @@ export default function EquipmentPage() {
                     router.push(`/crm/equipment/${itemData.id}`);
                   }
                 }}
-                onMouseEnter={(e) => {
-                  if (!isKit) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const timeout = setTimeout(() => {
-                      setTooltipItem(itemData);
-                      setTooltipPosition({
-                        x: rect.right + 10,
-                        y: rect.top,
-                      });
-                    }, 500);
-                    setTooltipTimeout(timeout);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (tooltipTimeout) {
-                    clearTimeout(tooltipTimeout);
-                    setTooltipTimeout(null);
-                  }
-                  setTooltipItem(null);
-                }}
-                className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group ${
+                className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group min-w-[700px] ${
                   isKit ? 'bg-blue-500/5' : ''
                 }`}
               >
@@ -639,7 +619,31 @@ export default function EquipmentPage() {
                     />
                   )}
                 </div>
-                <div className="relative w-6 h-6 flex-shrink-0">
+                <div
+                  className="relative w-6 h-6 flex-shrink-0"
+                  onMouseEnter={(e) => {
+                    if (!isKit) {
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const timeout = setTimeout(() => {
+                        setTooltipItem(itemData);
+                        setTooltipPosition({
+                          x: rect.right + 10,
+                          y: rect.top,
+                        });
+                      }, 500);
+                      setTooltipTimeout(timeout);
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                    if (tooltipTimeout) {
+                      clearTimeout(tooltipTimeout);
+                      setTooltipTimeout(null);
+                    }
+                    setTooltipItem(null);
+                  }}
+                >
                   {isKit && (
                     <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
                       <Flag className="w-3 h-3 text-white" />
@@ -703,10 +707,10 @@ export default function EquipmentPage() {
                 {!isKit && (
                   <button
                     onClick={(e) => handleDuplicateEquipment(itemData, e)}
-                    className="absolute right-2 p-1 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded hover:bg-purple-500/10 transition-all opacity-0 group-hover:opacity-100"
+                    className="absolute right-2 p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded hover:bg-purple-500/10 transition-all opacity-0 md:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
                     title="Duplikuj"
                   >
-                    <Copy className="w-3 h-3" />
+                    <Copy className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -723,26 +727,6 @@ export default function EquipmentPage() {
             return (
               <div
                 key={itemData.id}
-                onMouseEnter={(e) => {
-                  if (!isKit) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const timeout = setTimeout(() => {
-                      setTooltipItem(itemData);
-                      setTooltipPosition({
-                        x: rect.right + 10,
-                        y: rect.top,
-                      });
-                    }, 500);
-                    setTooltipTimeout(timeout);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (tooltipTimeout) {
-                    clearTimeout(tooltipTimeout);
-                    setTooltipTimeout(null);
-                  }
-                  setTooltipItem(null);
-                }}
                 className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group ${
                   isKit
                     ? 'border-2 border-blue-500/30 hover:border-blue-500/50'
@@ -760,7 +744,31 @@ export default function EquipmentPage() {
                   }}
                   className="flex items-start gap-4"
                 >
-                  <div className="relative flex-shrink-0">
+                  <div
+                    className="relative flex-shrink-0"
+                    onMouseEnter={(e) => {
+                      if (!isKit) {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const timeout = setTimeout(() => {
+                          setTooltipItem(itemData);
+                          setTooltipPosition({
+                            x: rect.right + 10,
+                            y: rect.top,
+                          });
+                        }, 500);
+                        setTooltipTimeout(timeout);
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.stopPropagation();
+                      if (tooltipTimeout) {
+                        clearTimeout(tooltipTimeout);
+                        setTooltipTimeout(null);
+                      }
+                      setTooltipItem(null);
+                    }}
+                  >
                     {itemData.thumbnail_url ? (
                       <img
                         src={itemData.thumbnail_url}
@@ -839,30 +847,30 @@ export default function EquipmentPage() {
                 </div>
 
                 {!isKit && (
-                  <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-2 right-2 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push(`/crm/equipment/${itemData.id}`);
                       }}
-                      className="p-2 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 transition-all"
+                      className="p-3 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                       title="Edytuj sprzęt"
                     >
-                      <Edit className="w-4 h-4" />
+                      <Edit className="w-5 h-5" />
                     </button>
                     <button
                       onClick={(e) => handleDuplicateEquipment(itemData, e)}
-                      className="p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded-lg hover:bg-purple-500/10 transition-all"
+                      className="p-3 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded-lg hover:bg-purple-500/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                       title="Duplikuj sprzęt"
                     >
-                      <Copy className="w-4 h-4" />
+                      <Copy className="w-5 h-5" />
                     </button>
                     <button
                       onClick={(e) => handleDeleteEquipment(itemData.id, e)}
-                      className="p-2 bg-[#1c1f33] border border-red-400/30 text-red-400 rounded-lg hover:bg-red-500/10 transition-all"
+                      className="p-3 bg-[#1c1f33] border border-red-400/30 text-red-400 rounded-lg hover:bg-red-500/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                       title="Usuń sprzęt"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-5 h-5" />
                     </button>
                   </div>
                 )}
