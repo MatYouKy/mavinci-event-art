@@ -155,12 +155,12 @@ export default function EmployeeDetailPage() {
       const isAdmin =
         employeeData?.access_level === 'admin' ||
         employeeData?.role === 'admin' ||
-        employeeData?.permissions?.employee_manage === true;
+        employeeData?.permissions?.includes('employees_manage');
 
       const canManagePermissions =
         employeeData?.access_level === 'admin' ||
         employeeData?.role === 'admin' ||
-        employeeData?.permissions?.employee_permissions === true;
+        employeeData?.permissions?.includes('employees_permissions');
 
       setCurrentUser({ id: user.id, isAdmin, canManagePermissions });
     } catch (err) {

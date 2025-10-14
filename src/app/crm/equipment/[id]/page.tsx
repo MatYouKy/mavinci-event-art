@@ -164,7 +164,8 @@ export default function EquipmentDetailPage() {
         setCurrentEmployee(employee);
         const hasEditPermission =
           employee.role === 'admin' ||
-          employee.permissions?.equipment_manage === true;
+          employee.access_level === 'admin' ||
+          employee.permissions?.includes('equipment_manage');
         setCanEdit(hasEditPermission);
       }
     } catch (error) {
