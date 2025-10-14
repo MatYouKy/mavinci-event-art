@@ -204,6 +204,19 @@ export default function NewEquipmentPage() {
         }
       }
 
+      if (formData.thumbnail_url) {
+        const { error: galleryError } = await supabase
+          .from('equipment_gallery')
+          .insert({
+            equipment_id: equipmentData.id,
+            image_url: formData.thumbnail_url,
+            caption: 'Główne zdjęcie',
+            order_index: 0,
+          });
+
+        if (galleryError) console.error('Error adding thumbnail to gallery:', galleryError);
+      }
+
       router.push(`/crm/equipment/${equipmentData.id}`);
     } catch (error) {
       console.error('Error creating equipment:', error);

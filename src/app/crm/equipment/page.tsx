@@ -6,6 +6,7 @@ import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPi
 import { supabase } from '@/lib/supabase';
 import KitsManagementModal from '@/components/crm/KitsManagementModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface Category {
   id: string;
@@ -62,6 +63,7 @@ interface Kit {
 export default function EquipmentPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [kits, setKits] = useState<Kit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -140,10 +142,35 @@ export default function EquipmentPage() {
   const handleDuplicateEquipment = async (item: Equipment, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (!confirm(`Czy na pewno chcesz zduplikować "${item.name}"?`)) return;
+    const confirmed = await showConfirm(`Czy na pewno chcesz zduplikować "${item.name}"?`, 'Duplikuj sprzęt');
+    if (!confirmed) return;
 
     try {
-      const newName = `${item.name} (duplikat)`;
+      const baseName = item.name.replace(/\s*\(duplikat(?:\s+\(\d+\))?\)\s*$/i, '').trim();
+
+      const { data: existingDuplicates } = await supabase
+        .from('equipment_items')
+        .select('name')
+        .or(`name.eq.${baseName},name.ilike.${baseName} (duplikat%)`);
+
+      let duplicateNumber = 2;
+      if (existingDuplicates && existingDuplicates.length > 0) {
+        const numbers = existingDuplicates
+          .map(e => {
+            if (e.name === `${baseName} (duplikat)`) return 1;
+            const match = e.name.match(/\(duplikat \((\d+)\)\)$/);
+            return match ? parseInt(match[1]) : 0;
+          })
+          .filter(n => n > 0);
+
+        if (numbers.length > 0) {
+          duplicateNumber = Math.max(...numbers) + 1;
+        }
+      }
+
+      const newName = duplicateNumber === 2
+        ? `${baseName} (duplikat)`
+        : `${baseName} (duplikat (${duplicateNumber}))`;
 
       const { data: newEquipment, error: equipmentError } = await supabase
         .from('equipment_items')
