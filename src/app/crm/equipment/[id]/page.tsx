@@ -133,7 +133,7 @@ export default function EquipmentDetailPage() {
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
   const [units, setUnits] = useState<EquipmentUnit[]>([]);
 
-  const { canManageModule, loading: employeeLoading } = useCurrentEmployee();
+  const { canManageModule, loading: employeeLoading, currentEmployee } = useCurrentEmployee();
   const canEdit = canManageModule('equipment');
 
   useEffect(() => {
@@ -351,11 +351,13 @@ export default function EquipmentDetailPage() {
     if (!file) return;
 
     try {
+      showSnackbar('Przesyłanie zdjęcia...', 'info');
       const url = await uploadImage(file, 'equipment-thumbnails');
       setEditForm((prev: any) => ({ ...prev, thumbnail_url: url }));
+      showSnackbar('Zdjęcie zostało przesłane', 'success');
     } catch (error) {
       console.error('Error uploading thumbnail:', error);
-      alert('Błąd podczas przesyłania zdjęcia');
+      showSnackbar(error instanceof Error ? error.message : 'Błąd podczas przesyłania zdjęcia', 'error');
     }
   };
 
