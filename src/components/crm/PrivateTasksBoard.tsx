@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Trash2, Edit, GripVertical, Calendar } from 'lucide-react';
+import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
