@@ -240,7 +240,9 @@ export default function UserMenu() {
             <div className="p-2">
               <button
                 onClick={() => {
-                  router.push('/crm/profile');
+                  if (employee?.id) {
+                    router.push(`/crm/employees/${employee.id}`);
+                  }
                   setIsOpen(false);
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
