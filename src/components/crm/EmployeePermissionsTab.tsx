@@ -12,114 +12,76 @@ interface Props {
   isAdmin: boolean;
 }
 
+interface ExtraPermission {
+  key: string;
+  label: string;
+  description: string;
+}
+
 interface PermissionCategory {
   key: string;
   label: string;
-  permissions: {
-    key: string;
-    label: string;
-    description?: string;
-  }[];
+  extraPermissions?: ExtraPermission[];
 }
 
 const permissionCategories: PermissionCategory[] = [
   {
     key: 'equipment',
     label: 'Sprzęt',
-    permissions: [
-      { key: 'equipment_view', label: 'Przeglądanie', description: 'Może przeglądać listę sprzętu' },
-      { key: 'equipment_create', label: 'Tworzenie', description: 'Może dodawać nowy sprzęt' },
-      { key: 'equipment_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać sprzęt' },
-    ],
   },
   {
     key: 'employees',
     label: 'Pracownicy',
-    permissions: [
-      { key: 'employees_view', label: 'Przeglądanie', description: 'Może przeglądać listę pracowników' },
-      { key: 'employees_create', label: 'Tworzenie', description: 'Może dodawać nowych pracowników' },
-      { key: 'employees_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać pracowników' },
-      { key: 'employees_permissions', label: 'Uprawnienia', description: 'Może zmieniać uprawnienia pracowników' },
+    extraPermissions: [
+      {
+        key: 'employees_permissions',
+        label: 'Uprawnienia',
+        description: 'Może zmieniać uprawnienia pracowników',
+      },
     ],
   },
   {
     key: 'clients',
     label: 'Klienci',
-    permissions: [
-      { key: 'clients_view', label: 'Przeglądanie', description: 'Może przeglądać listę klientów' },
-      { key: 'clients_create', label: 'Tworzenie', description: 'Może dodawać nowych klientów' },
-      { key: 'clients_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać klientów' },
-    ],
   },
   {
     key: 'events',
     label: 'Wydarzenia',
-    permissions: [
-      { key: 'events_view', label: 'Przeglądanie', description: 'Może przeglądać wydarzenia' },
-      { key: 'events_create', label: 'Tworzenie', description: 'Może tworzyć nowe wydarzenia' },
-      { key: 'events_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać wydarzenia' },
-    ],
   },
   {
     key: 'calendar',
     label: 'Kalendarz',
-    permissions: [
-      { key: 'calendar_view', label: 'Przeglądanie', description: 'Może przeglądać kalendarz' },
-      { key: 'calendar_manage', label: 'Zarządzanie', description: 'Może zarządzać kalendarzem' },
-    ],
   },
   {
     key: 'tasks',
     label: 'Zadania',
-    permissions: [
-      { key: 'tasks_view', label: 'Przeglądanie', description: 'Może przeglądać zadania' },
-      { key: 'tasks_create', label: 'Tworzenie', description: 'Może tworzyć nowe zadania' },
-      { key: 'tasks_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać zadania' },
-    ],
   },
   {
     key: 'offers',
     label: 'Oferty',
-    permissions: [
-      { key: 'offers_view', label: 'Przeglądanie', description: 'Może przeglądać oferty' },
-      { key: 'offers_create', label: 'Tworzenie', description: 'Może tworzyć nowe oferty' },
-      { key: 'offers_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać oferty' },
-    ],
   },
   {
     key: 'contracts',
     label: 'Umowy',
-    permissions: [
-      { key: 'contracts_view', label: 'Przeglądanie', description: 'Może przeglądać umowy' },
-      { key: 'contracts_create', label: 'Tworzenie', description: 'Może tworzyć nowe umowy' },
-      { key: 'contracts_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać umowy' },
-    ],
   },
   {
     key: 'attractions',
     label: 'Atrakcje',
-    permissions: [
-      { key: 'attractions_view', label: 'Przeglądanie', description: 'Może przeglądać atrakcje' },
-      { key: 'attractions_create', label: 'Tworzenie', description: 'Może dodawać nowe atrakcje' },
-      { key: 'attractions_manage', label: 'Zarządzanie', description: 'Może edytować i usuwać atrakcje' },
-    ],
   },
   {
     key: 'messages',
     label: 'Wiadomości',
-    permissions: [
-      { key: 'messages_view', label: 'Przeglądanie', description: 'Może przeglądać wiadomości' },
-      { key: 'messages_manage', label: 'Zarządzanie', description: 'Może zarządzać wiadomościami' },
-      { key: 'messages_assign', label: 'Przypisywanie', description: 'Może przypisywać wiadomości do pracowników' },
+    extraPermissions: [
+      {
+        key: 'messages_assign',
+        label: 'Przypisywanie wiadomości',
+        description: 'Może przypisywać wiadomości do pracowników',
+      },
     ],
   },
   {
     key: 'financials',
     label: 'Finanse',
-    permissions: [
-      { key: 'financials_view', label: 'Przeglądanie', description: 'Może przeglądać dane finansowe' },
-      { key: 'financials_manage', label: 'Zarządzanie', description: 'Może zarządzać finansami' },
-    ],
   },
 ];
 
@@ -168,7 +130,33 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
     });
   };
 
-  const togglePermission = (permissionKey: string) => {
+  const getPermissionLevel = (module: string): 'none' | 'view' | 'manage' => {
+    if (permissions.includes(`${module}_manage`)) return 'manage';
+    if (permissions.includes(`${module}_view`)) return 'view';
+    return 'none';
+  };
+
+  const setPermissionLevel = (module: string, level: 'none' | 'view' | 'manage') => {
+    if (!isAdmin) return;
+
+    setPermissions((prev) => {
+      const filtered = prev.filter(
+        (p) =>
+          p !== `${module}_view` &&
+          p !== `${module}_manage`
+      );
+
+      if (level === 'view') {
+        return [...filtered, `${module}_view`];
+      } else if (level === 'manage') {
+        return [...filtered, `${module}_manage`];
+      }
+      return filtered;
+    });
+    setHasChanges(true);
+  };
+
+  const toggleExtraPermission = (permissionKey: string) => {
     if (!isAdmin) return;
 
     setPermissions((prev) => {
@@ -176,22 +164,6 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
         return prev.filter((p) => p !== permissionKey);
       } else {
         return [...prev, permissionKey];
-      }
-    });
-    setHasChanges(true);
-  };
-
-  const toggleAllInCategory = (category: PermissionCategory, enable: boolean) => {
-    if (!isAdmin) return;
-
-    const categoryPermissions = category.permissions.map((p) => p.key);
-
-    setPermissions((prev) => {
-      if (enable) {
-        const newPerms = new Set([...prev, ...categoryPermissions]);
-        return Array.from(newPerms);
-      } else {
-        return prev.filter((p) => !categoryPermissions.includes(p));
       }
     });
     setHasChanges(true);
@@ -243,10 +215,24 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
     setHasChanges(true);
   };
 
-  const getCategoryStats = (category: PermissionCategory) => {
-    const total = category.permissions.length;
-    const enabled = category.permissions.filter((p) => permissions.includes(p.key)).length;
-    return { total, enabled };
+  const getCategoryStatus = (category: PermissionCategory): string => {
+    const level = getPermissionLevel(category.key);
+
+    if (level === 'none') return 'Brak';
+    if (level === 'view') return 'Przeglądanie';
+    if (level === 'manage') {
+      if (category.extraPermissions) {
+        const extraCount = category.extraPermissions.filter(
+          (ep) => permissions.includes(ep.key)
+        ).length;
+        if (extraCount > 0) {
+          return `Zarządzanie + ${extraCount}`;
+        }
+      }
+      return 'Zarządzanie';
+    }
+
+    return 'Brak';
   };
 
   if (loading) {
@@ -311,7 +297,8 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
       <div className="space-y-3">
         {permissionCategories.map((category) => {
           const isExpanded = expandedCategories.has(category.key);
-          const stats = getCategoryStats(category);
+          const level = getPermissionLevel(category.key);
+          const hasManageLevel = level === 'manage';
 
           return (
             <div
@@ -332,53 +319,65 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
                     {category.label}
                   </span>
                   <span className="text-sm text-[#e5e4e2]/60">
-                    ({stats.enabled}/{stats.total})
+                    {getCategoryStatus(category)}
                   </span>
                 </div>
-                {isAdmin && (
-                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => toggleAllInCategory(category, true)}
-                      className="text-xs px-2 py-1 bg-green-500/20 text-green-300 rounded hover:bg-green-500/30 transition-colors"
-                    >
-                      Wszystkie
-                    </button>
-                    <button
-                      onClick={() => toggleAllInCategory(category, false)}
-                      className="text-xs px-2 py-1 bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 transition-colors"
-                    >
-                      Żadne
-                    </button>
-                  </div>
-                )}
               </div>
 
               {isExpanded && (
-                <div className="border-t border-[#d3bb73]/10 p-4 space-y-3">
-                  {category.permissions.map((permission) => (
-                    <label
-                      key={permission.key}
-                      className="flex items-start gap-3 cursor-pointer group"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={permissions.includes(permission.key)}
-                        onChange={() => togglePermission(permission.key)}
-                        disabled={!isAdmin}
-                        className="mt-1 w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
-                          {permission.label}
-                        </div>
-                        {permission.description && (
-                          <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
-                            {permission.description}
-                          </div>
-                        )}
-                      </div>
+                <div className="border-t border-[#d3bb73]/10 p-4 space-y-4">
+                  <div>
+                    <label className="block mb-2">
+                      <span className="text-sm font-medium text-[#e5e4e2]/80">
+                        Poziom dostępu
+                      </span>
                     </label>
-                  ))}
+                    <select
+                      value={level}
+                      onChange={(e) =>
+                        setPermissionLevel(
+                          category.key,
+                          e.target.value as 'none' | 'view' | 'manage'
+                        )
+                      }
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="none">Brak</option>
+                      <option value="view">Przeglądanie</option>
+                      <option value="manage">Zarządzanie</option>
+                    </select>
+                  </div>
+
+                  {hasManageLevel && category.extraPermissions && category.extraPermissions.length > 0 && (
+                    <div className="pt-3 border-t border-[#d3bb73]/10 space-y-3">
+                      <div className="text-sm font-medium text-[#e5e4e2]/80 mb-2">
+                        Dodatkowe uprawnienia
+                      </div>
+                      {category.extraPermissions.map((extra) => (
+                        <label
+                          key={extra.key}
+                          className="flex items-start gap-3 cursor-pointer group"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={permissions.includes(extra.key)}
+                            onChange={() => toggleExtraPermission(extra.key)}
+                            disabled={!isAdmin}
+                            className="mt-1 w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
+                              {extra.label}
+                            </div>
+                            <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
+                              {extra.description}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
