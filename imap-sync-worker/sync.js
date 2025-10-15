@@ -8,6 +8,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Debug: Check which key is being used
+const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')
+  ? (process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"') ? 'service_role' : 'anon')
+  : 'MISSING';
+
+console.log('\n⚠️  KEY TYPE DETECTED:', keyType);
+if (keyType === 'anon') {
+  console.log('❌ ERROR: Using ANON key instead of SERVICE_ROLE key!');
+  console.log('   Worker will NOT be able to access email accounts due to RLS.');
+  console.log('   Please update .env with the correct SERVICE_ROLE key from Supabase Dashboard.');
+  console.log('   Location: Settings > API > service_role (secret)\n');
+}
+
 const SYNC_INTERVAL = (parseInt(process.env.SYNC_INTERVAL_MINUTES) || 5) * 60 * 1000;
 const MAX_MESSAGES = parseInt(process.env.MAX_MESSAGES_PER_SYNC) || 50;
 
