@@ -10,6 +10,8 @@ import { useDialog } from '@/contexts/DialogContext';
 interface Props {
   employeeId: string;
   isAdmin: boolean;
+  targetEmployeeRole?: string;
+  currentEmployeeId?: string;
 }
 
 interface ExtraPermission {
@@ -85,7 +87,7 @@ const permissionCategories: PermissionCategory[] = [
   },
 ];
 
-export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
+export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmployeeRole, currentEmployeeId }: Props) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -93,6 +95,9 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  const targetIsAdmin = targetEmployeeRole === 'admin';
+  const canEditThisEmployee = isAdmin || (!targetIsAdmin && employeeId !== currentEmployeeId);
 
   useEffect(() => {
     fetchPermissions();
@@ -137,7 +142,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
   };
 
   const setPermissionLevel = (module: string, level: 'none' | 'view' | 'manage') => {
-    if (!isAdmin) return;
+    if (!canEditThisEmployee) return;
 
     setPermissions((prev) => {
       const filtered = prev.filter(
@@ -157,7 +162,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
   };
 
   const toggleExtraPermission = (permissionKey: string) => {
-    if (!isAdmin) return;
+    if (!canEditThisEmployee) return;
 
     setPermissions((prev) => {
       if (prev.includes(permissionKey)) {
@@ -170,8 +175,12 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
   };
 
   const handleSave = async () => {
-    if (!isAdmin) {
-      showSnackbar('Tylko administrator może zmieniać uprawnienia', 'error');
+    if (!canEditThisEmployee) {
+      if (targetIsAdmin) {
+        showSnackbar('Nie możesz edytować uprawnień administratora', 'error');
+      } else {
+        showSnackbar('Nie masz uprawnień do edycji', 'error');
+      }
       return;
     }
 
@@ -205,7 +214,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
   };
 
   const setAllPermissions = (value: boolean) => {
-    if (!isAdmin) return;
+    if (!canEditThisEmployee) return;
 
     if (value) {
       setPermissions(getAllScopes());
@@ -252,7 +261,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
             Uprawnienia pracownika
           </h3>
         </div>
-        {isAdmin && (
+        {canEditThisEmployee && (
           <button
             onClick={handleSave}
             disabled={!hasChanges || saving}
@@ -264,15 +273,23 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
         )}
       </div>
 
-      {!isAdmin && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-          <p className="text-sm text-yellow-200">
-            Tylko administrator może edytować uprawnienia pracowników
+      {!canEditThisEmployee && targetIsAdmin && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+          <p className="text-sm text-red-200">
+            Nie możesz edytować uprawnień administratora. Tylko inny administrator może to zrobić.
           </p>
         </div>
       )}
 
-      {isAdmin && (
+      {!canEditThisEmployee && !targetIsAdmin && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+          <p className="text-sm text-yellow-200">
+            Nie masz uprawnień do edycji uprawnień tego pracownika
+          </p>
+        </div>
+      )}
+
+      {canEditThisEmployee && (
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]">Szybkie akcje</span>
@@ -340,7 +357,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
                           e.target.value as 'none' | 'view' | 'manage'
                         )
                       }
-                      disabled={!isAdmin}
+                      disabled={!canEditThisEmployee}
                       className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="none">Brak</option>
@@ -363,7 +380,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
                             type="checkbox"
                             checked={permissions.includes(extra.key)}
                             onChange={() => toggleExtraPermission(extra.key)}
-                            disabled={!isAdmin}
+                            disabled={!canEditThisEmployee}
                             className="mt-1 w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <div className="flex-1">
@@ -385,7 +402,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin }: Props) {
         })}
       </div>
 
-      {hasChanges && isAdmin && (
+      {hasChanges && canEditThisEmployee && (
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
           <p className="text-sm text-blue-200">
             Masz niezapisane zmiany. Kliknij "Zapisz zmiany" aby je zachować.

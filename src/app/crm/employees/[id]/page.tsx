@@ -566,6 +566,8 @@ export default function EmployeeDetailPage() {
         <EmployeePermissionsTab
           employeeId={employeeId}
           isAdmin={isAdmin}
+          targetEmployeeRole={employee?.role}
+          currentEmployeeId={currentEmployee?.id}
         />
       )}
 
