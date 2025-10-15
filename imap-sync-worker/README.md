@@ -271,7 +271,11 @@ UPDATE employee_email_accounts SET is_active = true;
 
 Dodaj politykę dla service_role w SQL Editor:
 ```sql
-CREATE POLICY IF NOT EXISTS "Service role bypass RLS"
+-- Najpierw usuń starą politykę jeśli istnieje
+DROP POLICY IF EXISTS "Service role bypass RLS" ON employee_email_accounts;
+
+-- Dodaj nową politykę
+CREATE POLICY "Service role bypass RLS"
   ON employee_email_accounts
   FOR ALL
   TO service_role
