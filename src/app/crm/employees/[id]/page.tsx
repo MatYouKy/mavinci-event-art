@@ -113,6 +113,7 @@ export default function EmployeeDetailPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<EventAssignment[]>([]);
+  const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditing, setIsEditing] = useState(false);
@@ -128,6 +129,7 @@ export default function EmployeeDetailPage() {
       fetchDocuments();
       fetchTasks();
       fetchEvents();
+      fetchEmailAccounts();
     }
   }, [employeeId, currentEmployee]);
 
@@ -197,6 +199,23 @@ export default function EmployeeDetailPage() {
       }
     } catch (err) {
       console.error('Error fetching events:', err);
+    }
+  };
+
+  const fetchEmailAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employee_email_accounts')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setEmailAccounts(data);
+      }
+    } catch (err) {
+      console.error('Error fetching email accounts:', err);
     }
   };
 
@@ -534,10 +553,10 @@ export default function EmployeeDetailPage() {
       <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         {[
           { id: 'overview', label: 'Przegląd', icon: User },
-          { id: 'emails', label: 'Konta Email', icon: Mail },
+          ...(currentEmployee?.id === employeeId ? [{ id: 'emails', label: 'Konta Email', icon: Mail }] : []),
           ...(canManagePermissions ? [{ id: 'permissions', label: 'Uprawnienia', icon: Lock }] : []),
-          { id: 'documents', label: 'Dokumenty', icon: FileText },
-          { id: 'tasks', label: 'Zadania', icon: CheckSquare },
+          ...(currentEmployee?.id === employeeId ? [{ id: 'documents', label: 'Dokumenty', icon: FileText }] : []),
+          ...(currentEmployee?.id === employeeId ? [{ id: 'tasks', label: 'Zadania', icon: CheckSquare }] : []),
           { id: 'events', label: 'Wydarzenia', icon: Calendar },
         ].map((tab) => (
           <button
@@ -956,6 +975,42 @@ export default function EmployeeDetailPage() {
                   {employee.notes}
                 </p>
               )}
+            </div>
+          )}
+
+          {emailAccounts.length > 0 && (
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+              <h3 className="text-lg font-light text-[#e5e4e2] mb-4 flex items-center gap-2">
+                <Mail className="w-5 h-5" />
+                Konta Email
+              </h3>
+              <div className="space-y-3">
+                {emailAccounts.map((account) => (
+                  <div
+                    key={account.id}
+                    className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[#e5e4e2] font-medium">
+                            {account.email_address}
+                          </span>
+                          {account.is_primary && (
+                            <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs">
+                              Główne
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-[#e5e4e2]/60">
+                          <p>Serwer IMAP: {account.imap_host}:{account.imap_port}</p>
+                          <p>Serwer SMTP: {account.smtp_host}:{account.smtp_port}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
