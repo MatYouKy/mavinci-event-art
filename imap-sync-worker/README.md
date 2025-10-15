@@ -239,6 +239,51 @@ journalctl -u mavinci-imap-sync -f
 journalctl -u mavinci-imap-sync --since "1 hour ago"
 ```
 
+## Diagnoza: "No active email accounts found"
+
+Jeśli worker pokazuje ten błąd, uruchom skrypt diagnostyczny:
+
+```bash
+node check-accounts.js
+```
+
+### Możliwe przyczyny:
+
+**1. Brak kont w bazie danych**
+- Dodaj konto w CRM: Pracownicy → Twój profil → Konta Email
+
+**2. Konto nie jest aktywne (`is_active = false`)**
+
+Uruchom w Supabase SQL Editor:
+```sql
+-- Zobacz wszystkie konta
+SELECT email_address, is_active FROM employee_email_accounts;
+
+-- Aktywuj wszystkie konta
+UPDATE employee_email_accounts SET is_active = true;
+```
+
+**3. Zły klucz API**
+- Sprawdź czy w `.env` używasz **service_role** key (nie anon!)
+- Znajdziesz go w: Supabase Dashboard → Settings → API
+
+**4. Problem z RLS (Row Level Security)**
+
+Dodaj politykę dla service_role w SQL Editor:
+```sql
+CREATE POLICY IF NOT EXISTS "Service role bypass RLS"
+  ON employee_email_accounts
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+```
+
+Po naprawie zrestartuj workera:
+```bash
+pm2 restart mavinci-imap-sync
+```
+
 ## Testowanie
 
 Wyślij email testowy na skonfigurowane konto i poczekaj maksymalnie `SYNC_INTERVAL_MINUTES` minut.
