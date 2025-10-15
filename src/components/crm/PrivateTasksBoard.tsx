@@ -65,6 +65,36 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
   useEffect(() => {
     fetchTasks();
+
+    const tasksChannel = supabase
+      .channel(`private_tasks_${employeeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks',
+        },
+        () => {
+          fetchTasks();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'task_assignees',
+        },
+        () => {
+          fetchTasks();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tasksChannel);
+    };
   }, [employeeId]);
 
   const fetchTasks = async () => {
