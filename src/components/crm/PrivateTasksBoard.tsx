@@ -100,17 +100,44 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      const { data: privateTasks, error: privateError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('is_private', true)
+        .eq('owner_id', employeeId);
+
+      if (privateError) throw privateError;
+
+      const { data: assignedTasks, error: assignedError } = await supabase
         .from('tasks')
         .select(`
           *,
           task_assignees!inner(employee_id)
         `)
         .eq('task_assignees.employee_id', employeeId)
-        .order('order_index', { ascending: true });
+        .eq('is_private', false);
 
-      if (error) throw error;
-      setTasks(data || []);
+      if (assignedError) throw assignedError;
+
+      const allTasks = [...(privateTasks || []), ...(assignedTasks || [])];
+
+      const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
+
+      const sortedTasks = allTasks.sort((a, b) => {
+        const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+        if (priorityDiff !== 0) return priorityDiff;
+
+        if (a.due_date && b.due_date) {
+          return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        }
+        if (a.due_date) return -1;
+        if (b.due_date) return 1;
+
+        return a.order_index - b.order_index;
+      });
+
+      setTasks(sortedTasks);
     } catch (error) {
       console.error('Error fetching assigned tasks:', error);
       showSnackbar('Błąd podczas ładowania zadań', 'error');
@@ -265,6 +292,9 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             board_column: formData.board_column,
             due_date: formData.due_date || null,
             status: 'todo',
+            is_private: true,
+            owner_id: employeeId,
+            created_by: employeeId,
           })
           .select()
           .single();

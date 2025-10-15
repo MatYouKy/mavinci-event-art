@@ -124,7 +124,7 @@ export default function TasksPage() {
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
-        .order('order_index');
+        .eq('is_private', false);
 
       if (error) throw error;
 
@@ -157,7 +157,22 @@ export default function TasksPage() {
         })
       );
 
-      setTasks(tasksWithAssignees);
+      const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
+
+      const sortedTasks = tasksWithAssignees.sort((a, b) => {
+        const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+        if (priorityDiff !== 0) return priorityDiff;
+
+        if (a.due_date && b.due_date) {
+          return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        }
+        if (a.due_date) return -1;
+        if (b.due_date) return 1;
+
+        return a.order_index - b.order_index;
+      });
+
+      setTasks(sortedTasks);
     } catch (error) {
       console.error('Error fetching tasks:', error);
       showSnackbar('Błąd podczas ładowania zadań', 'error');
@@ -296,6 +311,8 @@ export default function TasksPage() {
             board_column: formData.board_column,
             due_date: formData.due_date || null,
             status: 'todo',
+            is_private: false,
+            created_by: currentEmployee?.id,
           })
           .select()
           .single();
