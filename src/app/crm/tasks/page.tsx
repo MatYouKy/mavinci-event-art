@@ -58,6 +58,7 @@ export default function TasksPage() {
 
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   const columns = [
     { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30' },
@@ -322,26 +323,48 @@ export default function TasksPage() {
     setDraggedTask(task);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
+    setDragOverColumn(columnId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null);
   };
 
   const handleDrop = async (columnId: string) => {
-    if (!draggedTask) return;
+    if (!draggedTask || draggedTask.board_column === columnId) {
+      setDraggedTask(null);
+      return;
+    }
+
+    const oldColumn = draggedTask.board_column;
+    const taskId = draggedTask.id;
+
+    setTasks(prevTasks =>
+      prevTasks.map(task =>
+        task.id === taskId ? { ...task, board_column: columnId } : task
+      )
+    );
+    setDraggedTask(null);
+    setDragOverColumn(null);
 
     try {
       const { error } = await supabase
         .from('tasks')
         .update({ board_column: columnId })
-        .eq('id', draggedTask.id);
+        .eq('id', taskId);
 
       if (error) throw error;
-
-      fetchTasks();
-      setDraggedTask(null);
     } catch (error) {
       console.error('Error moving task:', error);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
+
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === taskId ? { ...task, board_column: oldColumn } : task
+        )
+      );
     }
   };
 
@@ -358,8 +381,8 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-4 px-2">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>
         {canCreateTasks && (
           <button
@@ -372,28 +395,40 @@ export default function TasksPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {columns.map(column => (
-          <div
-            key={column.id}
-            onDragOver={handleDragOver}
-            onDrop={() => handleDrop(column.id)}
-            className={`bg-[#1c1f33] border-2 ${column.color} rounded-xl p-4 min-h-[500px]`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
-              <span className="text-sm text-[#e5e4e2]/60">
-                {getTasksByColumn(column.id).length}
-              </span>
-            </div>
+      <div className="flex-1 overflow-x-auto pb-4">
+        <div className="flex gap-4 px-2" style={{ minWidth: 'min-content' }}>
+          {columns.map(column => (
+            <div
+              key={column.id}
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={() => handleDrop(column.id)}
+              className={`flex-shrink-0 bg-[#1c1f33] border-2 rounded-xl p-4 flex flex-col transition-all ${
+                dragOverColumn === column.id
+                  ? 'border-[#d3bb73] bg-[#d3bb73]/5'
+                  : column.color
+              }`}
+              style={{ width: '320px', maxHeight: 'calc(100vh - 200px)' }}
+            >
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
+                <span className="text-sm text-[#e5e4e2]/60">
+                  {getTasksByColumn(column.id).length}
+                </span>
+              </div>
 
-            <div className="space-y-3">
-              {getTasksByColumn(column.id).map(task => (
+              <div className="space-y-3 overflow-y-auto flex-1 pr-2 -mr-2">
+                {getTasksByColumn(column.id).map(task => (
                 <div
                   key={task.id}
                   draggable
                   onDragStart={() => handleDragStart(task)}
-                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 cursor-move hover:border-[#d3bb73]/30 transition-all group"
+                  onDragEnd={() => setDraggedTask(null)}
+                  className={`bg-[#0f1119] border rounded-lg p-4 cursor-move transition-all group ${
+                    draggedTask?.id === task.id
+                      ? 'opacity-50 border-[#d3bb73]/50'
+                      : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
+                  }`}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-start gap-2 flex-1">
@@ -456,9 +491,10 @@ export default function TasksPage() {
                   )}
                 </div>
               ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {showModal && (
