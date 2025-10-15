@@ -11,12 +11,13 @@ interface Notification {
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
   category: string;
-  is_read: boolean;
-  is_global: boolean;
   action_url: string | null;
   created_at: string;
   related_entity_type: string | null;
   related_entity_id: string | null;
+  recipient_id: string;
+  is_read: boolean;
+  read_at: string | null;
 }
 
 export default function NotificationCenter() {
@@ -31,13 +32,13 @@ export default function NotificationCenter() {
     fetchNotifications();
 
     const channel = supabase
-      .channel('notifications-changes')
+      .channel('notification-recipients-changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'notifications',
+          table: 'notification_recipients',
         },
         (payload) => {
           console.log('[NotificationCenter] Real-time event:', payload);
@@ -55,34 +56,62 @@ export default function NotificationCenter() {
 
   const fetchNotifications = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
+        .from('notification_recipients')
+        .select(`
+          id,
+          is_read,
+          read_at,
+          notifications (
+            id,
+            title,
+            message,
+            type,
+            category,
+            action_url,
+            created_at,
+            related_entity_type,
+            related_entity_id
+          )
+        `)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(50);
 
       if (error) throw error;
 
       if (data) {
-        setNotifications(data);
-        setUnreadCount(data.filter((n) => !n.is_read).length);
+        const formattedNotifications = data.map((recipient: any) => ({
+          ...recipient.notifications,
+          recipient_id: recipient.id,
+          is_read: recipient.is_read,
+          read_at: recipient.read_at,
+        }));
+        setNotifications(formattedNotifications);
+        setUnreadCount(formattedNotifications.filter((n: any) => !n.is_read).length);
       }
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
   };
 
-  const markAsRead = async (id: string) => {
+  const markAsRead = async (recipientId: string) => {
     try {
       const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', id);
+        .from('notification_recipients')
+        .update({
+          is_read: true,
+          read_at: new Date().toISOString()
+        })
+        .eq('id', recipientId);
 
       if (error) throw error;
 
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+        prev.map((n) => (n.recipient_id === recipientId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n))
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
@@ -93,20 +122,26 @@ export default function NotificationCenter() {
   const markAllAsRead = async () => {
     try {
       setLoading(true);
-      const unreadIds = notifications
-        .filter((n) => !n.is_read)
-        .map((n) => n.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (unreadIds.length === 0) return;
+      const unreadRecipientIds = notifications
+        .filter((n) => !n.is_read)
+        .map((n) => n.recipient_id);
+
+      if (unreadRecipientIds.length === 0) return;
 
       const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .in('id', unreadIds);
+        .from('notification_recipients')
+        .update({
+          is_read: true,
+          read_at: new Date().toISOString()
+        })
+        .in('id', unreadRecipientIds);
 
       if (error) throw error;
 
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })));
       setUnreadCount(0);
     } catch (error) {
       console.error('Error marking all as read:', error);
@@ -115,16 +150,16 @@ export default function NotificationCenter() {
     }
   };
 
-  const deleteNotification = async (id: string) => {
+  const deleteNotification = async (recipientId: string) => {
     try {
       const { error } = await supabase
-        .from('notifications')
+        .from('notification_recipients')
         .delete()
-        .eq('id', id);
+        .eq('id', recipientId);
 
       if (error) throw error;
 
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setNotifications((prev) => prev.filter((n) => n.recipient_id !== recipientId));
       fetchNotifications();
     } catch (error) {
       console.error('Error deleting notification:', error);
@@ -133,7 +168,7 @@ export default function NotificationCenter() {
 
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.is_read) {
-      markAsRead(notification.id);
+      markAsRead(notification.recipient_id);
     }
 
     if (notification.action_url) {
@@ -319,11 +354,6 @@ export default function NotificationCenter() {
                               })}
                             </span>
 
-                            {notification.is_global && (
-                              <span className="text-xs px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
-                                Globalne
-                              </span>
-                            )}
 
                             <span className="text-xs px-2 py-0.5 bg-[#0f1119] text-[#e5e4e2]/60 rounded">
                               {notification.category}
@@ -345,7 +375,7 @@ export default function NotificationCenter() {
 
                             {!notification.is_read && (
                               <button
-                                onClick={() => markAsRead(notification.id)}
+                                onClick={() => markAsRead(notification.recipient_id)}
                                 className="flex items-center gap-1 text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
                               >
                                 <Check className="w-3 h-3" />
@@ -354,7 +384,7 @@ export default function NotificationCenter() {
                             )}
 
                             <button
-                              onClick={() => deleteNotification(notification.id)}
+                              onClick={() => deleteNotification(notification.recipient_id)}
                               className="flex items-center gap-1 text-xs text-red-400/60 hover:text-red-400 transition-colors ml-auto"
                             >
                               <Trash2 className="w-3 h-3" />

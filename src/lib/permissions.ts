@@ -14,7 +14,7 @@
  * - offers_view, offers_manage, offers_create
  * - contracts_view, contracts_manage, contracts_create
  * - attractions_view, attractions_manage, attractions_create
- * - messages_view, messages_manage
+ * - messages_view, messages_manage, messages_assign
  * - financials_view, financials_manage
  */
 
@@ -156,5 +156,6 @@ export const getAllScopes = (): string[] => {
     }
   });
   scopes.push('employees_permissions');
+  scopes.push('messages_assign');
   return scopes;
 };

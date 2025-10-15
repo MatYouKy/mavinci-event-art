@@ -56,7 +56,8 @@ export default function AssignMessageModal({
           emp.role === 'admin' ||
           (emp.permissions && (
             emp.permissions.includes('messages_view') ||
-            emp.permissions.includes('messages_manage')
+            emp.permissions.includes('messages_manage') ||
+            emp.permissions.includes('messages_assign')
           ))
         );
       });
