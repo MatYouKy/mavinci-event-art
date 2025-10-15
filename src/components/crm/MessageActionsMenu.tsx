@@ -1,25 +1,37 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MoreVertical, Reply, Trash2, UserPlus, FolderInput } from 'lucide-react';
+import { MoreVertical, Reply, Trash2, UserPlus, FolderInput, Forward, Star, Archive, Paperclip } from 'lucide-react';
 
 interface MessageActionsMenuProps {
   messageId: string;
   messageType: 'contact_form' | 'sent' | 'received';
+  isStarred?: boolean;
   onReply: () => void;
+  onForward?: () => void;
   onAssign: () => void;
   onDelete: () => void;
   onMove: () => void;
+  onStar?: () => void;
+  onArchive?: () => void;
+  onViewAttachments?: () => void;
+  hasAttachments?: boolean;
   canManage: boolean;
 }
 
 export default function MessageActionsMenu({
   messageId,
   messageType,
+  isStarred,
   onReply,
+  onForward,
   onAssign,
   onDelete,
   onMove,
+  onStar,
+  onArchive,
+  onViewAttachments,
+  hasAttachments,
   canManage,
 }: MessageActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -74,6 +86,38 @@ export default function MessageActionsMenu({
             <span>Odpowiedz</span>
           </button>
 
+          {onForward && (
+            <button
+              onClick={() => handleAction(onForward)}
+              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+            >
+              <Forward className="w-4 h-4" />
+              <span>Przekaż dalej</span>
+            </button>
+          )}
+
+          {hasAttachments && onViewAttachments && (
+            <button
+              onClick={() => handleAction(onViewAttachments)}
+              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+            >
+              <Paperclip className="w-4 h-4" />
+              <span>Załączniki</span>
+            </button>
+          )}
+
+          <div className="my-2 border-t border-[#d3bb73]/10" />
+
+          {onStar && (
+            <button
+              onClick={() => handleAction(onStar)}
+              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+            >
+              <Star className={`w-4 h-4 ${isStarred ? 'fill-yellow-500 text-yellow-500' : ''}`} />
+              <span>{isStarred ? 'Usuń gwiazdkę' : 'Oznacz gwiazdką'}</span>
+            </button>
+          )}
+
           <button
             onClick={() => handleAction(onAssign)}
             className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
@@ -81,6 +125,16 @@ export default function MessageActionsMenu({
             <UserPlus className="w-4 h-4" />
             <span>Przypisz pracownika</span>
           </button>
+
+          {messageType === 'received' && onArchive && (
+            <button
+              onClick={() => handleAction(onArchive)}
+              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+            >
+              <Archive className="w-4 h-4" />
+              <span>Archiwizuj</span>
+            </button>
+          )}
 
           {messageType === 'received' && (
             <button

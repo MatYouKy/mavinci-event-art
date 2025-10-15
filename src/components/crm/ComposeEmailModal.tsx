@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { X, Send, Eye, Code, RefreshCw } from 'lucide-react';
+import { X, Send, Eye, Code, RefreshCw, Paperclip, Trash2 } from 'lucide-react';
 import { generateEmailSignature } from './EmailSignatureGenerator';
 
 interface ComposeEmailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSend: (data: { to: string; subject: string; body: string; bodyHtml: string }) => Promise<void>;
+  onSend: (data: { to: string; subject: string; body: string; bodyHtml: string; attachments?: File[] }) => Promise<void>;
   initialTo?: string;
   initialSubject?: string;
+  initialBody?: string;
+  forwardedBody?: string;
   selectedAccountId?: string;
 }
 
@@ -20,12 +22,15 @@ export default function ComposeEmailModal({
   onSend,
   initialTo = '',
   initialSubject = '',
+  initialBody = '',
+  forwardedBody = '',
   selectedAccountId,
 }: ComposeEmailModalProps) {
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [signature, setSignature] = useState<any>(null);
   const [template, setTemplate] = useState<any>(null);
@@ -36,9 +41,11 @@ export default function ComposeEmailModal({
     if (isOpen) {
       setTo(initialTo);
       setSubject(initialSubject);
+      setBody(initialBody || forwardedBody || '');
+      setAttachments([]);
       fetchSignatureAndTemplate();
     }
-  }, [isOpen, initialTo, initialSubject]);
+  }, [isOpen, initialTo, initialSubject, initialBody, forwardedBody]);
 
   useEffect(() => {
     generatePreview();
@@ -117,6 +124,23 @@ export default function ComposeEmailModal({
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setAttachments(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   const handleSend = async () => {
     if (!to || !subject || !body) {
       alert('Wypełnij wszystkie pola');
@@ -130,10 +154,12 @@ export default function ComposeEmailModal({
         subject,
         body,
         bodyHtml: previewHtml,
+        attachments,
       });
       setTo('');
       setSubject('');
       setBody('');
+      setAttachments([]);
       onClose();
     } catch (error) {
       console.error('Error sending:', error);
@@ -212,6 +238,42 @@ export default function ComposeEmailModal({
                     ✓ Stopka zostanie dodana automatycznie
                   </p>
                 )}
+              </div>
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Załączniki:</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#d3bb73] hover:bg-[#1a1d2e] transition-colors cursor-pointer">
+                    <Paperclip className="w-5 h-5" />
+                    <span>Dodaj załącznik</span>
+                    <input
+                      type="file"
+                      onChange={handleFileSelect}
+                      multiple
+                      className="hidden"
+                    />
+                  </label>
+                  {attachments.length > 0 && (
+                    <div className="space-y-2">
+                      {attachments.map((file, index) => (
+                        <div key={index} className="flex items-center justify-between px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <Paperclip className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white truncate">{file.name}</p>
+                              <p className="text-xs text-[#e5e4e2]/50">{formatFileSize(file.size)}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => removeAttachment(index)}
+                            className="text-red-400 hover:text-red-300 p-2"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ) : (

@@ -58,6 +58,7 @@ export default function MessagesPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<UnifiedMessage | null>(null);
+  const [forwardMessage, setForwardMessage] = useState<UnifiedMessage | null>(null);
   const [limit, setLimit] = useState(50);
   const [hasMore, setHasMore] = useState(true);
 
@@ -241,7 +242,42 @@ export default function MessagesPage() {
 
   const handleReply = (message: UnifiedMessage) => {
     setReplyToMessage(message);
+    setForwardMessage(null);
     setShowNewMessageModal(true);
+  };
+
+  const handleForward = (message: UnifiedMessage) => {
+    setForwardMessage(message);
+    setReplyToMessage(null);
+    setShowNewMessageModal(true);
+  };
+
+  const handleStar = async (message: UnifiedMessage) => {
+    if (message.type !== 'received') return;
+
+    try {
+      const { error } = await supabase
+        .from('received_emails')
+        .update({ is_starred: !message.isStarred })
+        .eq('id', message.id);
+
+      if (error) throw error;
+
+      showSnackbar(
+        message.isStarred ? 'Usunięto gwiazdkę' : 'Oznaczono gwiazdką',
+        'success'
+      );
+      fetchMessages();
+    } catch (error) {
+      console.error('Error toggling star:', error);
+      showSnackbar('Błąd podczas oznaczania wiadomości', 'error');
+    }
+  };
+
+  const handleArchive = async (message: UnifiedMessage) => {
+    if (message.type !== 'received') return;
+
+    showSnackbar('Funkcja archiwizacji będzie wkrótce dostępna', 'info');
   };
 
   const handleAssign = (messageId: string, messageType: 'contact_form' | 'received', assignedTo: string | null) => {
@@ -325,7 +361,7 @@ export default function MessagesPage() {
     }
   };
 
-  const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string }) => {
+  const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string; attachments?: File[] }) => {
     if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
       showSnackbar('Wybierz konto email do wysłania', 'warning');
       return;
@@ -351,6 +387,7 @@ export default function MessagesPage() {
           to: data.to,
           subject: data.subject,
           body: data.bodyHtml,
+          attachments: data.attachments || [],
         }),
       });
 
@@ -360,6 +397,7 @@ export default function MessagesPage() {
         showSnackbar('Wiadomość wysłana!', 'success');
         setShowNewMessageModal(false);
         setReplyToMessage(null);
+        setForwardMessage(null);
         setNewMessage({ to: '', subject: '', body: '' });
         fetchMessages();
       } else {
@@ -548,10 +586,14 @@ export default function MessagesPage() {
                               <MessageActionsMenu
                                 messageId={message.id}
                                 messageType={message.type}
+                                isStarred={message.isStarred}
                                 onReply={() => handleReply(message)}
+                                onForward={message.type === 'received' ? () => handleForward(message) : undefined}
                                 onAssign={() => handleAssign(message.id, message.type, message.assigned_to || null)}
                                 onDelete={() => handleDelete(message.id, message.type)}
                                 onMove={() => handleMove(message.id)}
+                                onStar={message.type === 'received' ? () => handleStar(message) : undefined}
+                                onArchive={message.type === 'received' ? () => handleArchive(message) : undefined}
                                 canManage={canManage}
                               />
                             )}
@@ -652,10 +694,17 @@ export default function MessagesPage() {
         onClose={() => {
           setShowNewMessageModal(false);
           setReplyToMessage(null);
+          setForwardMessage(null);
         }}
         onSend={handleSendNewMessage}
-        initialTo={replyToMessage?.from || newMessage.to}
-        initialSubject={replyToMessage ? `Re: ${replyToMessage.subject}` : newMessage.subject}
+        initialTo={replyToMessage?.from || ''}
+        initialSubject={
+          replyToMessage ? `Re: ${replyToMessage.subject}` :
+          forwardMessage ? `Fwd: ${forwardMessage.subject}` :
+          newMessage.subject
+        }
+        initialBody={replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.body}` : ''}
+        forwardedBody={forwardMessage ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${forwardMessage.date.toLocaleString('pl-PL')}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.body}` : ''}
         selectedAccountId={selectedAccount}
       />
 
