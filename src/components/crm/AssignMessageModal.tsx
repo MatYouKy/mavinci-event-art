@@ -45,12 +45,23 @@ export default function AssignMessageModal({
     try {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, name, surname, email, avatar_url')
+        .select('id, name, surname, email, avatar_url, permissions, role')
         .eq('is_active', true)
         .order('name');
 
       if (error) throw error;
-      setEmployees(data || []);
+
+      const filteredEmployees = (data || []).filter((emp) => {
+        return (
+          emp.role === 'admin' ||
+          (emp.permissions && (
+            emp.permissions.includes('messages_view') ||
+            emp.permissions.includes('messages_manage')
+          ))
+        );
+      });
+
+      setEmployees(filteredEmployees);
     } catch (err) {
       console.error('Error fetching employees:', err);
       showSnackbar('Błąd podczas ładowania pracowników', 'error');
