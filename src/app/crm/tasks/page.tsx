@@ -56,6 +56,9 @@ export default function TasksPage() {
     assigned_employees: [] as string[],
   });
 
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+
   const columns = [
     { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30' },
     { id: 'in_progress', label: 'W trakcie', color: 'border-blue-500/30' },
@@ -87,19 +90,41 @@ export default function TasksPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('tasks')
-        .select(`
-          *,
-          employees_created:employees!tasks_created_by_fkey(name, surname),
-          employees_assigned:employees!tasks_assigned_to_fkey(name, surname),
-          task_assignees(
-            employee_id,
-            employees(name, surname)
-          )
-        `)
+        .select('*')
         .order('order_index');
 
       if (error) throw error;
-      setTasks(data || []);
+
+      const tasksWithAssignees = await Promise.all(
+        (data || []).map(async (task) => {
+          const { data: assignees } = await supabase
+            .from('task_assignees')
+            .select('employee_id')
+            .eq('task_id', task.id);
+
+          const assigneesWithEmployees = await Promise.all(
+            (assignees || []).map(async (assignee) => {
+              const { data: employee } = await supabase
+                .from('employees')
+                .select('name, surname')
+                .eq('id', assignee.employee_id)
+                .maybeSingle();
+
+              return {
+                employee_id: assignee.employee_id,
+                employees: employee || { name: '', surname: '' },
+              };
+            })
+          );
+
+          return {
+            ...task,
+            task_assignees: assigneesWithEmployees,
+          };
+        })
+      );
+
+      setTasks(tasksWithAssignees);
     } catch (error) {
       console.error('Error fetching tasks:', error);
       showSnackbar('Błąd podczas ładowania zadań', 'error');
@@ -150,6 +175,39 @@ export default function TasksPage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingTask(null);
+    setEmployeeSearch('');
+    setFilteredEmployees([]);
+  };
+
+  const handleEmployeeSearch = (value: string) => {
+    setEmployeeSearch(value);
+    if (value.trim()) {
+      const filtered = employees.filter(
+        (emp) =>
+          !formData.assigned_employees.includes(emp.id) &&
+          (`${emp.name} ${emp.surname}`.toLowerCase().includes(value.toLowerCase()) ||
+            emp.email.toLowerCase().includes(value.toLowerCase()))
+      );
+      setFilteredEmployees(filtered.slice(0, 5));
+    } else {
+      setFilteredEmployees([]);
+    }
+  };
+
+  const handleAddEmployee = (employeeId: string) => {
+    setFormData({
+      ...formData,
+      assigned_employees: [...formData.assigned_employees, employeeId],
+    });
+    setEmployeeSearch('');
+    setFilteredEmployees([]);
+  };
+
+  const handleRemoveEmployee = (employeeId: string) => {
+    setFormData({
+      ...formData,
+      assigned_employees: formData.assigned_employees.filter((id) => id !== employeeId),
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -499,37 +557,59 @@ export default function TasksPage() {
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">
                   Przypisani pracownicy
                 </label>
-                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg">
-                  {employees.map(employee => (
-                    <label
-                      key={employee.id}
-                      className="flex items-center gap-2 p-2 hover:bg-[#1c1f33] rounded cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.assigned_employees.includes(employee.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setFormData({
-                              ...formData,
-                              assigned_employees: [...formData.assigned_employees, employee.id],
-                            });
-                          } else {
-                            setFormData({
-                              ...formData,
-                              assigned_employees: formData.assigned_employees.filter(
-                                id => id !== employee.id
-                              ),
-                            });
-                          }
-                        }}
-                        className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73]"
-                      />
-                      <span className="text-sm text-[#e5e4e2]">
-                        {employee.name} {employee.surname}
-                      </span>
-                    </label>
-                  ))}
+
+                {formData.assigned_employees.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {formData.assigned_employees.map((empId) => {
+                      const employee = employees.find((e) => e.id === empId);
+                      if (!employee) return null;
+                      return (
+                        <div
+                          key={empId}
+                          className="flex items-center gap-2 px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full text-sm"
+                        >
+                          <span>
+                            {employee.name} {employee.surname}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEmployee(empId)}
+                            className="hover:text-[#d3bb73]/70 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={employeeSearch}
+                    onChange={(e) => handleEmployeeSearch(e.target.value)}
+                    placeholder="Wpisz imię, nazwisko lub email..."
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+
+                  {filteredEmployees.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {filteredEmployees.map((employee) => (
+                        <button
+                          key={employee.id}
+                          type="button"
+                          onClick={() => handleAddEmployee(employee.id)}
+                          className="w-full text-left px-4 py-2 hover:bg-[#d3bb73]/10 transition-colors text-sm text-[#e5e4e2] flex items-center justify-between"
+                        >
+                          <span>
+                            {employee.name} {employee.surname}
+                          </span>
+                          <span className="text-xs text-[#e5e4e2]/60">{employee.email}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
