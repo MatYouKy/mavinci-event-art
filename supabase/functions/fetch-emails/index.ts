@@ -86,21 +86,39 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 2. OPCJONALNIE: Spróbuj pobrać z IMAP (może nie zadziałać)
-    // Zakomentowane bo nie działa w Deno Edge Runtime
-    /*
-    try {
-      const imapSimple = await import("npm:imap-simple@5.1.0");
-      // ... kod IMAP ...
-    } catch (imapError) {
-      console.warn("IMAP not available:", imapError);
+    // 2. Pobierz odebrane emaile z bazy
+    const { data: receivedEmails, error: receivedError } = await supabase
+      .from("received_emails")
+      .select(`
+        *,
+        assigned_employee:employees(name, surname)
+      `)
+      .eq("email_account_id", emailAccountId)
+      .order("received_date", { ascending: false })
+      .limit(50);
+
+    if (receivedEmails && !receivedError) {
+      for (const received of receivedEmails) {
+        emails.push({
+          from: received.from_address,
+          to: received.to_address,
+          subject: received.subject,
+          date: new Date(received.received_date),
+          text: received.body_text || "",
+          html: received.body_html || "",
+          messageId: received.message_id || received.id,
+          type: "received",
+          source: "received_emails",
+          isRead: received.is_read,
+          isStarred: received.is_starred,
+        });
+      }
     }
-    */
 
     // Sortuj wszystkie emaile po dacie
     emails.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    console.log(`Returned ${emails.length} emails (sent: ${sentEmails?.length || 0})`);
+    console.log(`Returned ${emails.length} emails (sent: ${sentEmails?.length || 0}, received: ${receivedEmails?.length || 0})`);
 
     return new Response(
       JSON.stringify({
@@ -109,9 +127,9 @@ Deno.serve(async (req: Request) => {
         count: emails.length,
         stats: {
           sent_emails: sentEmails?.length || 0,
-          imap_available: false,
+          received_emails: receivedEmails?.length || 0,
         },
-        message: "UWAGA: Pobieranie przez IMAP nie jest dostępne w środowisku Supabase Edge Functions. Wyświetlane są tylko wysłane emaile.",
+        message: `Pobrano ${emails.length} wiadomości (${sentEmails?.length || 0} wysłanych, ${receivedEmails?.length || 0} odebranych)`,
       }),
       {
         headers: {
