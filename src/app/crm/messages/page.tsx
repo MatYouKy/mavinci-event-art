@@ -58,6 +58,8 @@ export default function MessagesPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<UnifiedMessage | null>(null);
+  const [limit, setLimit] = useState(50);
+  const [hasMore, setHasMore] = useState(true);
 
   const [newMessage, setNewMessage] = useState({
     to: '',
@@ -73,9 +75,17 @@ export default function MessagesPage() {
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
+      setLimit(50);
+      setHasMore(true);
       fetchMessages();
     }
   }, [selectedAccount, emailAccounts]);
+
+  useEffect(() => {
+    if (limit > 50 && emailAccounts.length > 0) {
+      fetchMessages();
+    }
+  }, [limit]);
 
   const fetchEmailAccounts = async () => {
     if (!currentEmployee) return;
@@ -112,13 +122,16 @@ export default function MessagesPage() {
       if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
         const { data: contactMessages } = await supabase
           .from('contact_messages')
-          .select('*')
+          .select(`
+            *,
+            assigned_employee:employees(name, surname)
+          `)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(limit);
 
         if (contactMessages) {
           allMessages.push(
-            ...contactMessages.map((msg) => ({
+            ...contactMessages.map((msg: any) => ({
               id: msg.id,
               type: 'contact_form' as const,
               from: `${msg.name} <${msg.email}>`,
@@ -127,13 +140,14 @@ export default function MessagesPage() {
               body: msg.message,
               bodyHtml: `<p><strong>Od:</strong> ${msg.name} (${msg.email})</p>
                          ${msg.phone ? `<p><strong>Telefon:</strong> ${msg.phone}</p>` : ''}
+                         ${msg.cv_attachment ? `<p><strong>CV:</strong> <a href="${msg.cv_attachment}" target="_blank" class="text-[#d3bb73] hover:underline">Pobierz</a></p>` : ''}
                          <p>${(msg.message || '').replace(/\n/g, '<br>')}</p>`,
               date: new Date(msg.created_at),
               isRead: msg.status !== 'new',
               isStarred: false,
               status: msg.status,
-              assigned_to: null,
-              assigned_employee: null,
+              assigned_to: msg.assigned_to,
+              assigned_employee: msg.assigned_employee,
               originalData: msg,
             }))
           );
@@ -146,7 +160,7 @@ export default function MessagesPage() {
           .select('*, employees(name, surname, email)')
           .eq('email_account_id', selectedAccount)
           .order('sent_at', { ascending: false })
-          .limit(50);
+          .limit(limit);
 
         if (sentEmails) {
           allMessages.push(
@@ -172,14 +186,17 @@ export default function MessagesPage() {
 
         const { data: receivedEmails } = await supabase
           .from('received_emails')
-          .select('*')
+          .select(`
+            *,
+            assigned_employee:employees(name, surname)
+          `)
           .eq('email_account_id', selectedAccount)
           .order('received_date', { ascending: false })
-          .limit(50);
+          .limit(limit);
 
         if (receivedEmails) {
           allMessages.push(
-            ...receivedEmails.map((msg) => ({
+            ...receivedEmails.map((msg: any) => ({
               id: msg.id,
               type: 'received' as const,
               from: msg.from_address,
@@ -190,8 +207,8 @@ export default function MessagesPage() {
               date: new Date(msg.received_date),
               isRead: msg.is_read,
               isStarred: msg.is_starred,
-              assigned_to: null,
-              assigned_employee: null,
+              assigned_to: msg.assigned_to,
+              assigned_employee: msg.assigned_employee,
               originalData: msg,
             }))
           );
@@ -200,6 +217,7 @@ export default function MessagesPage() {
 
       allMessages.sort((a, b) => b.date.getTime() - a.date.getTime());
       setMessages(allMessages);
+      setHasMore(allMessages.length >= limit);
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
@@ -475,7 +493,16 @@ export default function MessagesPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 divide-x divide-[#d3bb73]/10">
-            <div className="lg:col-span-2 overflow-y-auto max-h-[600px] relative">
+            <div
+              className="lg:col-span-2 overflow-y-auto max-h-[600px] relative"
+              onScroll={(e) => {
+                const target = e.target as HTMLDivElement;
+                const bottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+                if (bottom && !loading && hasMore) {
+                  setLimit(prev => prev + 50);
+                }
+              }}
+            >
               {loading ? (
                 <div className="p-8 text-center text-[#e5e4e2]/60">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
@@ -544,6 +571,16 @@ export default function MessagesPage() {
                       </div>
                     );
                   })}
+                  {loading && messages.length > 0 && (
+                    <div className="p-4 text-center text-[#e5e4e2]/60">
+                      <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
+                    </div>
+                  )}
+                  {!hasMore && messages.length > 0 && (
+                    <div className="p-4 text-center text-[#e5e4e2]/40 text-sm">
+                      Koniec listy wiadomości
+                    </div>
+                  )}
                 </div>
               )}
             </div>
