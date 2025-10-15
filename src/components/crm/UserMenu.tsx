@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import ChangePasswordModal from './ChangePasswordModal';
 
 interface EmployeeData {
   id: string;
@@ -33,6 +34,7 @@ export default function UserMenu() {
   const [user, setUser] = useState<any>(null);
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -260,6 +262,26 @@ export default function UserMenu() {
 
               <button
                 onClick={() => {
+                  setShowPasswordModal(true);
+                  setIsOpen(false);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
+                  <Key className="w-4 h-4 text-[#d3bb73]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#e5e4e2]">
+                    Zmień hasło
+                  </p>
+                  <p className="text-xs text-[#e5e4e2]/60">
+                    Aktualizuj hasło dostępu
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
                   router.push('/crm/settings');
                   setIsOpen(false);
                 }}
@@ -410,6 +432,11 @@ export default function UserMenu() {
           </div>
         </>
       )}
+
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+      />
     </div>
   );
 }

@@ -11,6 +11,10 @@ export default function CRMLoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +42,30 @@ export default function CRMLoginPage() {
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setResetLoading(true);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/crm/reset-password`,
+      });
+
+      if (resetError) {
+        setError(resetError.message);
+        setResetLoading(false);
+        return;
+      }
+
+      setResetSuccess(true);
+      setResetLoading(false);
+    } catch (err: any) {
+      setError(err.message || 'Wystąpił błąd podczas resetowania hasła');
+      setResetLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0f1119] flex items-center justify-center px-4">
       <div className="max-w-md w-full">
@@ -47,14 +75,17 @@ export default function CRMLoginPage() {
               <Lock className="w-8 h-8 text-[#d3bb73]" />
             </div>
             <h2 className="text-3xl font-light text-[#e5e4e2] mb-2">
-              Panel CRM Mavinci
+              {showResetPassword ? 'Resetuj hasło' : 'Panel CRM Mavinci'}
             </h2>
             <p className="text-[#e5e4e2]/60 font-light">
-              Zaloguj się aby zarządzać systemem
+              {showResetPassword
+                ? 'Podaj adres email aby otrzymać link do zmiany hasła'
+                : 'Zaloguj się aby zarządzać systemem'}
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
+          {!showResetPassword ? (
+            <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label
                 htmlFor="email"
@@ -110,13 +141,103 @@ export default function CRMLoginPage() {
             >
               {loading ? 'Logowanie...' : 'Zaloguj się'}
             </button>
-          </form>
 
-          <div className="mt-6 text-center text-sm text-[#e5e4e2]/60">
-            <p>
-              Skontaktuj się z administratorem aby uzyskać dostęp
-            </p>
-          </div>
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetPassword(true);
+                  setResetEmail(email);
+                  setError('');
+                }}
+                className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+              >
+                Nie pamiętasz hasła?
+              </button>
+            </div>
+          </form>
+          ) : resetSuccess ? (
+            <div className="space-y-6">
+              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <p className="text-green-400 text-sm text-center">
+                  Link do resetowania hasła został wysłany na adres <strong>{resetEmail}</strong>
+                </p>
+                <p className="text-green-400/80 text-xs text-center mt-2">
+                  Sprawdź swoją skrzynkę odbiorczą (w tym folder spam)
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowResetPassword(false);
+                  setResetSuccess(false);
+                  setResetEmail('');
+                }}
+                className="w-full py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all duration-300"
+              >
+                Powrót do logowania
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-6">
+              <div>
+                <label
+                  htmlFor="resetEmail"
+                  className="block text-sm font-light text-[#e5e4e2] mb-2"
+                >
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#d3bb73]/60" />
+                  <input
+                    id="resetEmail"
+                    type="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="twoj@email.pl"
+                    required
+                    className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none transition-colors"
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <p className="text-red-400 text-sm text-center">{error}</p>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="w-full py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resetLoading ? 'Wysyłanie...' : 'Wyślij link resetujący'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResetPassword(false);
+                    setResetEmail('');
+                    setError('');
+                  }}
+                  className="w-full py-3 bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg font-medium hover:bg-[#1c1f33] transition-all duration-300"
+                >
+                  Powrót do logowania
+                </button>
+              </div>
+            </form>
+          )}
+
+          {!showResetPassword && (
+            <div className="mt-6 text-center text-sm text-[#e5e4e2]/60">
+              <p>
+                Skontaktuj się z administratorem aby uzyskać dostęp
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
