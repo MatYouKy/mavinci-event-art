@@ -13,6 +13,7 @@ import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage, IImage } from '@/types/image';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import PrivateTasksBoard from '@/components/crm/PrivateTasksBoard';
 
 interface ImagePosition {
   posX: number;
@@ -1044,62 +1045,10 @@ export default function EmployeeDetailPage() {
       )}
 
       {activeTab === 'tasks' && (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <h3 className="text-lg font-light text-[#e5e4e2] mb-6">
-            Przypisane zadania
-          </h3>
-
-          {tasks.length === 0 ? (
-            <div className="text-center py-12">
-              <CheckSquare className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-              <p className="text-[#e5e4e2]/60">Brak przypisanych zadań</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h4 className="text-[#e5e4e2] font-medium mb-1">
-                        {task.title}
-                      </h4>
-                      {task.description && (
-                        <p className="text-[#e5e4e2]/60 text-sm mb-2">
-                          {task.description}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`px-2 py-1 rounded text-xs ${getTaskStatusColor(
-                            task.status
-                          )}`}
-                        >
-                          {getTaskStatusLabel(task.status)}
-                        </span>
-                        <span
-                          className={`px-2 py-1 rounded text-xs ${getPriorityColor(
-                            task.priority
-                          )}`}
-                        >
-                          {task.priority}
-                        </span>
-                        {task.due_date && (
-                          <span className="text-[#e5e4e2]/40 text-xs flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {new Date(task.due_date).toLocaleDateString('pl-PL')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <PrivateTasksBoard
+          employeeId={employeeId as string}
+          isOwnProfile={currentEmployee?.id === employeeId}
+        />
       )}
 
       {activeTab === 'events' && (

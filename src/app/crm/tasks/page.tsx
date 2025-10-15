@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, CheckSquare, User, Calendar, MoreVertical, X, Trash2, Edit, GripVertical } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -59,6 +59,8 @@ export default function TasksPage() {
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const columns = [
     { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30' },
@@ -319,6 +321,39 @@ export default function TasksPage() {
     }
   };
 
+  const handleAutoScroll = (e: React.DragEvent) => {
+    if (!scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const rect = container.getBoundingClientRect();
+    const threshold = 100;
+    const scrollSpeed = 10;
+
+    const mouseX = e.clientX;
+
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+
+    if (mouseX < rect.left + threshold) {
+      autoScrollIntervalRef.current = setInterval(() => {
+        container.scrollLeft -= scrollSpeed;
+      }, 16);
+    } else if (mouseX > rect.right - threshold) {
+      autoScrollIntervalRef.current = setInterval(() => {
+        container.scrollLeft += scrollSpeed;
+      }, 16);
+    }
+  };
+
+  const stopAutoScroll = () => {
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+  };
+
   const handleDragStart = (task: Task) => {
     setDraggedTask(task);
   };
@@ -326,6 +361,7 @@ export default function TasksPage() {
   const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
     setDragOverColumn(columnId);
+    handleAutoScroll(e);
   };
 
   const handleDragLeave = () => {
@@ -348,6 +384,7 @@ export default function TasksPage() {
     );
     setDraggedTask(null);
     setDragOverColumn(null);
+    stopAutoScroll();
 
     try {
       const { error } = await supabase
@@ -395,7 +432,7 @@ export default function TasksPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-x-auto pb-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-x-auto pb-4">
         <div className="flex gap-4 px-2" style={{ minWidth: 'min-content' }}>
           {columns.map(column => (
             <div
@@ -423,7 +460,10 @@ export default function TasksPage() {
                   key={task.id}
                   draggable
                   onDragStart={() => handleDragStart(task)}
-                  onDragEnd={() => setDraggedTask(null)}
+                  onDragEnd={() => {
+                    setDraggedTask(null);
+                    stopAutoScroll();
+                  }}
                   className={`bg-[#0f1119] border rounded-lg p-4 cursor-move transition-all group ${
                     draggedTask?.id === task.id
                       ? 'opacity-50 border-[#d3bb73]/50'
