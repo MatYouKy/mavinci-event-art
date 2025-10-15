@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight, GripVertical, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
+import NavigationManager from '@/components/crm/NavigationManager';
 import { SnackbarProvider } from '@/contexts/SnackbarContext';
 import { canView, isAdmin, type Employee } from '@/lib/permissions';
 
@@ -15,20 +16,21 @@ interface NavigationItem {
   href: string;
   icon: any;
   module?: string;
+  key: string;
 }
 
 const allNavigation: NavigationItem[] = [
-  { name: 'Dashboard', href: '/crm', icon: LayoutDashboard },
-  { name: 'Kalendarz', href: '/crm/calendar', icon: Calendar, module: 'calendar' },
-  { name: 'Wiadomości', href: '/crm/messages', icon: Mail, module: 'messages' },
-  { name: 'Klienci', href: '/crm/clients', icon: Building2, module: 'clients' },
-  { name: 'Eventy', href: '/crm/events', icon: Calendar, module: 'events' },
-  { name: 'Oferty', href: '/crm/offers', icon: FileText, module: 'offers' },
-  { name: 'Umowy', href: '/crm/contracts', icon: FileSignature, module: 'contracts' },
-  { name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, module: 'attractions' },
-  { name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
-  { name: 'Sprzęt', href: '/crm/equipment', icon: Package, module: 'equipment' },
-  { name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
+  { key: 'dashboard', name: 'Dashboard', href: '/crm', icon: LayoutDashboard },
+  { key: 'calendar', name: 'Kalendarz', href: '/crm/calendar', icon: Calendar, module: 'calendar' },
+  { key: 'messages', name: 'Wiadomości', href: '/crm/messages', icon: Mail, module: 'messages' },
+  { key: 'clients', name: 'Klienci', href: '/crm/clients', icon: Building2, module: 'clients' },
+  { key: 'events', name: 'Eventy', href: '/crm/events', icon: Calendar, module: 'events' },
+  { key: 'offers', name: 'Oferty', href: '/crm/offers', icon: FileText, module: 'offers' },
+  { key: 'contracts', name: 'Umowy', href: '/crm/contracts', icon: FileSignature, module: 'contracts' },
+  { key: 'attractions', name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, module: 'attractions' },
+  { key: 'employees', name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
+  { key: 'equipment', name: 'Sprzęt', href: '/crm/equipment', icon: Package, module: 'equipment' },
+  { key: 'tasks', name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
 ];
 
 export default function CRMLayout({ children }: { children: React.ReactNode }) {
@@ -60,21 +62,39 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         const { data: employeeData } = await supabase
           .from('employees')
-          .select('id, role, access_level, permissions')
+          .select('id, role, access_level, permissions, navigation_order')
           .eq('email', session.user.email)
           .maybeSingle();
 
         if (employeeData) {
           setEmployee(employeeData);
 
+          let userNav: NavigationItem[];
           if (isAdmin(employeeData)) {
-            setNavigation(allNavigation);
+            userNav = allNavigation;
           } else {
-            const filteredNav = allNavigation.filter(item => {
+            userNav = allNavigation.filter(item => {
               if (!item.module) return true;
               return canView(employeeData, item.module);
             });
-            setNavigation(filteredNav);
+          }
+
+          if (employeeData.navigation_order && Array.isArray(employeeData.navigation_order)) {
+            const orderedNav: NavigationItem[] = [];
+            const navMap = new Map(userNav.map(item => [item.key, item]));
+
+            employeeData.navigation_order.forEach((key: string) => {
+              const item = navMap.get(key);
+              if (item) {
+                orderedNav.push(item);
+                navMap.delete(key);
+              }
+            });
+
+            navMap.forEach(item => orderedNav.push(item));
+            setNavigation(orderedNav);
+          } else {
+            setNavigation(userNav);
           }
         }
       }
@@ -160,30 +180,14 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
           } fixed top-[73px] bottom-0 left-0 z-40 bg-[#1c1f33] border-r border-[#d3bb73]/10 transition-all duration-300 lg:translate-x-0`}
         >
           <div className="flex h-full flex-col relative">
-            <nav className="flex-1 overflow-y-auto px-4 py-6">
-              <ul className="space-y-1">
-                {navigation.map((item) => {
-                  const isActive = pathname === item.href;
-                  return (
-                    <li key={item.name}>
-                      <Link
-                        href={item.href}
-                        onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-sm font-light transition-all duration-200 ${
-                          isActive
-                            ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
-                            : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
-                        }`}
-                        title={sidebarCollapsed ? item.name : ''}
-                      >
-                        <item.icon className="w-5 h-5" />
-                        {!sidebarCollapsed && <span>{item.name}</span>}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
+            <NavigationManager
+              navigation={navigation}
+              pathname={pathname}
+              sidebarCollapsed={sidebarCollapsed}
+              employeeId={employee?.id || null}
+              onClose={() => setSidebarOpen(false)}
+              onOrderChange={(newOrder) => setNavigation(newOrder)}
+            />
 
             <button
               onClick={toggleSidebar}
