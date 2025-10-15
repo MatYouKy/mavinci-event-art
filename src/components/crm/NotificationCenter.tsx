@@ -152,6 +152,8 @@ export default function NotificationCenter() {
 
   const deleteNotification = async (recipientId: string) => {
     try {
+      const notificationToDelete = notifications.find(n => n.recipient_id === recipientId);
+
       const { error } = await supabase
         .from('notification_recipients')
         .delete()
@@ -160,7 +162,10 @@ export default function NotificationCenter() {
       if (error) throw error;
 
       setNotifications((prev) => prev.filter((n) => n.recipient_id !== recipientId));
-      fetchNotifications();
+
+      if (notificationToDelete && !notificationToDelete.is_read) {
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      }
     } catch (error) {
       console.error('Error deleting notification:', error);
     }
@@ -363,9 +368,10 @@ export default function NotificationCenter() {
                           <div className="flex items-center gap-2 mt-2">
                             {notification.action_url && (
                               <button
-                                onClick={() =>
-                                  handleNotificationClick(notification)
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleNotificationClick(notification);
+                                }}
                                 className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
                               >
                                 <ExternalLink className="w-3 h-3" />
@@ -375,7 +381,10 @@ export default function NotificationCenter() {
 
                             {!notification.is_read && (
                               <button
-                                onClick={() => markAsRead(notification.recipient_id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  markAsRead(notification.recipient_id);
+                                }}
                                 className="flex items-center gap-1 text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
                               >
                                 <Check className="w-3 h-3" />
@@ -384,7 +393,10 @@ export default function NotificationCenter() {
                             )}
 
                             <button
-                              onClick={() => deleteNotification(notification.recipient_id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteNotification(notification.recipient_id);
+                              }}
                               className="flex items-center gap-1 text-xs text-red-400/60 hover:text-red-400 transition-colors ml-auto"
                             >
                               <Trash2 className="w-3 h-3" />
