@@ -16,6 +16,14 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 
+const translateSubject = (subject: string): string => {
+  if (!subject) return 'Wiadomość z formularza';
+  return subject
+    .replace(/^event_inquiry\s*-\s*/i, 'Zapytanie o event - ')
+    .replace(/^team_join\s*-\s*/i, 'Rekrutacja - ')
+    .replace(/^general\s*-\s*/i, 'Ogólna - ');
+};
+
 interface UnifiedMessage {
   id: string;
   type: 'contact_form' | 'sent' | 'received';
@@ -115,7 +123,7 @@ export default function MessagesPage() {
               type: 'contact_form' as const,
               from: `${msg.name} <${msg.email}>`,
               to: 'Formularz kontaktowy',
-              subject: msg.subject || 'Wiadomość z formularza',
+              subject: translateSubject(msg.subject || 'Wiadomość z formularza'),
               body: msg.message,
               bodyHtml: `<p><strong>Od:</strong> ${msg.name} (${msg.email})</p>
                          ${msg.phone ? `<p><strong>Telefon:</strong> ${msg.phone}</p>` : ''}
