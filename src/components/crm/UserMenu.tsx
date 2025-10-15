@@ -273,27 +273,7 @@ export default function UserMenu() {
                     Ustawienia
                   </p>
                   <p className="text-xs text-[#e5e4e2]/60">
-                    Preferencje i konfiguracja
-                  </p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => {
-                  router.push('/crm/notifications');
-                  setIsOpen(false);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
-                  <Bell className="w-4 h-4 text-[#d3bb73]" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-[#e5e4e2]">
-                    Powiadomienia
-                  </p>
-                  <p className="text-xs text-[#e5e4e2]/60">
-                    Zarządzaj alertami
+                    Hasło, preferencje i powiadomienia
                   </p>
                 </div>
               </button>
