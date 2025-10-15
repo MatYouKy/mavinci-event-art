@@ -404,6 +404,11 @@ export default function MessagesPage() {
       return;
     }
 
+    if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
+      showSnackbar('Wybierz konkretne konto email', 'warning');
+      return;
+    }
+
     try {
       showSnackbar('Pobieranie wiadomości z serwera...', 'info');
 
@@ -419,7 +424,7 @@ export default function MessagesPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          employeeId: currentEmployee.id,
+          emailAccountId: selectedAccount,
         }),
       });
 
@@ -427,7 +432,9 @@ export default function MessagesPage() {
 
       if (result.success) {
         showSnackbar(`Pobrano ${result.count || 0} nowych wiadomości`, 'success');
-        fetchMessages();
+        setOffset(0);
+        setMessages([]);
+        fetchMessages(true);
       } else {
         showSnackbar(`Błąd: ${result.error}`, 'error');
       }
