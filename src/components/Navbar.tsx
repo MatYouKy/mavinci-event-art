@@ -209,7 +209,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 onClick={() => setIsServicesOpen(!isServicesOpen)}
                 className="flex items-center gap-1 text-[#e5e4e2]/90 hover:text-[#d3bb73] text-sm font-light transition-colors duration-200"
               >
-                Usługi
+                Oferta
                 <ChevronDown className={`w-4 h-4 transition-transform ${isServicesOpen ? 'rotate-180' : ''}`} />
               </button>
 
@@ -411,7 +411,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 onClick={() => setIsServicesOpen(!isServicesOpen)}
                 className="flex items-center justify-between w-full text-white/90 hover:text-white text-sm font-light py-2"
               >
-                Usługi
+                Oferta
                 <ChevronDown className={`w-4 h-4 transition-transform ${isServicesOpen ? 'rotate-180' : ''}`} />
               </button>
               {isServicesOpen && (
