@@ -14,8 +14,6 @@ interface Task {
   board_column: string;
   order_index: number;
   due_date: string | null;
-  is_private: boolean;
-  owner_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -74,15 +72,17 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       setLoading(true);
       const { data, error } = await supabase
         .from('tasks')
-        .select('*')
-        .eq('is_private', true)
-        .eq('owner_id', employeeId)
+        .select(`
+          *,
+          task_assignees!inner(employee_id)
+        `)
+        .eq('task_assignees.employee_id', employeeId)
         .order('order_index', { ascending: true });
 
       if (error) throw error;
       setTasks(data || []);
     } catch (error) {
-      console.error('Error fetching private tasks:', error);
+      console.error('Error fetching assigned tasks:', error);
       showSnackbar('Błąd podczas ładowania zadań', 'error');
     } finally {
       setLoading(false);
@@ -226,7 +226,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         if (error) throw error;
         showSnackbar('Zadanie zostało zaktualizowane', 'success');
       } else {
-        const { error } = await supabase
+        const { data: newTask, error: insertError } = await supabase
           .from('tasks')
           .insert({
             title: formData.title,
@@ -235,11 +235,20 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             board_column: formData.board_column,
             due_date: formData.due_date || null,
             status: 'todo',
-            is_private: true,
-            owner_id: employeeId,
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+
+        const { error: assignError } = await supabase
+          .from('task_assignees')
+          .insert({
+            task_id: newTask.id,
+            employee_id: employeeId,
           });
 
-        if (error) throw error;
+        if (assignError) throw assignError;
         showSnackbar('Zadanie zostało utworzone', 'success');
       }
 

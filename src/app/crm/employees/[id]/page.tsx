@@ -165,14 +165,14 @@ export default function EmployeeDetailPage() {
         setDocuments(data);
       }
     } catch (err) {
-      console.error('Error fetching documents:', err);
+      // Table employee_documents doesn't exist yet - silently ignore
     }
   };
 
   const fetchTasks = async () => {
     try {
       const { data, error } = await supabase
-        .from('task_assignments')
+        .from('task_assignees')
         .select('*, tasks(*)')
         .eq('employee_id', employeeId);
 
