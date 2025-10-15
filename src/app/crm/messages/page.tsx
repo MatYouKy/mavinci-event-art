@@ -59,7 +59,8 @@ export default function MessagesPage() {
   const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<UnifiedMessage | null>(null);
   const [forwardMessage, setForwardMessage] = useState<UnifiedMessage | null>(null);
-  const [limit, setLimit] = useState(50);
+  const [pageSize] = useState(50);
+  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
   const [newMessage, setNewMessage] = useState({
@@ -76,17 +77,86 @@ export default function MessagesPage() {
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
-      setLimit(50);
+      setOffset(0);
+      setMessages([]);
       setHasMore(true);
-      fetchMessages();
+      fetchMessages(true);
     }
   }, [selectedAccount, emailAccounts]);
 
   useEffect(() => {
-    if (limit > 50 && emailAccounts.length > 0) {
-      fetchMessages();
+    if (offset > 0 && emailAccounts.length > 0) {
+      fetchMessages(false);
     }
-  }, [limit]);
+  }, [offset]);
+
+  useEffect(() => {
+    if (!currentEmployee || emailAccounts.length === 0) return;
+
+    const contactChannel = supabase
+      .channel('contact_messages_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contact_messages',
+        },
+        (payload) => {
+          console.log('Contact message change:', payload);
+          setOffset(0);
+          setMessages([]);
+          fetchMessages(true);
+        }
+      )
+      .subscribe();
+
+    const sentChannel = supabase
+      .channel('sent_emails_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sent_emails',
+        },
+        (payload) => {
+          console.log('Sent email change:', payload);
+          if (selectedAccount !== 'contact_form') {
+            setOffset(0);
+            setMessages([]);
+            fetchMessages(true);
+          }
+        }
+      )
+      .subscribe();
+
+    const receivedChannel = supabase
+      .channel('received_emails_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'received_emails',
+        },
+        (payload) => {
+          console.log('Received email change:', payload);
+          if (selectedAccount !== 'contact_form') {
+            setOffset(0);
+            setMessages([]);
+            fetchMessages(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(contactChannel);
+      supabase.removeChannel(sentChannel);
+      supabase.removeChannel(receivedChannel);
+    };
+  }, [currentEmployee, emailAccounts, selectedAccount]);
 
   const fetchEmailAccounts = async () => {
     if (!currentEmployee) return;
@@ -115,10 +185,11 @@ export default function MessagesPage() {
     }
   };
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (reset = false) => {
     setLoading(true);
     try {
       const allMessages: UnifiedMessage[] = [];
+      const currentOffset = reset ? 0 : offset;
 
       if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
         const { data: contactMessages } = await supabase
@@ -128,7 +199,7 @@ export default function MessagesPage() {
             assigned_employee:employees(name, surname)
           `)
           .order('created_at', { ascending: false })
-          .limit(limit);
+          .range(currentOffset, currentOffset + pageSize - 1);
 
         if (contactMessages) {
           allMessages.push(
@@ -161,7 +232,7 @@ export default function MessagesPage() {
           .select('*, employees(name, surname, email)')
           .eq('email_account_id', selectedAccount)
           .order('sent_at', { ascending: false })
-          .limit(limit);
+          .range(currentOffset, currentOffset + pageSize - 1);
 
         if (sentEmails) {
           allMessages.push(
@@ -193,7 +264,7 @@ export default function MessagesPage() {
           `)
           .eq('email_account_id', selectedAccount)
           .order('received_date', { ascending: false })
-          .limit(limit);
+          .range(currentOffset, currentOffset + pageSize - 1);
 
         if (receivedEmails) {
           allMessages.push(
@@ -217,8 +288,14 @@ export default function MessagesPage() {
       }
 
       allMessages.sort((a, b) => b.date.getTime() - a.date.getTime());
-      setMessages(allMessages);
-      setHasMore(allMessages.length >= limit);
+
+      if (reset) {
+        setMessages(allMessages);
+      } else {
+        setMessages(prev => [...prev, ...allMessages]);
+      }
+
+      setHasMore(allMessages.length >= pageSize);
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
@@ -237,7 +314,6 @@ export default function MessagesPage() {
         .update({ is_read: true })
         .eq('id', message.id);
     }
-    fetchMessages();
   };
 
   const handleReply = (message: UnifiedMessage) => {
@@ -537,7 +613,7 @@ export default function MessagesPage() {
                 const target = e.target as HTMLDivElement;
                 const bottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
                 if (bottom && !loading && hasMore) {
-                  setLimit(prev => prev + 50);
+                  setOffset(prev => prev + pageSize);
                 }
               }}
             >
