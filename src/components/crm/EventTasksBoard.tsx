@@ -24,7 +24,7 @@ interface Task {
       surname: string;
       avatar_url: string | null;
       email: string | null;
-      phone: string | null;
+      phone_number: string | null;
     };
   }>;
 }
@@ -131,7 +131,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               surname,
               avatar_url,
               email,
-              phone
+              phone_number
             )
           )
         `)
@@ -580,9 +580,9 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                                             {assignee.employee.email}
                                           </div>
                                         )}
-                                        {assignee.employee.phone && (
+                                        {assignee.employee.phone_number && (
                                           <div className="text-xs text-[#e5e4e2]/60">
-                                            {assignee.employee.phone}
+                                            {assignee.employee.phone_number}
                                           </div>
                                         )}
                                       </div>

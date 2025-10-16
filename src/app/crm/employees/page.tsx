@@ -132,13 +132,26 @@ export default function EmployeesPage() {
             Zarządzaj zespołem i uprawnieniami
           </p>
         </div>
-        {canAddEmployee && <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Dodaj pracownika
-        </button>}
+        <div className="flex gap-3">
+          {canAddEmployee && (
+            <>
+              <button
+                onClick={() => router.push('/crm/settings/access-levels')}
+                className="flex items-center gap-2 border border-[#d3bb73]/30 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+              >
+                <Shield className="w-4 h-4" />
+                Poziomy dostępu
+              </button>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Dodaj pracownika
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="relative">
