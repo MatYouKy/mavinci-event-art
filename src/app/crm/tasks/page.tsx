@@ -124,7 +124,8 @@ export default function TasksPage() {
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
-        .eq('is_private', false);
+        .eq('is_private', false)
+        .is('event_id', null);
 
       if (error) throw error;
 
@@ -312,6 +313,8 @@ export default function TasksPage() {
             due_date: formData.due_date || null,
             status: 'todo',
             is_private: false,
+            event_id: null,
+            owner_id: null,
             created_by: currentEmployee?.id,
           })
           .select()
