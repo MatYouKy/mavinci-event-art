@@ -106,16 +106,16 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
       }
-      if (servicesRef.current && !servicesRef.current.contains(event.target as Node)) {
+      if (servicesRef.current && !servicesRef.current.contains(event.target as Node) && !isMenuOpen) {
         setIsServicesOpen(false);
       }
     }
 
-    if (isDropdownOpen || isServicesOpen) {
+    if (isDropdownOpen || (isServicesOpen && !isMenuOpen)) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isDropdownOpen, isServicesOpen]);
+  }, [isDropdownOpen, isServicesOpen, isMenuOpen]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -420,13 +420,11 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                     <Link
                       key={service.href}
                       href={service.href}
-                      onClick={(e) => {
-                        e.preventDefault();
+                      onClick={() => {
                         setIsServicesOpen(false);
                         setIsMenuOpen(false);
-                        router.push(service.href);
                       }}
-                      className="block text-white/70 hover:text-white text-xs font-light py-2 px-2 rounded hover:bg-[#d3bb73]/10 transition-colors"
+                      className="block text-white/70 active:text-white text-xs font-light py-3 px-3 rounded active:bg-[#d3bb73]/20 transition-colors touch-manipulation"
                     >
                       {service.label}
                     </Link>
