@@ -106,6 +106,21 @@ export default function EventsPage() {
         return;
       }
 
+      // Automatycznie dodaj autora do zespołu wydarzenia
+      if (data && data[0] && session?.user?.id) {
+        const { error: assignmentError } = await supabase
+          .from('employee_assignments')
+          .insert([{
+            event_id: data[0].id,
+            employee_id: session.user.id,
+            role: 'Autor/Koordynator'
+          }]);
+
+        if (assignmentError) {
+          console.error('Error adding creator to team:', assignmentError);
+        }
+      }
+
       console.log('Event saved:', data);
       showSnackbar('Event zapisany pomyślnie!', 'success');
       setIsModalOpen(false);

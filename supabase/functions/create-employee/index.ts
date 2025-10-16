@@ -15,7 +15,7 @@ interface CreateEmployeeRequest {
   nickname?: string;
   phone_number?: string;
   role?: string;
-  access_level?: string;
+  access_level_id?: string;
   occupation?: string;
 }
 
@@ -95,7 +95,7 @@ Deno.serve(async (req: Request) => {
       nickname: body.nickname || null,
       phone_number: body.phone_number || null,
       role: body.role || 'unassigned',
-      access_level: body.access_level || 'unassigned',
+      access_level_id: body.access_level_id || null,
       occupation: body.occupation || null,
       is_active: true,
       show_on_website: false,

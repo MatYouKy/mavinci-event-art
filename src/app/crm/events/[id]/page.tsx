@@ -196,7 +196,7 @@ export default function EventDetailPage() {
       }
 
       const { data: employeesData, error: employeesError } = await supabase
-        .from('event_employees')
+        .from('employee_assignments')
         .select(`
           *,
           employee:employees(name, surname, occupation)
@@ -421,13 +421,12 @@ export default function EventDetailPage() {
   const handleAddEmployee = async (employeeId: string, role: string, notes: string) => {
     try {
       const { error } = await supabase
-        .from('event_employees')
+        .from('employee_assignments')
         .insert([
           {
             event_id: eventId,
             employee_id: employeeId,
             role: role,
-            notes: notes,
           },
         ]);
 
@@ -474,7 +473,7 @@ export default function EventDetailPage() {
 
     try {
       const { error } = await supabase
-        .from('event_employees')
+        .from('employee_assignments')
         .delete()
         .eq('id', employeeId);
 
@@ -1380,7 +1379,7 @@ function AddEmployeeModal({
               <option value="">Wybierz pracownika...</option>
               {availableEmployees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
-                  {emp.first_name} {emp.last_name} - {emp.position}
+                  {emp.name} {emp.surname} {emp.occupation ? `- ${emp.occupation}` : ''}
                 </option>
               ))}
             </select>
