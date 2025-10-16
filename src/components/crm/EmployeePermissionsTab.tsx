@@ -49,6 +49,13 @@ const permissionCategories: PermissionCategory[] = [
   {
     key: 'events',
     label: 'Wydarzenia',
+    extraPermissions: [
+      {
+        key: 'event_categories_manage',
+        label: 'Zarządzanie kategoriami wydarzeń',
+        description: 'Może dodawać, edytować i usuwać kategorie wydarzeń',
+      },
+    ],
   },
   {
     key: 'calendar',

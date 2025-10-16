@@ -164,34 +164,24 @@ export default function EventCategoriesPage() {
     e.preventDefault();
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Current session:', session?.user?.id);
-      console.log('Editing category:', editingCategory);
-
       const dataToSave = {
         ...formData,
         icon_id: formData.icon_id || null,
         updated_at: new Date().toISOString(),
       };
 
-      console.log('Data to save:', dataToSave);
-
       if (editingCategory) {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('event_categories')
           .update(dataToSave)
-          .eq('id', editingCategory.id)
-          .select();
+          .eq('id', editingCategory.id);
 
-        console.log('Update result:', { data, error });
         if (error) throw error;
       } else {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('event_categories')
-          .insert([dataToSave])
-          .select();
+          .insert([dataToSave]);
 
-        console.log('Insert result:', { data, error });
         if (error) throw error;
       }
 
@@ -199,7 +189,7 @@ export default function EventCategoriesPage() {
       handleCloseModal();
     } catch (error) {
       console.error('Error saving category:', error);
-      alert('Błąd podczas zapisywania kategorii: ' + (error as any).message);
+      alert('Błąd podczas zapisywania kategorii');
     }
   };
 
@@ -289,7 +279,7 @@ export default function EventCategoriesPage() {
   }
 
   return (
-    <PermissionGuard permission="events_manage">
+    <PermissionGuard permission="event_categories_manage">
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-8">

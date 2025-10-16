@@ -8,7 +8,7 @@
  * - equipment_view, equipment_manage, equipment_create
  * - employees_view, employees_manage, employees_create, employees_permissions
  * - clients_view, clients_manage, clients_create
- * - events_view, events_manage, events_create
+ * - events_view, events_manage, events_create, event_categories_manage
  * - calendar_view, calendar_manage
  * - tasks_view, tasks_manage, tasks_create
  * - offers_view, offers_manage, offers_create
@@ -157,5 +157,6 @@ export const getAllScopes = (): string[] => {
   });
   scopes.push('employees_permissions');
   scopes.push('messages_assign');
+  scopes.push('event_categories_manage');
   return scopes;
 };
