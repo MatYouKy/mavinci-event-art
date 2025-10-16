@@ -207,8 +207,8 @@ export default function EmployeeDetailPage() {
   const fetchEvents = async () => {
     try {
       const { data, error } = await supabase
-        .from('employee_event_assignments')
-        .select('*, events(id, name, event_date, status)')
+        .from('employee_assignments')
+        .select('*, event:events(id, name, event_date, status)')
         .eq('employee_id', employeeId)
         .order('assigned_at', { ascending: false });
 
