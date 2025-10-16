@@ -59,7 +59,7 @@ export default function CalendarMain() {
             hours,
             employee:employees(first_name, last_name, position)
           ),
-          tasks!event_id(id, title, status, priority, assigned_to, due_date)
+          tasks!tasks_event_id_fkey(id, title, status, priority, assigned_to, due_date)
         `)
         .order('event_date', { ascending: true });
 
