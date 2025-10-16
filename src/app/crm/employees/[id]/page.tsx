@@ -48,6 +48,7 @@ interface Employee {
   background_metadata: ImageMetadata | null;
   role: string;
   access_level: string;
+  access_level_id: string | null;
   occupation: string | null;
   region: string | null;
   address_street: string | null;
@@ -120,6 +121,7 @@ export default function EmployeeDetailPage() {
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [accessLevels, setAccessLevels] = useState<Array<{id: string; name: string; description: string}>>([]);
 
   const { employee: currentEmployee, isAdmin, canManagePermissions, canManageModule, loading: currentUserLoading } = useCurrentEmployee();
 
@@ -130,6 +132,7 @@ export default function EmployeeDetailPage() {
       fetchTasks();
       fetchEvents();
       fetchEmailAccounts();
+      fetchAccessLevels();
     }
   }, [employeeId, currentEmployee]);
 
@@ -183,6 +186,21 @@ export default function EmployeeDetailPage() {
       }
     } catch (err) {
       console.error('Error fetching tasks:', err);
+    }
+  };
+
+  const fetchAccessLevels = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('access_levels')
+        .select('id, name, description')
+        .order('order_index');
+
+      if (!error && data) {
+        setAccessLevels(data);
+      }
+    } catch (err) {
+      console.error('Error fetching access levels:', err);
     }
   };
 
@@ -672,6 +690,33 @@ export default function EmployeeDetailPage() {
                       className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] mt-1"
                     />
                   </div>
+                  {isAdmin && (
+                    <div>
+                      <label className="text-xs text-[#e5e4e2]/60">Rola systemowa</label>
+                      <select
+                        value={editedData.access_level_id || ''}
+                        onChange={(e) =>
+                          setEditedData({
+                            ...editedData,
+                            access_level_id: e.target.value || null,
+                          })
+                        }
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] mt-1"
+                      >
+                        <option value="">Brak roli</option>
+                        {accessLevels.map((level) => (
+                          <option key={level.id} value={level.id}>
+                            {level.name}
+                          </option>
+                        ))}
+                      </select>
+                      {editedData.access_level_id && accessLevels.find(l => l.id === editedData.access_level_id) && (
+                        <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                          {accessLevels.find(l => l.id === editedData.access_level_id)?.description}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
