@@ -1608,7 +1608,6 @@ function EditEventModal({
     location: event.location,
     budget: event.budget?.toString() || '',
     status: event.status,
-    event_type: (event as any).event_type || 'general',
   });
 
   useEffect(() => {
@@ -1660,7 +1659,6 @@ function EditEventModal({
       location: formData.location,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
-      event_type: formData.event_type,
     });
   };
 
@@ -1766,28 +1764,6 @@ function EditEventModal({
               className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               placeholder="Miejsce wydarzenia"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Typ eventu
-            </label>
-            <select
-              value={formData.event_type}
-              onChange={(e) => setFormData({ ...formData, event_type: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              <option value="general">Ogólny</option>
-              <option value="conference">Konferencja</option>
-              <option value="integration">Integracja</option>
-              <option value="wedding">Wesele</option>
-              <option value="corporate">Firmowy</option>
-              <option value="private">Prywatny</option>
-              <option value="festival">Festiwal</option>
-            </select>
-            <p className="text-xs text-[#e5e4e2]/40 mt-1">
-              Typ eventu wpływa na numerację ofert (np. KONF/2025/10/001)
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
