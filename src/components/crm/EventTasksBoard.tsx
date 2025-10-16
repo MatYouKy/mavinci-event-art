@@ -380,11 +380,31 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         if (error) throw error;
         showSnackbar('Pracownik odłączony', 'success');
       } else {
-        const { error } = await supabase
+        const { error: assignError } = await supabase
           .from('task_assignees')
           .insert([{ task_id: assigningTask.id, employee_id: employeeId }]);
 
-        if (error) throw error;
+        if (assignError) throw assignError;
+
+        // Automatycznie dodaj pracownika do zespołu wydarzenia
+        const { error: teamError } = await supabase
+          .from('employee_assignments')
+          .upsert(
+            [{
+              event_id: eventId,
+              employee_id: employeeId,
+              role: 'Członek zespołu'
+            }],
+            {
+              onConflict: 'event_id,employee_id',
+              ignoreDuplicates: true
+            }
+          );
+
+        if (teamError && teamError.code !== '23505') {
+          console.error('Error adding to team:', teamError);
+        }
+
         showSnackbar('Pracownik przypisany', 'success');
       }
 
@@ -506,31 +526,43 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                         )}
 
                         {task.assignees && task.assignees.length > 0 && (
-                          <div className="flex items-center -space-x-2">
-                            {task.assignees.slice(0, 3).map((assignee, idx) => (
-                              <div
-                                key={assignee.employee.id}
-                                className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center overflow-hidden"
-                                title={`${assignee.employee.name} ${assignee.employee.surname}`}
-                              >
-                                {assignee.employee.avatar_url ? (
-                                  <img
-                                    src={assignee.employee.avatar_url}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="text-xs text-[#e5e4e2]/80">
-                                    {assignee.employee.name[0]}{assignee.employee.surname[0]}
-                                  </span>
-                                )}
+                          <div
+                            className="flex items-center gap-1 group/assignees relative"
+                            title={task.assignees.map(a => `${a.employee.name} ${a.employee.surname}`).join(', ')}
+                          >
+                            <User className="w-3 h-3 text-[#d3bb73]" />
+                            <span className="text-xs text-[#e5e4e2]/80">
+                              {task.assignees.length}
+                            </span>
+
+                            {/* Tooltip z detalami */}
+                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover/assignees:block z-50 pointer-events-none">
+                              <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg p-2 shadow-xl min-w-[200px]">
+                                <div className="text-xs font-medium text-[#d3bb73] mb-2">Przypisani:</div>
+                                <div className="space-y-1">
+                                  {task.assignees.map((assignee) => (
+                                    <div key={assignee.employee.id} className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                        {assignee.employee.avatar_url ? (
+                                          <img
+                                            src={assignee.employee.avatar_url}
+                                            alt=""
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <span className="text-xs text-[#e5e4e2]">
+                                            {assignee.employee.name[0]}{assignee.employee.surname[0]}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-xs text-[#e5e4e2]">
+                                        {assignee.employee.name} {assignee.employee.surname}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            ))}
-                            {task.assignees.length > 3 && (
-                              <div className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center text-xs text-[#e5e4e2]/80">
-                                +{task.assignees.length - 3}
-                              </div>
-                            )}
+                            </div>
                           </div>
                         )}
                       </div>
