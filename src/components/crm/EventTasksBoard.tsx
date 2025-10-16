@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, X, Trash2, CreditCard as Edit, Calendar, User } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, X, Trash2, CreditCard as Edit, Calendar, User, GripVertical, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -37,6 +37,13 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assigningTask, setAssigningTask] = useState<Task | null>(null);
+  const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { showSnackbar } = useSnackbar();
 
   const [formData, setFormData] = useState({
@@ -70,6 +77,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
   useEffect(() => {
     fetchTasks();
+    fetchEmployees();
 
     const tasksChannel = supabase
       .channel(`event_tasks_${eventId}`)
@@ -85,10 +93,24 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           fetchTasks();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'task_assignees',
+        },
+        () => {
+          fetchTasks();
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(tasksChannel);
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+      }
     };
   }, [eventId]);
 
@@ -120,6 +142,20 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       showSnackbar('Błąd podczas pobierania zadań', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name, surname, avatar_url')
+        .order('name');
+
+      if (error) throw error;
+      setAvailableEmployees(data || []);
+    } catch (err) {
+      console.error('Error fetching employees:', err);
     }
   };
 
@@ -251,6 +287,114 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     }
   };
 
+  const handleAutoScroll = (e: React.DragEvent) => {
+    if (!scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const rect = container.getBoundingClientRect();
+    const scrollThreshold = 100;
+    const scrollSpeed = 10;
+
+    const distanceFromLeft = e.clientX - rect.left;
+    const distanceFromRight = rect.right - e.clientX;
+
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+
+    if (distanceFromLeft < scrollThreshold && container.scrollLeft > 0) {
+      autoScrollIntervalRef.current = setInterval(() => {
+        container.scrollLeft -= scrollSpeed;
+      }, 16);
+    } else if (distanceFromRight < scrollThreshold) {
+      autoScrollIntervalRef.current = setInterval(() => {
+        container.scrollLeft += scrollSpeed;
+      }, 16);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, task: Task) => {
+    setDraggedTask(task);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTask(null);
+    setDragOverColumn(null);
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    setDragOverColumn(columnId);
+    handleAutoScroll(e);
+  };
+
+  const handleDrop = async (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+
+    if (!draggedTask || draggedTask.board_column === columnId) {
+      setDraggedTask(null);
+      return;
+    }
+
+    await handleMoveTask(draggedTask.id, columnId);
+    setDraggedTask(null);
+  };
+
+  const handleOpenAssignModal = (task: Task) => {
+    setAssigningTask(task);
+    setShowAssignModal(true);
+  };
+
+  const handleCloseAssignModal = () => {
+    setShowAssignModal(false);
+    setAssigningTask(null);
+  };
+
+  const handleToggleAssignee = async (employeeId: string) => {
+    if (!assigningTask) return;
+
+    try {
+      const isAssigned = assigningTask.assignees?.some(
+        (a) => a.employee.id === employeeId
+      );
+
+      if (isAssigned) {
+        const { error } = await supabase
+          .from('task_assignees')
+          .delete()
+          .eq('task_id', assigningTask.id)
+          .eq('employee_id', employeeId);
+
+        if (error) throw error;
+        showSnackbar('Pracownik odłączony', 'success');
+      } else {
+        const { error } = await supabase
+          .from('task_assignees')
+          .insert([{ task_id: assigningTask.id, employee_id: employeeId }]);
+
+        if (error) throw error;
+        showSnackbar('Pracownik przypisany', 'success');
+      }
+
+      await fetchTasks();
+    } catch (err) {
+      console.error('Error toggling assignee:', err);
+      showSnackbar('Błąd podczas zmiany przypisania', 'error');
+    }
+  };
+
   const getColumnTasks = (columnId: string) => {
     return tasks.filter((task) => task.board_column === columnId);
   };
@@ -278,7 +422,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         )}
       </div>
 
-      <div className="overflow-x-auto pb-4">
+      <div className="overflow-x-auto pb-4" ref={scrollContainerRef}>
         <div className="flex gap-4 min-w-max">
           {columns.map((column) => {
             const columnTasks = getColumnTasks(column.id);
@@ -286,7 +430,12 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             return (
               <div
                 key={column.id}
-                className={`bg-[#1c1f33] border rounded-xl p-4 ${column.color} w-80 flex-shrink-0`}
+                className={`bg-[#1c1f33] border rounded-xl p-4 ${column.color} w-80 flex-shrink-0 transition-all ${
+                  dragOverColumn === column.id ? 'ring-2 ring-[#d3bb73]/50 scale-[1.02]' : ''
+                }`}
+                onDragOver={(e) => handleDragOver(e, column.id)}
+                onDrop={(e) => handleDrop(e, column.id)}
+                onDragLeave={() => setDragOverColumn(null)}
               >
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
@@ -299,14 +448,29 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                   {columnTasks.map((task) => (
                     <div
                       key={task.id}
-                      className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/30 transition-all group"
+                      draggable={canManage}
+                      onDragStart={(e) => handleDragStart(e, task)}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/30 transition-all group ${
+                        canManage ? 'cursor-move' : ''
+                      } ${draggedTask?.id === task.id ? 'opacity-50 scale-95' : ''}`}
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-start gap-2 mb-2">
+                        {canManage && (
+                          <GripVertical className="w-4 h-4 text-[#e5e4e2]/40 flex-shrink-0 mt-0.5" />
+                        )}
                         <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">
                           {task.title}
                         </h4>
                         {canManage && (
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleOpenAssignModal(task)}
+                              className="text-blue-400 hover:text-blue-300 transition-colors"
+                              title="Przypisz pracowników"
+                            >
+                              <UserPlus className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => handleOpenModal(task)}
                               className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
@@ -342,30 +506,35 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                         )}
 
                         {task.assignees && task.assignees.length > 0 && (
-                          <div className="flex items-center gap-1">
-                            <User className="w-3 h-3 text-[#e5e4e2]/60" />
-                            <span className="text-xs text-[#e5e4e2]/60">
-                              {task.assignees.length}
-                            </span>
+                          <div className="flex items-center -space-x-2">
+                            {task.assignees.slice(0, 3).map((assignee, idx) => (
+                              <div
+                                key={assignee.employee.id}
+                                className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center overflow-hidden"
+                                title={`${assignee.employee.name} ${assignee.employee.surname}`}
+                              >
+                                {assignee.employee.avatar_url ? (
+                                  <img
+                                    src={assignee.employee.avatar_url}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="text-xs text-[#e5e4e2]/80">
+                                    {assignee.employee.name[0]}{assignee.employee.surname[0]}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                            {task.assignees.length > 3 && (
+                              <div className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center text-xs text-[#e5e4e2]/80">
+                                +{task.assignees.length - 3}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
 
-                      {canManage && column.id !== 'completed' && (
-                        <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
-                          <select
-                            value={task.board_column}
-                            onChange={(e) => handleMoveTask(task.id, e.target.value)}
-                            className="w-full text-xs bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-[#e5e4e2] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
-                          >
-                            {columns.map((col) => (
-                              <option key={col.id} value={col.id}>
-                                Przenieś do: {col.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
                     </div>
                   ))}
 
@@ -485,6 +654,98 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showAssignModal && assigningTask && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1c1f33] rounded-xl p-6 max-w-md w-full border border-[#d3bb73]/20">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-medium text-[#e5e4e2]">
+                Przypisz pracowników
+              </h3>
+              <button
+                onClick={handleCloseAssignModal}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-[#e5e4e2] mb-2">
+                {assigningTask.title}
+              </h4>
+              <p className="text-xs text-[#e5e4e2]/60">
+                Wybierz pracowników do przypisania
+              </p>
+            </div>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {availableEmployees.map((employee) => {
+                const isAssigned = assigningTask.assignees?.some(
+                  (a) => a.employee.id === employee.id
+                );
+
+                return (
+                  <button
+                    key={employee.id}
+                    onClick={() => handleToggleAssignee(employee.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                      isAssigned
+                        ? 'bg-[#d3bb73]/10 border-[#d3bb73]/50 hover:bg-[#d3bb73]/20'
+                        : 'bg-[#0f1119] border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {employee.avatar_url ? (
+                        <img
+                          src={employee.avatar_url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm text-[#e5e4e2]">
+                          {employee.name[0]}{employee.surname[0]}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="text-sm font-medium text-[#e5e4e2]">
+                        {employee.name} {employee.surname}
+                      </div>
+                    </div>
+                    {isAssigned && (
+                      <div className="w-5 h-5 rounded-full bg-[#d3bb73] flex items-center justify-center">
+                        <svg
+                          className="w-3 h-3 text-[#1c1f33]"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-6">
+              <button
+                onClick={handleCloseAssignModal}
+                className="w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+              >
+                Zamknij
+              </button>
+            </div>
           </div>
         </div>
       )}
