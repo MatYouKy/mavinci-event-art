@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Event {
@@ -27,6 +27,12 @@ interface Event {
     id: string;
     name: string;
     color: string;
+    icon?: {
+      id: string;
+      name: string;
+      svg_code: string;
+      preview_color: string;
+    };
   };
   creator?: {
     id: string;
@@ -141,7 +147,12 @@ export default function EventDetailPage() {
         .select(`
           *,
           client:clients(company_name),
-          category:event_categories(id, name, color),
+          category:event_categories(
+            id,
+            name,
+            color,
+            icon:custom_icons(id, name, svg_code, preview_color)
+          ),
           creator:employees!events_created_by_fkey(id, name, surname, avatar_url)
         `)
         .eq('id', eventId)
@@ -167,7 +178,7 @@ export default function EventDetailPage() {
         .from('event_equipment')
         .select(`
           *,
-          equipment:equipment_id(name, category)
+          equipment:equipment_items(name, category)
         `)
         .eq('event_id', eventId);
 
@@ -181,7 +192,7 @@ export default function EventDetailPage() {
         .from('event_employees')
         .select(`
           *,
-          employee:employee_id(first_name, last_name, position)
+          employee:employees(name, surname, occupation)
         `)
         .eq('event_id', eventId);
 
@@ -321,9 +332,8 @@ export default function EventDetailPage() {
 
   const fetchAvailableEquipment = async () => {
     const { data, error } = await supabase
-      .from('equipment')
+      .from('equipment_items')
       .select('*')
-      .eq('status', 'available')
       .order('name');
 
     if (!error && data) {
@@ -335,8 +345,7 @@ export default function EventDetailPage() {
     const { data, error } = await supabase
       .from('employees')
       .select('*')
-      .eq('status', 'active')
-      .order('first_name');
+      .order('name');
 
     if (!error && data) {
       setAvailableEmployees(data);
@@ -541,10 +550,42 @@ export default function EventDetailPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-light text-[#e5e4e2]">{event.name}</h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              {event.client?.company_name || 'Brak klienta'}
-            </p>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-2xl font-light text-[#e5e4e2]">{event.name}</h1>
+              {event.category && (
+                <div
+                  className="flex items-center gap-2 px-3 py-1 rounded-lg border"
+                  style={{
+                    backgroundColor: `${event.category.color}20`,
+                    borderColor: `${event.category.color}50`,
+                    color: event.category.color
+                  }}
+                >
+                  {event.category.icon ? (
+                    <div
+                      className="w-4 h-4"
+                      style={{ color: event.category.color }}
+                      dangerouslySetInnerHTML={{ __html: event.category.icon.svg_code }}
+                    />
+                  ) : (
+                    <Tag className="w-4 h-4" />
+                  )}
+                  <span className="text-sm font-medium">{event.category.name}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4" />
+                {event.client?.company_name || 'Brak klienta'}
+              </div>
+              {event.creator && (
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  <span>Autor: {event.creator.name} {event.creator.surname}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">

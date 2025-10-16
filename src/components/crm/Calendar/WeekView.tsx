@@ -79,10 +79,17 @@ export default function WeekView({
                   return (
                     <div
                       key={event.id}
-                      className={`absolute left-1 right-1 rounded border ${STATUS_COLORS[event.status]} p-2 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden z-10`}
+                      className="absolute left-1 right-1 rounded border p-2 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden z-10"
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,
+                        ...(event.category?.color
+                          ? {
+                              backgroundColor: `${event.category.color}20`,
+                              borderColor: `${event.category.color}50`,
+                              color: event.category.color,
+                            }
+                          : {}),
                       }}
                       onClick={(e) => {
                         e.stopPropagation();

@@ -209,7 +209,12 @@ export default function EventCategoriesPage() {
       }
 
       await fetchIcons();
-      handleCloseIconModal();
+      setEditingIcon(null);
+      setIconFormData({
+        name: '',
+        svg_code: '',
+        preview_color: '#3B82F6',
+      });
     } catch (error) {
       console.error('Error saving icon:', error);
       alert('Błąd podczas zapisywania ikony');

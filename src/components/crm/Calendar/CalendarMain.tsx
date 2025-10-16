@@ -45,7 +45,12 @@ export default function CalendarMain() {
         .select(`
           *,
           client:clients(company_name, first_name, last_name),
-          category:event_categories(id, name, color),
+          category:event_categories(
+            id,
+            name,
+            color,
+            icon:custom_icons(id, name, svg_code, preview_color)
+          ),
           creator:employees!events_created_by_fkey(id, name, surname, avatar_url),
           equipment:equipment_bookings(
             id,

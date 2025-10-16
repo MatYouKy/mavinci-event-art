@@ -114,9 +114,16 @@ export default function MonthView({
                           )}
 
                           <div
-                            className={`text-xs p-1.5 rounded border ${
-                              STATUS_COLORS[event.status]
-                            } truncate hover:opacity-80 transition-opacity relative z-10 bg-[#1c1f33] cursor-pointer`}
+                            className="text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity relative z-10 cursor-pointer"
+                            style={
+                              event.category?.color
+                                ? {
+                                    backgroundColor: `${event.category.color}20`,
+                                    borderColor: `${event.category.color}50`,
+                                    color: event.category.color,
+                                  }
+                                : {}
+                            }
                             onClick={(e) => {
                               e.stopPropagation();
                               onEventClick(event);

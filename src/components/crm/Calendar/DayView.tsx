@@ -57,10 +57,17 @@ export default function DayView({
                 return (
                   <div
                     key={event.id}
-                    className={`absolute left-2 right-2 rounded border ${STATUS_COLORS[event.status]} p-3 cursor-pointer hover:opacity-90 transition-opacity z-10`}
+                    className="absolute left-2 right-2 rounded border p-3 cursor-pointer hover:opacity-90 transition-opacity z-10"
                     style={{
                       top: `${top}px`,
                       minHeight: `${Math.max(height, 60)}px`,
+                      ...(event.category?.color
+                        ? {
+                            backgroundColor: `${event.category.color}20`,
+                            borderColor: `${event.category.color}50`,
+                            color: event.category.color,
+                          }
+                        : {}),
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -121,13 +128,18 @@ export default function DayView({
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">{event.name}</h4>
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded border ${
-                          STATUS_COLORS[event.status]
-                        } whitespace-nowrap`}
-                      >
-                        {STATUS_LABELS[event.status]}
-                      </span>
+                      {event.category && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded border whitespace-nowrap"
+                          style={{
+                            backgroundColor: `${event.category.color}20`,
+                            borderColor: `${event.category.color}50`,
+                            color: event.category.color,
+                          }}
+                        >
+                          {event.category.name}
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1">
