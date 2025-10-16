@@ -182,7 +182,10 @@ export default function EventDetailPage() {
         .from('event_equipment')
         .select(`
           *,
-          equipment:equipment_items(name, category)
+          equipment:equipment_items(
+            name,
+            category:equipment_categories(name)
+          )
         `)
         .eq('event_id', eventId);
 

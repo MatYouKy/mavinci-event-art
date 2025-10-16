@@ -96,12 +96,12 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      const { data, error} = await supabase
         .from('tasks')
         .select(`
           *,
           assignees:task_assignees(
-            employee:employees(
+            employee:employees!task_assignees_employee_id_fkey(
               id,
               name,
               surname,
