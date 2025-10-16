@@ -415,7 +415,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 <ChevronDown className={`w-4 h-4 transition-transform ${isServicesOpen ? 'rotate-180' : ''}`} />
               </button>
               {isServicesOpen && (
-                <div className="mt-2 ml-4 space-y-2 max-h-[50vh] overflow-y-auto">
+                <div className="mt-2 ml-4 space-y-2">
                   {servicesLinks.map((service) => (
                     <Link
                       key={service.href}
