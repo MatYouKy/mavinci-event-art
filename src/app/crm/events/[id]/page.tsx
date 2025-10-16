@@ -453,7 +453,13 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleAddEmployee = async (employeeId: string, role: string, responsibilities: string) => {
+  const handleAddEmployee = async (
+    employeeId: string,
+    role: string,
+    responsibilities: string,
+    accessLevelId: string,
+    permissions: any
+  ) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
@@ -467,6 +473,16 @@ export default function EventDetailPage() {
             responsibilities: responsibilities || null,
             invited_by: session?.user?.id || null,
             status: 'pending',
+            access_level_id: accessLevelId || null,
+            can_edit_event: permissions.can_edit_event || false,
+            can_edit_agenda: permissions.can_edit_agenda || false,
+            can_edit_tasks: permissions.can_edit_tasks || false,
+            can_edit_files: permissions.can_edit_files || false,
+            can_edit_equipment: permissions.can_edit_equipment || false,
+            can_invite_members: permissions.can_invite_members || false,
+            can_view_budget: permissions.can_view_budget || false,
+            granted_by: session?.user?.id || null,
+            permissions_updated_at: new Date().toISOString(),
           },
         ]);
 
@@ -1355,12 +1371,42 @@ function AddEmployeeModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (employeeId: string, role: string, responsibilities: string) => void;
+  onAdd: (employeeId: string, role: string, responsibilities: string, accessLevelId: string, permissions: any) => void;
   availableEmployees: any[];
 }) {
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [role, setRole] = useState('');
   const [responsibilities, setResponsibilities] = useState('');
+  const [accessLevels, setAccessLevels] = useState<any[]>([]);
+  const [selectedAccessLevel, setSelectedAccessLevel] = useState('');
+  const [canEditEvent, setCanEditEvent] = useState(false);
+  const [canEditAgenda, setCanEditAgenda] = useState(false);
+  const [canEditTasks, setCanEditTasks] = useState(false);
+  const [canEditFiles, setCanEditFiles] = useState(false);
+  const [canEditEquipment, setCanEditEquipment] = useState(false);
+  const [canInviteMembers, setCanInviteMembers] = useState(false);
+  const [canViewBudget, setCanViewBudget] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchAccessLevels();
+    }
+  }, [isOpen]);
+
+  const fetchAccessLevels = async () => {
+    const { data, error } = await supabase
+      .from('access_levels')
+      .select('*')
+      .order('order_index');
+
+    if (!error && data) {
+      setAccessLevels(data);
+      const defaultLevel = data.find(l => l.slug === 'employee');
+      if (defaultLevel) {
+        setSelectedAccessLevel(defaultLevel.id);
+      }
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -1369,15 +1415,33 @@ function AddEmployeeModal({
       alert('Wybierz pracownika');
       return;
     }
-    onAdd(selectedEmployee, role, responsibilities);
+    const permissions = {
+      can_edit_event: canEditEvent,
+      can_edit_agenda: canEditAgenda,
+      can_edit_tasks: canEditTasks,
+      can_edit_files: canEditFiles,
+      can_edit_equipment: canEditEquipment,
+      can_invite_members: canInviteMembers,
+      can_view_budget: canViewBudget,
+    };
+    onAdd(selectedEmployee, role, responsibilities, selectedAccessLevel, permissions);
     setSelectedEmployee('');
     setRole('');
     setResponsibilities('');
+    setCanEditEvent(false);
+    setCanEditAgenda(false);
+    setCanEditTasks(false);
+    setCanEditFiles(false);
+    setCanEditEquipment(false);
+    setCanInviteMembers(false);
+    setCanViewBudget(false);
   };
 
+  const hasAnyPermission = canEditEvent || canEditAgenda || canEditTasks || canEditFiles || canEditEquipment || canInviteMembers || canViewBudget;
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full my-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj osobę do zespołu</h2>
           <button
@@ -1430,6 +1494,120 @@ function AddEmployeeModal({
               className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[80px] focus:outline-none focus:border-[#d3bb73]"
               placeholder="Opisz zakres obowiązków..."
             />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Poziom dostępu
+            </label>
+            <select
+              value={selectedAccessLevel}
+              onChange={(e) => setSelectedAccessLevel(e.target.value)}
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            >
+              {accessLevels.map((level) => (
+                <option key={level.id} value={level.id}>
+                  {level.name} - {level.description}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+              Określa domyślny zakres widoczności dla tej osoby
+            </p>
+          </div>
+
+          <div className="border-t border-[#d3bb73]/10 pt-4">
+            <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80 mb-3">
+              <input
+                type="checkbox"
+                checked={hasAnyPermission}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  if (!checked) {
+                    setCanEditEvent(false);
+                    setCanEditAgenda(false);
+                    setCanEditTasks(false);
+                    setCanEditFiles(false);
+                    setCanEditEquipment(false);
+                    setCanInviteMembers(false);
+                    setCanViewBudget(false);
+                  }
+                }}
+                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73]"
+              />
+              <span className="font-medium">Nadaj uprawnienia współpracownika</span>
+            </label>
+
+            {hasAnyPermission && (
+              <div className="ml-6 space-y-2 bg-[#1c1f33]/50 rounded-lg p-3 border border-[#d3bb73]/10">
+                <p className="text-xs text-[#e5e4e2]/60 mb-3">
+                  Zaznacz uprawnienia które chcesz nadać:
+                </p>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canEditEvent}
+                    onChange={(e) => setCanEditEvent(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Edycja wydarzenia (nazwa, data, lokalizacja)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canEditAgenda}
+                    onChange={(e) => setCanEditAgenda(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Edycja agendy
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canEditTasks}
+                    onChange={(e) => setCanEditTasks(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Zarządzanie zadaniami
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canEditFiles}
+                    onChange={(e) => setCanEditFiles(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Zarządzanie plikami
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canEditEquipment}
+                    onChange={(e) => setCanEditEquipment(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Zarządzanie sprzętem
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canInviteMembers}
+                    onChange={(e) => setCanInviteMembers(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Zapraszanie członków zespołu
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canViewBudget}
+                    onChange={(e) => setCanViewBudget(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Widok budżetu
+                </label>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3 pt-4">
