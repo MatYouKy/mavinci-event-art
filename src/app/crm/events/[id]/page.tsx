@@ -202,16 +202,7 @@ export default function EventDetailPage() {
         setEmployees([]);
       }
 
-      const { data: checklistsData, error: checklistsError } = await supabase
-        .from('event_checklists')
-        .select('*')
-        .eq('event_id', eventId);
-
-      if (!checklistsError && checklistsData) {
-        setChecklists(checklistsData);
-      } else {
-        setChecklists([]);
-      }
+      setChecklists([]);
     } catch (error) {
       console.error('Error fetching event details:', error);
       setEvent(null);
@@ -455,66 +446,16 @@ export default function EventDetailPage() {
   };
 
   const handleToggleChecklist = async (checklistId: string, completed: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('event_checklists')
-        .update({
-          completed,
-          completed_at: completed ? new Date().toISOString() : null,
-          completed_by: completed ? currentUser.id : null,
-        })
-        .eq('id', checklistId);
-
-      if (error) {
-        console.error('Error toggling checklist:', error);
-        return;
-      }
-
-      fetchEventDetails();
-      await logChange('checklist_updated', completed ? 'Zaznaczono element checklisty jako wykonany' : 'Odznaczono element checklisty');
-    } catch (err) {
-      console.error('Error:', err);
-    }
+    console.log('Checklist functionality disabled - table does not exist');
   };
 
   const handleAddChecklist = async (task: string, priority: string) => {
-    try {
-      const { error } = await supabase
-        .from('event_checklists')
-        .insert([{ event_id: eventId, task, priority, completed: false }]);
-
-      if (error) {
-        console.error('Error adding checklist:', error);
-        return;
-      }
-
-      setShowAddChecklistModal(false);
-      fetchEventDetails();
-      await logChange('checklist_added', `Dodano nowe zadanie do checklisty: ${task}`);
-    } catch (err) {
-      console.error('Error:', err);
-    }
+    console.log('Checklist functionality disabled - table does not exist');
+    setShowAddChecklistModal(false);
   };
 
   const handleRemoveChecklist = async (checklistId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć to zadanie?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('event_checklists')
-        .delete()
-        .eq('id', checklistId);
-
-      if (error) {
-        console.error('Error removing checklist:', error);
-        return;
-      }
-
-      fetchEventDetails();
-      await logChange('checklist_removed', 'Usunięto zadanie z checklisty');
-    } catch (err) {
-      console.error('Error:', err);
-    }
+    console.log('Checklist functionality disabled - table does not exist');
   };
 
   if (loading) {
