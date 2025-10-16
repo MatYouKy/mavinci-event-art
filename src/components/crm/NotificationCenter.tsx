@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, X, Check, ExternalLink, Trash2, CheckCheck } from 'lucide-react';
+import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Notification {
   id: string;
@@ -15,6 +16,7 @@ interface Notification {
   created_at: string;
   related_entity_type: string | null;
   related_entity_id: string | null;
+  metadata: any;
   recipient_id: string;
   is_read: boolean;
   read_at: string | null;
@@ -22,6 +24,7 @@ interface Notification {
 
 export default function NotificationCenter() {
   const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showPanel, setShowPanel] = useState(false);
@@ -74,7 +77,8 @@ export default function NotificationCenter() {
             action_url,
             created_at,
             related_entity_type,
-            related_entity_id
+            related_entity_id,
+            metadata
           )
         `)
         .eq('user_id', user.id)
@@ -179,6 +183,27 @@ export default function NotificationCenter() {
     if (notification.action_url) {
       router.push(notification.action_url);
       setShowPanel(false);
+    }
+  };
+
+  const handleAssignmentResponse = async (assignmentId: string, status: 'accepted' | 'rejected') => {
+    try {
+      const { error } = await supabase
+        .from('employee_assignments')
+        .update({ status })
+        .eq('id', assignmentId);
+
+      if (error) throw error;
+
+      showSnackbar(
+        status === 'accepted' ? 'Zaproszenie zaakceptowane' : 'Zaproszenie odrzucone',
+        'success'
+      );
+
+      fetchNotifications();
+    } catch (error) {
+      console.error('Error responding to assignment:', error);
+      showSnackbar('Błąd podczas odpowiedzi na zaproszenie', 'error');
     }
   };
 
@@ -364,6 +389,31 @@ export default function NotificationCenter() {
                               {notification.category}
                             </span>
                           </div>
+
+                          {notification.metadata?.requires_response && notification.metadata?.assignment_id && (
+                            <div className="flex items-center gap-2 mt-3">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAssignmentResponse(notification.metadata.assignment_id, 'accepted');
+                                }}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-500/30 transition-colors"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Akceptuj
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAssignmentResponse(notification.metadata.assignment_id, 'rejected');
+                                }}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/30 transition-colors"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                Odrzuć
+                              </button>
+                            </div>
+                          )}
 
                           <div className="flex items-center gap-2 mt-2">
                             {notification.action_url && (
