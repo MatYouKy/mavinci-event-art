@@ -483,46 +483,44 @@ export default function CalendarMain() {
               </div>
             </div>
 
-            {currentEmployee?.permissions?.includes('events_manage') && (
-              <>
-                <div className="space-y-3">
-                  <label className="block text-sm text-[#e5e4e2]/60">Klient</label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {clients.map((client) => (
-                      <button
-                        key={client.id}
-                        onClick={() => toggleFilter('clients', client.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                          filters.clients.includes(client.id)
-                            ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                            : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
-                        }`}
-                      >
-                        {client.company_name || `${client.first_name} ${client.last_name}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            <div className="space-y-3">
+              <label className="block text-sm text-[#e5e4e2]/60">Pracownik</label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {employees.map((emp) => (
+                  <button
+                    key={emp.id}
+                    onClick={() => toggleFilter('employees', emp.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                      filters.employees.includes(emp.id)
+                        ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
+                        : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                    }`}
+                  >
+                    {emp.nickname || `${emp.name} ${emp.surname}`}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                <div className="space-y-3">
-                  <label className="block text-sm text-[#e5e4e2]/60">Pracownik w zespole</label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {employees.map((emp) => (
-                      <button
-                        key={emp.id}
-                        onClick={() => toggleFilter('employees', emp.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                          filters.employees.includes(emp.id)
-                            ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                            : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
-                        }`}
-                      >
-                        {emp.nickname || `${emp.name} ${emp.surname}`}
-                      </button>
-                    ))}
-                  </div>
+            {currentEmployee?.permissions?.includes('events_manage') && (
+              <div className="space-y-3">
+                <label className="block text-sm text-[#e5e4e2]/60">Klient</label>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {clients.map((client) => (
+                    <button
+                      key={client.id}
+                      onClick={() => toggleFilter('clients', client.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                        filters.clients.includes(client.id)
+                          ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
+                          : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                      }`}
+                    >
+                      {client.company_name || `${client.first_name} ${client.last_name}`}
+                    </button>
+                  ))}
                 </div>
-              </>
+              </div>
             )}
           </div>
 
