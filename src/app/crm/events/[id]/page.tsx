@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase, Edit as EditIcon, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase, Edit as EditIcon, AlertCircle, History } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import EventTasksBoard from '@/components/crm/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
@@ -697,6 +697,7 @@ export default function EventDetailPage() {
           { id: 'team', label: 'Zespół', icon: Users },
           { id: 'files', label: 'Pliki', icon: FileText },
           { id: 'tasks', label: 'Zadania', icon: CheckSquare },
+          { id: 'history', label: 'Historia', icon: History },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -1185,6 +1186,82 @@ export default function EventDetailPage() {
       {activeTab === 'tasks' && event && (
         <EventTasksBoard eventId={event.id} canManage={true} />
       )}
+
+      {activeTab === 'history' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-light text-[#e5e4e2]">Historia zmian</h2>
+            <div className="text-sm text-[#e5e4e2]/60">
+              {auditLog.length} {auditLog.length === 1 ? 'wpis' : 'wpisów'}
+            </div>
+          </div>
+
+          {auditLog.length === 0 ? (
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-8 text-center">
+              <History className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-3" />
+              <p className="text-[#e5e4e2]/60">Brak historii zmian</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {auditLog.map((log) => (
+                <div
+                  key={log.id}
+                  className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-4 hover:border-[#d3bb73]/40 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 mt-1">
+                      {log.action === 'create' && (
+                        <div className="w-8 h-8 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+                          <Plus className="w-4 h-4 text-green-400" />
+                        </div>
+                      )}
+                      {log.action === 'update' && (
+                        <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                          <EditIcon className="w-4 h-4 text-blue-400" />
+                        </div>
+                      )}
+                      {log.action === 'delete' && (
+                        <div className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-[#e5e4e2] font-medium">
+                            {log.action === 'create' && 'Utworzono'}
+                            {log.action === 'update' && 'Zaktualizowano'}
+                            {log.action === 'delete' && 'Usunięto'}
+                            {' '}
+                            <span className="text-[#d3bb73]">{log.entity_type}</span>
+                          </p>
+                          {log.field_name && (
+                            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+                              Pole: {log.field_name}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xs text-[#e5e4e2]/40">
+                            {new Date(log.created_at).toLocaleString('pl-PL')}
+                          </p>
+                        </div>
+                      </div>
+                      {log.metadata?.table && (
+                        <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                          Tabela: {log.metadata.table}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {showAddEquipmentModal && (
         <AddEquipmentModal
           isOpen={showAddEquipmentModal}
