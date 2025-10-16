@@ -57,7 +57,7 @@ export default function CalendarMain() {
             employee_id,
             role,
             hours,
-            employee:employees(first_name, last_name, position)
+            employee:employees(name, surname, occupation)
           ),
           tasks!tasks_event_id_fkey(id, title, status, priority, assigned_to, due_date)
         `)
