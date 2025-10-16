@@ -278,105 +278,107 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {columns.map((column) => {
-          const columnTasks = getColumnTasks(column.id);
+      <div className="overflow-x-auto pb-4">
+        <div className="flex gap-4 min-w-max">
+          {columns.map((column) => {
+            const columnTasks = getColumnTasks(column.id);
 
-          return (
-            <div
-              key={column.id}
-              className={`bg-[#1c1f33] border rounded-xl p-4 ${column.color}`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
-                <span className="text-xs text-[#e5e4e2]/60 bg-[#0f1119] px-2 py-1 rounded">
-                  {columnTasks.length}
-                </span>
-              </div>
+            return (
+              <div
+                key={column.id}
+                className={`bg-[#1c1f33] border rounded-xl p-4 ${column.color} w-80 flex-shrink-0`}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
+                  <span className="text-xs text-[#e5e4e2]/60 bg-[#0f1119] px-2 py-1 rounded">
+                    {columnTasks.length}
+                  </span>
+                </div>
 
-              <div className="space-y-3">
-                {columnTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/30 transition-all group"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">
-                        {task.title}
-                      </h4>
-                      {canManage && (
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleOpenModal(task)}
-                            className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(task.id)}
-                            className="text-red-400 hover:text-red-300 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {task.description && (
-                      <p className="text-xs text-[#e5e4e2]/60 mb-2 line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs px-2 py-1 rounded ${priorityColors[task.priority]}`}>
-                        {priorityLabels[task.priority]}
-                      </span>
-
-                      {task.due_date && (
-                        <span className="text-xs text-[#e5e4e2]/60 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(task.due_date).toLocaleDateString('pl-PL')}
-                        </span>
-                      )}
-
-                      {task.assignees && task.assignees.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          <User className="w-3 h-3 text-[#e5e4e2]/60" />
-                          <span className="text-xs text-[#e5e4e2]/60">
-                            {task.assignees.length}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {canManage && column.id !== 'completed' && (
-                      <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
-                        <select
-                          value={task.board_column}
-                          onChange={(e) => handleMoveTask(task.id, e.target.value)}
-                          className="w-full text-xs bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-[#e5e4e2] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
-                        >
-                          {columns.map((col) => (
-                            <option key={col.id} value={col.id}>
-                              Przenieś do: {col.label}
-                            </option>
-                          ))}
-                        </select>
+                <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
+                  {columnTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/30 transition-all group"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">
+                          {task.title}
+                        </h4>
+                        {canManage && (
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleOpenModal(task)}
+                              className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(task.id)}
+                              className="text-red-400 hover:text-red-300 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
 
-                {columnTasks.length === 0 && (
-                  <div className="text-center py-8 text-[#e5e4e2]/40 text-sm">
-                    Brak zadań
-                  </div>
-                )}
+                      {task.description && (
+                        <p className="text-xs text-[#e5e4e2]/60 mb-2 line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs px-2 py-1 rounded ${priorityColors[task.priority]}`}>
+                          {priorityLabels[task.priority]}
+                        </span>
+
+                        {task.due_date && (
+                          <span className="text-xs text-[#e5e4e2]/60 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(task.due_date).toLocaleDateString('pl-PL')}
+                          </span>
+                        )}
+
+                        {task.assignees && task.assignees.length > 0 && (
+                          <div className="flex items-center gap-1">
+                            <User className="w-3 h-3 text-[#e5e4e2]/60" />
+                            <span className="text-xs text-[#e5e4e2]/60">
+                              {task.assignees.length}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {canManage && column.id !== 'completed' && (
+                        <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
+                          <select
+                            value={task.board_column}
+                            onChange={(e) => handleMoveTask(task.id, e.target.value)}
+                            className="w-full text-xs bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-[#e5e4e2] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
+                          >
+                            {columns.map((col) => (
+                              <option key={col.id} value={col.id}>
+                                Przenieś do: {col.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {columnTasks.length === 0 && (
+                    <div className="text-center py-8 text-[#e5e4e2]/40 text-sm">
+                      Brak zadań
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {showModal && (
