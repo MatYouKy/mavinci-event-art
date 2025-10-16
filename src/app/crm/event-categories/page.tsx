@@ -164,24 +164,34 @@ export default function EventCategoriesPage() {
     e.preventDefault();
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Current session:', session?.user?.id);
+      console.log('Editing category:', editingCategory);
+
       const dataToSave = {
         ...formData,
         icon_id: formData.icon_id || null,
         updated_at: new Date().toISOString(),
       };
 
+      console.log('Data to save:', dataToSave);
+
       if (editingCategory) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('event_categories')
           .update(dataToSave)
-          .eq('id', editingCategory.id);
+          .eq('id', editingCategory.id)
+          .select();
 
+        console.log('Update result:', { data, error });
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('event_categories')
-          .insert([dataToSave]);
+          .insert([dataToSave])
+          .select();
 
+        console.log('Insert result:', { data, error });
         if (error) throw error;
       }
 
@@ -189,7 +199,7 @@ export default function EventCategoriesPage() {
       handleCloseModal();
     } catch (error) {
       console.error('Error saving category:', error);
-      alert('Błąd podczas zapisywania kategorii');
+      alert('Błąd podczas zapisywania kategorii: ' + (error as any).message);
     }
   };
 
