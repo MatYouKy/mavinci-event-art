@@ -87,7 +87,7 @@ export default function WeekView({
                           ? {
                               backgroundColor: `${event.category.color}20`,
                               borderColor: `${event.category.color}50`,
-                              color: event.category.color,
+                              color: '#d3bb73',
                             }
                           : {}),
                       }}

@@ -114,13 +114,13 @@ export default function MonthView({
                           )}
 
                           <div
-                            className="text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity relative z-10 cursor-pointer"
+                            className="text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity relative z-10 cursor-pointer font-medium"
                             style={
                               event.category?.color
                                 ? {
                                     backgroundColor: `${event.category.color}20`,
                                     borderColor: `${event.category.color}50`,
-                                    color: event.category.color,
+                                    color: '#d3bb73',
                                   }
                                 : {}
                             }

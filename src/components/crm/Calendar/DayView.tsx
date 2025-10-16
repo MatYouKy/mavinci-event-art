@@ -65,7 +65,7 @@ export default function DayView({
                         ? {
                             backgroundColor: `${event.category.color}20`,
                             borderColor: `${event.category.color}50`,
-                            color: event.category.color,
+                            color: '#d3bb73',
                           }
                         : {}),
                     }}

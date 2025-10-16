@@ -1597,8 +1597,12 @@ function EditEventModal({
   event: Event;
   onSave: (data: any) => void;
 }) {
+  const [clients, setClients] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     name: event.name,
+    client_id: event.client_id || '',
+    category_id: event.category_id || '',
     event_date: event.event_date,
     event_end_date: event.event_end_date || '',
     location: event.location,
@@ -1606,6 +1610,30 @@ function EditEventModal({
     status: event.status,
     event_type: (event as any).event_type || 'general',
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchClients();
+      fetchCategories();
+    }
+  }, [isOpen]);
+
+  const fetchClients = async () => {
+    const { data } = await supabase
+      .from('clients')
+      .select('id, company_name')
+      .order('company_name');
+    if (data) setClients(data);
+  };
+
+  const fetchCategories = async () => {
+    const { data } = await supabase
+      .from('event_categories')
+      .select('id, name, color')
+      .eq('is_active', true)
+      .order('name');
+    if (data) setCategories(data);
+  };
 
   if (!isOpen) return null;
 
@@ -1625,6 +1653,8 @@ function EditEventModal({
 
     onSave({
       name: formData.name,
+      client_id: formData.client_id || null,
+      category_id: formData.category_id || null,
       event_date: formData.event_date,
       event_end_date: formData.event_end_date || null,
       location: formData.location,
@@ -1659,6 +1689,44 @@ function EditEventModal({
               className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               placeholder="Nazwa eventu"
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Klient
+              </label>
+              <select
+                value={formData.client_id}
+                onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              >
+                <option value="">Wybierz klienta</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.company_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Kategoria
+              </label>
+              <select
+                value={formData.category_id}
+                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              >
+                <option value="">Wybierz kategorię</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
