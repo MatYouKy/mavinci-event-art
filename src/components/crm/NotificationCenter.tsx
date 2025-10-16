@@ -186,7 +186,7 @@ export default function NotificationCenter() {
     }
   };
 
-  const handleAssignmentResponse = async (assignmentId: string, status: 'accepted' | 'rejected') => {
+  const handleAssignmentResponse = async (assignmentId: string, status: 'accepted' | 'rejected', recipientId: string) => {
     try {
       const { error } = await supabase
         .from('employee_assignments')
@@ -200,7 +200,17 @@ export default function NotificationCenter() {
         'success'
       );
 
-      fetchNotifications();
+      // Update the notification in state to hide buttons immediately
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.recipient_id === recipientId
+            ? { ...n, metadata: { ...n.metadata, requires_response: false } }
+            : n
+        )
+      );
+
+      // Also fetch fresh data
+      await fetchNotifications();
     } catch (error) {
       console.error('Error responding to assignment:', error);
       showSnackbar('Błąd podczas odpowiedzi na zaproszenie', 'error');
@@ -395,7 +405,7 @@ export default function NotificationCenter() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleAssignmentResponse(notification.metadata.assignment_id, 'accepted');
+                                  handleAssignmentResponse(notification.metadata.assignment_id, 'accepted', notification.recipient_id);
                                 }}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-500/30 transition-colors"
                               >
@@ -405,7 +415,7 @@ export default function NotificationCenter() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleAssignmentResponse(notification.metadata.assignment_id, 'rejected');
+                                  handleAssignmentResponse(notification.metadata.assignment_id, 'rejected', notification.recipient_id);
                                 }}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/30 transition-colors"
                               >
