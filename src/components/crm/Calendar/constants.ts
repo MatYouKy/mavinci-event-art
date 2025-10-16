@@ -1,6 +1,8 @@
 import { EventStatus } from './types';
 
 export const STATUS_COLORS: Record<EventStatus, string> = {
+  inquiry: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  offer_to_send: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
   offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   offer_accepted: 'bg-green-500/20 text-green-400 border-green-500/30',
   in_preparation: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -11,6 +13,8 @@ export const STATUS_COLORS: Record<EventStatus, string> = {
 };
 
 export const STATUS_LABELS: Record<EventStatus, string> = {
+  inquiry: 'Zapytanie',
+  offer_to_send: 'Oferta do wysłania',
   offer_sent: 'Oferta wysłana',
   offer_accepted: 'Oferta zaakceptowana',
   in_preparation: 'W przygotowaniu',

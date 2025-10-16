@@ -22,6 +22,8 @@ export interface CalendarEvent {
 }
 
 export type EventStatus =
+  | 'inquiry'
+  | 'offer_to_send'
   | 'offer_sent'
   | 'offer_accepted'
   | 'in_preparation'

@@ -42,7 +42,7 @@ export default function NewEventModal({
     location: '',
     budget: '',
     description: '',
-    status: 'offer_sent',
+    status: 'inquiry',
   });
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export default function NewEventModal({
       location: '',
       budget: '',
       description: '',
-      status: 'offer_sent',
+      status: 'inquiry',
     });
     setAttachments([]);
     onClose();
@@ -329,6 +329,8 @@ export default function NewEventModal({
                 }
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
               >
+                <option value="inquiry">Zapytanie</option>
+                <option value="offer_to_send">Oferta do wysłania</option>
                 <option value="offer_sent">Oferta wysłana</option>
                 <option value="offer_accepted">Oferta zaakceptowana</option>
                 <option value="in_preparation">W przygotowaniu</option>
