@@ -143,6 +143,7 @@ export default function EventDetailPage() {
   const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [currentUser] = useState({ id: '00000000-0000-0000-0000-000000000000', name: 'Administrator' });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (eventId) {
@@ -175,6 +176,7 @@ export default function EventDetailPage() {
 
       if (eventError) {
         console.error('Error fetching event:', eventError);
+        setError(`Błąd pobierania wydarzenia: ${eventError.message || JSON.stringify(eventError)}`);
         setEvent(null);
         setLoading(false);
         return;
@@ -182,6 +184,7 @@ export default function EventDetailPage() {
 
       if (!eventData) {
         console.log('Event not found');
+        setError('Wydarzenie nie zostało znalezione lub nie masz dostępu do tego wydarzenia');
         setEvent(null);
         setLoading(false);
         return;
@@ -552,7 +555,14 @@ export default function EventDetailPage() {
   if (!event) {
     return (
       <div className="flex flex-col items-center justify-center h-screen space-y-4">
-        <div className="text-[#e5e4e2] text-lg">Event nie został znaleziony</div>
+        <div className="text-red-400 text-lg font-medium">
+          {error || 'Event nie został znaleziony'}
+        </div>
+        {error && (
+          <div className="text-[#e5e4e2]/60 text-sm max-w-md text-center">
+            Sprawdź konsolę przeglądarki (F12) aby zobaczyć więcej szczegółów
+          </div>
+        )}
         <button
           onClick={() => router.back()}
           className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
