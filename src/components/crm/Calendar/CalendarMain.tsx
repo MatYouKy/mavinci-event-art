@@ -105,6 +105,22 @@ export default function CalendarMain() {
 
   const handleSaveEvent = async (eventData: any) => {
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        alert('Błąd sesji: ' + sessionError.message);
+        return;
+      }
+
+      if (!session) {
+        console.error('No active session');
+        alert('Brak aktywnej sesji. Zaloguj się ponownie.');
+        return;
+      }
+
+      console.log('Saving event with data:', eventData);
+
       const { data, error } = await supabase
         .from('events')
         .insert([
@@ -124,10 +140,12 @@ export default function CalendarMain() {
 
       if (error) {
         console.error('Error saving event:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         alert('Błąd podczas zapisywania wydarzenia: ' + error.message);
         return;
       }
 
+      console.log('Event saved successfully:', data);
       fetchEvents();
       setIsModalOpen(false);
     } catch (err) {
