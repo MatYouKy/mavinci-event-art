@@ -197,6 +197,7 @@ export default function EventCategoriesPage() {
           .eq('id', editingIcon.id);
 
         if (error) throw error;
+        alert('Ikona została zaktualizowana!');
       } else {
         const { error } = await supabase
           .from('custom_icons')
@@ -206,9 +207,11 @@ export default function EventCategoriesPage() {
           }]);
 
         if (error) throw error;
+        alert('Ikona została dodana!');
       }
 
       await fetchIcons();
+      await fetchCategories();
       setEditingIcon(null);
       setIconFormData({
         name: '',
@@ -217,7 +220,7 @@ export default function EventCategoriesPage() {
       });
     } catch (error) {
       console.error('Error saving icon:', error);
-      alert('Błąd podczas zapisywania ikony');
+      alert('Błąd podczas zapisywania ikony: ' + (error as any).message);
     }
   };
 

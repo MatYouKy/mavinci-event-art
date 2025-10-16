@@ -79,12 +79,15 @@ export default function EventsPage() {
 
   const handleSaveEvent = async (eventData: any) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+
       const { data, error } = await supabase
         .from('events')
         .insert([
           {
             name: eventData.name,
             client_id: eventData.client_id || null,
+            category_id: eventData.category_id || null,
             event_date: eventData.event_date,
             event_end_date: eventData.event_end_date || null,
             location: eventData.location,
@@ -92,6 +95,7 @@ export default function EventsPage() {
             description: eventData.description || null,
             status: eventData.status,
             attachments: eventData.attachments || [],
+            created_by: session?.user?.id || null,
           },
         ])
         .select();
