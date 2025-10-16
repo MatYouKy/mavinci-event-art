@@ -254,14 +254,6 @@ export default function CalendarMain() {
           </div>
 
           <button
-            onClick={() => router.push('/crm/event-categories')}
-            className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] border border-[#d3bb73]/20 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
-          >
-            <Tag className="w-4 h-4" />
-            <span className="hidden md:inline">Kategorie</span>
-          </button>
-
-          <button
             onClick={() => handleNewEvent()}
             className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
           >

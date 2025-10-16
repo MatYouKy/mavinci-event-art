@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Calendar, MapPin, Building2 } from 'lucide-react';
+import { Plus, Search, Calendar, MapPin, Building2, Tag } from 'lucide-react';
 import NewEventModal from '@/components/crm/NewEventModal';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -116,13 +116,22 @@ export default function EventsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Eventy</h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Nowy event
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/crm/event-categories')}
+            className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] border border-[#d3bb73]/20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+          >
+            <Tag className="w-4 h-4" />
+            Kategorie
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nowy event
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4">
