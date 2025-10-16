@@ -51,6 +51,18 @@ export default function EventCategoriesPage() {
     fetchIcons();
   }, []);
 
+  useEffect(() => {
+    if (editingCategory) {
+      setFormData({
+        name: editingCategory.name,
+        color: editingCategory.color,
+        description: editingCategory.description || '',
+        is_active: editingCategory.is_active,
+        icon_id: editingCategory.icon_id || '',
+      });
+    }
+  }, [editingCategory]);
+
   const fetchCategories = async () => {
     try {
       const { data, error } = await supabase
@@ -353,7 +365,7 @@ export default function EventCategoriesPage() {
           </div>
 
           {showModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div key={editingCategory?.id || 'new'} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
               <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-xl font-bold text-white">
