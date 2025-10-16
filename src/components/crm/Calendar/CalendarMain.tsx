@@ -21,6 +21,7 @@ import { STATUS_COLORS, STATUS_LABELS } from './constants';
 import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
+import EmployeeView from './EmployeeView';
 import NewEventModal from '../NewEventModal';
 
 export default function CalendarMain() {
@@ -73,6 +74,12 @@ export default function CalendarMain() {
             id,
             name,
             color
+          ),
+          employees:employee_assignments(
+            id,
+            employee_id,
+            role,
+            status
           )
         `)
         .order('event_date', { ascending: true });
@@ -371,7 +378,7 @@ export default function CalendarMain() {
           </button>
 
           <div className="flex bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg overflow-hidden">
-            {(['month', 'week', 'day'] as CalendarView[]).map((v) => (
+            {(['month', 'week', 'day', 'employee'] as CalendarView[]).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -381,7 +388,7 @@ export default function CalendarMain() {
                     : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
                 }`}
               >
-                {v === 'month' ? 'Miesiąc' : v === 'week' ? 'Tydzień' : 'Dzień'}
+                {v === 'month' ? 'Miesiąc' : v === 'week' ? 'Tydzień' : v === 'day' ? 'Dzień' : 'Pracownicy'}
               </button>
             ))}
           </div>
@@ -556,6 +563,16 @@ export default function CalendarMain() {
           onDateClick={handleNewEvent}
           onEventClick={(event) => router.push(`/crm/events/${event.id}`)}
           onEventHover={handleEventHover}
+        />
+      )}
+
+      {view === 'employee' && (
+        <EmployeeView
+          currentDate={currentDate}
+          events={events}
+          onDateClick={handleNewEvent}
+          onEventClick={(event) => router.push(`/crm/events/${event.id}`)}
+          employees={employees}
         />
       )}
 

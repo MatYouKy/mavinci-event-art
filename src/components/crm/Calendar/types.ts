@@ -65,7 +65,7 @@ export interface EventTask {
   due_date?: string;
 }
 
-export type CalendarView = 'month' | 'week' | 'day';
+export type CalendarView = 'month' | 'week' | 'day' | 'employee';
 
 export interface CalendarViewProps {
   currentDate: Date;
