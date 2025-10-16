@@ -50,7 +50,7 @@ export default function CalendarMain() {
             quantity,
             start_date,
             end_date,
-            equipment:equipment_items(name, category)
+            equipment_item:equipment_items(name, brand, model)
           ),
           employees:employee_assignments(
             id,
