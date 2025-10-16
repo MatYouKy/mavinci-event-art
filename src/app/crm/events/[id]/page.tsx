@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import EventTasksBoard from '@/components/crm/EventTasksBoard';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 
 interface Event {
   id: string;
@@ -60,9 +61,15 @@ interface Employee {
   role: string;
   notes: string;
   employee: {
+    id: string;
     name: string;
     surname: string;
+    nickname: string | null;
     occupation: string;
+    avatar_url: string | null;
+    avatar_metadata: any;
+    email: string;
+    phone_number: string | null;
   };
 }
 
@@ -199,7 +206,7 @@ export default function EventDetailPage() {
         .from('employee_assignments')
         .select(`
           *,
-          employee:employees(name, surname, occupation)
+          employee:employees(id, name, surname, nickname, occupation, avatar_url, avatar_metadata, email, phone_number)
         `)
         .eq('event_id', eventId);
 
@@ -957,35 +964,10 @@ export default function EventDetailPage() {
               <p className="text-[#e5e4e2]/60">Brak przypisanych pracowników</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {employees.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-start justify-between bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
-                >
-                  <div className="flex-1">
-                    <h3 className="text-[#e5e4e2] font-medium">
-                      {item.employee.first_name} {item.employee.last_name}
-                    </h3>
-                    <p className="text-sm text-[#e5e4e2]/60">
-                      {item.employee.position}
-                    </p>
-                    {item.role && (
-                      <p className="text-sm text-[#d3bb73] mt-1">Rola: {item.role}</p>
-                    )}
-                    {item.notes && (
-                      <p className="text-sm text-[#e5e4e2]/40 mt-1">{item.notes}</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => handleRemoveEmployee(item.id)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
+            <TeamMembersList
+              employees={employees}
+              onRemove={handleRemoveEmployee}
+            />
           )}
         </div>
       )}
@@ -1512,6 +1494,114 @@ function AddChecklistModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TeamMembersList({
+  employees,
+  onRemove,
+}: {
+  employees: Employee[];
+  onRemove: (id: string) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
+  return (
+    <div className="space-y-3">
+      {employees.map((item) => (
+        <div
+          key={item.id}
+          className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg overflow-hidden"
+        >
+          <div
+            onClick={() => toggleExpand(item.id)}
+            className="flex items-center gap-4 p-4 cursor-pointer hover:bg-[#d3bb73]/5 transition-colors"
+          >
+            <EmployeeAvatar
+              avatarUrl={item.employee.avatar_url}
+              avatarMetadata={item.employee.avatar_metadata}
+              employeeName={`${item.employee.name} ${item.employee.surname}`}
+              size={48}
+              className="flex-shrink-0"
+            />
+
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[#e5e4e2] font-medium">
+                {item.employee.nickname || `${item.employee.name} ${item.employee.surname}`}
+              </h3>
+              {item.role && (
+                <p className="text-sm text-[#d3bb73]">{item.role}</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(item.id);
+                }}
+                className="p-2 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              {expandedId === item.id ? (
+                <ChevronUp className="w-5 h-5 text-[#e5e4e2]/60" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-[#e5e4e2]/60" />
+              )}
+            </div>
+          </div>
+
+          {expandedId === item.id && (
+            <div className="border-t border-[#d3bb73]/10 p-4 space-y-3">
+              {item.employee.occupation && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Briefcase className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
+                  <span className="text-[#e5e4e2]/80">{item.employee.occupation}</span>
+                </div>
+              )}
+
+              {item.employee.email && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Mail className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
+                  <a
+                    href={`mailto:${item.employee.email}`}
+                    className="text-[#e5e4e2]/80 hover:text-[#d3bb73] transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {item.employee.email}
+                  </a>
+                </div>
+              )}
+
+              {item.employee.phone_number && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
+                  <a
+                    href={`tel:${item.employee.phone_number}`}
+                    className="text-[#e5e4e2]/80 hover:text-[#d3bb73] transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {item.employee.phone_number}
+                  </a>
+                </div>
+              )}
+
+              {item.notes && (
+                <div className="pt-3 border-t border-[#d3bb73]/10">
+                  <div className="text-xs text-[#e5e4e2]/60 mb-1">Notatki:</div>
+                  <p className="text-sm text-[#e5e4e2]/80">{item.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
