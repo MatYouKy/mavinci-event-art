@@ -50,16 +50,16 @@ export default function CalendarMain() {
             quantity,
             start_date,
             end_date,
-            equipment:equipment_id(name, category)
+            equipment:equipment_items(name, category)
           ),
           employees:employee_assignments(
             id,
             employee_id,
             role,
             hours,
-            employee:employee_id(first_name, last_name, position)
+            employee:employees(first_name, last_name, position)
           ),
-          tasks(id, title, status, priority, assigned_to, due_date)
+          tasks!event_id(id, title, status, priority, assigned_to, due_date)
         `)
         .order('event_date', { ascending: true });
 
