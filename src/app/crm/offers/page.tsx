@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, FileText, Search, DollarSign, Calendar, Building2, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Offer {
   id: string;
@@ -14,6 +15,7 @@ interface Offer {
   valid_until: string;
   status: string;
   created_at: string;
+  created_by?: string;
   client?: {
     company_name?: string;
     first_name?: string;
@@ -22,6 +24,10 @@ interface Offer {
   event?: {
     name: string;
     event_date: string;
+  };
+  creator?: {
+    name: string;
+    surname: string;
   };
 }
 
@@ -43,20 +49,28 @@ const statusLabels: Record<string, string> = {
 
 export default function OffersPage() {
   const router = useRouter();
+  const { employee, isAdmin } = useCurrentEmployee();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [employeeFilter, setEmployeeFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
-    fetchOffers();
-  }, []);
+    if (employee) {
+      fetchOffers();
+      if (isAdmin) {
+        fetchEmployees();
+      }
+    }
+  }, [employee, isAdmin]);
 
   useEffect(() => {
     filterOffers();
-  }, [searchQuery, statusFilter, offers]);
+  }, [searchQuery, statusFilter, employeeFilter, offers]);
 
   const fetchOffers = async () => {
     try {
@@ -66,7 +80,8 @@ export default function OffersPage() {
         .select(`
           *,
           client:clients!client_id(company_name, first_name, last_name),
-          event:events!event_id(name, event_date)
+          event:events!event_id(name, event_date),
+          creator:employees!created_by(name, surname)
         `)
         .order('created_at', { ascending: false });
 
@@ -75,9 +90,6 @@ export default function OffersPage() {
         return;
       }
 
-      console.log('Fetched offers:', data);
-      console.log('Number of offers:', data?.length);
-
       if (data) {
         setOffers(data);
       }
@@ -85,6 +97,26 @@ export default function OffersPage() {
       console.error('Error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name, surname')
+        .order('name');
+
+      if (error) {
+        console.error('Error fetching employees:', error);
+        return;
+      }
+
+      if (data) {
+        setEmployees(data);
+      }
+    } catch (err) {
+      console.error('Error:', err);
     }
   };
 
@@ -102,6 +134,10 @@ export default function OffersPage() {
 
     if (statusFilter !== 'all') {
       filtered = filtered.filter((offer) => offer.status === statusFilter);
+    }
+
+    if (employeeFilter !== 'all') {
+      filtered = filtered.filter((offer) => offer.created_by === employeeFilter);
     }
 
     setFilteredOffers(filtered);
@@ -219,6 +255,21 @@ export default function OffersPage() {
             <option value="rejected">Odrzucone</option>
             <option value="expired">Wygasłe</option>
           </select>
+
+          {isAdmin && employees.length > 0 && (
+            <select
+              value={employeeFilter}
+              onChange={(e) => setEmployeeFilter(e.target.value)}
+              className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            >
+              <option value="all">Wszyscy pracownicy</option>
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.name} {emp.surname}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {filteredOffers.length === 0 ? (
@@ -273,6 +324,14 @@ export default function OffersPage() {
                           <Building2 className="w-4 h-4" />
                           <span>{getClientName(offer)}</span>
                         </div>
+                        {offer.creator && (
+                          <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/50">
+                            <User className="w-4 h-4" />
+                            <span>
+                              {offer.creator.name} {offer.creator.surname}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -323,6 +382,7 @@ function CreateOfferModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { employee } = useCurrentEmployee();
   const [clients, setClients] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [formData, setFormData] = useState({
@@ -357,6 +417,11 @@ function CreateOfferModal({
   };
 
   const handleSubmit = async () => {
+    if (!employee) {
+      alert('Nie można utworzyć oferty - brak danych pracownika');
+      return;
+    }
+
     try {
       const offerData: any = {
         client_id: formData.client_id || null,
@@ -365,6 +430,7 @@ function CreateOfferModal({
         notes: formData.notes || null,
         status: 'draft',
         total_amount: 0,
+        created_by: employee.id,
       };
 
       if (formData.offer_number.trim()) {
