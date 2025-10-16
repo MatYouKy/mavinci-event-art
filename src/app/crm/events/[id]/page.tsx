@@ -1192,6 +1192,7 @@ export default function EventDetailPage() {
           event={event}
           onSave={async (updatedData) => {
             try {
+              console.log('Updating event with data:', updatedData);
               const { error } = await supabase
                 .from('events')
                 .update(updatedData)
@@ -1567,11 +1568,12 @@ function EditEventModal({
   };
 
   const fetchCategories = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('event_categories')
       .select('id, name, color')
       .eq('is_active', true)
       .order('name');
+    console.log('Fetched categories:', data, 'Error:', error);
     if (data) setCategories(data);
   };
 
@@ -1591,7 +1593,7 @@ function EditEventModal({
       return;
     }
 
-    onSave({
+    const dataToSave = {
       name: formData.name,
       client_id: formData.client_id || null,
       category_id: formData.category_id || null,
@@ -1600,7 +1602,9 @@ function EditEventModal({
       location: formData.location,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
-    });
+    };
+    console.log('Form data to save:', dataToSave);
+    onSave(dataToSave);
   };
 
   return (
