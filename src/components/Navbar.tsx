@@ -394,7 +394,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
       </div>
 
       {isMenuOpen && (
-        <div className="md:hidden bg-[#1c1f33]/95 backdrop-blur-lg rounded-b-3xl mt-2">
+        <div className="md:hidden bg-[#1c1f33]/95 backdrop-blur-lg rounded-b-3xl mt-2 max-h-[80vh] overflow-y-auto">
           <div className="px-4 py-4 space-y-3">
             {navLinks.map((link) => (
               <Link
@@ -415,16 +415,18 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 <ChevronDown className={`w-4 h-4 transition-transform ${isServicesOpen ? 'rotate-180' : ''}`} />
               </button>
               {isServicesOpen && (
-                <div className="mt-2 ml-4 space-y-2">
+                <div className="mt-2 ml-4 space-y-2 max-h-[50vh] overflow-y-auto">
                   {servicesLinks.map((service) => (
                     <Link
                       key={service.href}
                       href={service.href}
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.preventDefault();
                         setIsServicesOpen(false);
                         setIsMenuOpen(false);
+                        router.push(service.href);
                       }}
-                      className="block text-white/70 hover:text-white text-xs font-light py-1"
+                      className="block text-white/70 hover:text-white text-xs font-light py-2 px-2 rounded hover:bg-[#d3bb73]/10 transition-colors"
                     >
                       {service.label}
                     </Link>
