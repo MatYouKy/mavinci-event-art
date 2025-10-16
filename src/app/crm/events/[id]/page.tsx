@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase, Edit as EditIcon, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import EventTasksBoard from '@/components/crm/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
@@ -59,6 +59,10 @@ interface Employee {
   id: string;
   employee_id: string;
   role: string;
+  responsibilities: string | null;
+  status: 'pending' | 'accepted' | 'rejected';
+  invited_at: string;
+  responded_at: string | null;
   notes: string;
   employee: {
     id: string;
@@ -205,13 +209,20 @@ export default function EventDetailPage() {
       const { data: employeesData, error: employeesError } = await supabase
         .from('employee_assignments')
         .select(`
-          *,
-          employee:employees(id, name, surname, nickname, occupation, avatar_url, avatar_metadata, email, phone_number)
+          id,
+          employee_id,
+          role,
+          responsibilities,
+          status,
+          invited_at,
+          responded_at,
+          notes,
+          employee:employee_id(id, name, surname, nickname, occupation, avatar_url, avatar_metadata, email, phone_number)
         `)
         .eq('event_id', eventId);
 
       if (!employeesError && employeesData) {
-        setEmployees(employeesData);
+        setEmployees(employeesData as any);
       } else {
         setEmployees([]);
       }
@@ -425,8 +436,10 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleAddEmployee = async (employeeId: string, role: string, notes: string) => {
+  const handleAddEmployee = async (employeeId: string, role: string, responsibilities: string) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+
       const { error } = await supabase
         .from('employee_assignments')
         .insert([
@@ -434,6 +447,9 @@ export default function EventDetailPage() {
             event_id: eventId,
             employee_id: employeeId,
             role: role,
+            responsibilities: responsibilities || null,
+            invited_by: session?.user?.id || null,
+            status: 'pending',
           },
         ]);
 
@@ -1315,12 +1331,12 @@ function AddEmployeeModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (employeeId: string, role: string, notes: string) => void;
+  onAdd: (employeeId: string, role: string, responsibilities: string) => void;
   availableEmployees: any[];
 }) {
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [role, setRole] = useState('');
-  const [notes, setNotes] = useState('');
+  const [responsibilities, setResponsibilities] = useState('');
 
   if (!isOpen) return null;
 
@@ -1329,10 +1345,10 @@ function AddEmployeeModal({
       alert('Wybierz pracownika');
       return;
     }
-    onAdd(selectedEmployee, role, notes);
+    onAdd(selectedEmployee, role, responsibilities);
     setSelectedEmployee('');
     setRole('');
-    setNotes('');
+    setResponsibilities('');
   };
 
   return (
@@ -1382,13 +1398,13 @@ function AddEmployeeModal({
 
           <div>
             <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Notatki
+              Zakres odpowiedzialności
             </label>
             <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={responsibilities}
+              onChange={(e) => setResponsibilities(e.target.value)}
               className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[80px] focus:outline-none focus:border-[#d3bb73]"
-              placeholder="Dodatkowe informacje..."
+              placeholder="Opisz zakres obowiązków..."
             />
           </div>
 
@@ -1506,103 +1522,224 @@ function TeamMembersList({
   onRemove: (id: string) => void;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState('');
+  const [editResponsibilities, setEditResponsibilities] = useState('');
+  const [removeModal, setRemoveModal] = useState<{isOpen: boolean, id: string, name: string} | null>(null);
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id);
   };
 
-  return (
-    <div className="space-y-3">
-      {employees.map((item) => (
-        <div
-          key={item.id}
-          className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg overflow-hidden"
-        >
-          <div
-            onClick={() => toggleExpand(item.id)}
-            className="flex items-center gap-4 p-4 cursor-pointer hover:bg-[#d3bb73]/5 transition-colors"
-          >
-            <EmployeeAvatar
-              avatarUrl={item.employee.avatar_url}
-              avatarMetadata={item.employee.avatar_metadata}
-              employeeName={`${item.employee.name} ${item.employee.surname}`}
-              size={48}
-              className="flex-shrink-0"
-            />
+  const startEdit = (item: Employee) => {
+    setEditingId(item.id);
+    setEditRole(item.role || '');
+    setEditResponsibilities(item.responsibilities || '');
+  };
 
-            <div className="flex-1 min-w-0">
-              <h3 className="text-[#e5e4e2] font-medium">
-                {item.employee.nickname || `${item.employee.name} ${item.employee.surname}`}
-              </h3>
-              {item.role && (
-                <p className="text-sm text-[#d3bb73]">{item.role}</p>
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditRole('');
+    setEditResponsibilities('');
+  };
+
+  const saveEdit = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('employee_assignments')
+        .update({
+          role: editRole,
+          responsibilities: editResponsibilities
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setEditingId(null);
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating assignment:', error);
+      alert('Błąd podczas aktualizacji');
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'accepted':
+        return <span className="px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-400">Zaakceptowano</span>;
+      case 'rejected':
+        return <span className="px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-400">Odrzucono</span>;
+      default:
+        return <span className="px-2 py-1 rounded-full text-xs bg-yellow-500/20 text-yellow-400">Oczekuje</span>;
+    }
+  };
+
+  return (
+    <>
+      <div className="space-y-3">
+        {employees.map((item) => {
+          const isEditing = editingId === item.id;
+          const isExpanded = expandedId === item.id;
+
+          return (
+            <div
+              key={item.id}
+              className={`bg-[#0f1119] border rounded-lg overflow-hidden ${
+                item.status === 'rejected' ? 'border-red-500/30' : 'border-[#d3bb73]/10'
+              }`}
+            >
+              <div
+                onClick={() => !isEditing && toggleExpand(item.id)}
+                className="flex items-center gap-4 p-4 cursor-pointer hover:bg-[#d3bb73]/5 transition-colors"
+              >
+                <EmployeeAvatar
+                  avatarUrl={item.employee.avatar_url}
+                  avatarMetadata={item.employee.avatar_metadata}
+                  employeeName={`${item.employee.name} ${item.employee.surname}`}
+                  size={48}
+                  className="flex-shrink-0"
+                />
+
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-[#e5e4e2] font-medium">
+                    {item.employee.nickname || `${item.employee.name} ${item.employee.surname}`}
+                  </h3>
+                  {item.role && !isEditing && (
+                    <p className="text-sm text-[#d3bb73]">{item.role}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    {getStatusBadge(item.status)}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {!isEditing && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEdit(item);
+                        }}
+                        className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                      >
+                        <EditIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRemoveModal({
+                            isOpen: true,
+                            id: item.id,
+                            name: item.employee.nickname || `${item.employee.name} ${item.employee.surname}`
+                          });
+                        }}
+                        className="p-2 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  {!isEditing && (isExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-[#e5e4e2]/60" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-[#e5e4e2]/60" />
+                  ))}
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="border-t border-[#d3bb73]/10 p-4 space-y-3">
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                      Rola
+                    </label>
+                    <input
+                      type="text"
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value)}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      placeholder="np. Lead Audio, Technician..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                      Zakres odpowiedzialności
+                    </label>
+                    <textarea
+                      value={editResponsibilities}
+                      onChange={(e) => setEditResponsibilities(e.target.value)}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[80px] focus:outline-none focus:border-[#d3bb73]"
+                      placeholder="Opisz zakres obowiązków..."
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => saveEdit(item.id)}
+                      className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
+                    >
+                      Zapisz
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] rounded-lg"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isExpanded && !isEditing && (
+                <div className="border-t border-[#d3bb73]/10 p-4 space-y-3">
+                  {item.responsibilities && (
+                    <div className="pb-3 border-b border-[#d3bb73]/10">
+                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Zakres odpowiedzialności:</div>
+                      <p className="text-sm text-[#e5e4e2]/80 whitespace-pre-wrap">{item.responsibilities}</p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+          );
+        })}
+      </div>
 
-            <div className="flex items-center gap-2">
+      {removeModal?.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="p-3 bg-red-500/10 rounded-lg">
+                <AlertCircle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-light text-[#e5e4e2] mb-2">Usuń z zespołu</h2>
+                <p className="text-[#e5e4e2]/60">
+                  Czy na pewno chcesz usunąć <span className="text-[#d3bb73]">{removeModal.name}</span> z zespołu wydarzenia?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemove(item.id);
+                onClick={() => {
+                  onRemove(removeModal.id);
+                  setRemoveModal(null);
                 }}
-                className="p-2 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                className="flex-1 bg-red-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-600"
               >
-                <Trash2 className="w-4 h-4" />
+                Usuń
               </button>
-              {expandedId === item.id ? (
-                <ChevronUp className="w-5 h-5 text-[#e5e4e2]/60" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-[#e5e4e2]/60" />
-              )}
+              <button
+                onClick={() => setRemoveModal(null)}
+                className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+              >
+                Anuluj
+              </button>
             </div>
           </div>
-
-          {expandedId === item.id && (
-            <div className="border-t border-[#d3bb73]/10 p-4 space-y-3">
-              {item.employee.occupation && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Briefcase className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
-                  <span className="text-[#e5e4e2]/80">{item.employee.occupation}</span>
-                </div>
-              )}
-
-              {item.employee.email && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Mail className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
-                  <a
-                    href={`mailto:${item.employee.email}`}
-                    className="text-[#e5e4e2]/80 hover:text-[#d3bb73] transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {item.employee.email}
-                  </a>
-                </div>
-              )}
-
-              {item.employee.phone_number && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Phone className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
-                  <a
-                    href={`tel:${item.employee.phone_number}`}
-                    className="text-[#e5e4e2]/80 hover:text-[#d3bb73] transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {item.employee.phone_number}
-                  </a>
-                </div>
-              )}
-
-              {item.notes && (
-                <div className="pt-3 border-t border-[#d3bb73]/10">
-                  <div className="text-xs text-[#e5e4e2]/60 mb-1">Notatki:</div>
-                  <p className="text-sm text-[#e5e4e2]/80">{item.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 
