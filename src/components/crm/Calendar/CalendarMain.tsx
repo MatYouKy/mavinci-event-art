@@ -11,6 +11,7 @@ import {
   Building2,
   Clock,
   X,
+  Tag,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { CalendarEvent, CalendarView } from './types';
@@ -44,6 +45,8 @@ export default function CalendarMain() {
         .select(`
           *,
           client:clients(company_name, first_name, last_name),
+          category:event_categories(id, name, color),
+          creator:employees!events_created_by_fkey(id, name, surname, avatar_url),
           equipment:equipment_bookings(
             id,
             equipment_id,
@@ -127,6 +130,7 @@ export default function CalendarMain() {
           {
             name: eventData.name,
             client_id: eventData.client_id || null,
+            category_id: eventData.category_id || null,
             event_date: eventData.event_date,
             event_end_date: eventData.event_end_date || null,
             location: eventData.location,
@@ -134,6 +138,7 @@ export default function CalendarMain() {
             description: eventData.description || null,
             status: eventData.status,
             attachments: eventData.attachments || [],
+            created_by: session.user.id,
           },
         ])
         .select();
@@ -247,6 +252,14 @@ export default function CalendarMain() {
               </button>
             ))}
           </div>
+
+          <button
+            onClick={() => router.push('/crm/event-categories')}
+            className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] border border-[#d3bb73]/20 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+          >
+            <Tag className="w-4 h-4" />
+            <span className="hidden md:inline">Kategorie</span>
+          </button>
 
           <button
             onClick={() => handleNewEvent()}

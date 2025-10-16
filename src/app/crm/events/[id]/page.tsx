@@ -18,8 +18,21 @@ interface Event {
   notes: string;
   attachments: any[];
   client_id: string;
+  category_id: string;
+  created_by: string;
   client?: {
     company_name: string;
+  };
+  category?: {
+    id: string;
+    name: string;
+    color: string;
+  };
+  creator?: {
+    id: string;
+    name: string;
+    surname: string;
+    avatar_url: string;
   };
 }
 
@@ -40,9 +53,9 @@ interface Employee {
   role: string;
   notes: string;
   employee: {
-    first_name: string;
-    last_name: string;
-    position: string;
+    name: string;
+    surname: string;
+    occupation: string;
   };
 }
 
@@ -127,7 +140,9 @@ export default function EventDetailPage() {
         .from('events')
         .select(`
           *,
-          client:clients(company_name)
+          client:clients(company_name),
+          category:event_categories(id, name, color),
+          creator:employees!events_created_by_fkey(id, name, surname, avatar_url)
         `)
         .eq('id', eventId)
         .maybeSingle();
@@ -630,6 +645,31 @@ export default function EventDetailPage() {
                     </p>
                   </div>
                 </div>
+
+                {event.category && (
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-5 h-5 rounded mt-0.5"
+                      style={{ backgroundColor: event.category.color }}
+                    />
+                    <div>
+                      <p className="text-sm text-[#e5e4e2]/60">Kategoria</p>
+                      <p className="text-[#e5e4e2]">{event.category.name}</p>
+                    </div>
+                  </div>
+                )}
+
+                {event.creator && (
+                  <div className="flex items-start gap-3">
+                    <Users className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                    <div>
+                      <p className="text-sm text-[#e5e4e2]/60">Utworzył</p>
+                      <p className="text-[#e5e4e2]">
+                        {event.creator.name} {event.creator.surname}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

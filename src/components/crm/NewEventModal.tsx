@@ -16,6 +16,12 @@ interface Client {
   company_name: string;
 }
 
+interface EventCategory {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Attachment {
   name: string;
   url: string;
@@ -30,6 +36,7 @@ export default function NewEventModal({
   initialDate,
 }: NewEventModalProps) {
   const [clients, setClients] = useState<Client[]>([]);
+  const [categories, setCategories] = useState<EventCategory[]>([]);
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -37,6 +44,7 @@ export default function NewEventModal({
   const [formData, setFormData] = useState({
     name: '',
     client_id: '',
+    category_id: '',
     event_date: initialDate?.toISOString().slice(0, 16) || '',
     event_end_date: '',
     location: '',
@@ -48,6 +56,7 @@ export default function NewEventModal({
   useEffect(() => {
     if (isOpen) {
       fetchClients();
+      fetchCategories();
     }
   }, [isOpen]);
 
@@ -74,6 +83,27 @@ export default function NewEventModal({
 
       if (data) {
         setClients(data);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('event_categories')
+        .select('id, name, color')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching categories:', error);
+        return;
+      }
+
+      if (data) {
+        setCategories(data);
       }
     } catch (err) {
       console.error('Error:', err);
@@ -254,6 +284,26 @@ export default function NewEventModal({
                   </button>
                 </div>
               )}
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
+                Kategoria
+              </label>
+              <select
+                value={formData.category_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, category_id: e.target.value })
+                }
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              >
+                <option value="">Wybierz kategorię</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
