@@ -23,6 +23,8 @@ interface Task {
       name: string;
       surname: string;
       avatar_url: string | null;
+      email: string | null;
+      phone: string | null;
     };
   }>;
 }
@@ -127,7 +129,9 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               id,
               name,
               surname,
-              avatar_url
+              avatar_url,
+              email,
+              phone
             )
           )
         `)
@@ -387,22 +391,28 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         if (assignError) throw assignError;
 
         // Automatycznie dodaj pracownika do zespołu wydarzenia
-        const { error: teamError } = await supabase
+        // Najpierw sprawdź czy już istnieje
+        const { data: existing } = await supabase
           .from('employee_assignments')
-          .upsert(
-            [{
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('employee_id', employeeId)
+          .maybeSingle();
+
+        if (!existing) {
+          const { error: teamError } = await supabase
+            .from('employee_assignments')
+            .insert([{
               event_id: eventId,
               employee_id: employeeId,
               role: 'Członek zespołu'
-            }],
-            {
-              onConflict: 'event_id,employee_id',
-              ignoreDuplicates: true
-            }
-          );
+            }]);
 
-        if (teamError && teamError.code !== '23505') {
-          console.error('Error adding to team:', teamError);
+          if (teamError) {
+            console.error('Error adding to team:', teamError);
+          } else {
+            console.log('Added employee to team');
+          }
         }
 
         showSnackbar('Pracownik przypisany', 'success');
@@ -526,23 +536,29 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                         )}
 
                         {task.assignees && task.assignees.length > 0 && (
-                          <div
-                            className="flex items-center gap-1 group/assignees relative"
-                            title={task.assignees.map(a => `${a.employee.name} ${a.employee.surname}`).join(', ')}
-                          >
-                            <User className="w-3 h-3 text-[#d3bb73]" />
-                            <span className="text-xs text-[#e5e4e2]/80">
-                              {task.assignees.length}
-                            </span>
+                          <div className="flex items-center -space-x-2">
+                            {task.assignees.map((assignee) => (
+                              <div
+                                key={assignee.employee.id}
+                                className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center overflow-hidden group/avatar cursor-pointer"
+                              >
+                                {assignee.employee.avatar_url ? (
+                                  <img
+                                    src={assignee.employee.avatar_url}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="text-xs text-[#e5e4e2]/80">
+                                    {assignee.employee.name[0]}{assignee.employee.surname[0]}
+                                  </span>
+                                )}
 
-                            {/* Tooltip z detalami */}
-                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover/assignees:block z-50 pointer-events-none">
-                              <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg p-2 shadow-xl min-w-[200px]">
-                                <div className="text-xs font-medium text-[#d3bb73] mb-2">Przypisani:</div>
-                                <div className="space-y-1">
-                                  {task.assignees.map((assignee) => (
-                                    <div key={assignee.employee.id} className="flex items-center gap-2">
-                                      <div className="w-6 h-6 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                {/* Tooltip z informacjami o pracowniku */}
+                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover/avatar:block z-50 pointer-events-none whitespace-nowrap">
+                                  <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg p-3 shadow-xl">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
                                         {assignee.employee.avatar_url ? (
                                           <img
                                             src={assignee.employee.avatar_url}
@@ -550,19 +566,31 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                                             className="w-full h-full object-cover"
                                           />
                                         ) : (
-                                          <span className="text-xs text-[#e5e4e2]">
+                                          <span className="text-sm text-[#e5e4e2]">
                                             {assignee.employee.name[0]}{assignee.employee.surname[0]}
                                           </span>
                                         )}
                                       </div>
-                                      <span className="text-xs text-[#e5e4e2]">
-                                        {assignee.employee.name} {assignee.employee.surname}
-                                      </span>
+                                      <div>
+                                        <div className="text-sm font-medium text-[#e5e4e2]">
+                                          {assignee.employee.name} {assignee.employee.surname}
+                                        </div>
+                                        {assignee.employee.email && (
+                                          <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
+                                            {assignee.employee.email}
+                                          </div>
+                                        )}
+                                        {assignee.employee.phone && (
+                                          <div className="text-xs text-[#e5e4e2]/60">
+                                            {assignee.employee.phone}
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                  ))}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            ))}
                           </div>
                         )}
                       </div>
