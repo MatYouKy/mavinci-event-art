@@ -175,6 +175,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         status: formData.board_column as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
         due_date: formData.due_date || null,
         event_id: eventId,
+        is_private: false,
+        owner_id: null,
       };
 
       if (editingTask) {

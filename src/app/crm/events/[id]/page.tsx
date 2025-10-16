@@ -115,8 +115,10 @@ export default function EventDetailPage() {
 
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
   const [editedNotes, setEditedNotes] = useState('');
+  const [categories, setCategories] = useState<any[]>([]);
 
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
@@ -136,6 +138,7 @@ export default function EventDetailPage() {
       fetchEventDetails();
       fetchAuditLog();
       fetchOffers();
+      fetchCategories();
     }
   }, [eventId]);
 
@@ -248,6 +251,46 @@ export default function EventDetailPage() {
       }
     } catch (err) {
       console.error('Error fetching offers:', err);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('event_categories')
+        .select(`
+          id,
+          name,
+          color,
+          icon:custom_icons(id, name, svg_code, preview_color)
+        `)
+        .eq('is_active', true)
+        .order('name');
+
+      if (!error && data) {
+        setCategories(data);
+      }
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    }
+  };
+
+  const handleUpdateCategory = async (categoryId: string) => {
+    if (!event) return;
+
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({ category_id: categoryId || null })
+        .eq('id', eventId);
+
+      if (error) throw error;
+
+      await fetchEventDetails();
+      setIsEditingCategory(false);
+    } catch (err) {
+      console.error('Error updating category:', err);
+      alert('Błąd podczas aktualizacji kategorii');
     }
   };
 
@@ -494,9 +537,10 @@ export default function EventDetailPage() {
           <div>
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-light text-[#e5e4e2]">{event.name}</h1>
-              {event.category && (
-                <div
-                  className="flex items-center gap-2 px-3 py-1 rounded-lg border"
+              {!isEditingCategory && event.category && (
+                <button
+                  onClick={() => setIsEditingCategory(true)}
+                  className="flex items-center gap-2 px-3 py-1 rounded-lg border hover:opacity-80 transition-opacity"
                   style={{
                     backgroundColor: `${event.category.color}20`,
                     borderColor: `${event.category.color}50`,
@@ -513,6 +557,38 @@ export default function EventDetailPage() {
                     <Tag className="w-4 h-4" />
                   )}
                   <span className="text-sm font-medium">{event.category.name}</span>
+                </button>
+              )}
+              {!isEditingCategory && !event.category && (
+                <button
+                  onClick={() => setIsEditingCategory(true)}
+                  className="flex items-center gap-2 px-3 py-1 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
+                >
+                  <Tag className="w-4 h-4" />
+                  <span className="text-sm font-medium">Dodaj kategorię</span>
+                </button>
+              )}
+              {isEditingCategory && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={event.category_id || ''}
+                    onChange={(e) => handleUpdateCategory(e.target.value)}
+                    className="px-3 py-1 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
+                    autoFocus
+                  >
+                    <option value="">Bez kategorii</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setIsEditingCategory(false)}
+                    className="p-1 text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               )}
             </div>
