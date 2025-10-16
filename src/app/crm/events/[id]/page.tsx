@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import EventTasksBoard from '@/components/crm/EventTasksBoard';
 
 interface Event {
   id: string;
@@ -110,7 +111,7 @@ export default function EventDetailPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'checklist' | 'offer'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'tasks' | 'offer'>('overview');
 
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -554,7 +555,7 @@ export default function EventDetailPage() {
           { id: 'equipment', label: 'Sprzęt', icon: Package },
           { id: 'team', label: 'Zespół', icon: Users },
           { id: 'files', label: 'Pliki', icon: FileText },
-          { id: 'checklist', label: 'Checklist', icon: CheckSquare },
+          { id: 'tasks', label: 'Zadania', icon: CheckSquare },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -1065,99 +1066,8 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {activeTab === 'checklist' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-light text-[#e5e4e2]">Zadania</h2>
-              <button
-                onClick={() => setShowAddChecklistModal(true)}
-                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Nowe zadanie
-              </button>
-            </div>
-
-            {checklists.length === 0 ? (
-              <div className="text-center py-12">
-                <CheckSquare className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-                <p className="text-[#e5e4e2]/60">Brak zadań</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {checklists.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start gap-3 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={item.completed}
-                      onChange={(e) => handleToggleChecklist(item.id, e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded border-[#d3bb73]/30 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73] cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <p className={`${item.completed ? 'text-[#e5e4e2]/40 line-through' : 'text-[#e5e4e2]'}`}>
-                        {item.task}
-                      </p>
-                      {item.priority && (
-                        <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded ${
-                          item.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                          item.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                          'bg-green-500/20 text-green-400'
-                        }`}>
-                          {item.priority === 'high' ? 'Wysoki' : item.priority === 'medium' ? 'Średni' : 'Niski'}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleRemoveChecklist(item.id)}
-                      className="text-red-400 hover:text-red-300 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h2 className="text-lg font-light text-[#e5e4e2] mb-6">Historia zmian</h2>
-            {auditLog.length === 0 ? (
-              <div className="text-center py-12">
-                <Clock className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-                <p className="text-[#e5e4e2]/60">Brak historii zmian</p>
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                {auditLog.map((log) => (
-                  <div key={log.id} className="border-l-2 border-[#d3bb73]/30 pl-4 pb-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="text-[#e5e4e2] text-sm">{log.description}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[#d3bb73] text-xs">{log.user_name}</span>
-                          <span className="text-[#e5e4e2]/40 text-xs">•</span>
-                          <span className="text-[#e5e4e2]/40 text-xs">
-                            {new Date(log.created_at).toLocaleString('pl-PL', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      {activeTab === 'tasks' && event && (
+        <EventTasksBoard eventId={event.id} canManage={true} />
       )}
       {showAddEquipmentModal && (
         <AddEquipmentModal

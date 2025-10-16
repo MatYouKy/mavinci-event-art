@@ -665,12 +665,14 @@ export default function EventCategoriesPage() {
                           </div>
                           <div className="flex gap-1">
                             <button
+                              type="button"
                               onClick={() => handleOpenIconModal(icon)}
                               className="p-1 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleDeleteIcon(icon.id)}
                               className="p-1 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded"
                             >
