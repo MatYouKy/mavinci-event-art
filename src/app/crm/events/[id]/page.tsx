@@ -505,26 +505,67 @@ export default function EventDetailPage() {
   };
 
   const fetchAvailableEquipment = async () => {
-    if (!event?.start_date || !event?.end_date) {
-      console.warn('Brak dat wydarzenia - nie można sprawdzić dostępności');
-      return;
-    }
-
     try {
-      // Użyj nowej funkcji sprawdzającej dostępność w zakresie dat
-      const { data: availability, error: availError } = await supabase.rpc(
-        'check_equipment_availability_for_event',
-        {
-          p_event_id: eventId,
-          p_start_date: event.start_date,
-          p_end_date: event.end_date
-        }
-      );
+      let availability = null;
 
-      if (availError) {
-        console.error('Error checking availability:', availError);
-        return;
+      // Jeśli wydarzenie ma daty, sprawdź dostępność w zakresie dat
+      if (event.event_date && event.event_end_date) {
+        const { data: availData, error: availError } = await supabase.rpc(
+          'check_equipment_availability_for_event',
+          {
+            p_event_id: eventId,
+            p_start_date: event.event_date,
+            p_end_date: event.event_end_date
+          }
+        );
+
+        if (availError) {
+          console.error('Error checking availability:', availError);
+          return;
+        }
+
+        availability = availData;
+      } else {
+        // Brak dat - pokaż całą dostępność (wszystkie jednostki)
+        const { data: items } = await supabase
+          .from('equipment_items')
+          .select('id, name');
+
+        const { data: kits } = await supabase
+          .from('equipment_kits')
+          .select('id, name');
+
+        // Utwórz syntetyczną listę dostępności pokazującą całą ilość
+        const itemAvail = await Promise.all((items || []).map(async (item: any) => {
+          const { count } = await supabase
+            .from('equipment_units')
+            .select('*', { count: 'exact', head: true })
+            .eq('equipment_id', item.id)
+            .in('status', ['available', 'reserved', 'in_use']);
+
+          return {
+            item_id: item.id,
+            item_type: 'item',
+            item_name: item.name,
+            total_quantity: count || 0,
+            reserved_quantity: 0,
+            available_quantity: count || 0
+          };
+        }));
+
+        const kitAvail = (kits || []).map((kit: any) => ({
+          item_id: kit.id,
+          item_type: 'kit',
+          item_name: kit.name,
+          total_quantity: 1,
+          reserved_quantity: 0,
+          available_quantity: 1
+        }));
+
+        availability = [...itemAvail, ...kitAvail];
       }
+
+      console.log('Availability data:', availability);
 
       // Stwórz mapę dostępności
       const availabilityMap = new Map(
@@ -533,6 +574,8 @@ export default function EventDetailPage() {
           item
         ])
       );
+
+      console.log('Availability map:', availabilityMap);
 
       // Pobierz wszystkie items
       const { data: items, error: itemsError } = await supabase
