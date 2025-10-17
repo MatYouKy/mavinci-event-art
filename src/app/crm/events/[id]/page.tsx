@@ -1818,12 +1818,17 @@ function AddEquipmentModal({
     }));
   };
 
-  const handleQuantityChange = (id: string, quantity: number) => {
+  const handleQuantityChange = (id: string, quantity: number, maxQuantity?: number) => {
+    let finalQuantity = Math.max(1, quantity);
+    if (maxQuantity !== undefined) {
+      finalQuantity = Math.min(finalQuantity, maxQuantity);
+    }
+
     setSelectedItems(prev => ({
       ...prev,
       [id]: {
         ...prev[id],
-        quantity: Math.max(1, quantity),
+        quantity: finalQuantity,
       }
     }));
   };
@@ -1963,8 +1968,8 @@ function AddEquipmentModal({
                               max={kit.available_count || 1}
                               value={selectedItems[kit.id]?.quantity || 1}
                               onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
-                                handleQuantityChange(kit.id, val);
+                                const val = parseInt(e.target.value) || 1;
+                                handleQuantityChange(kit.id, val, kit.available_count || 1);
                               }}
                               placeholder="Ilość zestawów"
                               className={`flex-1 bg-[#1c1f33] border rounded-lg px-4 py-2.5 text-base text-[#e5e4e2] focus:outline-none focus:ring-2 ${
@@ -2057,8 +2062,8 @@ function AddEquipmentModal({
                               max={item.available_count || undefined}
                               value={selectedItems[item.id]?.quantity || 1}
                               onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
-                                handleQuantityChange(item.id, val);
+                                const val = parseInt(e.target.value) || 1;
+                                handleQuantityChange(item.id, val, item.available_count);
                               }}
                               placeholder="Ilość"
                               className={`flex-1 bg-[#1c1f33] border rounded-lg px-4 py-2.5 text-base text-[#e5e4e2] focus:outline-none focus:ring-2 ${
