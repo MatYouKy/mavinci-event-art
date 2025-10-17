@@ -505,59 +505,103 @@ export default function EventDetailPage() {
   };
 
   const fetchAvailableEquipment = async () => {
-    const { data: items, error: itemsError } = await supabase
-      .from('equipment_items')
-      .select(`
-        *,
-        category:equipment_categories(name)
-      `)
-      .order('name');
-
-    if (!itemsError && items && event?.event_date) {
-      // Filtruj sprzęt który jest już dodany do wydarzenia
-      const alreadyAddedIds = equipment
-        .filter(eq => eq.equipment_id)
-        .map(eq => eq.equipment_id);
-
-      // Sprawdź dostępność dla każdego elementu
-      const availableItems = [];
-      for (const item of items) {
-        if (alreadyAddedIds.includes(item.id)) continue;
-
-        const { data: availCount } = await supabase.rpc('get_available_equipment_count', {
-          p_equipment_id: item.id,
-          p_event_date: event.event_date,
-          p_exclude_event_id: eventId
-        });
-
-        if (availCount && availCount > 0) {
-          availableItems.push({ ...item, available_count: availCount });
-        }
-      }
-
-      setAvailableEquipment(availableItems);
-    } else if (!itemsError && items) {
-      setAvailableEquipment(items);
+    if (!event?.start_date || !event?.end_date) {
+      console.warn('Brak dat wydarzenia - nie można sprawdzić dostępności');
+      return;
     }
 
-    const { data: kits, error: kitsError } = await supabase
-      .from('equipment_kits')
-      .select(`
-        *,
-        items:equipment_kit_items(
-          equipment_id,
-          quantity,
-          equipment:equipment_items(
-            id,
-            name,
-            category:equipment_categories(name)
-          )
-        )
-      `)
-      .order('name');
+    try {
+      // Użyj nowej funkcji sprawdzającej dostępność w zakresie dat
+      const { data: availability, error: availError } = await supabase.rpc(
+        'check_equipment_availability_for_event',
+        {
+          p_event_id: eventId,
+          p_start_date: event.start_date,
+          p_end_date: event.end_date
+        }
+      );
 
-    if (!kitsError && kits) {
-      setAvailableKits(kits);
+      if (availError) {
+        console.error('Error checking availability:', availError);
+        return;
+      }
+
+      // Stwórz mapę dostępności
+      const availabilityMap = new Map(
+        (availability || []).map((item: any) => [
+          `${item.item_type}-${item.item_id}`,
+          item
+        ])
+      );
+
+      // Pobierz wszystkie items
+      const { data: items, error: itemsError } = await supabase
+        .from('equipment_items')
+        .select(`
+          *,
+          category:equipment_categories(name)
+        `)
+        .order('name');
+
+      if (!itemsError && items) {
+        // Filtruj sprzęt który jest już dodany do wydarzenia
+        const alreadyAddedIds = equipment
+          .filter(eq => eq.equipment_id)
+          .map(eq => eq.equipment_id);
+
+        const availableItems = items
+          .filter(item => !alreadyAddedIds.includes(item.id))
+          .map(item => {
+            const avail = availabilityMap.get(`item-${item.id}`);
+            return {
+              ...item,
+              available_count: avail?.available_quantity || 0,
+              total_quantity: avail?.total_quantity || 0,
+              reserved_quantity: avail?.reserved_quantity || 0
+            };
+          })
+          .filter(item => item.available_count > 0);
+
+        setAvailableEquipment(availableItems);
+      }
+
+      // Pobierz zestawy
+      const { data: kits, error: kitsError } = await supabase
+        .from('equipment_kits')
+        .select(`
+          *,
+          items:equipment_kit_items(
+            equipment_id,
+            quantity,
+            equipment:equipment_items(
+              id,
+              name,
+              category:equipment_categories(name)
+            )
+          )
+        `)
+        .order('name');
+
+      if (!kitsError && kits) {
+        const alreadyAddedKitIds = equipment
+          .filter(eq => eq.kit_id)
+          .map(eq => eq.kit_id);
+
+        const availableKitsWithAvail = kits
+          .filter(kit => !alreadyAddedKitIds.includes(kit.id))
+          .map(kit => {
+            const avail = availabilityMap.get(`kit-${kit.id}`);
+            return {
+              ...kit,
+              available_count: avail?.available_quantity || 0
+            };
+          })
+          .filter(kit => kit.available_count > 0);
+
+        setAvailableKits(availableKitsWithAvail);
+      }
+    } catch (error) {
+      console.error('Error fetching available equipment:', error);
     }
   };
 
@@ -1940,10 +1984,17 @@ function AddEquipmentModal({
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <div className="text-[#e5e4e2] font-medium">{item.name}</div>
-                          {item.available_count && (
-                            <span className="text-xs text-[#d3bb73]">
-                              {item.available_count} dostępne
-                            </span>
+                          {item.available_count !== undefined && (
+                            <div className="text-xs text-right">
+                              <div className="text-[#d3bb73] font-medium">
+                                {item.available_count} dostępne
+                              </div>
+                              {item.reserved_quantity > 0 && (
+                                <div className="text-[#e5e4e2]/40">
+                                  {item.reserved_quantity} zarezerwowane
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                         <div className="text-xs text-[#e5e4e2]/60 mt-1">
