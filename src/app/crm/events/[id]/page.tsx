@@ -144,6 +144,7 @@ export default function EventDetailPage() {
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [currentUser] = useState({ id: '00000000-0000-0000-0000-000000000000', name: 'Administrator' });
   const [error, setError] = useState<string | null>(null);
+  const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
 
   useEffect(() => {
     if (eventId) {
@@ -243,7 +244,19 @@ export default function EventDetailPage() {
     try {
       const { data, error } = await supabase
         .from('event_audit_log')
-        .select('*')
+        .select(`
+          *,
+          employee:employees!event_audit_log_employee_id_fkey(
+            id,
+            name,
+            surname,
+            nickname,
+            avatar_url,
+            avatar_metadata,
+            occupation,
+            email
+          )
+        `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: false });
 
@@ -1188,7 +1201,7 @@ export default function EventDetailPage() {
       )}
 
       {activeTab === 'history' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-light text-[#e5e4e2]">Historia zmian</h2>
             <div className="text-sm text-[#e5e4e2]/60">
@@ -1202,61 +1215,129 @@ export default function EventDetailPage() {
               <p className="text-[#e5e4e2]/60">Brak historii zmian</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {auditLog.map((log) => (
-                <div
-                  key={log.id}
-                  className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-4 hover:border-[#d3bb73]/40 transition-colors"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-1">
-                      {log.action === 'create' && (
-                        <div className="w-8 h-8 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-                          <Plus className="w-4 h-4 text-green-400" />
-                        </div>
-                      )}
-                      {log.action === 'update' && (
-                        <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                          <EditIcon className="w-4 h-4 text-blue-400" />
-                        </div>
-                      )}
-                      {log.action === 'delete' && (
-                        <div className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                          <Trash2 className="w-4 h-4 text-red-400" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-[#e5e4e2] font-medium">
-                            {log.action === 'create' && 'Utworzono'}
-                            {log.action === 'update' && 'Zaktualizowano'}
-                            {log.action === 'delete' && 'Usunięto'}
-                            {' '}
-                            <span className="text-[#d3bb73]">{log.entity_type}</span>
-                          </p>
-                          {log.field_name && (
-                            <p className="text-sm text-[#e5e4e2]/60 mt-1">
-                              Pole: {log.field_name}
-                            </p>
+            <div className="relative">
+              <div className="absolute left-[27px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-[#d3bb73]/20 via-[#d3bb73]/10 to-transparent"></div>
+
+              <div className="space-y-6">
+                {auditLog.map((log, index) => {
+                  const employee = log.employee;
+                  const displayName = employee
+                    ? (employee.nickname || `${employee.name} ${employee.surname}`)
+                    : 'System';
+
+                  return (
+                    <div key={log.id} className="relative pl-16">
+                      <div className="absolute left-0 top-0">
+                        <div className="relative group">
+                          {employee ? (
+                            <button
+                              onClick={() => router.push(`/crm/employees/${employee.id}`)}
+                              onMouseEnter={() => setHoveredEmployee(log.id)}
+                              onMouseLeave={() => setHoveredEmployee(null)}
+                              className="relative"
+                            >
+                              <EmployeeAvatar
+                                employee={employee}
+                                size={56}
+                                className="ring-4 ring-[#0f1119] hover:ring-[#d3bb73]/30 transition-all cursor-pointer"
+                              />
+                              <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-[#0f1119] ${
+                                log.action === 'create' ? 'bg-green-500/90' :
+                                log.action === 'update' ? 'bg-blue-500/90' :
+                                'bg-red-500/90'
+                              }`}>
+                                {log.action === 'create' && <Plus className="w-3 h-3 text-white" />}
+                                {log.action === 'update' && <EditIcon className="w-3 h-3 text-white" />}
+                                {log.action === 'delete' && <Trash2 className="w-3 h-3 text-white" />}
+                              </div>
+
+                              {hoveredEmployee === log.id && (
+                                <div className="absolute left-full ml-4 top-0 z-50 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-4 shadow-xl min-w-[280px] animate-in fade-in slide-in-from-left-2">
+                                  <div className="flex items-start gap-3">
+                                    <EmployeeAvatar employee={employee} size={48} />
+                                    <div>
+                                      <p className="text-[#e5e4e2] font-medium">{displayName}</p>
+                                      {employee.occupation && (
+                                        <p className="text-sm text-[#e5e4e2]/60">{employee.occupation}</p>
+                                      )}
+                                      {employee.email && (
+                                        <div className="flex items-center gap-1 mt-2 text-xs text-[#e5e4e2]/50">
+                                          <Mail className="w-3 h-3" />
+                                          <span>{employee.email}</span>
+                                        </div>
+                                      )}
+                                      <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
+                                        <p className="text-xs text-[#d3bb73]">Kliknij aby przejść do profilu</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </button>
+                          ) : (
+                            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#d3bb73]/20 to-[#d3bb73]/5 flex items-center justify-center ring-4 ring-[#0f1119]">
+                              <User className="w-6 h-6 text-[#d3bb73]/60" />
+                              <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-[#0f1119] ${
+                                log.action === 'create' ? 'bg-green-500/90' :
+                                log.action === 'update' ? 'bg-blue-500/90' :
+                                'bg-red-500/90'
+                              }`}>
+                                {log.action === 'create' && <Plus className="w-3 h-3 text-white" />}
+                                {log.action === 'update' && <EditIcon className="w-3 h-3 text-white" />}
+                                {log.action === 'delete' && <Trash2 className="w-3 h-3 text-white" />}
+                              </div>
+                            </div>
                           )}
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-[#e5e4e2]/40">
-                            {new Date(log.created_at).toLocaleString('pl-PL')}
-                          </p>
-                        </div>
                       </div>
-                      {log.metadata?.table && (
-                        <p className="text-xs text-[#e5e4e2]/40 mt-1">
-                          Tabela: {log.metadata.table}
-                        </p>
-                      )}
+
+                      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-4 hover:border-[#d3bb73]/40 transition-all hover:shadow-lg">
+                        <div className="flex items-start justify-between gap-4 mb-2">
+                          <div>
+                            <p className="text-[#e5e4e2] font-medium">
+                              <span className="text-[#d3bb73]">{displayName}</span>
+                              {' '}
+                              {log.action === 'create' && 'utworzył'}
+                              {log.action === 'update' && 'zaktualizował'}
+                              {log.action === 'delete' && 'usunął'}
+                              {' '}
+                              <span className="text-[#e5e4e2]/80">{log.entity_type}</span>
+                            </p>
+                            {log.field_name && (
+                              <p className="text-sm text-[#e5e4e2]/60 mt-1">
+                                Pole: <span className="text-[#d3bb73]/80">{log.field_name}</span>
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="flex items-center gap-1.5 text-xs text-[#e5e4e2]/40">
+                              <Clock className="w-3 h-3" />
+                              <span>{new Date(log.created_at).toLocaleString('pl-PL', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {log.metadata?.table && (
+                          <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
+                            <div className="flex items-center gap-2">
+                              <Tag className="w-3 h-3 text-[#e5e4e2]/40" />
+                              <span className="text-xs text-[#e5e4e2]/40">
+                                Tabela: {log.metadata.table}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
