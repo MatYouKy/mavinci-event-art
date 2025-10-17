@@ -134,6 +134,7 @@ export default function EventDetailPage() {
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [availableEquipment, setAvailableEquipment] = useState<any[]>([]);
+  const [availableKits, setAvailableKits] = useState<any[]>([]);
   const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
@@ -419,13 +420,36 @@ export default function EventDetailPage() {
   };
 
   const fetchAvailableEquipment = async () => {
-    const { data, error } = await supabase
+    const { data: items, error: itemsError } = await supabase
       .from('equipment_items')
-      .select('*')
+      .select(`
+        *,
+        category:equipment_categories(name)
+      `)
       .order('name');
 
-    if (!error && data) {
-      setAvailableEquipment(data);
+    if (!itemsError && items) {
+      setAvailableEquipment(items);
+    }
+
+    const { data: kits, error: kitsError } = await supabase
+      .from('equipment_kits')
+      .select(`
+        *,
+        items:equipment_kit_items(
+          equipment_id,
+          quantity,
+          equipment:equipment_items(
+            id,
+            name,
+            category:equipment_categories(name)
+          )
+        )
+      `)
+      .order('name');
+
+    if (!kitsError && kits) {
+      setAvailableKits(kits);
     }
   };
 
@@ -440,18 +464,36 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleAddEquipment = async (equipmentId: string, quantity: number, notes: string) => {
+  const handleAddEquipment = async (selectedItems: Array<{id: string, quantity: number, notes: string, type: 'item' | 'kit'}>) => {
     try {
+      const itemsToInsert: any[] = [];
+
+      for (const selected of selectedItems) {
+        if (selected.type === 'kit') {
+          const kit = availableKits.find(k => k.id === selected.id);
+          if (kit && kit.items) {
+            for (const kitItem of kit.items) {
+              itemsToInsert.push({
+                event_id: eventId,
+                equipment_id: kitItem.equipment_id,
+                quantity: kitItem.quantity * selected.quantity,
+                notes: selected.notes ? `${selected.notes} (z zestawu: ${kit.name})` : `Z zestawu: ${kit.name}`,
+              });
+            }
+          }
+        } else {
+          itemsToInsert.push({
+            event_id: eventId,
+            equipment_id: selected.id,
+            quantity: selected.quantity,
+            notes: selected.notes,
+          });
+        }
+      }
+
       const { error } = await supabase
         .from('event_equipment')
-        .insert([
-          {
-            event_id: eventId,
-            equipment_id: equipmentId,
-            quantity: quantity,
-            notes: notes,
-          },
-        ]);
+        .insert(itemsToInsert);
 
       if (error) {
         console.error('Error adding equipment:', error);
@@ -461,7 +503,7 @@ export default function EventDetailPage() {
 
       setShowAddEquipmentModal(false);
       fetchEventDetails();
-      await logChange('equipment_added', `Dodano sprzęt (ID: ${equipmentId}, ilość: ${quantity})`);
+      await logChange('equipment_added', `Dodano ${itemsToInsert.length} pozycji sprzętu`);
     } catch (err) {
       console.error('Error:', err);
       alert('Wystąpił błąd');
@@ -1351,6 +1393,7 @@ export default function EventDetailPage() {
           onClose={() => setShowAddEquipmentModal(false)}
           onAdd={handleAddEquipment}
           availableEquipment={availableEquipment}
+          availableKits={availableKits}
         />
       )}
 
@@ -1423,34 +1466,94 @@ function AddEquipmentModal({
   onClose,
   onAdd,
   availableEquipment,
+  availableKits,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (equipmentId: string, quantity: number, notes: string) => void;
+  onAdd: (selectedItems: Array<{id: string, quantity: number, notes: string, type: 'item' | 'kit'}>) => void;
   availableEquipment: any[];
+  availableKits: any[];
 }) {
-  const [selectedEquipment, setSelectedEquipment] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [notes, setNotes] = useState('');
+  const [selectedItems, setSelectedItems] = useState<{[key: string]: {checked: boolean, quantity: number, notes: string, type: 'item' | 'kit'}}>({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showKits, setShowKits] = useState(true);
+  const [showItems, setShowItems] = useState(true);
 
   if (!isOpen) return null;
 
+  const handleToggle = (id: string, type: 'item' | 'kit') => {
+    setSelectedItems(prev => ({
+      ...prev,
+      [id]: {
+        checked: !prev[id]?.checked,
+        quantity: prev[id]?.quantity || 1,
+        notes: prev[id]?.notes || '',
+        type,
+      }
+    }));
+  };
+
+  const handleQuantityChange = (id: string, quantity: number) => {
+    setSelectedItems(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        quantity: Math.max(1, quantity),
+      }
+    }));
+  };
+
+  const handleNotesChange = (id: string, notes: string) => {
+    setSelectedItems(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        notes,
+      }
+    }));
+  };
+
   const handleSubmit = () => {
-    if (!selectedEquipment) {
-      alert('Wybierz sprzęt');
+    const selected = Object.entries(selectedItems)
+      .filter(([_, value]) => value.checked)
+      .map(([id, value]) => ({
+        id,
+        quantity: value.quantity,
+        notes: value.notes,
+        type: value.type,
+      }));
+
+    if (selected.length === 0) {
+      alert('Zaznacz przynajmniej jedną pozycję');
       return;
     }
-    onAdd(selectedEquipment, quantity, notes);
-    setSelectedEquipment('');
-    setQuantity(1);
-    setNotes('');
+
+    onAdd(selected);
+    setSelectedItems({});
+    setSearchTerm('');
   };
+
+  const filteredKits = availableKits.filter(kit =>
+    kit.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredItems = availableEquipment.filter(item =>
+    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.category?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const selectedCount = Object.values(selectedItems).filter(item => item.checked).length;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
+      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj sprzęt</h2>
+          <div>
+            <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj sprzęt</h2>
+            {selectedCount > 0 && (
+              <p className="text-sm text-[#d3bb73] mt-1">Zaznaczono: {selectedCount}</p>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
@@ -1459,64 +1562,153 @@ function AddEquipmentModal({
           </button>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Sprzęt
-            </label>
-            <select
-              value={selectedEquipment}
-              onChange={(e) => setSelectedEquipment(e.target.value)}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              <option value="">Wybierz sprzęt...</option>
-              {availableEquipment.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.name} ({eq.category})
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Szukaj sprzętu lub zestawu..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Ilość
-            </label>
-            <input
-              type="number"
-              min="1"
-              value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            />
-          </div>
+        <div className="flex gap-4 mb-4">
+          <button
+            onClick={() => setShowKits(!showKits)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showKits ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/60'
+            }`}
+          >
+            Zestawy ({availableKits.length})
+          </button>
+          <button
+            onClick={() => setShowItems(!showItems)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showItems ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/60'
+            }`}
+          >
+            Pojedynczy sprzęt ({availableEquipment.length})
+          </button>
+        </div>
 
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Notatki
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[80px] focus:outline-none focus:border-[#d3bb73]"
-              placeholder="Dodatkowe informacje..."
-            />
-          </div>
+        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+          {showKits && filteredKits.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-[#e5e4e2]/80 mb-3 sticky top-0 bg-[#0f1119] py-2">
+                🎁 Zestawy
+              </h3>
+              <div className="space-y-2">
+                {filteredKits.map((kit) => (
+                  <div key={kit.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-4">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems[kit.id]?.checked || false}
+                        onChange={() => handleToggle(kit.id, 'kit')}
+                        className="mt-1 w-4 h-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                      />
+                      <div className="flex-1">
+                        <div className="text-[#e5e4e2] font-medium">{kit.name}</div>
+                        {kit.items && kit.items.length > 0 && (
+                          <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                            Zawiera: {kit.items.map((item: any) => `${item.equipment.name} (${item.quantity})`).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                    {selectedItems[kit.id]?.checked && (
+                      <div className="mt-3 ml-7 space-y-2">
+                        <input
+                          type="number"
+                          min="1"
+                          value={selectedItems[kit.id]?.quantity || 1}
+                          onChange={(e) => handleQuantityChange(kit.id, parseInt(e.target.value))}
+                          placeholder="Ilość zestawów"
+                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
+                        />
+                        <input
+                          type="text"
+                          value={selectedItems[kit.id]?.notes || ''}
+                          onChange={(e) => handleNotesChange(kit.id, e.target.value)}
+                          placeholder="Notatki (opcjonalnie)"
+                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={handleSubmit}
-              className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90"
-            >
-              Dodaj
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
-            >
-              Anuluj
-            </button>
-          </div>
+          {showItems && filteredItems.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-[#e5e4e2]/80 mb-3 sticky top-0 bg-[#0f1119] py-2">
+                📦 Pojedynczy sprzęt
+              </h3>
+              <div className="space-y-2">
+                {filteredItems.map((item) => (
+                  <div key={item.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-4">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems[item.id]?.checked || false}
+                        onChange={() => handleToggle(item.id, 'item')}
+                        className="mt-1 w-4 h-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                      />
+                      <div className="flex-1">
+                        <div className="text-[#e5e4e2] font-medium">{item.name}</div>
+                        <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                          {item.category?.name || 'Brak kategorii'}
+                        </div>
+                      </div>
+                    </label>
+                    {selectedItems[item.id]?.checked && (
+                      <div className="mt-3 ml-7 space-y-2">
+                        <input
+                          type="number"
+                          min="1"
+                          value={selectedItems[item.id]?.quantity || 1}
+                          onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value))}
+                          placeholder="Ilość"
+                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
+                        />
+                        <input
+                          type="text"
+                          value={selectedItems[item.id]?.notes || ''}
+                          onChange={(e) => handleNotesChange(item.id, e.target.value)}
+                          placeholder="Notatki (opcjonalnie)"
+                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredKits.length === 0 && filteredItems.length === 0 && (
+            <div className="text-center py-12 text-[#e5e4e2]/60">
+              Nie znaleziono sprzętu
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 pt-4 border-t border-[#d3bb73]/10 mt-4">
+          <button
+            onClick={handleSubmit}
+            disabled={selectedCount === 0}
+            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Dodaj zaznaczone ({selectedCount})
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+          >
+            Anuluj
+          </button>
         </div>
       </div>
     </div>
