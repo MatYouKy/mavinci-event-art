@@ -1858,6 +1858,17 @@ function AddEquipmentModal({
       return;
     }
 
+    // Walidacja - sprawdź czy nie przekraczamy całkowitej dostępności
+    for (const item of selected) {
+      if (item.type === 'item') {
+        const equipmentItem = availableEquipment.find(eq => eq.id === item.id);
+        if (equipmentItem && item.quantity > equipmentItem.total_quantity) {
+          alert(`Nie można dodać ${item.quantity} jednostek sprzętu "${equipmentItem.name}". Dostępne są tylko ${equipmentItem.total_quantity} jednostek.`);
+          return;
+        }
+      }
+    }
+
     onAdd(selected);
     setSelectedItems({});
     setSearchTerm('');
@@ -2063,32 +2074,47 @@ function AddEquipmentModal({
                               value={selectedItems[item.id]?.quantity || 1}
                               onChange={(e) => {
                                 const val = parseInt(e.target.value) || 1;
-                                handleQuantityChange(item.id, val, item.available_count);
+                                handleQuantityChange(item.id, val, item.total_quantity || item.available_count);
                               }}
                               placeholder="Ilość"
                               className={`flex-1 bg-[#1c1f33] border rounded-lg px-4 py-2.5 text-base text-[#e5e4e2] focus:outline-none focus:ring-2 ${
-                                item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count
+                                (selectedItems[item.id]?.quantity || 1) > item.total_quantity
                                   ? 'border-red-500 focus:ring-red-500/50'
+                                  : (item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count)
+                                  ? 'border-orange-500 focus:ring-orange-500/50'
                                   : 'border-[#d3bb73]/20 focus:ring-[#d3bb73]/50'
                               }`}
                             />
                             <div className="text-right">
                               <div className={`text-sm font-medium ${
-                                item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count
+                                (selectedItems[item.id]?.quantity || 1) > item.total_quantity
                                   ? 'text-red-500'
+                                  : (item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count)
+                                  ? 'text-orange-500'
                                   : 'text-[#d3bb73]'
                               }`}>
                                 {selectedItems[item.id]?.quantity || 1} / {item.available_count || 0}
                               </div>
                               <div className="text-xs text-[#e5e4e2]/40">
-                                dostępne
+                                dostępne w terminie
                               </div>
+                              {item.total_quantity > 0 && (
+                                <div className="text-xs text-[#e5e4e2]/30 mt-0.5">
+                                  (Całkowita: {item.total_quantity})
+                                </div>
+                              )}
                             </div>
                           </div>
-                          {item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count && (
+                          {(selectedItems[item.id]?.quantity || 1) > item.total_quantity && (
                             <div className="mt-2 flex items-center gap-2 text-xs text-red-500">
                               <span>⚠️</span>
-                              <span>Przekroczono dostępną ilość! Maksymalnie {item.available_count} jednostek.</span>
+                              <span>Przekroczono całkowitą ilość! Mamy tylko {item.total_quantity} jednostek tego sprzętu.</span>
+                            </div>
+                          )}
+                          {(selectedItems[item.id]?.quantity || 1) <= item.total_quantity && item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-orange-500">
+                              <span>⚠️</span>
+                              <span>W tym terminie dostępne są tylko {item.available_count} jednostek. {item.reserved_quantity} jest zarezerwowanych w innych wydarzeniach.</span>
                             </div>
                           )}
                           {item.reserved_quantity > 0 && (
