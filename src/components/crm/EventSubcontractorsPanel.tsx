@@ -15,6 +15,7 @@ import {
   Edit,
   Trash2,
   Calendar,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -72,7 +73,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
   const [allSubcontractors, setAllSubcontractors] = useState<Subcontractor[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
-  const [showAddContractModal, setShowAddContractModal] = useState(false);
 
   useEffect(() => {
     if (eventId) {
@@ -84,7 +84,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     try {
       setLoading(true);
 
-      // Pobierz zadania podwykonawców dla tego wydarzenia
       const { data: tasksData, error: tasksError } = await supabase
         .from('subcontractor_tasks')
         .select(`
@@ -106,7 +105,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
       if (tasksError) throw tasksError;
       setTasks(tasksData || []);
 
-      // Pobierz umowy podwykonawców dla tego wydarzenia
       const { data: contractsData, error: contractsError } = await supabase
         .from('subcontractor_contracts')
         .select(`
@@ -128,7 +126,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
       if (contractsError) throw contractsError;
       setContracts(contractsData || []);
 
-      // Pobierz listę wszystkich aktywnych podwykonawców
       const { data: subcontractorsData, error: subError } = await supabase
         .from('subcontractors')
         .select('*')
@@ -177,7 +174,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     return labels[status] || status;
   };
 
-  // Grupuj zadania po podwykonawcach
   const tasksBySubcontractor = tasks.reduce((acc, task) => {
     const subId = task.subcontractor_id;
     if (!acc[subId]) {
@@ -187,7 +183,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     return acc;
   }, {} as Record<string, SubcontractorTask[]>);
 
-  // Pobierz unikalnych podwykonawców z zadaniami lub umowami
   const uniqueSubcontractorIds = new Set([
     ...tasks.map(t => t.subcontractor_id),
     ...contracts.map(c => c.subcontractor_id)
@@ -206,35 +201,24 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
 
   return (
     <div className="space-y-6">
-      {/* Nagłówek z przyciskami */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-[#e5e4e2]">
             Podwykonawcy wydarzenia
           </h2>
           <p className="text-sm text-[#e5e4e2]/60 mt-1">
-            Zarządzaj podwykonawcami, zadaniami i umowami dla tego wydarzenia
+            Zarządzaj zadaniami podwykonawców dla tego wydarzenia
           </p>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowAddTaskModal(true)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Dodaj zadanie
-          </button>
-          <button
-            onClick={() => setShowAddContractModal(true)}
-            className="flex items-center gap-2 bg-[#d3bb73]/20 text-[#d3bb73] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30 transition-colors"
-          >
-            <FileText className="w-4 h-4" />
-            Dodaj umowę
-          </button>
-        </div>
+        <button
+          onClick={() => setShowAddTaskModal(true)}
+          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Dodaj zadanie
+        </button>
       </div>
 
-      {/* Statystyki */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
           <div className="flex items-center gap-3 mb-2">
@@ -267,10 +251,10 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
           <div className="flex items-center gap-3 mb-2">
             <FileText className="w-5 h-5 text-purple-400" />
-            <span className="text-sm text-[#e5e4e2]/60">Wartość umów</span>
+            <span className="text-sm text-[#e5e4e2]/60">Umowy</span>
           </div>
           <div className="text-2xl font-bold text-[#d3bb73]">
-            {totalContractsValue.toLocaleString('pl-PL')} zł
+            {contracts.length}
           </div>
         </div>
       </div>
@@ -290,7 +274,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Lista podwykonawców z ich zadaniami */}
           {Array.from(uniqueSubcontractorIds).map((subId) => {
             const subTasks = tasksBySubcontractor[subId] || [];
             const subContracts = contracts.filter(c => c.subcontractor_id === subId);
@@ -305,7 +288,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                 key={subId}
                 className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6"
               >
-                {/* Nagłówek podwykonawcy */}
                 <div className="flex items-start justify-between mb-6 pb-4 border-b border-[#d3bb73]/10">
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
@@ -356,7 +338,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                   </div>
                 </div>
 
-                {/* Zadania */}
                 {subTasks.length > 0 && (
                   <div className="mb-4">
                     <h4 className="text-sm font-medium text-[#e5e4e2] mb-3 flex items-center gap-2">
@@ -421,7 +402,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                             </div>
                             <div>
                               <div className="text-[#e5e4e2]/40 text-xs mb-1">
-                                Stawka/Kwota
+                                Stawka/Cena
                               </div>
                               <div className="text-[#e5e4e2]">
                                 {task.payment_type === 'fixed'
@@ -461,7 +442,6 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                   </div>
                 )}
 
-                {/* Umowy */}
                 {subContracts.length > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-[#e5e4e2] mb-3 flex items-center gap-2">
@@ -512,6 +492,427 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
           })}
         </div>
       )}
+
+      {showAddTaskModal && (
+        <AddTaskModal
+          eventId={eventId}
+          subcontractors={allSubcontractors}
+          onClose={() => setShowAddTaskModal(false)}
+          onSuccess={() => {
+            setShowAddTaskModal(false);
+            fetchData();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddTaskModal({
+  eventId,
+  subcontractors,
+  onClose,
+  onSuccess,
+}: {
+  eventId: string;
+  subcontractors: Subcontractor[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { showSnackbar } = useSnackbar();
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    subcontractor_id: '',
+    task_name: '',
+    description: '',
+    start_date: '',
+    end_date: '',
+    estimated_hours: 0,
+    actual_hours: 0,
+    payment_type: 'hourly' as 'hourly' | 'fixed' | 'mixed',
+    hourly_rate: 0,
+    fixed_price: 0,
+    status: 'planned',
+    payment_status: 'pending',
+  });
+  const [createContract, setCreateContract] = useState(false);
+  const [contractData, setContractData] = useState({
+    contract_number: '',
+    title: '',
+    description: '',
+    total_value: 0,
+    contract_type: 'project' as 'frame' | 'project',
+  });
+
+  const selectedSubcontractor = subcontractors.find(s => s.id === formData.subcontractor_id);
+
+  useEffect(() => {
+    if (selectedSubcontractor && formData.payment_type === 'hourly' && formData.hourly_rate === 0) {
+      setFormData(prev => ({ ...prev, hourly_rate: selectedSubcontractor.hourly_rate }));
+    }
+  }, [selectedSubcontractor, formData.payment_type]);
+
+  const handleSubmit = async () => {
+    if (!formData.subcontractor_id || !formData.task_name) {
+      showSnackbar('Wybierz podwykonawcę i podaj nazwę zadania', 'warning');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const { data: user } = await supabase.auth.getUser();
+
+      // Dodaj zadanie
+      const { data: taskData, error: taskError } = await supabase
+        .from('subcontractor_tasks')
+        .insert([
+          {
+            event_id: eventId,
+            subcontractor_id: formData.subcontractor_id,
+            task_name: formData.task_name,
+            description: formData.description || null,
+            start_date: formData.start_date || null,
+            end_date: formData.end_date || null,
+            estimated_hours: formData.estimated_hours,
+            actual_hours: formData.actual_hours,
+            payment_type: formData.payment_type,
+            hourly_rate: formData.hourly_rate,
+            fixed_price: formData.fixed_price,
+            status: formData.status,
+            payment_status: formData.payment_status,
+          },
+        ])
+        .select()
+        .single();
+
+      if (taskError) throw taskError;
+
+      // Jeśli trzeba utworzyć umowę
+      if (createContract && contractData.contract_number && contractData.title) {
+        const { error: contractError } = await supabase
+          .from('subcontractor_contracts')
+          .insert([
+            {
+              subcontractor_id: formData.subcontractor_id,
+              event_id: eventId,
+              contract_number: contractData.contract_number,
+              contract_type: contractData.contract_type,
+              title: contractData.title,
+              description: contractData.description || null,
+              total_value: contractData.total_value,
+              status: 'draft',
+              created_by: user?.user?.id,
+            },
+          ]);
+
+        if (contractError) throw contractError;
+      }
+
+      showSnackbar('Zadanie dodane pomyślnie!', 'success');
+      onSuccess();
+    } catch (error) {
+      console.error('Error adding task:', error);
+      showSnackbar('Błąd podczas dodawania zadania', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-3xl w-full my-8 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj zadanie dla podwykonawcy</h2>
+          <button
+            onClick={onClose}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Wybór podwykonawcy */}
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Podwykonawca *
+            </label>
+            <select
+              value={formData.subcontractor_id}
+              onChange={(e) => setFormData({ ...formData, subcontractor_id: e.target.value })}
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            >
+              <option value="">Wybierz podwykonawcę...</option>
+              {subcontractors.map((sub) => (
+                <option key={sub.id} value={sub.id}>
+                  {sub.company_name} {sub.hourly_rate > 0 && `(${sub.hourly_rate} zł/h)`}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Nazwa zadania */}
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Nazwa zadania *
+            </label>
+            <input
+              type="text"
+              value={formData.task_name}
+              onChange={(e) => setFormData({ ...formData, task_name: e.target.value })}
+              placeholder="np. Obsługa nagłośnienia"
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            />
+          </div>
+
+          {/* Opis */}
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              placeholder="Szczegóły zadania..."
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+            />
+          </div>
+
+          {/* Daty */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Data rozpoczęcia
+              </label>
+              <input
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Data zakończenia
+              </label>
+              <input
+                type="date"
+                value={formData.end_date}
+                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+          </div>
+
+          {/* Typ rozliczenia */}
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Typ rozliczenia
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              {(['hourly', 'fixed', 'mixed'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setFormData({ ...formData, payment_type: type })}
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
+                    formData.payment_type === type
+                      ? 'bg-[#d3bb73] text-[#1c1f33] border-[#d3bb73]'
+                      : 'bg-[#1c1f33] text-[#e5e4e2] border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                  }`}
+                >
+                  {type === 'hourly' ? 'Godzinowe' : type === 'fixed' ? 'Ryczałt' : 'Mieszane'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Godziny i stawki */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Szacowane godziny
+              </label>
+              <input
+                type="number"
+                value={formData.estimated_hours}
+                onChange={(e) => setFormData({ ...formData, estimated_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Rzeczywiste godziny
+              </label>
+              <input
+                type="number"
+                value={formData.actual_hours}
+                onChange={(e) => setFormData({ ...formData, actual_hours: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+          </div>
+
+          {(formData.payment_type === 'hourly' || formData.payment_type === 'mixed') && (
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Stawka godzinowa (zł)
+              </label>
+              <input
+                type="number"
+                value={formData.hourly_rate}
+                onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+          )}
+
+          {(formData.payment_type === 'fixed' || formData.payment_type === 'mixed') && (
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Cena ryczałtowa (zł)
+              </label>
+              <input
+                type="number"
+                value={formData.fixed_price}
+                onChange={(e) => setFormData({ ...formData, fixed_price: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+          )}
+
+          {/* Statusy */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Status zadania
+              </label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              >
+                <option value="planned">Zaplanowane</option>
+                <option value="in_progress">W trakcie</option>
+                <option value="completed">Zakończone</option>
+                <option value="cancelled">Anulowane</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Status płatności
+              </label>
+              <select
+                value={formData.payment_status}
+                onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              >
+                <option value="pending">Oczekuje</option>
+                <option value="paid">Zapłacone</option>
+                <option value="overdue">Opóźnione</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Opcjonalna umowa */}
+          <div className="pt-6 border-t border-[#d3bb73]/10">
+            <label className="flex items-center gap-2 text-sm text-[#e5e4e2] mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={createContract}
+                onChange={(e) => setCreateContract(e.target.checked)}
+                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+              />
+              Utwórz umowę dla tego zadania
+            </label>
+
+            {createContract && (
+              <div className="space-y-4 pl-6 border-l-2 border-[#d3bb73]/20">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                      Numer umowy *
+                    </label>
+                    <input
+                      type="text"
+                      value={contractData.contract_number}
+                      onChange={(e) => setContractData({ ...contractData, contract_number: e.target.value })}
+                      placeholder="np. UMW/2025/001"
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                      Typ umowy
+                    </label>
+                    <select
+                      value={contractData.contract_type}
+                      onChange={(e) => setContractData({ ...contractData, contract_type: e.target.value as 'frame' | 'project' })}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    >
+                      <option value="project">Projektowa</option>
+                      <option value="frame">Ramowa</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Tytuł umowy *
+                  </label>
+                  <input
+                    type="text"
+                    value={contractData.title}
+                    onChange={(e) => setContractData({ ...contractData, title: e.target.value })}
+                    placeholder="np. Umowa o świadczenie usług nagłośnienia"
+                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Wartość umowy (zł)
+                  </label>
+                  <input
+                    type="number"
+                    value={contractData.total_value}
+                    onChange={(e) => setContractData({ ...contractData, total_value: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Opis umowy
+                  </label>
+                  <textarea
+                    value={contractData.description}
+                    onChange={(e) => setContractData({ ...contractData, description: e.target.value })}
+                    rows={2}
+                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            {saving ? 'Zapisywanie...' : 'Dodaj zadanie'}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
+          >
+            Anuluj
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
