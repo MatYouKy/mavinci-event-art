@@ -92,15 +92,96 @@ export default function FleetPage() {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('fleet_overview')
-        .select('*')
+
+      const { data: vehiclesData, error: vehiclesError } = await supabase
+        .from('vehicles')
+        .select(`
+          *,
+          vehicle_assignments!vehicle_assignments_vehicle_id_fkey (
+            employee_id,
+            status,
+            employees (
+              name,
+              surname
+            )
+          )
+        `)
         .order('name', { ascending: true });
 
-      if (error) throw error;
+      if (vehiclesError) throw vehiclesError;
 
-      setVehicles(data || []);
-      calculateStats(data || []);
+      const enrichedVehicles = await Promise.all(
+        (vehiclesData || []).map(async (vehicle) => {
+          const activeAssignment = vehicle.vehicle_assignments?.find(
+            (a: any) => a.status === 'active'
+          );
+
+          const { count: upcomingServices } = await supabase
+            .from('maintenance_records')
+            .select('*', { count: 'exact', head: true })
+            .eq('vehicle_id', vehicle.id)
+            .gte('next_service_date', new Date().toISOString())
+            .lte('next_service_date', new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
+
+          const { count: expiringInsurance } = await supabase
+            .from('insurance_policies')
+            .select('*', { count: 'exact', head: true })
+            .eq('vehicle_id', vehicle.id)
+            .eq('status', 'active')
+            .gte('end_date', new Date().toISOString())
+            .lte('end_date', new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString());
+
+          const { data: maintenanceCosts } = await supabase
+            .from('maintenance_records')
+            .select('total_cost')
+            .eq('vehicle_id', vehicle.id)
+            .gte('date', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString());
+
+          const { data: fuelCosts } = await supabase
+            .from('fuel_entries')
+            .select('total_cost')
+            .eq('vehicle_id', vehicle.id)
+            .gte('date', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString());
+
+          const { data: fuelConsumption } = await supabase
+            .from('fuel_entries')
+            .select('avg_consumption')
+            .eq('vehicle_id', vehicle.id)
+            .not('avg_consumption', 'is', null)
+            .gte('date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString());
+
+          const yearlyMaintenanceCost = maintenanceCosts?.reduce(
+            (sum, r) => sum + (r.total_cost || 0),
+            0
+          ) || 0;
+
+          const yearlyFuelCost = fuelCosts?.reduce(
+            (sum, r) => sum + (r.total_cost || 0),
+            0
+          ) || 0;
+
+          const avgFuelConsumption =
+            fuelConsumption?.length > 0
+              ? fuelConsumption.reduce((sum, r) => sum + (r.avg_consumption || 0), 0) /
+                fuelConsumption.length
+              : 0;
+
+          return {
+            ...vehicle,
+            assigned_to: activeAssignment?.employee_id || null,
+            assigned_employee_name: activeAssignment?.employees?.name || null,
+            assigned_employee_surname: activeAssignment?.employees?.surname || null,
+            upcoming_services: upcomingServices || 0,
+            expiring_insurance: expiringInsurance || 0,
+            yearly_maintenance_cost: yearlyMaintenanceCost,
+            yearly_fuel_cost: yearlyFuelCost,
+            avg_fuel_consumption_3months: avgFuelConsumption,
+          };
+        })
+      );
+
+      setVehicles(enrichedVehicles);
+      calculateStats(enrichedVehicles);
     } catch (error) {
       console.error('Error fetching vehicles:', error);
       showSnackbar('Błąd podczas ładowania pojazdów', 'error');
