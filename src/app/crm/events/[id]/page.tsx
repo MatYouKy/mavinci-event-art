@@ -1933,7 +1933,16 @@ function AddEquipmentModal({
                         className="mt-1 w-4 h-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
                       />
                       <div className="flex-1">
-                        <div className="text-[#e5e4e2] font-medium">{kit.name}</div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-[#e5e4e2] font-medium">{kit.name}</div>
+                          {kit.available_count !== undefined && (
+                            <div className="text-xs text-right">
+                              <div className="text-[#d3bb73] font-medium">
+                                {kit.available_count > 0 ? 'Dostępny' : 'Niedostępny'}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         {kit.items && kit.items.length > 0 && (
                           <div className="text-xs text-[#e5e4e2]/60 mt-1">
                             Zawiera: {kit.items.map((item: any) => `${item.equipment.name} (${item.quantity})`).join(', ')}
@@ -1942,21 +1951,54 @@ function AddEquipmentModal({
                       </div>
                     </label>
                     {selectedItems[kit.id]?.checked && (
-                      <div className="mt-3 ml-7 space-y-2">
-                        <input
-                          type="number"
-                          min="1"
-                          value={selectedItems[kit.id]?.quantity || 1}
-                          onChange={(e) => handleQuantityChange(kit.id, parseInt(e.target.value))}
-                          placeholder="Ilość zestawów"
-                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
-                        />
+                      <div className="mt-3 ml-7 space-y-3">
+                        <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-3">
+                          <label className="block text-xs text-[#e5e4e2]/60 mb-2">
+                            Ilość zestawów
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              min="1"
+                              max={kit.available_count || 1}
+                              value={selectedItems[kit.id]?.quantity || 1}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                handleQuantityChange(kit.id, val);
+                              }}
+                              placeholder="Ilość zestawów"
+                              className={`flex-1 bg-[#1c1f33] border rounded-lg px-4 py-2.5 text-base text-[#e5e4e2] focus:outline-none focus:ring-2 ${
+                                kit.available_count && (selectedItems[kit.id]?.quantity || 1) > kit.available_count
+                                  ? 'border-red-500 focus:ring-red-500/50'
+                                  : 'border-[#d3bb73]/20 focus:ring-[#d3bb73]/50'
+                              }`}
+                            />
+                            <div className="text-right">
+                              <div className={`text-sm font-medium ${
+                                kit.available_count && (selectedItems[kit.id]?.quantity || 1) > kit.available_count
+                                  ? 'text-red-500'
+                                  : 'text-[#d3bb73]'
+                              }`}>
+                                {selectedItems[kit.id]?.quantity || 1} / {kit.available_count || 1}
+                              </div>
+                              <div className="text-xs text-[#e5e4e2]/40">
+                                dostępne
+                              </div>
+                            </div>
+                          </div>
+                          {kit.available_count && (selectedItems[kit.id]?.quantity || 1) > kit.available_count && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-red-500">
+                              <span>⚠️</span>
+                              <span>Ten zestaw jest już zarezerwowany w tym terminie!</span>
+                            </div>
+                          )}
+                        </div>
                         <input
                           type="text"
                           value={selectedItems[kit.id]?.notes || ''}
                           onChange={(e) => handleNotesChange(kit.id, e.target.value)}
                           placeholder="Notatki (opcjonalnie)"
-                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
+                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-sm text-[#e5e4e2]"
                         />
                       </div>
                     )}
@@ -2003,27 +2045,50 @@ function AddEquipmentModal({
                       </div>
                     </label>
                     {selectedItems[item.id]?.checked && (
-                      <div className="mt-3 ml-7 space-y-2">
-                        <div>
-                          <input
-                            type="number"
-                            min="1"
-                            max={item.available_count || undefined}
-                            value={selectedItems[item.id]?.quantity || 1}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value);
-                              if (item.available_count && val > item.available_count) {
-                                handleQuantityChange(item.id, item.available_count);
-                              } else {
+                      <div className="mt-3 ml-7 space-y-3">
+                        <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-3">
+                          <label className="block text-xs text-[#e5e4e2]/60 mb-2">
+                            Ilość jednostek
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              min="1"
+                              max={item.available_count || undefined}
+                              value={selectedItems[item.id]?.quantity || 1}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
                                 handleQuantityChange(item.id, val);
-                              }
-                            }}
-                            placeholder="Ilość"
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
-                          />
-                          {item.available_count && (
-                            <div className="text-xs text-[#e5e4e2]/40 mt-1">
-                              Maksymalnie {item.available_count} szt.
+                              }}
+                              placeholder="Ilość"
+                              className={`flex-1 bg-[#1c1f33] border rounded-lg px-4 py-2.5 text-base text-[#e5e4e2] focus:outline-none focus:ring-2 ${
+                                item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count
+                                  ? 'border-red-500 focus:ring-red-500/50'
+                                  : 'border-[#d3bb73]/20 focus:ring-[#d3bb73]/50'
+                              }`}
+                            />
+                            <div className="text-right">
+                              <div className={`text-sm font-medium ${
+                                item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count
+                                  ? 'text-red-500'
+                                  : 'text-[#d3bb73]'
+                              }`}>
+                                {selectedItems[item.id]?.quantity || 1} / {item.available_count || 0}
+                              </div>
+                              <div className="text-xs text-[#e5e4e2]/40">
+                                dostępne
+                              </div>
+                            </div>
+                          </div>
+                          {item.available_count && (selectedItems[item.id]?.quantity || 1) > item.available_count && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-red-500">
+                              <span>⚠️</span>
+                              <span>Przekroczono dostępną ilość! Maksymalnie {item.available_count} jednostek.</span>
+                            </div>
+                          )}
+                          {item.reserved_quantity > 0 && (
+                            <div className="mt-2 text-xs text-[#e5e4e2]/40">
+                              ℹ️ W tym terminie zarezerwowano już {item.reserved_quantity} jednostek w innych wydarzeniach
                             </div>
                           )}
                         </div>
@@ -2032,7 +2097,7 @@ function AddEquipmentModal({
                           value={selectedItems[item.id]?.notes || ''}
                           onChange={(e) => handleNotesChange(item.id, e.target.value)}
                           placeholder="Notatki (opcjonalnie)"
-                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
+                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-sm text-[#e5e4e2]"
                         />
                       </div>
                     )}
