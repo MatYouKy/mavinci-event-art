@@ -137,6 +137,8 @@ export default function EventDetailPage() {
   const [availableKits, setAvailableKits] = useState<any[]>([]);
   const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
+  const [editingQuantity, setEditingQuantity] = useState<string | null>(null);
+  const [equipmentAvailability, setEquipmentAvailability] = useState<{[key: string]: {available: number, reserved: number}}>({});
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
@@ -156,6 +158,12 @@ export default function EventDetailPage() {
       fetchCategories();
     }
   }, [eventId]);
+
+  useEffect(() => {
+    if (event && equipment.length > 0) {
+      fetchEquipmentAvailability();
+    }
+  }, [event, equipment.length]);
 
   const fetchEventDetails = async () => {
     try {
@@ -257,6 +265,64 @@ export default function EventDetailPage() {
       setEvent(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEquipmentAvailability = async () => {
+    if (!event?.event_date) return;
+
+    try {
+      const availability: {[key: string]: {available: number, reserved: number}} = {};
+
+      for (const eq of equipment) {
+        if (eq.equipment_id) {
+          const { data, error } = await supabase.rpc('get_available_equipment_count', {
+            p_equipment_id: eq.equipment_id,
+            p_event_date: event.event_date,
+            p_exclude_event_id: eventId
+          });
+
+          if (!error && data !== null) {
+            availability[eq.equipment_id] = {
+              available: data,
+              reserved: eq.quantity
+            };
+          }
+        }
+      }
+
+      setEquipmentAvailability(availability);
+    } catch (error) {
+      console.error('Error fetching availability:', error);
+    }
+  };
+
+  const handleUpdateQuantity = async (eventEquipmentId: string, equipmentId: string, newQuantity: number) => {
+    try {
+      const avail = equipmentAvailability[equipmentId];
+      if (avail && newQuantity > avail.available + avail.reserved) {
+        alert(`Dostępna ilość: ${avail.available + avail.reserved} szt.`);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('event_equipment')
+        .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
+        .eq('id', eventEquipmentId);
+
+      if (error) {
+        console.error('Error updating quantity:', error);
+        alert('Błąd podczas aktualizacji ilości');
+        return;
+      }
+
+      setEditingQuantity(null);
+      await fetchEventDetails();
+      await fetchEquipmentAvailability();
+      await logChange('equipment_updated', `Zaktualizowano ilość sprzętu na ${newQuantity}`);
+    } catch (err) {
+      console.error('Error:', err);
+      alert('Wystąpił błąd');
     }
   };
 
@@ -447,7 +513,30 @@ export default function EventDetailPage() {
       `)
       .order('name');
 
-    if (!itemsError && items) {
+    if (!itemsError && items && event?.event_date) {
+      // Filtruj sprzęt który jest już dodany do wydarzenia
+      const alreadyAddedIds = equipment
+        .filter(eq => eq.equipment_id)
+        .map(eq => eq.equipment_id);
+
+      // Sprawdź dostępność dla każdego elementu
+      const availableItems = [];
+      for (const item of items) {
+        if (alreadyAddedIds.includes(item.id)) continue;
+
+        const { data: availCount } = await supabase.rpc('get_available_equipment_count', {
+          p_equipment_id: item.id,
+          p_event_date: event.event_date,
+          p_exclude_event_id: eventId
+        });
+
+        if (availCount && availCount > 0) {
+          availableItems.push({ ...item, available_count: availCount });
+        }
+      }
+
+      setAvailableEquipment(availableItems);
+    } else if (!itemsError && items) {
       setAvailableEquipment(items);
     }
 
@@ -1122,9 +1211,51 @@ export default function EventDetailPage() {
                         {!isKit && item.equipment?.category && (
                           <span className="hidden md:inline">{item.equipment.category.name}</span>
                         )}
-                        <span className="font-medium text-[#e5e4e2]">
-                          {item.quantity} szt.
-                        </span>
+                        {!isKit && item.equipment_id && equipmentAvailability[item.equipment_id] && (
+                          <div className="hidden lg:flex flex-col items-end text-xs">
+                            <span className="text-[#d3bb73]">
+                              {equipmentAvailability[item.equipment_id].available + equipmentAvailability[item.equipment_id].reserved} dostępne
+                            </span>
+                          </div>
+                        )}
+                        {editingQuantity === item.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              defaultValue={item.quantity}
+                              className="w-16 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-[#e5e4e2] text-sm"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const newQuantity = parseInt((e.target as HTMLInputElement).value);
+                                  if (newQuantity > 0) {
+                                    handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  setEditingQuantity(null);
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const newQuantity = parseInt(e.target.value);
+                                if (newQuantity > 0 && newQuantity !== item.quantity) {
+                                  handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
+                                } else {
+                                  setEditingQuantity(null);
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <span className="text-[#e5e4e2]/60">szt.</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => !isKit && setEditingQuantity(item.id)}
+                            className={`font-medium text-[#e5e4e2] ${!isKit ? 'hover:text-[#d3bb73] cursor-pointer' : ''}`}
+                            disabled={isKit}
+                          >
+                            {item.quantity} szt.
+                          </button>
+                        )}
                       </div>
 
                       <button
@@ -1807,7 +1938,14 @@ function AddEquipmentModal({
                         className="mt-1 w-4 h-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
                       />
                       <div className="flex-1">
-                        <div className="text-[#e5e4e2] font-medium">{item.name}</div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-[#e5e4e2] font-medium">{item.name}</div>
+                          {item.available_count && (
+                            <span className="text-xs text-[#d3bb73]">
+                              {item.available_count} dostępne
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-[#e5e4e2]/60 mt-1">
                           {item.category?.name || 'Brak kategorii'}
                         </div>
@@ -1815,14 +1953,29 @@ function AddEquipmentModal({
                     </label>
                     {selectedItems[item.id]?.checked && (
                       <div className="mt-3 ml-7 space-y-2">
-                        <input
-                          type="number"
-                          min="1"
-                          value={selectedItems[item.id]?.quantity || 1}
-                          onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value))}
-                          placeholder="Ilość"
-                          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
-                        />
+                        <div>
+                          <input
+                            type="number"
+                            min="1"
+                            max={item.available_count || undefined}
+                            value={selectedItems[item.id]?.quantity || 1}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              if (item.available_count && val > item.available_count) {
+                                handleQuantityChange(item.id, item.available_count);
+                              } else {
+                                handleQuantityChange(item.id, val);
+                              }
+                            }}
+                            placeholder="Ilość"
+                            className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1 text-sm text-[#e5e4e2]"
+                          />
+                          {item.available_count && (
+                            <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                              Maksymalnie {item.available_count} szt.
+                            </div>
+                          )}
+                        </div>
                         <input
                           type="text"
                           value={selectedItems[item.id]?.notes || ''}
