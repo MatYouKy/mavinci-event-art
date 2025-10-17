@@ -32,7 +32,7 @@ const allNavigation: NavigationItem[] = [
   { key: 'employees', name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
   { key: 'equipment', name: 'Sprzęt', href: '/crm/equipment', icon: Package, module: 'equipment' },
   { key: 'tasks', name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
-  { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', icon: Clock, module: 'time_tracking' },
+  { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', icon: Clock },
 ];
 
 export default function CRMLayout({ children }: { children: React.ReactNode }) {
