@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight, GripVertical, RotateCcw } from 'lucide-react';
+import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight, GripVertical, RotateCcw, UserCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
@@ -27,6 +27,7 @@ const allNavigation: NavigationItem[] = [
   { key: 'events', name: 'Eventy', href: '/crm/events', icon: Calendar, module: 'events' },
   { key: 'offers', name: 'Oferty', href: '/crm/offers', icon: FileText, module: 'offers' },
   { key: 'contracts', name: 'Umowy', href: '/crm/contracts', icon: FileSignature, module: 'contracts' },
+  { key: 'subcontractors', name: 'Podwykonawcy', href: '/crm/subcontractors', icon: UserCheck, module: 'subcontractors' },
   { key: 'attractions', name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, module: 'attractions' },
   { key: 'employees', name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
   { key: 'equipment', name: 'Sprzęt', href: '/crm/equipment', icon: Package, module: 'equipment' },
