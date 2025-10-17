@@ -4,6 +4,7 @@ import { isAdmin as checkIsAdmin, canView, canManage, canCreate, canManagePermis
 
 interface CurrentEmployeeData {
   employee: Employee | null;
+  currentEmployee: Employee | null;
   loading: boolean;
   isAdmin: boolean;
   canManagePermissions: boolean;
@@ -104,6 +105,7 @@ export function useCurrentEmployee(): CurrentEmployeeData {
 
   return {
     employee,
+    currentEmployee: employee,
     loading,
     isAdmin,
     canManagePermissions,

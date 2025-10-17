@@ -89,7 +89,6 @@ export default function TasksPage() {
   useEffect(() => {
     fetchTasks();
     fetchEmployees();
-    checkActiveTimer();
 
     const tasksChannel = supabase
       .channel('tasks_changes')
@@ -121,6 +120,12 @@ export default function TasksPage() {
       supabase.removeChannel(tasksChannel);
     };
   }, []);
+
+  useEffect(() => {
+    if (currentEmployee) {
+      checkActiveTimer();
+    }
+  }, [currentEmployee]);
 
   const fetchTasks = async () => {
     try {
