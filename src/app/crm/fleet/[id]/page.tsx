@@ -25,6 +25,9 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import AddMaintenanceModal from '@/components/crm/AddMaintenanceModal';
+import AddInsuranceModal from '@/components/crm/AddInsuranceModal';
+import AddFuelEntryModal from '@/components/crm/AddFuelEntryModal';
 
 interface Vehicle {
   id: string;
@@ -110,6 +113,10 @@ export default function VehicleDetailPage() {
   const [insurancePolicies, setInsurancePolicies] = useState<InsurancePolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'insurance'>('overview');
+
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [showInsuranceModal, setShowInsuranceModal] = useState(false);
+  const [showFuelModal, setShowFuelModal] = useState(false);
 
   useEffect(() => {
     if (vehicleId) {
@@ -453,7 +460,10 @@ export default function VehicleDetailPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-[#e5e4e2]">Historia tankowań</h2>
               {canManage && (
-                <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors">
+                <button
+                  onClick={() => setShowFuelModal(true)}
+                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
                   <Plus className="w-4 h-4" />
                   Dodaj tankowanie
                 </button>
@@ -529,7 +539,10 @@ export default function VehicleDetailPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-[#e5e4e2]">Historia serwisu i napraw</h2>
               {canManage && (
-                <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors">
+                <button
+                  onClick={() => setShowMaintenanceModal(true)}
+                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
                   <Plus className="w-4 h-4" />
                   Dodaj wpis serwisowy
                 </button>
@@ -611,7 +624,10 @@ export default function VehicleDetailPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-[#e5e4e2]">Ubezpieczenia</h2>
               {canManage && (
-                <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors">
+                <button
+                  onClick={() => setShowInsuranceModal(true)}
+                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
                   <Plus className="w-4 h-4" />
                   Dodaj ubezpieczenie
                 </button>
@@ -687,6 +703,36 @@ export default function VehicleDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      {showFuelModal && vehicle && (
+        <AddFuelEntryModal
+          vehicleId={vehicleId}
+          vehicleName={vehicle.name}
+          currentMileage={vehicle.current_mileage}
+          onClose={() => setShowFuelModal(false)}
+          onSuccess={fetchVehicleData}
+        />
+      )}
+
+      {showMaintenanceModal && vehicle && (
+        <AddMaintenanceModal
+          vehicleId={vehicleId}
+          vehicleName={vehicle.name}
+          currentMileage={vehicle.current_mileage}
+          onClose={() => setShowMaintenanceModal(false)}
+          onSuccess={fetchVehicleData}
+        />
+      )}
+
+      {showInsuranceModal && vehicle && (
+        <AddInsuranceModal
+          vehicleId={vehicleId}
+          vehicleName={vehicle.name}
+          onClose={() => setShowInsuranceModal(false)}
+          onSuccess={fetchVehicleData}
+        />
+      )}
     </div>
   );
 }
