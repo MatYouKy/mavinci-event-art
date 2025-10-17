@@ -290,33 +290,30 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
   };
 
   const handlePreview = async (file: FileItem) => {
-    // Dla PDF i innych typów używamy signed URL z odpowiednimi nagłówkami
-    if (file.mime_type === 'application/pdf' ||
-        file.mime_type.startsWith('video/') ||
-        file.mime_type.startsWith('audio/')) {
-      const { data, error } = await supabase.storage
-        .from('event-files')
-        .createSignedUrl(file.file_path, 3600); // 1 godzina ważności
-
-      if (data) {
-        setFileUrl(data.signedUrl);
-        setPreviewFile(file);
-      } else {
-        console.error('Error creating signed URL:', error);
-        // Fallback do public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('event-files')
-          .getPublicUrl(file.file_path);
-        setFileUrl(publicUrl);
-        setPreviewFile(file);
-      }
-    } else {
-      // Dla obrazków używamy public URL
+    // Dla obrazków pokazujemy modal z podglądem
+    if (file.mime_type.startsWith('image/')) {
       const { data: { publicUrl } } = supabase.storage
         .from('event-files')
         .getPublicUrl(file.file_path);
       setFileUrl(publicUrl);
       setPreviewFile(file);
+      return;
+    }
+
+    // Dla PDF, video, audio i innych - otwórz w nowej karcie
+    const { data, error } = await supabase.storage
+      .from('event-files')
+      .createSignedUrl(file.file_path, 3600);
+
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      console.error('Error creating signed URL:', error);
+      // Fallback do public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('event-files')
+        .getPublicUrl(file.file_path);
+      window.open(publicUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -893,92 +890,13 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 bg-[#1c1f33]">
-              {previewFile.mime_type.startsWith('image/') ? (
-                <img
-                  src={fileUrl}
-                  alt={previewFile.name}
-                  className="max-w-full max-h-full mx-auto object-contain"
-                />
-              ) : previewFile.mime_type.startsWith('video/') ? (
-                <video
-                  src={fileUrl}
-                  controls
-                  className="max-w-full max-h-full mx-auto"
-                  style={{ maxHeight: '70vh' }}
-                >
-                  Twoja przeglądarka nie obsługuje odtwarzania wideo.
-                </video>
-              ) : previewFile.mime_type.startsWith('audio/') ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <FileAudio className="w-16 h-16 text-[#d3bb73] mx-auto mb-4" />
-                    <audio
-                      src={fileUrl}
-                      controls
-                      className="mx-auto"
-                    >
-                      Twoja przeglądarka nie obsługuje odtwarzania audio.
-                    </audio>
-                  </div>
-                </div>
-              ) : previewFile.mime_type === 'application/pdf' ? (
-                <div className="w-full h-full">
-                  <iframe
-                    src={`${fileUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-                    className="w-full h-full min-h-[600px] rounded-lg"
-                    title={previewFile.name}
-                  />
-                  <div className="mt-4 text-center">
-                    <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                      Nie widzi PDF?
-                    </p>
-                    <a
-                      href={fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Otwórz w nowej karcie
-                    </a>
-                  </div>
-                </div>
-              ) : previewFile.mime_type.includes('text/') ||
-                 previewFile.mime_type === 'application/json' ||
-                 previewFile.mime_type === 'application/xml' ? (
-                <iframe
-                  src={fileUrl}
-                  className="w-full h-full min-h-[600px] rounded-lg bg-white"
-                  title={previewFile.name}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <div className="text-[#d3bb73] mb-4">
-                    {getFileIcon(previewFile.mime_type)}
-                  </div>
-                  <p className="text-[#e5e4e2] mb-2">Podgląd niedostępny dla tego typu pliku</p>
-                  <p className="text-sm text-[#e5e4e2]/60 mb-4">{previewFile.mime_type}</p>
-                  <div className="flex gap-2">
-                    <a
-                      href={fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Otwórz w nowej karcie
-                    </a>
-                    <button
-                      onClick={() => handleDownload(previewFile)}
-                      className="flex items-center gap-2 bg-[#d3bb73]/20 text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
-                    >
-                      <Download className="w-4 h-4" />
-                      Pobierz plik
-                    </button>
-                  </div>
-                </div>
-              )}
+            <div className="flex-1 overflow-auto p-4 bg-[#1c1f33] flex items-center justify-center">
+              <img
+                src={fileUrl}
+                alt={previewFile.name}
+                className="max-w-full max-h-full object-contain"
+                style={{ maxHeight: '80vh' }}
+              />
             </div>
           </div>
         </div>
