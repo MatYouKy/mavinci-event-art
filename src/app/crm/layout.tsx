@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight, GripVertical, RotateCcw, UserCheck } from 'lucide-react';
+import { Calendar, Users, Package, FileText, CheckSquare, Mail, Settings, LayoutDashboard, Menu, X, LogOut, Building2, CircleUser as UserCircle, Ligature as FileSignature, FileType, Sparkles, ChevronsLeft, ChevronsRight, GripVertical, RotateCcw, UserCheck, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
@@ -32,6 +32,7 @@ const allNavigation: NavigationItem[] = [
   { key: 'employees', name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
   { key: 'equipment', name: 'Sprzęt', href: '/crm/equipment', icon: Package, module: 'equipment' },
   { key: 'tasks', name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
+  { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', icon: Clock, module: 'time_tracking' },
 ];
 
 export default function CRMLayout({ children }: { children: React.ReactNode }) {
