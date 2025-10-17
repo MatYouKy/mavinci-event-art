@@ -98,6 +98,8 @@ export default function ClientDetailPage() {
   const [allowedAttractions, setAllowedAttractions] = useState<AllowedAttraction[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editedClient, setEditedClient] = useState<Partial<Client>>({});
   const [showCredentialsPopup, setShowCredentialsPopup] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState('');
   const [createdEmail, setCreatedEmail] = useState('');
@@ -319,6 +321,43 @@ export default function ClientDetailPage() {
     }
   };
 
+  const handleEdit = () => {
+    setEditMode(true);
+    setEditedClient({ ...client });
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setEditedClient({});
+  };
+
+  const handleSaveClient = async () => {
+    try {
+      setSaving(true);
+
+      const { error } = await supabase
+        .from('clients')
+        .update(editedClient)
+        .eq('id', clientId);
+
+      if (error) throw error;
+
+      setClient({ ...client!, ...editedClient });
+      setEditMode(false);
+      setEditedClient({});
+      alert('Dane klienta zaktualizowane pomyślnie!');
+    } catch (error) {
+      console.error('Error updating client:', error);
+      alert('Błąd podczas aktualizacji danych klienta');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleFieldChange = (field: keyof Client, value: any) => {
+    setEditedClient({ ...editedClient, [field]: value });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -391,12 +430,44 @@ export default function ClientDetailPage() {
               </div>
             </div>
 
-            {client.portal_access && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-lg">
-                <Key className="w-4 h-4 text-green-400" />
-                <span className="text-sm text-green-400">Portal aktywny</span>
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {client.portal_access && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <Key className="w-4 h-4 text-green-400" />
+                  <span className="text-sm text-green-400">Portal aktywny</span>
+                </div>
+              )}
+
+              {activeTab === 'details' && !editMode && (
+                <button
+                  onClick={handleEdit}
+                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Edytuj
+                </button>
+              )}
+
+              {activeTab === 'details' && editMode && (
+                <>
+                  <button
+                    onClick={handleSaveClient}
+                    disabled={saving}
+                    className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {saving ? 'Zapisywanie...' : 'Zapisz'}
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    className="flex items-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                  >
+                    Anuluj
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -450,76 +521,249 @@ export default function ClientDetailPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
               <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Informacje kontaktowe</h2>
-              <div className="space-y-3">
-                {client.email && (
-                  <div className="flex items-center gap-3">
-                    <Mail className="w-5 h-5 text-[#d3bb73]" />
-                    <span className="text-[#e5e4e2]">{client.email}</span>
-                  </div>
-                )}
-                {client.phone_number && (
-                  <div className="flex items-center gap-3">
-                    <Phone className="w-5 h-5 text-[#d3bb73]" />
-                    <span className="text-[#e5e4e2]">{client.phone_number}</span>
-                  </div>
-                )}
-                {client.website && (
-                  <div className="flex items-center gap-3">
-                    <Globe className="w-5 h-5 text-[#d3bb73]" />
-                    <a
-                      href={client.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[#d3bb73] hover:text-[#d3bb73]/80"
-                    >
-                      {client.website}
-                    </a>
-                  </div>
-                )}
-                {(client.address_street || client.address_city) && (
-                  <div className="flex items-start gap-3">
-                    <MapPin className="w-5 h-5 text-[#d3bb73] mt-1" />
-                    <div className="text-[#e5e4e2]">
-                      {client.address_street && <div>{client.address_street}</div>}
-                      {client.address_city && (
-                        <div>
-                          {client.address_postal_code && `${client.address_postal_code} `}
-                          {client.address_city}
-                          {client.address_country && `, ${client.address_country}`}
-                        </div>
-                      )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Email</label>
+                  {editMode ? (
+                    <input
+                      type="email"
+                      value={editedClient.email || ''}
+                      onChange={(e) => handleFieldChange('email', e.target.value)}
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <Mail className="w-5 h-5 text-[#d3bb73]" />
+                      <span className="text-[#e5e4e2]">{client.email || '-'}</span>
                     </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Telefon główny</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedClient.phone_number || ''}
+                      onChange={(e) => handleFieldChange('phone_number', e.target.value)}
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <Phone className="w-5 h-5 text-[#d3bb73]" />
+                      <span className="text-[#e5e4e2]">{client.phone_number || '-'}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Telefon dodatkowy</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedClient.phone_secondary || ''}
+                      onChange={(e) => handleFieldChange('phone_secondary', e.target.value)}
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  ) : (
+                    client.phone_secondary && (
+                      <div className="flex items-center gap-3">
+                        <Phone className="w-5 h-5 text-[#d3bb73]" />
+                        <span className="text-[#e5e4e2]">{client.phone_secondary}</span>
+                      </div>
+                    )
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Strona WWW</label>
+                  {editMode ? (
+                    <input
+                      type="url"
+                      value={editedClient.website || ''}
+                      onChange={(e) => handleFieldChange('website', e.target.value)}
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  ) : (
+                    client.website && (
+                      <div className="flex items-center gap-3">
+                        <Globe className="w-5 h-5 text-[#d3bb73]" />
+                        <a
+                          href={client.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#d3bb73] hover:text-[#d3bb73]/80"
+                        >
+                          {client.website}
+                        </a>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
+              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Adres</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ulica</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedClient.address_street || ''}
+                      onChange={(e) => handleFieldChange('address_street', e.target.value)}
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  ) : (
+                    <span className="text-[#e5e4e2]">{client.address_street || '-'}</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kod pocztowy</label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedClient.address_postal_code || ''}
+                        onChange={(e) => handleFieldChange('address_postal_code', e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    ) : (
+                      <span className="text-[#e5e4e2]">{client.address_postal_code || '-'}</span>
+                    )}
                   </div>
-                )}
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Miasto</label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedClient.address_city || ''}
+                        onChange={(e) => handleFieldChange('address_city', e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    ) : (
+                      <span className="text-[#e5e4e2]">{client.address_city || '-'}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kraj</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedClient.address_country || ''}
+                      onChange={(e) => handleFieldChange('address_country', e.target.value)}
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  ) : (
+                    <span className="text-[#e5e4e2]">{client.address_country || '-'}</span>
+                  )}
+                </div>
               </div>
             </div>
 
             {client.client_type === 'company' && (
               <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
                 <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Dane firmy</h2>
-                <div className="space-y-3">
-                  {client.company_nip && (
-                    <div>
-                      <div className="text-sm text-[#e5e4e2]/60 mb-1">NIP</div>
-                      <div className="text-[#e5e4e2]">{client.company_nip}</div>
-                    </div>
-                  )}
-                  {client.company_regon && (
-                    <div>
-                      <div className="text-sm text-[#e5e4e2]/60 mb-1">REGON</div>
-                      <div className="text-[#e5e4e2]">{client.company_regon}</div>
-                    </div>
-                  )}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa firmy</label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedClient.company_name || ''}
+                        onChange={(e) => handleFieldChange('company_name', e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    ) : (
+                      <span className="text-[#e5e4e2]">{client.company_name || '-'}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">NIP</label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedClient.company_nip || ''}
+                        onChange={(e) => handleFieldChange('company_nip', e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    ) : (
+                      <span className="text-[#e5e4e2]">{client.company_nip || '-'}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">REGON</label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedClient.company_regon || ''}
+                        onChange={(e) => handleFieldChange('company_regon', e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    ) : (
+                      <span className="text-[#e5e4e2]">{client.company_regon || '-'}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {client.notes && (
-              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6 lg:col-span-2">
-                <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Notatki</h2>
-                <p className="text-[#e5e4e2]/80 whitespace-pre-wrap">{client.notes}</p>
+            {(client.client_type === 'individual' || editMode) && (
+              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
+                <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Dane osobowe</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Imię</label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedClient.first_name || ''}
+                        onChange={(e) => handleFieldChange('first_name', e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    ) : (
+                      <span className="text-[#e5e4e2]">{client.first_name || '-'}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwisko</label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedClient.last_name || ''}
+                        onChange={(e) => handleFieldChange('last_name', e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    ) : (
+                      <span className="text-[#e5e4e2]">{client.last_name || '-'}</span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
+
+            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6 lg:col-span-2">
+              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Notatki</h2>
+              {editMode ? (
+                <textarea
+                  value={editedClient.notes || ''}
+                  onChange={(e) => handleFieldChange('notes', e.target.value)}
+                  rows={5}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+                  placeholder="Dodaj notatki o kliencie..."
+                />
+              ) : (
+                <p className="text-[#e5e4e2]/80 whitespace-pre-wrap">{client.notes || 'Brak notatek'}</p>
+              )}
+            </div>
           </div>
         )}
 
