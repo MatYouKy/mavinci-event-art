@@ -16,6 +16,7 @@
  * - attractions_view, attractions_manage, attractions_create
  * - messages_view, messages_manage, messages_assign
  * - financials_view, financials_manage
+ * - fleet_view, fleet_manage, fleet_create
  */
 
 export interface Employee {
@@ -126,6 +127,7 @@ export const MODULES = [
   'attractions',
   'messages',
   'financials',
+  'fleet',
 ] as const;
 
 export type ModuleName = typeof MODULES[number];
@@ -142,6 +144,7 @@ const MODULES_WITH_CREATE = [
   'offers',
   'contracts',
   'attractions',
+  'fleet',
 ] as const;
 
 /**
