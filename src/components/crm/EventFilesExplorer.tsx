@@ -60,6 +60,8 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [fileUrl, setFileUrl] = useState<string>('');
 
   useEffect(() => {
     fetchFolders();
