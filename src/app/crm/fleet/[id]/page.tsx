@@ -21,6 +21,7 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -28,6 +29,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddMaintenanceModal from '@/components/crm/AddMaintenanceModal';
 import AddInsuranceModal from '@/components/crm/AddInsuranceModal';
 import AddFuelEntryModal from '@/components/crm/AddFuelEntryModal';
+import VehicleGallery from '@/components/crm/VehicleGallery';
 
 interface Vehicle {
   id: string;
@@ -112,7 +114,7 @@ export default function VehicleDetailPage() {
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
   const [insurancePolicies, setInsurancePolicies] = useState<InsurancePolicy[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'insurance'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery'>('overview');
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
@@ -352,6 +354,7 @@ export default function VehicleDetailPage() {
             { id: 'fuel', label: 'Tankowania', icon: Fuel },
             { id: 'maintenance', label: 'Serwis i naprawy', icon: Wrench },
             { id: 'insurance', label: 'Ubezpieczenia', icon: Shield },
+            { id: 'gallery', label: 'Galeria', icon: ImageIcon },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -700,6 +703,13 @@ export default function VehicleDetailPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Gallery Tab */}
+        {activeTab === 'gallery' && (
+          <div className="space-y-4">
+            <VehicleGallery vehicleId={vehicleId} canManage={canManage} />
           </div>
         )}
       </div>
