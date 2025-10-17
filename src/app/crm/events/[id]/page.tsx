@@ -204,6 +204,7 @@ export default function EventDetailPage() {
             brand,
             model,
             cable_specs,
+            thumbnail_url,
             category:equipment_categories(name)
           ),
           kit:equipment_kits(
@@ -215,6 +216,7 @@ export default function EventDetailPage() {
                 brand,
                 model,
                 cable_specs,
+                thumbnail_url,
                 category:equipment_categories(name)
               )
             )
@@ -1069,8 +1071,20 @@ export default function EventDetailPage() {
                         </button>
                       )}
 
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {isKit && <span className="text-base">🎁</span>}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {isKit ? (
+                          <span className="text-base">🎁</span>
+                        ) : item.equipment?.thumbnail_url ? (
+                          <img
+                            src={item.equipment.thumbnail_url}
+                            alt={item.equipment.name}
+                            className="w-10 h-10 rounded object-cover border border-[#d3bb73]/20"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-[#1c1f33] border border-[#d3bb73]/20 flex items-center justify-center">
+                            <Package className="w-5 h-5 text-[#e5e4e2]/30" />
+                          </div>
+                        )}
                         <div className="flex flex-col min-w-0">
                           <span className="text-[#e5e4e2] font-medium truncate">
                             {item.kit ? item.kit.name : item.equipment?.name || 'Nieznany'}
@@ -1089,11 +1103,13 @@ export default function EventDetailPage() {
                               {item.equipment.cable_specs && (
                                 <>
                                   {(item.equipment.brand || item.equipment.model) && <span>•</span>}
-                                  {item.equipment.cable_specs.type && (
+                                  {item.equipment.cable_specs.connector_in && item.equipment.cable_specs.connector_out ? (
+                                    <span>{item.equipment.cable_specs.connector_in} → {item.equipment.cable_specs.connector_out}</span>
+                                  ) : item.equipment.cable_specs.type && (
                                     <span>{item.equipment.cable_specs.type}</span>
                                   )}
-                                  {item.equipment.cable_specs.length && (
-                                    <span>{item.equipment.cable_specs.length}m</span>
+                                  {item.equipment.cable_specs.length_meters && (
+                                    <span>{item.equipment.cable_specs.length_meters}m</span>
                                   )}
                                 </>
                               )}
@@ -1126,7 +1142,17 @@ export default function EventDetailPage() {
                             key={idx}
                             className="flex items-center gap-3 bg-[#0f1119]/50 border border-[#d3bb73]/5 rounded px-4 py-2 text-sm"
                           >
-                            <div className="w-1.5 h-1.5 rounded-full bg-[#d3bb73]/30" />
+                            {kitItem.equipment.thumbnail_url ? (
+                              <img
+                                src={kitItem.equipment.thumbnail_url}
+                                alt={kitItem.equipment.name}
+                                className="w-8 h-8 rounded object-cover border border-[#d3bb73]/10"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded bg-[#1c1f33] border border-[#d3bb73]/10 flex items-center justify-center">
+                                <Package className="w-4 h-4 text-[#e5e4e2]/30" />
+                              </div>
+                            )}
                             <div className="flex flex-col flex-1 min-w-0">
                               <span className="text-[#e5e4e2]/80">
                                 {kitItem.equipment.name}
@@ -1144,11 +1170,13 @@ export default function EventDetailPage() {
                                 {kitItem.equipment.cable_specs && (
                                   <>
                                     {(kitItem.equipment.brand || kitItem.equipment.model) && <span>•</span>}
-                                    {kitItem.equipment.cable_specs.type && (
+                                    {kitItem.equipment.cable_specs.connector_in && kitItem.equipment.cable_specs.connector_out ? (
+                                      <span>{kitItem.equipment.cable_specs.connector_in} → {kitItem.equipment.cable_specs.connector_out}</span>
+                                    ) : kitItem.equipment.cable_specs.type && (
                                       <span>{kitItem.equipment.cable_specs.type}</span>
                                     )}
-                                    {kitItem.equipment.cable_specs.length && (
-                                      <span>{kitItem.equipment.cable_specs.length}m</span>
+                                    {kitItem.equipment.cable_specs.length_meters && (
+                                      <span>{kitItem.equipment.cable_specs.length_meters}m</span>
                                     )}
                                   </>
                                 )}
