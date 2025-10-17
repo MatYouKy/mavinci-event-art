@@ -554,22 +554,34 @@ function StartTimerModal({
   onClose: () => void;
   onStart: (taskId: string | null, title: string | null, description: string) => void;
 }) {
-  const [mode, setMode] = useState<'task' | 'custom'>('task');
-  const [selectedTask, setSelectedTask] = useState('');
-  const [customTitle, setCustomTitle] = useState('');
+  const [inputValue, setInputValue] = useState('');
   const [description, setDescription] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const filteredTasks = tasks.filter((task) =>
+    task.title.toLowerCase().includes(inputValue.toLowerCase())
+  );
+
+  const handleSelectTask = (task: Task) => {
+    setInputValue(task.title);
+    setSelectedTaskId(task.id);
+    setShowSuggestions(false);
+  };
+
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+    setSelectedTaskId(null);
+    setShowSuggestions(value.length > 0);
+  };
 
   const handleStart = () => {
-    if (mode === 'task' && !selectedTask) {
-      alert('Wybierz zadanie');
-      return;
-    }
-    if (mode === 'custom' && !customTitle) {
-      alert('Podaj tytuł');
+    if (!inputValue.trim()) {
+      alert('Podaj tytuł zadania');
       return;
     }
 
-    onStart(mode === 'task' ? selectedTask : null, mode === 'custom' ? customTitle : null, description);
+    onStart(selectedTaskId, selectedTaskId ? null : inputValue, description);
   };
 
   return (
@@ -577,68 +589,64 @@ function StartTimerModal({
       <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
         <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Rozpocznij timer</h2>
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <button
-            onClick={() => setMode('task')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              mode === 'task'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-            }`}
-          >
-            Z zadania
-          </button>
-          <button
-            onClick={() => setMode('custom')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              mode === 'custom'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-            }`}
-          >
-            Własny tytuł
-          </button>
-        </div>
-
         <div className="space-y-4">
-          {mode === 'task' ? (
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zadanie</label>
-              <select
-                value={selectedTask}
-                onChange={(e) => setSelectedTask(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="">Wybierz zadanie...</option>
-                {tasks.map((task) => (
-                  <option key={task.id} value={task.id}>
-                    {task.title}
-                    {task.events && ` (${task.events.name})`}
-                  </option>
+          <div className="relative">
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Nazwa zadania
+            </label>
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onFocus={() => inputValue && setShowSuggestions(true)}
+              placeholder="Wpisz nazwę lub wybierz z listy..."
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            />
+
+            {showSuggestions && filteredTasks.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {filteredTasks.map((task) => (
+                  <button
+                    key={task.id}
+                    onClick={() => handleSelectTask(task)}
+                    className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/5 last:border-b-0"
+                  >
+                    <div className="text-[#e5e4e2] font-medium">{task.title}</div>
+                    {task.events && (
+                      <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                        {task.events.name}
+                      </div>
+                    )}
+                  </button>
                 ))}
-              </select>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Tytuł</label>
-              <input
-                type="text"
-                value={customTitle}
-                onChange={(e) => setCustomTitle(e.target.value)}
-                placeholder="np. Spotkanie z klientem"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
-          )}
+              </div>
+            )}
+
+            {selectedTaskId && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-green-400">
+                <CheckCircle className="w-4 h-4" />
+                <span>Powiązane z zadaniem</span>
+              </div>
+            )}
+
+            {inputValue && !selectedTaskId && filteredTasks.length === 0 && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
+                <CheckCircle className="w-4 h-4" />
+                <span>Własny tytuł zostanie utworzony</span>
+              </div>
+            )}
+          </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis (opcjonalnie)</label>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Opis (opcjonalnie)
+            </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Co będziesz robić?"
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] resize-y"
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
             />
           </div>
         </div>
@@ -646,7 +654,7 @@ function StartTimerModal({
         <div className="flex gap-3 mt-6">
           <button
             onClick={handleStart}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
+            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 font-medium"
           >
             <Play className="w-4 h-4 inline mr-2" />
             Rozpocznij
