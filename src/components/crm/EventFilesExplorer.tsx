@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Folder, File, Upload, FolderPlus, Grid3x3, List, Image as ImageIcon, Download, Trash2, CreditCard as Edit2, Copy, Move, ChevronRight, ChevronDown, MoreVertical, X, FileText, FileVideo, FileAudio, Archive } from 'lucide-react';
+import { Folder, File, Upload, FolderPlus, Grid3x3, List, Image as ImageIcon, Download, Trash2, CreditCard as Edit2, Copy, Move, ChevronRight, ChevronDown, MoreVertical, X, FileText, FileVideo, FileAudio, Archive, ExternalLink, Eye } from 'lucide-react';
 
 interface FileItem {
   id: string;
@@ -599,8 +599,19 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePreview(file);
+                      }}
+                      className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
+                      title="Podgląd"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => handleDownload(file)}
                       className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
+                      title="Pobierz"
                     >
                       <Download className="w-4 h-4" />
                     </button>
@@ -631,6 +642,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   key={file.id}
                   className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 cursor-pointer group"
                   onContextMenu={(e) => handleContextMenu(e, file, 'file')}
+                  onClick={() => handlePreview(file)}
                 >
                   <div className="text-[#d3bb73] mb-3">
                     {getFileIcon(file.mime_type)}
@@ -647,6 +659,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   key={file.id}
                   className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg overflow-hidden hover:border-[#d3bb73]/30 cursor-pointer group"
                   onContextMenu={(e) => handleContextMenu(e, file, 'file')}
+                  onClick={() => handlePreview(file)}
                 >
                   {file.thumbnail_url ? (
                     <img
@@ -679,7 +692,20 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
           {contextMenu.type === 'file' && contextMenu.item && (
             <>
               <button
-                onClick={() => handleDownload(contextMenu.item as FileItem)}
+                onClick={() => {
+                  handlePreview(contextMenu.item as FileItem);
+                  setContextMenu({ ...contextMenu, isOpen: false });
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+              >
+                <Eye className="w-4 h-4" />
+                Podgląd
+              </button>
+              <button
+                onClick={() => {
+                  handleDownload(contextMenu.item as FileItem);
+                  setContextMenu({ ...contextMenu, isOpen: false });
+                }}
                 className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
               >
                 <Download className="w-4 h-4" />
