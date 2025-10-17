@@ -995,7 +995,7 @@ export default function EventDetailPage() {
                       {item.equipment.name}
                     </h3>
                     <p className="text-sm text-[#e5e4e2]/60">
-                      {item.equipment.category} • Ilość: {item.quantity}
+                      {item.equipment.category?.name || 'Brak kategorii'} • Ilość: {item.quantity}
                     </p>
                     {item.notes && (
                       <p className="text-sm text-[#e5e4e2]/40 mt-1">{item.notes}</p>
