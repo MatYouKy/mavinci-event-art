@@ -2,28 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import {
-  Folder,
-  File,
-  Upload,
-  FolderPlus,
-  Grid3x3,
-  List,
-  Image as ImageIcon,
-  Download,
-  Trash2,
-  Edit2,
-  Copy,
-  Move,
-  ChevronRight,
-  ChevronDown,
-  MoreVertical,
-  X,
-  FileText,
-  FileVideo,
-  FileAudio,
-  Archive
-} from 'lucide-react';
+import { Folder, File, Upload, FolderPlus, Grid3x3, List, Image as ImageIcon, Download, Trash2, CreditCard as Edit2, Copy, Move, ChevronRight, ChevronDown, MoreVertical, X, FileText, FileVideo, FileAudio, Archive } from 'lucide-react';
 
 interface FileItem {
   id: string;
