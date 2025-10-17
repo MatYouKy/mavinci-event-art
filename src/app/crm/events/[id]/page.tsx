@@ -6,6 +6,7 @@ import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit,
 import { supabase } from '@/lib/supabase';
 import EventTasksBoard from '@/components/crm/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import EventFilesExplorer from '@/components/crm/EventFilesExplorer';
 
 interface Event {
   id: string;
@@ -1631,46 +1632,7 @@ export default function EventDetailPage() {
       )}
 
       {activeTab === 'files' && (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-light text-[#e5e4e2]">
-              Pliki i załączniki
-            </h2>
-            <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
-              <Plus className="w-4 h-4" />
-              Dodaj plik
-            </button>
-          </div>
-
-          {(!event.attachments || event.attachments.length === 0) ? (
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-              <p className="text-[#e5e4e2]/60">Brak załączników</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {event.attachments.map((file: any, index: number) => (
-                <div
-                  key={index}
-                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <FileText className="w-8 h-8 text-[#d3bb73]" />
-                    <button className="text-red-400 hover:text-red-300 transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <h3 className="text-[#e5e4e2] text-sm font-medium truncate">
-                    {file.name}
-                  </h3>
-                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
-                    {(file.size / 1024).toFixed(2)} KB
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <EventFilesExplorer eventId={eventId} />
       )}
 
       {activeTab === 'tasks' && event && (
