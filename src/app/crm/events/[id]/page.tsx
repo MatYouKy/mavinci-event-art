@@ -201,6 +201,16 @@ export default function EventDetailPage() {
           equipment:equipment_items(
             name,
             category:equipment_categories(name)
+          ),
+          kit:equipment_kits(
+            name,
+            items:equipment_kit_items(
+              quantity,
+              equipment:equipment_items(
+                name,
+                category:equipment_categories(name)
+              )
+            )
           )
         `)
         .eq('event_id', eventId);
@@ -470,20 +480,17 @@ export default function EventDetailPage() {
 
       for (const selected of selectedItems) {
         if (selected.type === 'kit') {
-          const kit = availableKits.find(k => k.id === selected.id);
-          if (kit && kit.items) {
-            for (const kitItem of kit.items) {
-              itemsToInsert.push({
-                event_id: eventId,
-                equipment_id: kitItem.equipment_id,
-                quantity: kitItem.quantity * selected.quantity,
-                notes: selected.notes ? `${selected.notes} (z zestawu: ${kit.name})` : `Z zestawu: ${kit.name}`,
-              });
-            }
-          }
+          itemsToInsert.push({
+            event_id: eventId,
+            kit_id: selected.id,
+            equipment_id: null,
+            quantity: selected.quantity,
+            notes: selected.notes,
+          });
         } else {
           itemsToInsert.push({
             event_id: eventId,
+            kit_id: null,
             equipment_id: selected.id,
             quantity: selected.quantity,
             notes: selected.notes,
@@ -1033,14 +1040,42 @@ export default function EventDetailPage() {
                   className="flex items-center justify-between bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
                 >
                   <div className="flex-1">
-                    <h3 className="text-[#e5e4e2] font-medium">
-                      {item.equipment.name}
-                    </h3>
-                    <p className="text-sm text-[#e5e4e2]/60">
-                      {item.equipment.category?.name || 'Brak kategorii'} • Ilość: {item.quantity}
-                    </p>
-                    {item.notes && (
-                      <p className="text-sm text-[#e5e4e2]/40 mt-1">{item.notes}</p>
+                    {item.kit ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🎁</span>
+                          <h3 className="text-[#e5e4e2] font-medium">
+                            {item.kit.name}
+                          </h3>
+                        </div>
+                        <p className="text-sm text-[#e5e4e2]/60">
+                          Zestaw • Ilość: {item.quantity}
+                        </p>
+                        {item.kit.items && item.kit.items.length > 0 && (
+                          <div className="mt-2 text-xs text-[#e5e4e2]/50">
+                            Zawiera: {item.kit.items.map((kitItem: any) =>
+                              `${kitItem.equipment.name} (${kitItem.quantity})`
+                            ).join(', ')}
+                          </div>
+                        )}
+                        {item.notes && (
+                          <p className="text-sm text-[#e5e4e2]/40 mt-1">{item.notes}</p>
+                        )}
+                      </>
+                    ) : item.equipment ? (
+                      <>
+                        <h3 className="text-[#e5e4e2] font-medium">
+                          {item.equipment.name}
+                        </h3>
+                        <p className="text-sm text-[#e5e4e2]/60">
+                          {item.equipment.category?.name || 'Brak kategorii'} • Ilość: {item.quantity}
+                        </p>
+                        {item.notes && (
+                          <p className="text-sm text-[#e5e4e2]/40 mt-1">{item.notes}</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-red-400">Błąd: Brak danych sprzętu</p>
                     )}
                   </div>
                   <button
