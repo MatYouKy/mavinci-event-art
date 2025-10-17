@@ -130,6 +130,8 @@ export default function EventDetailPage() {
   const [editedDescription, setEditedDescription] = useState('');
   const [editedNotes, setEditedNotes] = useState('');
   const [categories, setCategories] = useState<any[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [canManageTeam, setCanManageTeam] = useState(false);
 
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
@@ -156,6 +158,7 @@ export default function EventDetailPage() {
       fetchAuditLog();
       fetchOffers();
       fetchCategories();
+      checkTeamManagementPermission();
     }
   }, [eventId]);
 
@@ -164,6 +167,63 @@ export default function EventDetailPage() {
       fetchEquipmentAvailability();
     }
   }, [event, equipment.length]);
+
+  const checkTeamManagementPermission = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        setCanManageTeam(false);
+        return;
+      }
+
+      setCurrentUserId(session.user.id);
+
+      // Sprawdź czy użytkownik jest adminem
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('permissions')
+        .eq('id', session.user.id)
+        .single();
+
+      const isAdmin = employee?.permissions?.includes('events_manage');
+
+      // Jeśli admin, może zarządzać
+      if (isAdmin) {
+        setCanManageTeam(true);
+        return;
+      }
+
+      // Sprawdź czy jest creatorem lub ma uprawnienia
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('created_by')
+        .eq('id', eventId)
+        .single();
+
+      if (eventData?.created_by === session.user.id) {
+        setCanManageTeam(true);
+        return;
+      }
+
+      // Sprawdź czy jest członkiem z uprawnieniem can_invite_members
+      const { data: assignment } = await supabase
+        .from('employee_assignments')
+        .select('can_invite_members, status')
+        .eq('event_id', eventId)
+        .eq('employee_id', session.user.id)
+        .single();
+
+      if (assignment?.status === 'accepted' && assignment?.can_invite_members) {
+        setCanManageTeam(true);
+        return;
+      }
+
+      setCanManageTeam(false);
+    } catch (err) {
+      console.error('Error checking team management permission:', err);
+      setCanManageTeam(false);
+    }
+  };
 
   const fetchEventDetails = async () => {
     try {
@@ -655,7 +715,10 @@ export default function EventDetailPage() {
       .order('name');
 
     if (!error && data) {
-      setAvailableEmployees(data);
+      // Odfiltruj pracowników którzy są już w zespole
+      const alreadyAddedIds = employees.map(emp => emp.employee_id);
+      const availableEmp = data.filter(emp => !alreadyAddedIds.includes(emp.id));
+      setAvailableEmployees(availableEmp);
     }
   };
 
@@ -1428,16 +1491,18 @@ export default function EventDetailPage() {
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-light text-[#e5e4e2]">Zespół</h2>
-            <button
-              onClick={() => {
-                fetchAvailableEmployees();
-                setShowAddEmployeeModal(true);
-              }}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Dodaj osobę
-            </button>
+            {canManageTeam && (
+              <button
+                onClick={() => {
+                  fetchAvailableEmployees();
+                  setShowAddEmployeeModal(true);
+                }}
+                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Dodaj osobę
+              </button>
+            )}
           </div>
 
           {employees.length === 0 ? (
