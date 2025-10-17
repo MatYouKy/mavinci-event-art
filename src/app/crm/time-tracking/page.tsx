@@ -42,6 +42,13 @@ interface TimeEntry {
   employee_surname?: string;
   task_title?: string;
   event_name?: string;
+  tasks?: {
+    title: string;
+    event_id: string | null;
+  } | null;
+  events?: {
+    name: string;
+  } | null;
 }
 
 interface Task {
@@ -103,17 +110,35 @@ export default function TimeTrackingPage() {
       // Sprawdź aktywny timer
       const { data: activeData } = await supabase
         .from('time_entries')
-        .select('*')
+        .select(`
+          *,
+          tasks (
+            title,
+            event_id
+          ),
+          events (
+            name
+          )
+        `)
         .eq('employee_id', employee!.id)
         .is('end_time', null)
-        .single();
+        .maybeSingle();
 
       setActiveTimer(activeData || null);
 
       // Pobierz wpisy
       let query = supabase
         .from(viewMode === 'all' && isAdmin ? 'admin_time_entries_view' : 'time_entries')
-        .select('*')
+        .select(`
+          *,
+          tasks (
+            title,
+            event_id
+          ),
+          events (
+            name
+          )
+        `)
         .order('start_time', { ascending: false })
         .limit(100);
 
@@ -321,7 +346,9 @@ export default function TimeTrackingPage() {
                   <span className="text-sm text-[#e5e4e2]/60">Timer aktywny</span>
                 </div>
                 <h3 className="text-xl font-semibold text-[#e5e4e2] mb-1">
-                  {activeTimer.title || activeTimer.task_title || 'Praca'}
+                  {activeTimer.task_id && activeTimer.tasks
+                    ? `${activeTimer.tasks.title} (Task)`
+                    : activeTimer.title || activeTimer.task_title || 'Praca'}
                 </h3>
                 {activeTimer.description && (
                   <p className="text-sm text-[#e5e4e2]/60">{activeTimer.description}</p>
@@ -462,7 +489,9 @@ export default function TimeTrackingPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h4 className="font-semibold text-[#e5e4e2]">
-                      {entry.title || entry.task_title || 'Praca'}
+                      {entry.task_id && entry.tasks
+                        ? `${entry.tasks.title} (Task)`
+                        : entry.title || entry.task_title || 'Praca'}
                     </h4>
                     {entry.is_billable && (
                       <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">
