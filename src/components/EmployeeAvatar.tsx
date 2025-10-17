@@ -21,7 +21,7 @@ interface ImageMetadata {
   };
 }
 
-interface EmployeeAvatarProps {
+interface EmployeeAvatarPropsLegacy {
   avatarUrl?: string | null;
   avatarMetadata?: ImageMetadata | null;
   employeeName: string;
@@ -29,17 +29,42 @@ interface EmployeeAvatarProps {
   className?: string;
   onClick?: () => void;
   showHoverEffect?: boolean;
+  employee?: never;
 }
 
-export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = ({
-  avatarUrl,
-  avatarMetadata,
-  employeeName,
-  size = 128,
-  className = '',
-  onClick,
-  showHoverEffect = false,
-}) => {
+interface EmployeeAvatarPropsNew {
+  employee: {
+    avatar_url?: string | null;
+    avatar_metadata?: ImageMetadata | null;
+    name?: string;
+    surname?: string;
+    nickname?: string;
+  };
+  size?: number;
+  className?: string;
+  onClick?: () => void;
+  showHoverEffect?: boolean;
+  avatarUrl?: never;
+  avatarMetadata?: never;
+  employeeName?: never;
+}
+
+type EmployeeAvatarProps = EmployeeAvatarPropsLegacy | EmployeeAvatarPropsNew;
+
+export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
+  const {
+    size = 128,
+    className = '',
+    onClick,
+    showHoverEffect = false,
+  } = props;
+
+  const avatarUrl = 'employee' in props ? props.employee.avatar_url : props.avatarUrl;
+  const avatarMetadata = 'employee' in props ? props.employee.avatar_metadata : props.avatarMetadata;
+  const employeeName = 'employee' in props
+    ? (props.employee.nickname || `${props.employee.name || ''} ${props.employee.surname || ''}`.trim() || 'User')
+    : props.employeeName;
+
   const position = avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
   const objectFit = avatarMetadata?.desktop?.objectFit || 'cover';
 
@@ -61,7 +86,7 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = ({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/40 bg-[#1c1f33]" style={{ fontSize: size / 3 }}>
-          {employeeName.charAt(0).toUpperCase()}
+          {employeeName ? employeeName.charAt(0).toUpperCase() : '?'}
         </div>
       )}
       {showHoverEffect && (
