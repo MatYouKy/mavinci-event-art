@@ -136,6 +136,7 @@ export default function EventDetailPage() {
   const [availableEquipment, setAvailableEquipment] = useState<any[]>([]);
   const [availableKits, setAvailableKits] = useState<any[]>([]);
   const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
+  const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
@@ -1033,59 +1034,89 @@ export default function EventDetailPage() {
               <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {equipment.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
-                >
-                  <div className="flex-1">
-                    {item.kit ? (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg">🎁</span>
-                          <h3 className="text-[#e5e4e2] font-medium">
-                            {item.kit.name}
-                          </h3>
-                        </div>
-                        <p className="text-sm text-[#e5e4e2]/60">
-                          Zestaw • Ilość: {item.quantity}
-                        </p>
-                        {item.kit.items && item.kit.items.length > 0 && (
-                          <div className="mt-2 text-xs text-[#e5e4e2]/50">
-                            Zawiera: {item.kit.items.map((kitItem: any) =>
-                              `${kitItem.equipment.name} (${kitItem.quantity})`
-                            ).join(', ')}
+            <div className="space-y-2">
+              {equipment.map((item) => {
+                const isExpanded = expandedKits.has(item.id);
+                const isKit = !!item.kit;
+
+                return (
+                  <div key={item.id}>
+                    <div className="flex items-center gap-3 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 hover:border-[#d3bb73]/20 transition-colors">
+                      {isKit && (
+                        <button
+                          onClick={() => {
+                            const newExpanded = new Set(expandedKits);
+                            if (isExpanded) {
+                              newExpanded.delete(item.id);
+                            } else {
+                              newExpanded.add(item.id);
+                            }
+                            setExpandedKits(newExpanded);
+                          }}
+                          className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                        >
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform ${
+                              isExpanded ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+                      )}
+
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {isKit && <span className="text-base">🎁</span>}
+                        <span className="text-[#e5e4e2] font-medium truncate">
+                          {item.kit ? item.kit.name : item.equipment?.name || 'Nieznany'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+                        {!isKit && item.equipment?.category && (
+                          <span className="hidden sm:inline">{item.equipment.category.name}</span>
+                        )}
+                        <span className="font-medium text-[#e5e4e2]">
+                          {item.quantity} szt.
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleRemoveEquipment(item.id)}
+                        className="text-red-400/60 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {isKit && isExpanded && item.kit?.items && (
+                      <div className="ml-9 mt-1 space-y-1">
+                        {item.kit.items.map((kitItem: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-3 bg-[#0f1119]/50 border border-[#d3bb73]/5 rounded px-4 py-2 text-sm"
+                          >
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#d3bb73]/30" />
+                            <span className="text-[#e5e4e2]/80 flex-1">
+                              {kitItem.equipment.name}
+                            </span>
+                            <span className="text-[#e5e4e2]/50 text-xs">
+                              {kitItem.equipment.category?.name}
+                            </span>
+                            <span className="text-[#e5e4e2]/60 font-medium">
+                              {kitItem.quantity * item.quantity} szt.
+                            </span>
                           </div>
-                        )}
-                        {item.notes && (
-                          <p className="text-sm text-[#e5e4e2]/40 mt-1">{item.notes}</p>
-                        )}
-                      </>
-                    ) : item.equipment ? (
-                      <>
-                        <h3 className="text-[#e5e4e2] font-medium">
-                          {item.equipment.name}
-                        </h3>
-                        <p className="text-sm text-[#e5e4e2]/60">
-                          {item.equipment.category?.name || 'Brak kategorii'} • Ilość: {item.quantity}
-                        </p>
-                        {item.notes && (
-                          <p className="text-sm text-[#e5e4e2]/40 mt-1">{item.notes}</p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-sm text-red-400">Błąd: Brak danych sprzętu</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.notes && (
+                      <div className="ml-9 mt-1 text-xs text-[#e5e4e2]/40 italic px-4">
+                        {item.notes}
+                      </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => handleRemoveEquipment(item.id)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
