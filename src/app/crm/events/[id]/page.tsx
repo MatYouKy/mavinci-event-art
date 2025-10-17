@@ -246,7 +246,7 @@ export default function EventDetailPage() {
         .from('event_audit_log')
         .select(`
           *,
-          employee:employees!event_audit_log_employee_id_fkey(
+          employee:employees!event_audit_log_user_id_fkey(
             id,
             name,
             surname,
@@ -262,6 +262,8 @@ export default function EventDetailPage() {
 
       if (!error && data) {
         setAuditLog(data);
+      } else if (error) {
+        console.error('Error fetching audit log:', error);
       }
     } catch (err) {
       console.error('Error fetching audit log:', err);
@@ -1886,9 +1888,54 @@ function TeamMembersList({
   const [editRole, setEditRole] = useState('');
   const [editResponsibilities, setEditResponsibilities] = useState('');
   const [removeModal, setRemoveModal] = useState<{isOpen: boolean, id: string, name: string} | null>(null);
+  const [permissionsModal, setPermissionsModal] = useState<{isOpen: boolean, assignment: any} | null>(null);
+  const [permissionsForm, setPermissionsForm] = useState({
+    can_edit_event: false,
+    can_edit_agenda: false,
+    can_edit_tasks: false,
+    can_edit_files: false,
+    can_edit_equipment: false,
+    can_invite_members: false,
+    can_view_budget: false,
+  });
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id);
+  };
+
+  const openPermissionsModal = (assignment: any) => {
+    setPermissionsForm({
+      can_edit_event: assignment.can_edit_event || false,
+      can_edit_agenda: assignment.can_edit_agenda || false,
+      can_edit_tasks: assignment.can_edit_tasks || false,
+      can_edit_files: assignment.can_edit_files || false,
+      can_edit_equipment: assignment.can_edit_equipment || false,
+      can_invite_members: assignment.can_invite_members || false,
+      can_view_budget: assignment.can_view_budget || false,
+    });
+    setPermissionsModal({ isOpen: true, assignment });
+  };
+
+  const savePermissions = async () => {
+    if (!permissionsModal) return;
+
+    try {
+      const { error } = await supabase
+        .from('employee_assignments')
+        .update({
+          ...permissionsForm,
+          permissions_updated_at: new Date().toISOString()
+        })
+        .eq('id', permissionsModal.assignment.id);
+
+      if (error) throw error;
+
+      setPermissionsModal(null);
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating permissions:', error);
+      alert('Błąd podczas aktualizacji uprawnień');
+    }
   };
 
   const startEdit = (item: Employee) => {
@@ -2057,6 +2104,59 @@ function TeamMembersList({
                       <p className="text-sm text-[#e5e4e2]/80 whitespace-pre-wrap">{item.responsibilities}</p>
                     </div>
                   )}
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => openPermissionsModal(item)}
+                      className="w-full flex items-center justify-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/20 transition-colors"
+                    >
+                      <User className="w-4 h-4" />
+                      Zarządzaj uprawnieniami
+                    </button>
+                  </div>
+
+                  {(item.can_edit_event || item.can_edit_agenda || item.can_edit_tasks || item.can_edit_files || item.can_edit_equipment || item.can_invite_members || item.can_view_budget) && (
+                    <div className="pt-2 border-t border-[#d3bb73]/10">
+                      <div className="text-xs text-[#e5e4e2]/60 mb-2">Nadane uprawnienia:</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.can_edit_event && (
+                          <span className="px-2 py-1 bg-blue-500/10 text-blue-400 text-xs rounded border border-blue-500/20">
+                            Edycja wydarzenia
+                          </span>
+                        )}
+                        {item.can_edit_agenda && (
+                          <span className="px-2 py-1 bg-purple-500/10 text-purple-400 text-xs rounded border border-purple-500/20">
+                            Edycja agendy
+                          </span>
+                        )}
+                        {item.can_edit_tasks && (
+                          <span className="px-2 py-1 bg-green-500/10 text-green-400 text-xs rounded border border-green-500/20">
+                            Zarządzanie zadaniami
+                          </span>
+                        )}
+                        {item.can_edit_files && (
+                          <span className="px-2 py-1 bg-yellow-500/10 text-yellow-400 text-xs rounded border border-yellow-500/20">
+                            Zarządzanie plikami
+                          </span>
+                        )}
+                        {item.can_edit_equipment && (
+                          <span className="px-2 py-1 bg-orange-500/10 text-orange-400 text-xs rounded border border-orange-500/20">
+                            Zarządzanie sprzętem
+                          </span>
+                        )}
+                        {item.can_invite_members && (
+                          <span className="px-2 py-1 bg-pink-500/10 text-pink-400 text-xs rounded border border-pink-500/20">
+                            Zapraszanie członków
+                          </span>
+                        )}
+                        {item.can_view_budget && (
+                          <span className="px-2 py-1 bg-cyan-500/10 text-cyan-400 text-xs rounded border border-cyan-500/20">
+                            Widok budżetu
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2091,6 +2191,127 @@ function TeamMembersList({
               </button>
               <button
                 onClick={() => setRemoveModal(null)}
+                className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+              >
+                Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {permissionsModal?.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="mb-6">
+              <h2 className="text-xl font-light text-[#e5e4e2] mb-2">Zarządzaj uprawnieniami</h2>
+              <p className="text-sm text-[#e5e4e2]/60">
+                {permissionsModal.assignment.employee?.nickname || `${permissionsModal.assignment.employee?.name} ${permissionsModal.assignment.employee?.surname}`}
+              </p>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <label className="flex items-start gap-3 p-3 bg-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#1c1f33]/80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_edit_event}
+                  onChange={(e) => setPermissionsForm({ ...permissionsForm, can_edit_event: e.target.checked })}
+                  className="mt-1 w-4 h-4 bg-[#0f1119] border-[#d3bb73]/30 rounded text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="text-[#e5e4e2] font-medium">Edycja wydarzenia</div>
+                  <div className="text-xs text-[#e5e4e2]/60">Może edytować podstawowe informacje o wydarzeniu</div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#1c1f33]/80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_edit_agenda}
+                  onChange={(e) => setPermissionsForm({ ...permissionsForm, can_edit_agenda: e.target.checked })}
+                  className="mt-1 w-4 h-4 bg-[#0f1119] border-[#d3bb73]/30 rounded text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="text-[#e5e4e2] font-medium">Edycja agendy</div>
+                  <div className="text-xs text-[#e5e4e2]/60">Może edytować harmonogram i agendę</div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#1c1f33]/80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_edit_tasks}
+                  onChange={(e) => setPermissionsForm({ ...permissionsForm, can_edit_tasks: e.target.checked })}
+                  className="mt-1 w-4 h-4 bg-[#0f1119] border-[#d3bb73]/30 rounded text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="text-[#e5e4e2] font-medium">Zarządzanie zadaniami</div>
+                  <div className="text-xs text-[#e5e4e2]/60">Może tworzyć, edytować i usuwać zadania</div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#1c1f33]/80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_edit_files}
+                  onChange={(e) => setPermissionsForm({ ...permissionsForm, can_edit_files: e.target.checked })}
+                  className="mt-1 w-4 h-4 bg-[#0f1119] border-[#d3bb73]/30 rounded text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="text-[#e5e4e2] font-medium">Zarządzanie plikami</div>
+                  <div className="text-xs text-[#e5e4e2]/60">Może dodawać i usuwać pliki</div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#1c1f33]/80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_edit_equipment}
+                  onChange={(e) => setPermissionsForm({ ...permissionsForm, can_edit_equipment: e.target.checked })}
+                  className="mt-1 w-4 h-4 bg-[#0f1119] border-[#d3bb73]/30 rounded text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="text-[#e5e4e2] font-medium">Zarządzanie sprzętem</div>
+                  <div className="text-xs text-[#e5e4e2]/60">Może dodawać i usuwać sprzęt</div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#1c1f33]/80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_invite_members}
+                  onChange={(e) => setPermissionsForm({ ...permissionsForm, can_invite_members: e.target.checked })}
+                  className="mt-1 w-4 h-4 bg-[#0f1119] border-[#d3bb73]/30 rounded text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="text-[#e5e4e2] font-medium">Zapraszanie członków</div>
+                  <div className="text-xs text-[#e5e4e2]/60">Może zapraszać innych pracowników do zespołu</div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#1c1f33]/80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_view_budget}
+                  onChange={(e) => setPermissionsForm({ ...permissionsForm, can_view_budget: e.target.checked })}
+                  className="mt-1 w-4 h-4 bg-[#0f1119] border-[#d3bb73]/30 rounded text-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="text-[#e5e4e2] font-medium">Widok budżetu</div>
+                  <div className="text-xs text-[#e5e4e2]/60">Może przeglądać informacje finansowe</div>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={savePermissions}
+                className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90"
+              >
+                Zapisz
+              </button>
+              <button
+                onClick={() => setPermissionsModal(null)}
                 className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
               >
                 Anuluj
