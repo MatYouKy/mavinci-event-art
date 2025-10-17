@@ -18,6 +18,7 @@ import {
   XCircle,
   Edit,
   Trash2,
+  History,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -36,6 +37,7 @@ interface TimeEntry {
   is_billable: boolean;
   hourly_rate: number | null;
   tags: string[];
+  edit_count?: number;
   employee_name?: string;
   employee_surname?: string;
   task_title?: string;
@@ -59,6 +61,10 @@ export default function TimeTrackingPage() {
   const [activeTimer, setActiveTimer] = useState<TimeEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [historyEntryId, setHistoryEntryId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'my' | 'all'>('my');
   const [filterEmployee, setFilterEmployee] = useState<string>('');
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
@@ -509,14 +515,44 @@ export default function TimeTrackingPage() {
                       </div>
                     )}
                   </div>
-                  {viewMode === 'my' && (
-                    <button
-                      onClick={() => deleteEntry(entry.id)}
-                      className="text-red-400 hover:text-red-300 p-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                  <div className="flex gap-2">
+                    {viewMode === 'my' && entry.end_time && (
+                      <button
+                        onClick={() => {
+                          setEditingEntry(entry);
+                          setShowEditModal(true);
+                        }}
+                        className="text-blue-400 hover:text-blue-300 p-2"
+                        title="Edytuj"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+                    {isAdmin && entry.edit_count && entry.edit_count > 0 && (
+                      <button
+                        onClick={() => {
+                          setHistoryEntryId(entry.id);
+                          setShowHistoryModal(true);
+                        }}
+                        className="text-yellow-400 hover:text-yellow-300 p-2 relative"
+                        title="Historia zmian"
+                      >
+                        <History className="w-4 h-4" />
+                        <span className="absolute -top-1 -right-1 bg-yellow-500 text-[#1c1f33] text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                          {entry.edit_count}
+                        </span>
+                      </button>
+                    )}
+                    {viewMode === 'my' && (
+                      <button
+                        onClick={() => deleteEntry(entry.id)}
+                        className="text-red-400 hover:text-red-300 p-2"
+                        title="Usuń"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -538,6 +574,48 @@ export default function TimeTrackingPage() {
           onStart={(taskId, title, description) => {
             startTimer(taskId, title, description);
             setShowAddModal(false);
+          }}
+        />
+      )}
+
+      {showEditModal && editingEntry && (
+        <EditEntryModal
+          entry={editingEntry}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingEntry(null);
+          }}
+          onSave={async (updated) => {
+            try {
+              const { error } = await supabase
+                .from('time_entries')
+                .update({
+                  title: updated.title,
+                  description: updated.description,
+                  start_time: updated.start_time,
+                  end_time: updated.end_time,
+                })
+                .eq('id', updated.id);
+
+              if (error) throw error;
+              showSnackbar('Wpis zaktualizowany', 'success');
+              setShowEditModal(false);
+              setEditingEntry(null);
+              fetchData();
+            } catch (error) {
+              console.error('Error updating entry:', error);
+              showSnackbar('Błąd podczas aktualizacji', 'error');
+            }
+          }}
+        />
+      )}
+
+      {showHistoryModal && historyEntryId && (
+        <HistoryModal
+          entryId={historyEntryId}
+          onClose={() => {
+            setShowHistoryModal(false);
+            setHistoryEntryId(null);
           }}
         />
       )}
@@ -666,6 +744,321 @@ function StartTimerModal({
             Anuluj
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EditEntryModal({
+  entry,
+  onClose,
+  onSave,
+}: {
+  entry: TimeEntry;
+  onClose: () => void;
+  onSave: (updated: TimeEntry) => void;
+}) {
+  const [title, setTitle] = useState(entry.title || '');
+  const [description, setDescription] = useState(entry.description || '');
+  const [startDate, setStartDate] = useState(
+    new Date(entry.start_time).toISOString().slice(0, 10)
+  );
+  const [startTime, setStartTime] = useState(
+    new Date(entry.start_time).toISOString().slice(11, 16)
+  );
+  const [endDate, setEndDate] = useState(
+    entry.end_time ? new Date(entry.end_time).toISOString().slice(0, 10) : ''
+  );
+  const [endTime, setEndTime] = useState(
+    entry.end_time ? new Date(entry.end_time).toISOString().slice(11, 16) : ''
+  );
+
+  const handleSave = () => {
+    if (!title.trim()) {
+      alert('Podaj tytuł');
+      return;
+    }
+
+    const start = new Date(`${startDate}T${startTime}:00`).toISOString();
+    const end = endDate && endTime ? new Date(`${endDate}T${endTime}:00`).toISOString() : null;
+
+    onSave({
+      ...entry,
+      title,
+      description,
+      start_time: start,
+      end_time: end,
+    });
+  };
+
+  const calculateDuration = () => {
+    if (!endDate || !endTime) return '---';
+    const start = new Date(`${startDate}T${startTime}:00`);
+    const end = new Date(`${endDate}T${endTime}:00`);
+    const minutes = Math.floor((end.getTime() - start.getTime()) / 60000);
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h}h ${m}m`;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-lg w-full">
+        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Edytuj wpis czasu</h2>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Tytuł</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data rozpoczęcia</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Godzina rozpoczęcia</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data zakończenia</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Godzina zakończenia</label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+          </div>
+
+          <div className="bg-[#1c1f33] rounded-lg p-4 border border-[#d3bb73]/10">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-[#e5e4e2]/60">Czas trwania:</span>
+              <span className="text-lg font-bold text-[#d3bb73]">{calculateDuration()}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={handleSave}
+            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 font-medium"
+          >
+            Zapisz zmiany
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+          >
+            Anuluj
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HistoryModal({ entryId, onClose }: { entryId: string; onClose: () => void }) {
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [entryId]);
+
+  const fetchHistory = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('admin_time_entries_history_view')
+        .select('*')
+        .eq('time_entry_id', entryId)
+        .order('changed_at', { ascending: false });
+
+      if (error) throw error;
+      setHistory(data || []);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatValue = (value: any) => {
+    if (value === null || value === undefined) return 'brak';
+    if (typeof value === 'boolean') return value ? 'tak' : 'nie';
+    if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
+      return new Date(value).toLocaleString('pl-PL');
+    }
+    return String(value);
+  };
+
+  const getFieldName = (field: string) => {
+    const names: Record<string, string> = {
+      title: 'Tytuł',
+      description: 'Opis',
+      start_time: 'Czas rozpoczęcia',
+      end_time: 'Czas zakończenia',
+      is_billable: 'Płatne',
+      hourly_rate: 'Stawka godzinowa',
+      tags: 'Tagi',
+    };
+    return names[field] || field;
+  };
+
+  const getActionColor = (action: string) => {
+    switch (action) {
+      case 'created':
+        return 'bg-green-500/20 text-green-400';
+      case 'updated':
+        return 'bg-blue-500/20 text-blue-400';
+      case 'deleted':
+        return 'bg-red-500/20 text-red-400';
+      default:
+        return 'bg-gray-500/20 text-gray-400';
+    }
+  };
+
+  const getActionName = (action: string) => {
+    switch (action) {
+      case 'created':
+        return 'Utworzono';
+      case 'updated':
+        return 'Edytowano';
+      case 'deleted':
+        return 'Usunięto';
+      default:
+        return action;
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-light text-[#e5e4e2] flex items-center gap-3">
+            <History className="w-6 h-6 text-[#d3bb73]" />
+            Historia zmian
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+          >
+            ✕
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12 text-[#e5e4e2]/60">Ładowanie...</div>
+        ) : history.length === 0 ? (
+          <div className="text-center py-12 text-[#e5e4e2]/60">Brak historii zmian</div>
+        ) : (
+          <div className="space-y-4">
+            {history.map((item) => (
+              <div
+                key={item.id}
+                className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getActionColor(
+                        item.action
+                      )}`}
+                    >
+                      {getActionName(item.action)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-[#e5e4e2]">
+                      {item.employee_name} {item.employee_surname}
+                    </div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      {new Date(item.changed_at).toLocaleString('pl-PL')}
+                    </div>
+                  </div>
+                </div>
+
+                {item.action === 'updated' && item.changed_fields && (
+                  <div className="space-y-2 mt-3">
+                    {item.changed_fields.map((field: string) => (
+                      <div
+                        key={field}
+                        className="flex items-start gap-4 text-sm border-t border-[#d3bb73]/5 pt-2"
+                      >
+                        <div className="font-medium text-[#e5e4e2]/60 min-w-[120px]">
+                          {getFieldName(field)}:
+                        </div>
+                        <div className="flex-1 flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="text-red-400 line-through">
+                              {formatValue(item.old_values?.[field])}
+                            </div>
+                          </div>
+                          <div className="text-[#e5e4e2]/40">→</div>
+                          <div className="flex-1">
+                            <div className="text-green-400">
+                              {formatValue(item.new_values?.[field])}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {item.action === 'created' && (
+                  <div className="text-sm text-[#e5e4e2]/60 mt-2">
+                    Wpis został utworzony
+                  </div>
+                )}
+
+                {item.action === 'deleted' && (
+                  <div className="text-sm text-[#e5e4e2]/60 mt-2">
+                    Wpis został usunięty
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
