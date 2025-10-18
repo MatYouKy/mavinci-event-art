@@ -30,6 +30,7 @@ import AddMaintenanceModal from '@/components/crm/AddMaintenanceModal';
 import AddInsuranceModal from '@/components/crm/AddInsuranceModal';
 import AddFuelEntryModal from '@/components/crm/AddFuelEntryModal';
 import VehicleGallery from '@/components/crm/VehicleGallery';
+import VehicleAttributesPanel from '@/components/crm/VehicleAttributesPanel';
 
 interface Vehicle {
   id: string;
@@ -435,6 +436,11 @@ export default function VehicleDetailPage() {
                   <p className="text-[#e5e4e2] font-medium">{formatDate(vehicle.purchase_date)}</p>
                 </div>
               </div>
+            </div>
+
+            {/* Właściwości pojazdu */}
+            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
+              <VehicleAttributesPanel vehicleId={vehicleId} canEdit={canManage} />
             </div>
 
             {/* Opis i notatki */}

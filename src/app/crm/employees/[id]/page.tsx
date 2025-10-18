@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Mail, Phone, MapPin, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Download, Lock } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Shield, Calendar, FileText, CheckSquare, Clock, CreditCard as Edit, Save, X, Plus, Trash2, Download, Lock, Award } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab';
 import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
+import EmployeeQualificationsTab from '@/components/crm/EmployeeQualificationsTab';
 import { Formik, Form } from 'formik';
 import { ImageEditorField } from '@/components/ImageEditorField';
 import { AvatarEditorModal } from '@/components/AvatarEditorModal';
@@ -571,6 +572,7 @@ export default function EmployeeDetailPage() {
       <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         {[
           { id: 'overview', label: 'Przegląd', icon: User },
+          ...(currentEmployee?.id === employeeId || isAdmin || canEdit ? [{ id: 'qualifications', label: 'Kwalifikacje', icon: Award }] : []),
           ...(currentEmployee?.id === employeeId || isAdmin || canEdit ? [{ id: 'emails', label: 'Konta Email', icon: Mail }] : []),
           ...(canManagePermissions ? [{ id: 'permissions', label: 'Uprawnienia', icon: Lock }] : []),
           ...(currentEmployee?.id === employeeId || isAdmin || canEdit ? [{ id: 'documents', label: 'Dokumenty', icon: FileText }] : []),
@@ -591,6 +593,13 @@ export default function EmployeeDetailPage() {
           </button>
         ))}
       </div>
+
+      {activeTab === 'qualifications' && (
+        <EmployeeQualificationsTab
+          employeeId={employeeId}
+          canEdit={canEdit}
+        />
+      )}
 
       {activeTab === 'emails' && (
         <EmployeeEmailAccountsTab
