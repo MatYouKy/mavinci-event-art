@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface TooltipProps {
   content: ReactNode;
@@ -9,9 +10,10 @@ interface TooltipProps {
 }
 
 export default function Tooltip({ content, children, delay = 200 }: TooltipProps) {
+  const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -22,28 +24,34 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
     };
   }, []);
 
-  const updatePosition = () => {
-    if (!triggerRef.current || !dialogRef.current) return;
+  useEffect(() => {
+    if (isVisible && tooltipRef.current && triggerRef.current) {
+      const updatePosition = () => {
+        if (!triggerRef.current || !tooltipRef.current) return;
 
-    const rect = triggerRef.current.getBoundingClientRect();
-    const dialogRect = dialogRef.current.getBoundingClientRect();
-    const gap = 12;
+        const rect = triggerRef.current.getBoundingClientRect();
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+        const gap = 12;
 
-    let x = rect.left + rect.width / 2 - dialogRect.width / 2;
-    let y = rect.top - dialogRect.height - gap;
+        let x = rect.left + rect.width / 2 - tooltipRect.width / 2;
+        let y = rect.top - tooltipRect.height - gap + window.scrollY;
 
-    if (x < 10) {
-      x = 10;
-    } else if (x + dialogRect.width > window.innerWidth - 10) {
-      x = window.innerWidth - dialogRect.width - 10;
+        if (x < 10) {
+          x = 10;
+        } else if (x + tooltipRect.width > window.innerWidth - 10) {
+          x = window.innerWidth - tooltipRect.width - 10;
+        }
+
+        if (rect.top - tooltipRect.height - gap < 0) {
+          y = rect.bottom + gap + window.scrollY;
+        }
+
+        setPosition({ x, y });
+      };
+
+      updatePosition();
     }
-
-    if (y < 10) {
-      y = rect.bottom + gap;
-    }
-
-    setPosition({ x, y });
-  };
+  }, [isVisible]);
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) {
@@ -51,10 +59,7 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
     }
 
     timeoutRef.current = setTimeout(() => {
-      if (dialogRef.current && !dialogRef.current.open) {
-        dialogRef.current.show();
-        updatePosition();
-      }
+      setIsVisible(true);
     }, delay);
   };
 
@@ -62,10 +67,7 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-
-    if (dialogRef.current && dialogRef.current.open) {
-      dialogRef.current.close();
-    }
+    setIsVisible(false);
   };
 
   return (
@@ -79,21 +81,25 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
         {children}
       </div>
 
-      <dialog
-        ref={dialogRef}
-        className="bg-transparent border-0 p-0 m-0 backdrop:bg-transparent overflow-visible"
-        style={{
-          position: 'fixed',
-          left: `${position.x}px`,
-          top: `${position.y}px`,
-        }}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg shadow-2xl">
-          {content}
-        </div>
-      </dialog>
+      {isVisible && createPortal(
+        <div
+          ref={tooltipRef}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            position: 'absolute',
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+            zIndex: 2147483647,
+            pointerEvents: 'auto',
+          }}
+        >
+          <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg shadow-2xl">
+            {content}
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 }
