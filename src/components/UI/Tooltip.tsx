@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect, ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 
 interface TooltipProps {
   content: ReactNode;
@@ -10,31 +9,12 @@ interface TooltipProps {
 }
 
 export default function Tooltip({ content, children, delay = 200 }: TooltipProps) {
-  const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [mounted, setMounted] = useState(false);
-  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-
-    let root = document.getElementById('tooltip-portal-root');
-    if (!root) {
-      root = document.createElement('div');
-      root.id = 'tooltip-portal-root';
-      root.style.position = 'fixed';
-      root.style.top = '0';
-      root.style.left = '0';
-      root.style.width = '0';
-      root.style.height = '0';
-      root.style.zIndex = '2147483647';
-      root.style.pointerEvents = 'none';
-      document.body.appendChild(root);
-    }
-    setPortalRoot(root);
-
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -43,23 +23,22 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
   }, []);
 
   const updatePosition = () => {
-    if (!triggerRef.current) return;
+    if (!triggerRef.current || !dialogRef.current) return;
 
     const rect = triggerRef.current.getBoundingClientRect();
-    const tooltipWidth = 300;
-    const tooltipHeight = 100;
+    const dialogRect = dialogRef.current.getBoundingClientRect();
     const gap = 12;
 
-    let x = rect.left + rect.width / 2;
-    let y = rect.top - gap;
+    let x = rect.left + rect.width / 2 - dialogRect.width / 2;
+    let y = rect.top - dialogRect.height - gap;
 
-    if (x - tooltipWidth / 2 < 0) {
-      x = tooltipWidth / 2 + 10;
-    } else if (x + tooltipWidth / 2 > window.innerWidth) {
-      x = window.innerWidth - tooltipWidth / 2 - 10;
+    if (x < 10) {
+      x = 10;
+    } else if (x + dialogRect.width > window.innerWidth - 10) {
+      x = window.innerWidth - dialogRect.width - 10;
     }
 
-    if (y - tooltipHeight < 0) {
+    if (y < 10) {
       y = rect.bottom + gap;
     }
 
@@ -67,9 +46,15 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
   };
 
   const handleMouseEnter = () => {
-    updatePosition();
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
     timeoutRef.current = setTimeout(() => {
-      setIsVisible(true);
+      if (dialogRef.current && !dialogRef.current.open) {
+        dialogRef.current.show();
+        updatePosition();
+      }
     }, delay);
   };
 
@@ -77,7 +62,10 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-    setIsVisible(false);
+
+    if (dialogRef.current && dialogRef.current.open) {
+      dialogRef.current.close();
+    }
   };
 
   return (
@@ -91,22 +79,21 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
         {children}
       </div>
 
-      {mounted && isVisible && portalRoot && createPortal(
-        <div
-          style={{
-            position: 'fixed',
-            left: `${position.x}px`,
-            top: `${position.y}px`,
-            transform: 'translate(-50%, -100%)',
-            pointerEvents: 'auto',
-          }}
-        >
-          <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg shadow-2xl animate-in fade-in duration-200">
-            {content}
-          </div>
-        </div>,
-        portalRoot
-      )}
+      <dialog
+        ref={dialogRef}
+        className="bg-transparent border-0 p-0 m-0 backdrop:bg-transparent overflow-visible"
+        style={{
+          position: 'fixed',
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg shadow-2xl">
+          {content}
+        </div>
+      </dialog>
     </>
   );
 }
