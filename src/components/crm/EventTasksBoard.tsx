@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Trash2, CreditCard as Edit, Calendar, User, GripVertical, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import Tooltip from '@/components/UI/Tooltip';
+import TaskCard from './TaskCard';
 
 interface Task {
   id: string;
@@ -482,119 +482,17 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                       draggable={canManage}
                       onDragStart={(e) => handleDragStart(e, task)}
                       onDragEnd={handleDragEnd}
-                      className={`bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/30 transition-all group ${
-                        canManage ? 'cursor-move' : ''
-                      } ${draggedTask?.id === task.id ? 'opacity-50 scale-95' : ''}`}
+                      className={canManage ? 'cursor-move' : ''}
                     >
-                      <div className="flex items-start gap-2 mb-2">
-                        {canManage && (
-                          <GripVertical className="w-4 h-4 text-[#e5e4e2]/40 flex-shrink-0 mt-0.5" />
-                        )}
-                        <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">
-                          {task.title}
-                        </h4>
-                        {canManage && (
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleOpenAssignModal(task)}
-                              className="text-blue-400 hover:text-blue-300 transition-colors"
-                              title="Przypisz pracowników"
-                            >
-                              <UserPlus className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleOpenModal(task)}
-                              className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(task.id)}
-                              className="text-red-400 hover:text-red-300 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {task.description && (
-                        <p className="text-xs text-[#e5e4e2]/60 mb-2 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs px-2 py-1 rounded ${priorityColors[task.priority]}`}>
-                          {priorityLabels[task.priority]}
-                        </span>
-
-                        {task.due_date && (
-                          <span className="text-xs text-[#e5e4e2]/60 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(task.due_date).toLocaleDateString('pl-PL')}
-                          </span>
-                        )}
-
-                        {task.assignees && task.assignees.length > 0 && (
-                          <div className="flex items-center -space-x-2">
-                            {task.assignees.map((assignee) => (
-                              <Tooltip
-                                key={assignee.employee.id}
-                                content={
-                                  <div className="p-3">
-                                    <div className="flex items-center gap-3 whitespace-nowrap">
-                                      <div className="w-10 h-10 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                        {assignee.employee.avatar_url ? (
-                                          <img
-                                            src={assignee.employee.avatar_url}
-                                            alt=""
-                                            className="w-full h-full object-cover"
-                                          />
-                                        ) : (
-                                          <span className="text-sm text-[#e5e4e2]">
-                                            {assignee.employee.name[0]}{assignee.employee.surname[0]}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div>
-                                        <div className="text-sm font-medium text-[#e5e4e2]">
-                                          {assignee.employee.name} {assignee.employee.surname}
-                                        </div>
-                                        {assignee.employee.email && (
-                                          <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
-                                            {assignee.employee.email}
-                                          </div>
-                                        )}
-                                        {assignee.employee.phone_number && (
-                                          <div className="text-xs text-[#e5e4e2]/60">
-                                            {assignee.employee.phone_number}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                }
-                              >
-                                <div className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center overflow-hidden cursor-pointer hover:z-10">
-                                  {assignee.employee.avatar_url ? (
-                                    <img
-                                      src={assignee.employee.avatar_url}
-                                      alt=""
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <span className="text-xs text-[#e5e4e2]/80">
-                                      {assignee.employee.name[0]}{assignee.employee.surname[0]}
-                                    </span>
-                                  )}
-                                </div>
-                              </Tooltip>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
+                      <TaskCard
+                        task={task}
+                        isDragging={draggedTask?.id === task.id}
+                        canManage={canManage}
+                        showDragHandle={canManage}
+                        onEdit={handleOpenModal}
+                        onDelete={handleDelete}
+                        onAssign={handleOpenAssignModal}
+                      />
                     </div>
                   ))}
 

@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
+import TaskCard from '@/components/crm/TaskCard';
 
 interface Task {
   id: string;
@@ -592,103 +592,54 @@ export default function TasksPage() {
 
               <div className="space-y-3 overflow-y-auto flex-1 pr-2 -mr-2">
                 {getTasksByColumn(column.id).map(task => (
-                <div
-                  key={task.id}
-                  draggable
-                  onDragStart={() => handleDragStart(task)}
-                  onDragEnd={() => {
-                    setDraggedTask(null);
-                    stopAutoScroll();
-                  }}
-                  className={`bg-[#0f1119] border rounded-lg p-4 cursor-move transition-all group ${
-                    draggedTask?.id === task.id
-                      ? 'opacity-50 border-[#d3bb73]/50'
-                      : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-start gap-2 flex-1">
-                      <GripVertical className="w-4 h-4 text-[#e5e4e2]/40 mt-1 flex-shrink-0" />
-                      <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">
-                        {task.title}
-                      </h4>
-                    </div>
-                    {canManageTasks && (
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div
+                    key={task.id}
+                    draggable
+                    onDragStart={() => handleDragStart(task)}
+                    onDragEnd={() => {
+                      setDraggedTask(null);
+                      stopAutoScroll();
+                    }}
+                    className="cursor-move"
+                  >
+                    <TaskCard
+                      task={task}
+                      isDragging={draggedTask?.id === task.id}
+                      canManage={canManageTasks}
+                      showDragHandle={true}
+                      onEdit={handleOpenModal}
+                      onDelete={handleDeleteTask}
+                      additionalActions={
                         <button
-                          onClick={() => handleOpenModal(task)}
-                          className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
+                          onClick={() => handleStartTimer(task)}
+                          disabled={activeTimer?.task_id === task.id}
+                          className={`w-full flex items-center justify-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
+                            activeTimer?.task_id === task.id
+                              ? 'bg-green-500/20 text-green-400 cursor-default'
+                              : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
+                          }`}
+                          title={
+                            activeTimer?.task_id === task.id
+                              ? 'Timer aktywny'
+                              : 'Rozpocznij zadanie'
+                          }
                         >
-                          <Edit className="w-3 h-3" />
+                          {activeTimer?.task_id === task.id ? (
+                            <>
+                              <Clock className="w-3 h-3 animate-pulse" />
+                              <span>Aktywny</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3" />
+                              <span>Rozpocznij</span>
+                            </>
+                          )}
                         </button>
-                        <button
-                          onClick={() => handleDeleteTask(task.id)}
-                          className="p-1 text-red-400 hover:bg-red-500/10 rounded"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {task.description && (
-                    <p className="text-xs text-[#e5e4e2]/60 mb-2 line-clamp-2">
-                      {task.description}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-2 mb-2">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] border ${
-                        priorityColors[task.priority]
-                      }`}
-                    >
-                      {priorityLabels[task.priority]}
-                    </span>
-                    {task.due_date && (
-                      <div className="flex items-center gap-1 text-[10px] text-[#e5e4e2]/40">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(task.due_date).toLocaleDateString('pl-PL')}
-                      </div>
-                    )}
-                  </div>
-
-                  {task.task_assignees.length > 0 && (
-                    <div className="mb-2">
-                      <TaskAssigneeAvatars assignees={task.task_assignees} />
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#d3bb73]/5">
-                    <button
-                      onClick={() => handleStartTimer(task)}
-                      disabled={activeTimer?.task_id === task.id}
-                      className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
-                        activeTimer?.task_id === task.id
-                          ? 'bg-green-500/20 text-green-400 cursor-default'
-                          : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
-                      }`}
-                      title={
-                        activeTimer?.task_id === task.id
-                          ? 'Timer aktywny'
-                          : 'Rozpocznij zadanie'
                       }
-                    >
-                      {activeTimer?.task_id === task.id ? (
-                        <>
-                          <Clock className="w-3 h-3 animate-pulse" />
-                          <span>Aktywny</span>
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-3 h-3" />
-                          <span>Rozpocznij</span>
-                        </>
-                      )}
-                    </button>
+                    />
                   </div>
-                </div>
-              ))}
+                ))}
               </div>
             </div>
           ))}
