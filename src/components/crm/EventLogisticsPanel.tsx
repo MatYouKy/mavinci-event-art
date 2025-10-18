@@ -23,6 +23,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import AddEventVehicleModal from './AddEventVehicleModal';
 
 interface EventLogisticsProps {
   eventId: string;
@@ -33,9 +34,12 @@ interface EventLogisticsProps {
 
 interface EventVehicle {
   id: string;
-  vehicle_id: string;
+  vehicle_id: string | null;
   role: string;
   driver_id: string | null;
+  is_external: boolean;
+  external_company_name: string | null;
+  external_rental_cost: number | null;
   departure_location: string | null;
   departure_time: string | null;
   arrival_time: string | null;
@@ -45,13 +49,17 @@ interface EventVehicle {
   actual_distance_km: number | null;
   fuel_cost_estimate: number | null;
   toll_cost_estimate: number | null;
+  loading_time_minutes: number;
+  preparation_time_minutes: number;
+  travel_time_minutes: number;
   status: string;
   notes: string | null;
+  conflicts_count?: number;
   vehicles: {
     name: string;
     registration_number: string;
     fuel_type: string;
-  };
+  } | null;
   driver: {
     name: string;
     surname: string;
@@ -120,7 +128,7 @@ export default function EventLogisticsPanel({
     try {
       setLoading(true);
 
-      const [vehiclesRes, timelineRes, loadingRes] = await Promise.all([
+      const [vehiclesRes, conflictsRes, timelineRes, loadingRes] = await Promise.all([
         supabase
           .from('event_vehicles')
           .select(`
@@ -130,6 +138,11 @@ export default function EventLogisticsPanel({
           `)
           .eq('event_id', eventId)
           .order('created_at', { ascending: true }),
+
+        supabase
+          .from('vehicle_reservation_conflicts')
+          .select('*')
+          .eq('event_id', eventId),
 
         supabase
           .from('event_logistics_timeline')
@@ -151,10 +164,22 @@ export default function EventLogisticsPanel({
       ]);
 
       if (vehiclesRes.error) throw vehiclesRes.error;
+      if (conflictsRes.error) throw conflictsRes.error;
       if (timelineRes.error) throw timelineRes.error;
       if (loadingRes.error) throw loadingRes.error;
 
-      setVehicles(vehiclesRes.data || []);
+      const conflictCounts: Record<string, number> = {};
+      (conflictsRes.data || []).forEach((conflict: any) => {
+        const key = conflict.reservation_id;
+        conflictCounts[key] = (conflictCounts[key] || 0) + 1;
+      });
+
+      const vehiclesWithConflicts = (vehiclesRes.data || []).map((v: any) => ({
+        ...v,
+        conflicts_count: conflictCounts[v.id] || 0,
+      }));
+
+      setVehicles(vehiclesWithConflicts);
       setTimeline(timelineRes.data || []);
       setLoadingItems(loadingRes.data || []);
     } catch (error) {
@@ -317,14 +342,29 @@ export default function EventLogisticsPanel({
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h4 className="font-semibold text-[#e5e4e2]">
-                            {vehicle.vehicles.name}
+                            {vehicle.is_external
+                              ? `${vehicle.external_company_name || 'Zewnętrzny'}`
+                              : vehicle.vehicles?.name || 'Brak nazwy'}
                           </h4>
-                          <span className="text-sm text-[#e5e4e2]/60">
-                            {vehicle.vehicles.registration_number}
-                          </span>
+                          {!vehicle.is_external && vehicle.vehicles?.registration_number && (
+                            <span className="text-sm text-[#e5e4e2]/60">
+                              {vehicle.vehicles.registration_number}
+                            </span>
+                          )}
+                          {vehicle.is_external && (
+                            <span className="px-2 py-1 rounded text-xs bg-purple-500/20 text-purple-400">
+                              Zewnętrzny
+                            </span>
+                          )}
                           {getStatusBadge(vehicle.status)}
+                          {vehicle.conflicts_count && vehicle.conflicts_count > 0 && (
+                            <span className="px-2 py-1 rounded text-xs bg-orange-500/20 text-orange-400 flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3" />
+                              Konflikt
+                            </span>
+                          )}
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                           <div>
                             <span className="text-[#e5e4e2]/60">Rola:</span>
                             <p className="text-[#e5e4e2]">
@@ -344,6 +384,17 @@ export default function EventLogisticsPanel({
                             </div>
                           )}
                           <div>
+                            <span className="text-[#e5e4e2]/60">Wyjazd:</span>
+                            <p className="text-[#e5e4e2]">
+                              {vehicle.departure_time
+                                ? new Date(vehicle.departure_time).toLocaleTimeString('pl-PL', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : '-'}
+                            </p>
+                          </div>
+                          <div>
                             <span className="text-[#e5e4e2]/60">Dystans:</span>
                             <p className="text-[#e5e4e2]">
                               {vehicle.estimated_distance_km || 0} km
@@ -352,8 +403,11 @@ export default function EventLogisticsPanel({
                           <div>
                             <span className="text-[#e5e4e2]/60">Koszt szac.:</span>
                             <p className="text-[#e5e4e2]">
-                              {((vehicle.fuel_cost_estimate || 0) +
-                                (vehicle.toll_cost_estimate || 0)).toFixed(0)}{' '}
+                              {(
+                                (vehicle.fuel_cost_estimate || 0) +
+                                (vehicle.toll_cost_estimate || 0) +
+                                (vehicle.external_rental_cost || 0)
+                              ).toFixed(0)}{' '}
                               zł
                             </p>
                           </div>
@@ -579,6 +633,17 @@ export default function EventLogisticsPanel({
           </div>
         )}
       </div>
+
+      {/* Modal dodawania pojazdu */}
+      {showVehicleModal && (
+        <AddEventVehicleModal
+          eventId={eventId}
+          eventDate={eventDate}
+          eventLocation={eventLocation}
+          onClose={() => setShowVehicleModal(false)}
+          onSuccess={fetchLogisticsData}
+        />
+      )}
     </div>
   );
 }
