@@ -1,250 +1,204 @@
 'use client';
 
-import { useState, useRef, useEffect, ReactNode, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
-type Placement = 'top' | 'bottom' | 'left' | 'right';
+type Placement = 'top' | 'bottom';
 
-interface TooltipProps {
-  content: ReactNode;
-  children: ReactNode;
-  delay?: number;
+interface PopoverProps {
+  trigger?: ReactNode;
+  children?: ReactNode;
+  content?: ReactNode;
+  openOn?: 'hover' | 'click';
+  offset?: number;
   placement?: Placement;
-  offset?: number; // odstęp między triggerem a tooltipem
-  className?: string; // dodatkowe klasy dla pudełka tooltipa
+  className?: string;
 }
 
-function ensurePortalRoot(): HTMLElement {
-  let root = document.getElementById('tooltip-root') as HTMLElement | null;
-  if (!root) {
-    root = document.createElement('div');
-    root.id = 'tooltip-root';
-    Object.assign(root.style, {
+function ensureRoot(): HTMLElement {
+  let el = document.getElementById('overlay-root') as HTMLElement | null;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'overlay-root';
+    Object.assign(el.style, {
       position: 'fixed',
       inset: '0',
       zIndex: '2147483647',
-      pointerEvents: 'none', // kontener nie łapie eventów
+      pointerEvents: 'none',
     });
-    document.body.appendChild(root);
+    document.body.appendChild(el);
   }
-  return root;
+  return el;
 }
 
-export default function Tooltip({
-  content,
-  children,
-  delay = 150,
+export default function Popover({
+  trigger: triggerProp,
+  children: childrenProp,
+  content: contentProp,
+  openOn = 'hover',
+  offset = 10,
   placement = 'top',
-  offset = 12,
   className = '',
-}: TooltipProps) {
-  const [isVisible, setIsVisible] = useState(false);
-  const [coords, setCoords] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
-  const [actualPlacement, setActualPlacement] = useState<Placement>(placement);
+}: PopoverProps) {
+  const trigger = triggerProp ?? childrenProp;
+  const popoverContent = contentProp ?? childrenProp;
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState({ left: 0, top: 0 });
+  const [side, setSide] = useState<Placement>(placement);
 
   const triggerRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<number | null>(null);
-  const portalRootRef = useRef<HTMLElement | null>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
+  const closeTimer = useRef<number | null>(null);
+  const openTimer = useRef<number | null>(null);
 
-  // Wyczyść timeout na unmount
   useEffect(() => {
+    rootRef.current = ensureRoot();
     return () => {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+      if (closeTimer.current) window.clearTimeout(closeTimer.current);
+      if (openTimer.current) window.clearTimeout(openTimer.current);
     };
   }, []);
 
-  // Zapewnij portal root
-  useEffect(() => {
-    portalRootRef.current = ensurePortalRoot();
-  }, []);
+  const compute = useCallback(() => {
+    const t = triggerRef.current;
+    const p = popRef.current;
+    if (!t || !p) return;
 
-  const computePosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    const tooltip = tooltipRef.current;
-    if (!trigger || !tooltip) return;
-
-    const rect = trigger.getBoundingClientRect();
-    const tipRect = tooltip.getBoundingClientRect();
+    const r = t.getBoundingClientRect();
+    const pr = p.getBoundingClientRect();
     const vw = document.documentElement.clientWidth;
     const vh = document.documentElement.clientHeight;
 
-    // Funkcje pomocnicze dla poszczególnych pozycji
-    const placements: Record<Placement, () => { left: number; top: number }> = {
-      top: () => ({
-        left: rect.left + rect.width / 2 - tipRect.width / 2,
-        top: rect.top - tipRect.height - offset,
-      }),
-      bottom: () => ({
-        left: rect.left + rect.width / 2 - tipRect.width / 2,
-        top: rect.bottom + offset,
-      }),
-      left: () => ({
-        left: rect.left - tipRect.width - offset,
-        top: rect.top + rect.height / 2 - tipRect.height / 2,
-      }),
-      right: () => ({
-        left: rect.right + offset,
-        top: rect.top + rect.height / 2 - tipRect.height / 2,
-      }),
-    };
+    let top =
+      placement === 'top'
+        ? r.top - pr.height - offset
+        : r.bottom + offset;
 
-    // Najpierw spróbuj z żądanym placementem
-    let pos = placements[placement]();
+    let left = r.left + r.width / 2 - pr.width / 2;
 
-    // Dokonaj „clampu” w poziomie (padding 10px)
-    const clampX = (x: number) => Math.min(Math.max(x, 10), vw - tipRect.width - 10);
-    // I pionie — ale jeśli zabraknie miejsca, zrób flip pionowy/poziomy
-    const hasSpaceTop = rect.top >= tipRect.height + offset + 8;
-    const hasSpaceBottom = vh - rect.bottom >= tipRect.height + offset + 8;
-    const hasSpaceLeft = rect.left >= tipRect.width + offset + 8;
-    const hasSpaceRight = vw - rect.right >= tipRect.width + offset + 8;
-
-    let finalPlacement: Placement = placement;
-
-    if (placement === 'top' && !hasSpaceTop && hasSpaceBottom) finalPlacement = 'bottom';
-    if (placement === 'bottom' && !hasSpaceBottom && hasSpaceTop) finalPlacement = 'top';
-    if (placement === 'left' && !hasSpaceLeft && hasSpaceRight) finalPlacement = 'right';
-    if (placement === 'right' && !hasSpaceRight && hasSpaceLeft) finalPlacement = 'left';
-
-    if (finalPlacement !== placement) {
-      pos = placements[finalPlacement]();
+    let finalSide = placement;
+    if (placement === 'top' && top < 8 && r.bottom + pr.height + offset < vh - 8) {
+      finalSide = 'bottom';
+      top = r.bottom + offset;
+    }
+    if (placement === 'bottom' && top + pr.height > vh - 8 && r.top - pr.height - offset > 8) {
+      finalSide = 'top';
+      top = r.top - pr.height - offset;
     }
 
-    // Ostateczny clamp
-    const left = clampX(pos.left);
-    let top = pos.top;
-
-    // Jeśli nadal poza ekranem pionowo, „dosuń”
+    left = Math.min(Math.max(left, 8), vw - pr.width - 8);
     if (top < 8) top = 8;
-    if (top + tipRect.height > vh - 8) top = Math.max(8, vh - tipRect.height - 8);
+    if (top + pr.height > vh - 8) top = Math.max(8, vh - pr.height - 8);
 
-    setActualPlacement(finalPlacement);
+    setSide(finalSide);
     setCoords({ left, top });
   }, [offset, placement]);
 
-  // Aktualizuj pozycję, kiedy tooltip widoczny
   useEffect(() => {
-    if (!isVisible) return;
-    computePosition();
+    if (!open) return;
+    compute();
 
-    const handleScroll = () => computePosition();
-    const handleResize = () => computePosition();
+    const onScroll = () => compute();
+    const onResize = () => compute();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
 
-    // Reaguj na scroll całego dokumentu i okna
-    window.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('resize', handleResize);
+    const ro = new ResizeObserver(() => compute());
+    if (popRef.current) ro.observe(popRef.current);
 
-    // Reaguj na zmiany rozmiaru samego tooltipsa (np. async content)
-    const ro = new ResizeObserver(() => computePosition());
-    if (tooltipRef.current) ro.observe(tooltipRef.current);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+
+    const onDocDown = (e: MouseEvent) => {
+      const t = triggerRef.current;
+      const p = popRef.current;
+      if (!t || !p) return;
+      if (!t.contains(e.target as Node) && !p.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocDown, true);
 
     return () => {
-      window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDocDown, true);
       ro.disconnect();
     };
-  }, [isVisible, computePosition]);
+  }, [open, compute]);
 
-  // Opóźnione otwarcie
-  const handleOpen = () => {
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-    timeoutRef.current = window.setTimeout(() => setIsVisible(true), delay);
+  const startOpen = () => {
+    if (openTimer.current) window.clearTimeout(openTimer.current);
+    openTimer.current = window.setTimeout(() => setOpen(true), 120);
+  };
+  const startClose = () => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setOpen(false), 120);
   };
 
-  // Zamknięcie z niewielkim marginesem (by nie migało)
-  const handleClose = () => {
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-    // mały debounce, by dać czas na wejście myszą w tooltip
-    timeoutRef.current = window.setTimeout(() => setIsVisible(false), 80);
-  };
+  const triggerProps =
+    openOn === 'hover'
+      ? {
+          onMouseEnter: startOpen,
+          onMouseLeave: startClose,
+          onFocus: () => setOpen(true),
+          onBlur: () => setOpen(false),
+        }
+      : {
+          onClick: () => setOpen((v) => !v),
+        };
 
-  // Dla dostępności: otwieraj także na focus
-  const handleFocus = () => {
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-    setIsVisible(true);
-  };
-  const handleBlur = () => {
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-    setIsVisible(false);
-  };
-
-  const tipBox = (
+  const node = (
     <div
-      ref={tooltipRef}
-      role="tooltip"
-      aria-hidden={!isVisible}
-      onMouseEnter={handleOpen}
-      onMouseLeave={handleClose}
+      ref={popRef}
+      role="dialog"
+      aria-modal="false"
       style={{
         position: 'fixed',
         left: `${coords.left}px`,
         top: `${coords.top}px`,
-        // kluczowe: sam tooltip ma pointer-events:auto, ale kontener portalu – none
         pointerEvents: 'auto',
       }}
-      className={['max-w-[320px]'].join(' ')}
+      onMouseEnter={openOn === 'hover' ? startOpen : undefined}
+      onMouseLeave={openOn === 'hover' ? startClose : undefined}
+      className="max-w-[320px]"
     >
-      {/* Strzałka */}
       <div
         aria-hidden
-        className="absolute"
+        className="absolute left-1/2 -translate-x-1/2"
         style={{
-          left:
-            actualPlacement === 'top' || actualPlacement === 'bottom'
-              ? '50%'
-              : undefined,
-          top:
-            actualPlacement === 'left' || actualPlacement === 'right'
-              ? '50%'
-              : undefined,
-          transform:
-            actualPlacement === 'top' || actualPlacement === 'bottom'
-              ? 'translateX(-50%)'
-              : 'translateY(-50%)',
+          top: side === 'bottom' ? -8 : undefined,
+          bottom: side === 'top' ? -8 : undefined,
         }}
       >
         <span
           className="block w-0 h-0"
           style={{
-            borderLeft:
-              actualPlacement === 'top' || actualPlacement === 'bottom'
-                ? '8px solid transparent'
-                : undefined,
-            borderRight:
-              actualPlacement === 'top' || actualPlacement === 'bottom'
-                ? '8px solid transparent'
-                : undefined,
-            borderTop:
-              actualPlacement === 'bottom' ? '8px solid #0f1119' : undefined,
-            borderBottom:
-              actualPlacement === 'top' ? '8px solid #0f1119' : undefined,
-            borderY:
-              actualPlacement === 'left' || actualPlacement === 'right'
-                ? undefined
-                : undefined,
-            borderTopColor: actualPlacement === 'bottom' ? '#0f1119' : undefined,
+            borderLeft: '8px solid transparent',
+            borderRight: '8px solid transparent',
+            borderTop: side === 'bottom' ? '8px solid #0f1119' : undefined,
+            borderBottom: side === 'top' ? '8px solid #0f1119' : undefined,
           }}
         />
       </div>
 
-      {/* Pudełko tooltipa */}
       <div
         className={[
           'bg-[#0f1119]',
-          'border',
-          'border-[#d3bb73]/30',
-          'rounded-lg',
+          'border border-[#d3bb73]/35',
+          'rounded-xl',
           'shadow-2xl',
-          'px-3',
-          'py-2',
-          'text-sm',
-          'text-neutral-200',
+          'px-3 py-2',
+          'text-sm text-neutral-200',
           'backdrop-blur',
           className,
         ].join(' ')}
       >
-        {content}
+        {popoverContent}
       </div>
     </div>
   );
@@ -253,17 +207,13 @@ export default function Tooltip({
     <>
       <div
         ref={triggerRef}
-        onMouseEnter={handleOpen}
-        onMouseLeave={handleClose}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        className="inline-block align-middle"
-        tabIndex={0} // fokus z klawiatury
+        className="inline-flex align-middle"
+        {...triggerProps}
+        tabIndex={0}
       >
-        {children}
+        {trigger}
       </div>
-
-      {isVisible && portalRootRef.current && createPortal(tipBox, portalRootRef.current)}
+      {open && rootRef.current && createPortal(node, rootRef.current)}
     </>
   );
 }
