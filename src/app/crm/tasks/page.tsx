@@ -100,7 +100,8 @@ export default function TasksPage() {
           schema: 'public',
           table: 'tasks',
         },
-        () => {
+        (payload) => {
+          console.log('Tasks realtime event:', payload);
           fetchTasks();
         }
       )
@@ -111,7 +112,8 @@ export default function TasksPage() {
           schema: 'public',
           table: 'task_assignees',
         },
-        () => {
+        (payload) => {
+          console.log('Task assignees realtime event:', payload);
           fetchTasks();
         }
       )

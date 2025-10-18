@@ -82,7 +82,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
           schema: 'public',
           table: 'tasks',
         },
-        () => {
+        (payload) => {
+          console.log('Private tasks realtime event:', payload);
           fetchTasks();
         }
       )
@@ -93,7 +94,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
           schema: 'public',
           table: 'task_assignees',
         },
-        () => {
+        (payload) => {
+          console.log('Private task assignees realtime event:', payload);
           fetchTasks();
         }
       )
@@ -317,12 +319,15 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     stopAutoScroll();
 
     try {
-      const { error } = await supabase
+      console.log('Updating task column:', { taskId, oldColumn, newColumn: columnId });
+      const { error, data } = await supabase
         .from('tasks')
         .update({ board_column: columnId })
-        .eq('id', taskId);
+        .eq('id', taskId)
+        .select();
 
       if (error) throw error;
+      console.log('Task updated successfully:', data);
 
       if (columnId === 'in_progress' && oldColumn !== 'in_progress' && !activeTimer) {
         await handleStartTimer(draggedTask);

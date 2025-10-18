@@ -93,12 +93,9 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
 
         {hoveredIndex === index && (
           <div
-            className="fixed pointer-events-auto"
+            className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 pointer-events-auto"
             style={{
               zIndex: 9999,
-              left: '50%',
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
             }}
           >
             <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-2xl p-3 min-w-[200px]">
@@ -149,6 +146,8 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
                   </div>
                 </div>
               </div>
+
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-[#1c1f33] border-r border-b border-[#d3bb73]/30"></div>
             </div>
           </div>
         )}
