@@ -34,7 +34,7 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
         const gap = 12;
 
         let x = rect.left + rect.width / 2 - tooltipRect.width / 2;
-        let y = rect.top - tooltipRect.height - gap + window.scrollY;
+        let y = rect.top - tooltipRect.height - gap;
 
         if (x < 10) {
           x = 10;
@@ -43,7 +43,7 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
         }
 
         if (rect.top - tooltipRect.height - gap < 0) {
-          y = rect.bottom + gap + window.scrollY;
+          y = rect.bottom + gap;
         }
 
         setPosition({ x, y });
@@ -87,7 +87,7 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
           style={{
-            position: 'absolute',
+            position: 'fixed',
             left: `${position.x}px`,
             top: `${position.y}px`,
             zIndex: 2147483647,
