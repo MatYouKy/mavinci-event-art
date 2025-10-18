@@ -105,7 +105,16 @@ export default function WeekView({
                         if (onEventHover) onEventHover(null);
                       }}
                     >
-                      <div className="text-xs font-medium truncate">{event.name}</div>
+                      <div className="text-xs font-medium truncate flex items-center gap-1">
+                        {event.category?.custom_icon?.svg_code && (
+                          <span
+                            className="inline-flex w-3 h-3 flex-shrink-0"
+                            dangerouslySetInnerHTML={{ __html: event.category.custom_icon.svg_code }}
+                            style={{ color: event.category.color }}
+                          />
+                        )}
+                        <span className="truncate">{event.name}</span>
+                      </div>
                       {height > 40 && (
                         <>
                           <div className="flex items-center gap-1 text-[10px] mt-1 opacity-80">

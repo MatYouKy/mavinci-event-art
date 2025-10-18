@@ -138,7 +138,16 @@ export default function MonthView({
                               if (onEventHover) onEventHover(null);
                             }}
                           >
-                            {event.name}
+                            <span className="flex items-center gap-1">
+                              {event.category?.custom_icon?.svg_code && (
+                                <span
+                                  className="inline-flex w-3 h-3 flex-shrink-0"
+                                  dangerouslySetInnerHTML={{ __html: event.category.custom_icon.svg_code }}
+                                  style={{ color: event.category.color }}
+                                />
+                              )}
+                              <span className="truncate">{event.name}</span>
+                            </span>
                           </div>
                         </div>
                       );

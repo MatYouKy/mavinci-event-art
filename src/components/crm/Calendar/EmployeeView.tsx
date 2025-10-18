@@ -82,8 +82,15 @@ export default function EmployeeView({
 
                           <div className="flex-1 min-w-0 space-y-2">
                             <div className="flex items-start justify-between gap-4">
-                              <h4 className="text-[#e5e4e2] font-medium group-hover:text-[#d3bb73] transition-colors">
-                                {event.name}
+                              <h4 className="text-[#e5e4e2] font-medium group-hover:text-[#d3bb73] transition-colors flex items-center gap-2">
+                                {event.category?.custom_icon?.svg_code && (
+                                  <span
+                                    className="inline-flex w-4 h-4 flex-shrink-0"
+                                    dangerouslySetInnerHTML={{ __html: event.category.custom_icon.svg_code }}
+                                    style={{ color: event.category.color }}
+                                  />
+                                )}
+                                <span>{event.name}</span>
                               </h4>
                               <span className="text-xs text-[#e5e4e2]/60 whitespace-nowrap">
                                 {formatDate(event.event_date)}

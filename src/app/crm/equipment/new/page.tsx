@@ -16,6 +16,15 @@ interface Category {
   is_active: boolean;
 }
 
+interface Subcategory {
+  id: string;
+  category_id: string;
+  name: string;
+  description: string | null;
+  order_index: number;
+  is_active: boolean;
+}
+
 interface Component {
   id: string;
   component_name: string;
@@ -38,6 +47,8 @@ export default function NewEquipmentPage() {
   const canCreate = canCreateInModule('equipment');
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [filteredSubcategories, setFilteredSubcategories] = useState<Subcategory[]>([]);
   const [connectorTypes, setConnectorTypes] = useState<ConnectorType[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
@@ -53,6 +64,7 @@ export default function NewEquipmentPage() {
   const [formData, setFormData] = useState({
     name: '',
     category_id: '',
+    subcategory_id: '',
     brand: '',
     model: '',
     description: '',
@@ -81,8 +93,21 @@ export default function NewEquipmentPage() {
 
   useEffect(() => {
     fetchCategories();
+    fetchSubcategories();
     fetchConnectorTypes();
   }, []);
+
+  // Filtruj podkategorie gdy zmienia się kategoria
+  useEffect(() => {
+    if (formData.category_id) {
+      const filtered = subcategories.filter(sc => sc.category_id === formData.category_id);
+      setFilteredSubcategories(filtered);
+    } else {
+      setFilteredSubcategories([]);
+    }
+    // Wyczyść podkategorię gdy zmienia się kategoria
+    setFormData(prev => ({ ...prev, subcategory_id: '' }));
+  }, [formData.category_id, subcategories]);
 
   const fetchCategories = async () => {
     const { data, error } = await supabase
@@ -92,6 +117,16 @@ export default function NewEquipmentPage() {
       .order('order_index');
 
     if (data) setCategories(data);
+  };
+
+  const fetchSubcategories = async () => {
+    const { data, error } = await supabase
+      .from('equipment_subcategories')
+      .select('*')
+      .eq('is_active', true)
+      .order('order_index');
+
+    if (data) setSubcategories(data);
   };
 
   const fetchConnectorTypes = async () => {
@@ -179,6 +214,7 @@ export default function NewEquipmentPage() {
         .insert({
           name: formData.name,
           category_id: formData.category_id,
+          subcategory_id: formData.subcategory_id || null,
           brand: formData.brand || null,
           model: formData.model || null,
           description: formData.description || null,
@@ -323,6 +359,27 @@ export default function NewEquipmentPage() {
               Wybór kategorii określi dostępne pola w formularzu
             </p>
           </div>
+
+          {filteredSubcategories.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Podkategoria
+              </label>
+              <select
+                name="subcategory_id"
+                value={formData.subcategory_id}
+                onChange={handleInputChange}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 text-base"
+              >
+                <option value="">Wybierz podkategorię (opcjonalnie)</option>
+                {filteredSubcategories.map(subcat => (
+                  <option key={subcat.id} value={subcat.id}>
+                    {subcat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>

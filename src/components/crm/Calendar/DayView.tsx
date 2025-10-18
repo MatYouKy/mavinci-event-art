@@ -83,7 +83,16 @@ export default function DayView({
                       if (onEventHover) onEventHover(null);
                     }}
                   >
-                    <div className="text-sm font-medium mb-1">{event.name}</div>
+                    <div className="text-sm font-medium mb-1 flex items-center gap-2">
+                      {event.category?.custom_icon?.svg_code && (
+                        <span
+                          className="inline-flex w-4 h-4 flex-shrink-0"
+                          dangerouslySetInnerHTML={{ __html: event.category.custom_icon.svg_code }}
+                          style={{ color: event.category.color }}
+                        />
+                      )}
+                      <span>{event.name}</span>
+                    </div>
                     <div className="flex items-center gap-2 text-xs opacity-80">
                       <Clock className="w-3 h-3" />
                       <span>{formatTime(event.event_date)}</span>
@@ -127,7 +136,16 @@ export default function DayView({
                     onClick={() => onEventClick(event)}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">{event.name}</h4>
+                      <h4 className="text-sm font-medium text-[#e5e4e2] flex-1 flex items-center gap-2">
+                        {event.category?.custom_icon?.svg_code && (
+                          <span
+                            className="inline-flex w-4 h-4 flex-shrink-0"
+                            dangerouslySetInnerHTML={{ __html: event.category.custom_icon.svg_code }}
+                            style={{ color: event.category.color }}
+                          />
+                        )}
+                        <span>{event.name}</span>
+                      </h4>
                       {event.category && (
                         <span
                           className="text-[10px] px-2 py-0.5 rounded border whitespace-nowrap"

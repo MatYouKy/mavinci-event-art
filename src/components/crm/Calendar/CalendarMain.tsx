@@ -73,7 +73,12 @@ export default function CalendarMain() {
           category:event_categories(
             id,
             name,
-            color
+            color,
+            custom_icon:custom_icons(
+              id,
+              name,
+              svg_code
+            )
           ),
           employees:employee_assignments(
             id,
