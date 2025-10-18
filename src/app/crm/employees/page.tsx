@@ -510,16 +510,6 @@ function AddEmployeeModal({
           </button>
         </div>
       </div>
-
-      {resetPasswordEmployee && (
-        <AdminResetPasswordModal
-          isOpen={true}
-          onClose={() => setResetPasswordEmployee(null)}
-          employeeId={resetPasswordEmployee.id}
-          employeeName={`${resetPasswordEmployee.name} ${resetPasswordEmployee.surname}`}
-          employeeEmail={resetPasswordEmployee.email}
-        />
-      )}
     </div>
   );
 }
