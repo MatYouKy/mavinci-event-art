@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase, Edit as EditIcon, AlertCircle, History, UserCheck } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase, Edit as EditIcon, AlertCircle, History, UserCheck, Truck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import EventTasksBoard from '@/components/crm/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import EventFilesExplorer from '@/components/crm/EventFilesExplorer';
 import EventSubcontractorsPanel from '@/components/crm/EventSubcontractorsPanel';
+import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
 
 interface Event {
   id: string;
@@ -124,7 +125,7 @@ export default function EventDetailPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'tasks' | 'offer' | 'subcontractors'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'tasks' | 'offer' | 'subcontractors' | 'logistics'>('overview');
 
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1003,12 +1004,13 @@ export default function EventDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-[#d3bb73]/10">
+      <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         {[
           { id: 'overview', label: 'Przegląd', icon: FileText },
           { id: 'offer', label: 'Oferta', icon: DollarSign },
           { id: 'equipment', label: 'Sprzęt', icon: Package },
           { id: 'team', label: 'Zespół', icon: Users },
+          { id: 'logistics', label: 'Logistyka', icon: Truck },
           { id: 'subcontractors', label: 'Podwykonawcy', icon: UserCheck },
           { id: 'files', label: 'Pliki', icon: FileText },
           { id: 'tasks', label: 'Zadania', icon: CheckSquare },
@@ -1635,6 +1637,15 @@ export default function EventDetailPage() {
 
       {activeTab === 'files' && (
         <EventFilesExplorer eventId={eventId} />
+      )}
+
+      {activeTab === 'logistics' && event && (
+        <EventLogisticsPanel
+          eventId={event.id}
+          eventLocation={event.location}
+          eventDate={event.event_date}
+          canManage={true}
+        />
       )}
 
       {activeTab === 'subcontractors' && (
