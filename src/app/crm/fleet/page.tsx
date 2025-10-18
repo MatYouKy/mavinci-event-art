@@ -31,6 +31,8 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRouter } from 'next/navigation';
 import QuickFuelModal from '@/components/crm/QuickFuelModal';
+import { useUserPreferences } from '@/hooks/useUserPreferences';
+import { ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
 
 interface Vehicle {
   id: string;
@@ -46,6 +48,7 @@ interface Vehicle {
   current_mileage: number;
   fuel_type: string;
   primary_image_url: string | null;
+  all_images: { id: string; image_url: string; title: string | null }[];
   assigned_to: string | null;
   assigned_employee_name: string | null;
   assigned_employee_surname: string | null;
@@ -61,8 +64,10 @@ export default function FleetPage() {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
+  const { getViewMode, setViewMode: saveViewMode } = useUserPreferences();
 
   const [quickFuelVehicle, setQuickFuelVehicle] = useState<Vehicle | null>(null);
+  const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({});
 
   const canManage = canManageModule('fleet');
   const canCreate = canCreateInModule('fleet');
@@ -73,7 +78,7 @@ export default function FleetPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(getViewMode('fleet') === 'grid' ? 'cards' : 'table');
 
   // Statystyki
   const [stats, setStats] = useState({
@@ -176,6 +181,12 @@ export default function FleetPage() {
             .eq('is_primary', true)
             .maybeSingle();
 
+          const { data: allImages } = await supabase
+            .from('vehicle_images')
+            .select('id, image_url, title')
+            .eq('vehicle_id', vehicle.id)
+            .order('sort_order', { ascending: true });
+
           return {
             ...vehicle,
             assigned_to: activeAssignment?.employee_id || null,
@@ -187,6 +198,7 @@ export default function FleetPage() {
             yearly_fuel_cost: yearlyFuelCost,
             avg_fuel_consumption_3months: avgFuelConsumption,
             primary_image_url: primaryImage?.image_url || null,
+            all_images: allImages || [],
           };
         })
       );
@@ -424,24 +436,32 @@ export default function FleetPage() {
           {/* View mode toggle */}
           <div className="flex gap-2">
             <button
-              onClick={() => setViewMode('cards')}
-              className={`px-4 py-2 rounded-lg transition-colors ${
+              onClick={() => {
+                setViewMode('cards');
+                saveViewMode('fleet', 'grid');
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                 viewMode === 'cards'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
               }`}
             >
-              Karty
+              <LayoutGrid className="w-4 h-4" />
+              Kafelki
             </button>
             <button
-              onClick={() => setViewMode('table')}
-              className={`px-4 py-2 rounded-lg transition-colors ${
+              onClick={() => {
+                setViewMode('table');
+                saveViewMode('fleet', 'list');
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                 viewMode === 'table'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
               }`}
             >
-              Tabela
+              <List className="w-4 h-4" />
+              Lista
             </button>
           </div>
         </div>
@@ -464,14 +484,61 @@ export default function FleetPage() {
               key={vehicle.id}
               className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden hover:border-[#d3bb73]/30 transition-colors"
             >
-              {/* Image */}
-              <div className="h-48 bg-[#0f1119] flex items-center justify-center relative">
-                {vehicle.primary_image_url ? (
-                  <img
-                    src={vehicle.primary_image_url}
-                    alt={vehicle.name}
-                    className="w-full h-full object-cover"
-                  />
+              {/* Image Carousel */}
+              <div
+                className="h-48 bg-[#0f1119] flex items-center justify-center relative cursor-pointer group"
+                onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+              >
+                {vehicle.all_images.length > 0 ? (
+                  <>
+                    <img
+                      src={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.image_url}
+                      alt={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.title || vehicle.name}
+                      className="w-full h-full object-cover"
+                    />
+                    {vehicle.all_images.length > 1 && (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImageIndexes(prev => ({
+                              ...prev,
+                              [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1)
+                            }));
+                          }}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          disabled={(imageIndexes[vehicle.id] || 0) === 0}
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImageIndexes(prev => ({
+                              ...prev,
+                              [vehicle.id]: Math.min(vehicle.all_images.length - 1, (prev[vehicle.id] || 0) + 1)
+                            }));
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          disabled={(imageIndexes[vehicle.id] || 0) === vehicle.all_images.length - 1}
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                          {vehicle.all_images.map((_, idx) => (
+                            <div
+                              key={idx}
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                idx === (imageIndexes[vehicle.id] || 0)
+                                  ? 'bg-white'
+                                  : 'bg-white/40'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
                 ) : (
                   <Car className="w-24 h-24 text-[#e5e4e2]/20" />
                 )}
@@ -606,7 +673,20 @@ export default function FleetPage() {
                   >
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        {getCategoryIcon(vehicle.category)}
+                        <div
+                          className="w-16 h-16 rounded-lg overflow-hidden bg-[#0f1119] flex items-center justify-center flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-[#d3bb73]/50 transition-all"
+                          onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                        >
+                          {vehicle.all_images.length > 0 ? (
+                            <img
+                              src={vehicle.all_images[0]?.image_url}
+                              alt={vehicle.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Car className="w-8 h-8 text-[#e5e4e2]/20" />
+                          )}
+                        </div>
                         <div>
                           <div className="font-medium text-[#e5e4e2]">{vehicle.name}</div>
                           <div className="text-sm text-[#e5e4e2]/60">

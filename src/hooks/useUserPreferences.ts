@@ -27,6 +27,7 @@ interface Preferences {
   tasks?: ViewModePreference;
   offers?: ViewModePreference;
   contracts?: ViewModePreference;
+  fleet?: ViewModePreference;
   notifications?: NotificationPreferences;
 }
 
