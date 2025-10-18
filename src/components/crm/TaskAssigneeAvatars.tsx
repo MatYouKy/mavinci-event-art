@@ -59,16 +59,16 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
         className="relative group"
         style={{
           marginLeft: index > 0 ? '-8px' : '0',
-          zIndex: hoveredIndex === index ? 50 : visibleAssignees.length - index,
+          zIndex: hoveredIndex === index ? 9999 : visibleAssignees.length - index,
         }}
         onMouseEnter={() => setHoveredIndex(index)}
         onMouseLeave={() => setHoveredIndex(null)}
       >
         <div
-          className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer transition-all duration-200"
+          className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer"
           style={{
-            width: hoveredIndex === index ? '36px' : '28px',
-            height: hoveredIndex === index ? '36px' : '28px',
+            width: '28px',
+            height: '28px',
           }}
         >
           {employees.avatar_url ? (
@@ -84,7 +84,7 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
           ) : (
             <div
               className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33]"
-              style={{ fontSize: hoveredIndex === index ? '12px' : '10px' }}
+              style={{ fontSize: '10px' }}
             >
               {initials}
             </div>
@@ -92,8 +92,16 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
         </div>
 
         {hoveredIndex === index && (
-          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-auto z-[100]">
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-3 min-w-[200px]">
+          <div
+            className="fixed pointer-events-auto"
+            style={{
+              zIndex: 9999,
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-2xl p-3 min-w-[200px]">
               <div className="flex items-start gap-3">
                 <div
                   className="relative rounded-full border-2 border-[#d3bb73]/20 bg-[#0f1119] overflow-hidden flex-shrink-0"
@@ -141,8 +149,6 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
                   </div>
                 </div>
               </div>
-
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-[#1c1f33] border-r border-b border-[#d3bb73]/30"></div>
             </div>
           </div>
         )}
