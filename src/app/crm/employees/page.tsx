@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Mail, Phone, Briefcase, Shield, User } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Briefcase, Shield, User, Lock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import AdminResetPasswordModal from '@/components/crm/AdminResetPasswordModal';
 
 interface Employee {
   id: string;
@@ -32,6 +33,7 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [resetPasswordEmployee, setResetPasswordEmployee] = useState<Employee | null>(null);
 
   const { canCreateInModule } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
@@ -243,6 +245,21 @@ export default function EmployeesPage() {
                   </div>
                 )}
               </div>
+
+              {canAddEmployee && (
+                <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setResetPasswordEmployee(employee);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-3 py-2 rounded-lg hover:bg-[#d3bb73]/20 transition-colors text-sm"
+                  >
+                    <Lock className="w-4 h-4" />
+                    Resetuj hasło
+                  </button>
+                </div>
+              )}
 
               {employee.skills && Array.isArray(employee.skills) && employee.skills.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
@@ -493,6 +510,16 @@ function AddEmployeeModal({
           </button>
         </div>
       </div>
+
+      {resetPasswordEmployee && (
+        <AdminResetPasswordModal
+          isOpen={true}
+          onClose={() => setResetPasswordEmployee(null)}
+          employeeId={resetPasswordEmployee.id}
+          employeeName={`${resetPasswordEmployee.name} ${resetPasswordEmployee.surname}`}
+          employeeEmail={resetPasswordEmployee.email}
+        />
+      )}
     </div>
   );
 }
