@@ -100,7 +100,7 @@ export default function EquipmentPage() {
         clearTimeout(tooltipTimeout);
       }
     };
-  }, []);
+  }, [tooltipTimeout]);
 
   const loadUserPreferences = async () => {
     try {
@@ -193,6 +193,8 @@ export default function EquipmentPage() {
       setKits(data || []);
     } catch (error) {
       console.error('Error fetching kits:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
