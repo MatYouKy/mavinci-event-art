@@ -8,6 +8,7 @@ import { uploadImage } from '@/lib/storage';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import EquipmentSkillRequirementsPanel from '@/components/crm/EquipmentSkillRequirementsPanel';
 
 interface Category {
   id: string;
@@ -482,6 +483,8 @@ export default function EquipmentDetailPage() {
           categories={categories}
           onInputChange={handleInputChange}
           onThumbnailUpload={handleThumbnailUpload}
+          equipmentId={id}
+          canEdit={canManage}
         />
       )}
 
@@ -731,6 +734,8 @@ function DetailsTab({
   categories,
   onInputChange,
   onThumbnailUpload,
+  equipmentId,
+  canEdit,
 }: any) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -891,6 +896,11 @@ function DetailsTab({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Panel wymaganych umiejętności */}
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+          <EquipmentSkillRequirementsPanel equipmentId={equipmentId} canEdit={canEdit} />
         </div>
       </div>
     </div>
