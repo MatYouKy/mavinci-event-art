@@ -75,7 +75,7 @@ export default function EquipmentPage() {
   const [kits, setKits] = useState<Kit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'equipment' | 'connectors'>('equipment');
+  const [activeTab, setActiveTab] = useState<'equipment' | 'kits' | 'connectors'>('equipment');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchField, setSearchField] = useState<'all' | 'name' | 'brand'>('all');
@@ -414,11 +414,11 @@ export default function EquipmentPage() {
                     <span className="hidden sm:inline">Lokalizacje</span>
                   </button>
                   <button
-                    onClick={() => setShowKitsModal(true)}
+                    onClick={() => setActiveTab('kits')}
                     className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
                   >
                     <Package className="w-5 h-5 md:w-4 md:h-4" />
-                    <span className="hidden sm:inline">Zestawy</span>
+                    <span className="hidden sm:inline">Zarządzaj zestawami</span>
                   </button>
                 </>
               )}
@@ -454,6 +454,22 @@ export default function EquipmentPage() {
           )}
         </button>
         <button
+          onClick={() => setActiveTab('kits')}
+          className={`px-4 md:px-6 py-3 text-sm font-medium transition-colors relative whitespace-nowrap min-h-[44px] ${
+            activeTab === 'kits'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <AlignJustify className="w-5 h-5 md:w-4 md:h-4" />
+            Zestawy
+          </div>
+          {activeTab === 'kits' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab('connectors')}
           className={`px-4 md:px-6 py-3 text-sm font-medium transition-colors relative whitespace-nowrap min-h-[44px] ${
             activeTab === 'connectors'
@@ -473,6 +489,15 @@ export default function EquipmentPage() {
 
       {activeTab === 'connectors' ? (
         <ConnectorsView viewMode={viewMode} />
+      ) : activeTab === 'kits' ? (
+        <div className="space-y-4">
+          <KitsManagementModal
+            onClose={() => setActiveTab('equipment')}
+            equipment={equipment}
+            initialKitId={null}
+            inline={true}
+          />
+        </div>
       ) : (
         <>
           <div className="flex flex-col lg:flex-row gap-4">

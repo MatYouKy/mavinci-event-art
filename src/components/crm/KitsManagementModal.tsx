@@ -44,10 +44,12 @@ export default function KitsManagementModal({
   onClose,
   equipment,
   initialKitId,
+  inline = false,
 }: {
   onClose: () => void;
   equipment: Equipment[];
   initialKitId?: string | null;
+  inline?: boolean;
 }) {
   const { showSnackbar } = useSnackbar();
   const { canManageModule } = useCurrentEmployee();
@@ -317,17 +319,27 @@ export default function KitsManagementModal({
     item.model?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const wrapperClass = inline
+    ? "w-full"
+    : "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4";
+
+  const contentClass = inline
+    ? "bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full overflow-hidden flex flex-col"
+    : "bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col";
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className={wrapperClass}>
+      <div className={contentClass}>
         <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
           <h3 className="text-xl font-light text-[#e5e4e2]">Zarządzanie zestawami sprzętu</h3>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-[#e5e4e2]" />
-          </button>
+          {!inline && (
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-[#e5e4e2]" />
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
