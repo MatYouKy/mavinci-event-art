@@ -336,16 +336,7 @@ export default function EquipmentPage() {
   const filteredKits = kits.filter((kit) => {
     const matchesSearch = kit.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       kit.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch && !selectedCategory; // zestawy tylko w widoku "Wszystkie"
-  });
-
-  const allItems = [
-    ...filteredEquipment.map(e => ({ type: 'equipment' as const, data: e })),
-    ...filteredKits.map(k => ({ type: 'kit' as const, data: k }))
-  ].sort((a, b) => {
-    const nameA = a.type === 'equipment' ? a.data.name : a.data.name;
-    const nameB = b.type === 'equipment' ? b.data.name : b.data.name;
-    return nameA.localeCompare(nameB);
+    return matchesSearch;
   });
 
   const getStockInfo = (item: Equipment) => {
@@ -373,13 +364,13 @@ export default function EquipmentPage() {
       totalAvailable += Math.min(requiredQty, availableQty);
     });
 
-    if (totalRequired === 0) return { available: 0, total: 0, color: 'text-gray-400', label: 'Brak' };
+    if (totalRequired === 0) return { available: 0, required: 0, color: 'text-gray-400', label: 'Brak' };
 
     const percentage = (totalAvailable / totalRequired) * 100;
 
-    if (percentage === 100) return { available: totalAvailable, total: totalRequired, color: 'text-green-400', label: 'Kompletny' };
-    if (percentage === 0) return { available: totalAvailable, total: totalRequired, color: 'text-red-400', label: 'Niedostępny' };
-    return { available: totalAvailable, total: totalRequired, color: 'text-orange-400', label: 'Niekompletny' };
+    if (percentage === 100) return { available: totalAvailable, required: totalRequired, color: 'text-green-400', label: 'Kompletny' };
+    if (percentage === 0) return { available: totalAvailable, required: totalRequired, color: 'text-red-400', label: 'Niedostępny' };
+    return { available: totalAvailable, required: totalRequired, color: 'text-orange-400', label: 'Niekompletny' };
   };
 
   if (loading) {
@@ -767,7 +758,7 @@ export default function EquipmentPage() {
         ))}
       </div>
 
-      {allItems.length === 0 ? (
+      {filteredEquipment.length === 0 ? (
         <div className="text-center py-12">
           <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
           <p className="text-[#e5e4e2]/60">
@@ -780,10 +771,10 @@ export default function EquipmentPage() {
             <div className="flex items-center justify-center">
               <input
                 type="checkbox"
-                checked={selectedItems.length === allItems.filter(i => i.type !== 'kit').length && allItems.filter(i => i.type !== 'kit').length > 0}
+                checked={selectedItems.length === filteredEquipment.length && filteredEquipment.length > 0}
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelectedItems(allItems.filter(i => i.type !== 'kit').map(i => i.data.id));
+                    setSelectedItems(filteredEquipment.map(e => e.id));
                   } else {
                     setSelectedItems([]);
                   }
@@ -798,46 +789,35 @@ export default function EquipmentPage() {
             <div className="text-center">Dostępne</div>
             <div className="text-center">Razem</div>
           </div>
-          {allItems.map((item) => {
-            const isKit = item.type === 'kit';
-            const stockInfo = isKit ? getKitInfo(item.data) : getStockInfo(item.data);
-            const itemData = item.data as any;
+          {filteredEquipment.map((equipment) => {
+            const stockInfo = getStockInfo(equipment);
+            const itemData = equipment;
 
             return (
               <div
                 key={itemData.id}
                 onClick={() => {
-                  if (isKit) {
-                    setSelectedKitId(itemData.id);
-                    setShowKitsModal(true);
-                  } else {
-                    router.push(`/crm/equipment/${itemData.id}`);
-                  }
+                  router.push(`/crm/equipment/${itemData.id}`);
                 }}
-                className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group min-w-[700px] ${
-                  isKit ? 'bg-blue-500/5' : ''
-                }`}
+                className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group min-w-[700px]`}
               >
                 <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                  {!isKit && (
-                    <input
-                      type="checkbox"
-                      checked={selectedItems.includes(itemData.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedItems([...selectedItems, itemData.id]);
-                        } else {
-                          setSelectedItems(selectedItems.filter(id => id !== itemData.id));
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/50 cursor-pointer"
-                    />
-                  )}
+                  <input
+                    type="checkbox"
+                    checked={selectedItems.includes(itemData.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedItems([...selectedItems, itemData.id]);
+                      } else {
+                        setSelectedItems(selectedItems.filter(id => id !== itemData.id));
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/50 cursor-pointer"
+                  />
                 </div>
                 <div
                   className="relative w-6 h-6 flex-shrink-0"
                   onMouseEnter={(e) => {
-                    if (!isKit) {
                       e.stopPropagation();
                       const rect = e.currentTarget.getBoundingClientRect();
                       const timeout = setTimeout(() => {
@@ -864,12 +844,7 @@ export default function EquipmentPage() {
                     setTooltipItem(null);
                   }}
                 >
-                  {isKit && (
-                    <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                      <Flag className="w-3 h-3 text-white" />
-                    </div>
-                  )}
-                  {!isKit && itemData.thumbnail_url && (
+                  {itemData.thumbnail_url && (
                     <img
                       src={itemData.thumbnail_url}
                       alt=""
@@ -882,34 +857,23 @@ export default function EquipmentPage() {
                   <div className="font-medium text-[#e5e4e2] truncate">
                     {itemData.name}
                   </div>
-                  {!isKit && itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
+                  {itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
                     <div className="text-xs text-[#e5e4e2]/50 truncate">
                       {itemData.cable_specs.length_meters && `${itemData.cable_specs.length_meters}m`}
                       {itemData.cable_specs.connector_in && ` · ${itemData.cable_specs.connector_in}`}
                       {itemData.cable_specs.connector_out && ` → ${itemData.cable_specs.connector_out}`}
                     </div>
                   ) : (
-                    <>
-                      {!isKit && (itemData.brand || itemData.model) && (
-                        <div className="text-xs text-[#e5e4e2]/50 truncate">
-                          {itemData.brand} {itemData.model}
-                        </div>
-                      )}
-                      {isKit && itemData.description && (
-                        <div className="text-xs text-[#e5e4e2]/50 truncate">
-                          {itemData.description}
-                        </div>
-                      )}
-                    </>
+                    (itemData.brand || itemData.model) && (
+                      <div className="text-xs text-[#e5e4e2]/50 truncate">
+                        {itemData.brand} {itemData.model}
+                      </div>
+                    )
                   )}
                 </div>
 
                 <div className="text-xs text-[#e5e4e2]/60 truncate">
-                  {isKit ? (
-                    <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs">ZESTAW</span>
-                  ) : (
-                    itemData.equipment_categories?.name || '-'
-                  )}
+                  {itemData.equipment_categories?.name || '-'}
                 </div>
 
                 <div className={`text-xs ${stockInfo.color} text-center truncate`}>
@@ -924,7 +888,7 @@ export default function EquipmentPage() {
                   {stockInfo.total}
                 </div>
 
-                {!isKit && canManageEquipment && (
+                {canManageEquipment && (
                   <button
                     onClick={(e) => handleDuplicateEquipment(itemData, e)}
                     className="absolute right-2 p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded hover:bg-purple-500/10 transition-all opacity-0 md:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -939,35 +903,24 @@ export default function EquipmentPage() {
         </div>
       ) : (
         <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
-          {allItems.map((item) => {
-            const isKit = item.type === 'kit';
-            const stockInfo = isKit ? getKitInfo(item.data) : getStockInfo(item.data);
-            const itemData = item.data as any;
+          {filteredEquipment.map((equipment) => {
+            const stockInfo = getStockInfo(equipment);
+            const itemData = equipment;
 
             return (
               <div
                 key={itemData.id}
-                className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group ${
-                  isKit
-                    ? 'border-2 border-blue-500/30 hover:border-blue-500/50'
-                    : 'border border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
-                }`}
+                className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group border border-[#d3bb73]/10 hover:border-[#d3bb73]/30`}
               >
                 <div
                   onClick={() => {
-                    if (isKit) {
-                      setSelectedKitId(itemData.id);
-                      setShowKitsModal(true);
-                    } else {
-                      router.push(`/crm/equipment/${itemData.id}`);
-                    }
+                    router.push(`/crm/equipment/${itemData.id}`);
                   }}
                   className="flex items-start gap-4"
                 >
                   <div
                     className="relative flex-shrink-0"
                     onMouseEnter={(e) => {
-                      if (!isKit) {
                         e.stopPropagation();
                         const rect = e.currentTarget.getBoundingClientRect();
                         const timeout = setTimeout(() => {
@@ -1001,15 +954,8 @@ export default function EquipmentPage() {
                         className="w-16 h-16 rounded-lg object-cover"
                       />
                     ) : (
-                      <div className={`w-16 h-16 rounded-lg flex items-center justify-center ${
-                        isKit ? 'bg-blue-500/20' : 'bg-[#d3bb73]/20'
-                      }`}>
-                        <Package className={`w-8 h-8 ${isKit ? 'text-blue-400' : 'text-[#d3bb73]'}`} />
-                      </div>
-                    )}
-                    {isKit && (
-                      <div className="absolute -top-1 -right-1 bg-blue-500 rounded-full p-1">
-                        <Flag className="w-3 h-3 text-white" />
+                      <div className="w-16 h-16 rounded-lg flex items-center justify-center bg-[#d3bb73]/20">
+                        <Package className="w-8 h-8 text-[#d3bb73]" />
                       </div>
                     )}
                   </div>
@@ -1018,7 +964,7 @@ export default function EquipmentPage() {
                     <h3 className="text-lg font-medium text-[#e5e4e2] mb-1 truncate">
                       {itemData.name}
                     </h3>
-                    {!isKit && itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
+                    {itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
                       <div className="text-sm text-[#e5e4e2]/60 mb-2">
                         {itemData.cable_specs.length_meters && (
                           <span className="font-medium text-[#d3bb73]">{itemData.cable_specs.length_meters}m</span>
@@ -1035,31 +981,16 @@ export default function EquipmentPage() {
                         )}
                       </div>
                     ) : (
-                      <>
-                        {isKit ? (
-                          itemData.description && (
-                            <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                              {itemData.description}
-                            </p>
-                          )
-                        ) : (
-                          (itemData.brand || itemData.model) && (
-                            <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                              {itemData.brand} {itemData.model}
-                            </p>
-                          )
-                        )}
-                      </>
+                      (itemData.brand || itemData.model) && (
+                        <p className="text-sm text-[#e5e4e2]/60 mb-2">
+                          {itemData.brand} {itemData.model}
+                        </p>
+                      )
                     )}
-                    {!isKit && itemData.equipment_categories && (
+                    {itemData.equipment_categories && (
                       <span className="inline-block px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73]">
                         {itemData.equipment_categories.name}
                       </span>
-                    )}
-                    {isKit && (
-                      <div className="text-xs text-[#e5e4e2]/40">
-                        {itemData.equipment_kit_items.length} pozycji
-                      </div>
                     )}
                   </div>
 
@@ -1071,7 +1002,7 @@ export default function EquipmentPage() {
                   </div>
                 </div>
 
-                {!isKit && canManageEquipment && (
+                {canManageEquipment && (
                   <div className="absolute top-2 right-2 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
@@ -1100,7 +1031,7 @@ export default function EquipmentPage() {
                   </div>
                 )}
 
-                {!isKit && stockInfo.total > 0 && (
+                {stockInfo.total > 0 && (
                   <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
                     <div className="flex justify-between text-xs text-[#e5e4e2]/60 mb-2">
                       <span>Dostępne: {itemData.equipment_units.filter((u: any) => u.status === 'available').length}</span>
