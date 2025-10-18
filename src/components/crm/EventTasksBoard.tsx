@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { Plus, X, Trash2, CreditCard as Edit, Calendar, User, GripVertical, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import Tooltip from '@/components/UI/Tooltip';
 
 interface Task {
   id: string;
@@ -47,9 +47,6 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [hoveredAssignee, setHoveredAssignee] = useState<any | null>(null);
-  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [mounted, setMounted] = useState(false);
   const { showSnackbar } = useSnackbar();
 
   const [formData, setFormData] = useState({
@@ -82,7 +79,6 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   };
 
   useEffect(() => {
-    setMounted(true);
     fetchTasks();
     fetchEmployees();
 
@@ -434,19 +430,6 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     return tasks.filter((task) => task.board_column === columnId);
   };
 
-  const handleMouseEnter = (assignee: any, e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setTooltipPosition({
-      x: rect.left + rect.width / 2,
-      y: rect.top - 10,
-    });
-    setHoveredAssignee(assignee);
-  };
-
-  const handleMouseLeave = () => {
-    setHoveredAssignee(null);
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -556,24 +539,57 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                         {task.assignees && task.assignees.length > 0 && (
                           <div className="flex items-center -space-x-2">
                             {task.assignees.map((assignee) => (
-                              <div
+                              <Tooltip
                                 key={assignee.employee.id}
-                                className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center overflow-hidden cursor-pointer hover:z-10"
-                                onMouseEnter={(e) => handleMouseEnter(assignee.employee, e)}
-                                onMouseLeave={handleMouseLeave}
+                                content={
+                                  <div className="p-3">
+                                    <div className="flex items-center gap-3 whitespace-nowrap">
+                                      <div className="w-10 h-10 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                        {assignee.employee.avatar_url ? (
+                                          <img
+                                            src={assignee.employee.avatar_url}
+                                            alt=""
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <span className="text-sm text-[#e5e4e2]">
+                                            {assignee.employee.name[0]}{assignee.employee.surname[0]}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-medium text-[#e5e4e2]">
+                                          {assignee.employee.name} {assignee.employee.surname}
+                                        </div>
+                                        {assignee.employee.email && (
+                                          <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
+                                            {assignee.employee.email}
+                                          </div>
+                                        )}
+                                        {assignee.employee.phone_number && (
+                                          <div className="text-xs text-[#e5e4e2]/60">
+                                            {assignee.employee.phone_number}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                }
                               >
-                                {assignee.employee.avatar_url ? (
-                                  <img
-                                    src={assignee.employee.avatar_url}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="text-xs text-[#e5e4e2]/80">
-                                    {assignee.employee.name[0]}{assignee.employee.surname[0]}
-                                  </span>
-                                )}
-                              </div>
+                                <div className="relative w-6 h-6 rounded-full bg-[#d3bb73]/20 border-2 border-[#0f1119] flex items-center justify-center overflow-hidden cursor-pointer hover:z-10">
+                                  {assignee.employee.avatar_url ? (
+                                    <img
+                                      src={assignee.employee.avatar_url}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="text-xs text-[#e5e4e2]/80">
+                                      {assignee.employee.name[0]}{assignee.employee.surname[0]}
+                                    </span>
+                                  )}
+                                </div>
+                              </Tooltip>
                             ))}
                           </div>
                         )}
@@ -700,51 +716,6 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             </form>
           </div>
         </div>
-      )}
-
-      {mounted && hoveredAssignee && createPortal(
-        <div
-          className="fixed z-[9999] pointer-events-none"
-          style={{
-            left: `${tooltipPosition.x}px`,
-            top: `${tooltipPosition.y}px`,
-            transform: 'translate(-50%, -100%)'
-          }}
-        >
-          <div className="bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg p-3 shadow-2xl">
-            <div className="flex items-center gap-3 whitespace-nowrap">
-              <div className="w-10 h-10 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
-                {hoveredAssignee.avatar_url ? (
-                  <img
-                    src={hoveredAssignee.avatar_url}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm text-[#e5e4e2]">
-                    {hoveredAssignee.name[0]}{hoveredAssignee.surname[0]}
-                  </span>
-                )}
-              </div>
-              <div>
-                <div className="text-sm font-medium text-[#e5e4e2]">
-                  {hoveredAssignee.name} {hoveredAssignee.surname}
-                </div>
-                {hoveredAssignee.email && (
-                  <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
-                    {hoveredAssignee.email}
-                  </div>
-                )}
-                {hoveredAssignee.phone_number && (
-                  <div className="text-xs text-[#e5e4e2]/60">
-                    {hoveredAssignee.phone_number}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
       )}
 
       {showAssignModal && assigningTask && (
