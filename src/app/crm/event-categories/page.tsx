@@ -197,16 +197,30 @@ export default function EventCategoriesPage() {
     e.preventDefault();
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
 
-      // Check user permissions
-      const { data: employee } = await supabase
+      if (sessionError || !session?.user?.id) {
+        throw new Error('Nie można odświeżyć sesji. Zaloguj się ponownie.');
+      }
+
+      console.log('User ID:', session.user.id);
+
+      const { data: employee, error: employeeError } = await supabase
         .from('employees')
-        .select('permissions')
-        .eq('id', session?.user?.id)
+        .select('id, name, surname, permissions')
+        .eq('id', session.user.id)
         .maybeSingle();
 
-      console.log('User permissions:', employee?.permissions);
+      console.log('Employee data:', employee);
+      console.log('Has event_categories_manage?', employee?.permissions?.includes('event_categories_manage'));
+
+      if (!employee) {
+        throw new Error('Nie znaleziono danych pracownika');
+      }
+
+      if (!employee.permissions?.includes('event_categories_manage')) {
+        throw new Error('Brak uprawnień: event_categories_manage. Skontaktuj się z administratorem.');
+      }
 
       if (editingIcon) {
         console.log('Updating icon:', editingIcon.id, iconFormData);
@@ -223,7 +237,7 @@ export default function EventCategoriesPage() {
           .select();
 
         if (error) {
-          console.error('Update error details:', error);
+          console.error('Update error:', error);
           throw error;
         }
 
@@ -238,12 +252,12 @@ export default function EventCategoriesPage() {
             name: iconFormData.name,
             svg_code: iconFormData.svg_code,
             preview_color: iconFormData.preview_color,
-            created_by: session?.user?.id || null,
+            created_by: session.user.id,
           }])
           .select();
 
         if (error) {
-          console.error('Insert error details:', error);
+          console.error('Insert error:', error);
           throw error;
         }
 
@@ -254,9 +268,9 @@ export default function EventCategoriesPage() {
       await fetchIcons();
       await fetchCategories();
       handleCloseIconModal();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving icon:', error);
-      alert('Błąd podczas zapisywania ikony: ' + JSON.stringify((error as any), null, 2));
+      alert(`Błąd: ${error?.message || 'Nieznany błąd'}\n\nKod: ${error?.code || 'brak'}\n\nSprawdź konsolę (F12)`);
     }
   };
 
