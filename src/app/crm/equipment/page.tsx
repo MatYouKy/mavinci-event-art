@@ -75,7 +75,7 @@ export default function EquipmentPage() {
   const [kits, setKits] = useState<Kit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'equipment' | 'kits' | 'connectors'>('equipment');
+  const [activeTab, setActiveTab] = useState<'equipment' | 'kits' | 'cables'>('equipment');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchField, setSearchField] = useState<'all' | 'name' | 'brand'>('all');
@@ -413,13 +413,6 @@ export default function EquipmentPage() {
                     <MapPin className="w-5 h-5 md:w-4 md:h-4" />
                     <span className="hidden sm:inline">Lokalizacje</span>
                   </button>
-                  <button
-                    onClick={() => setActiveTab('kits')}
-                    className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-sm font-medium hover:border-[#d3bb73]/40 transition-colors min-h-[44px]"
-                  >
-                    <Package className="w-5 h-5 md:w-4 md:h-4" />
-                    <span className="hidden sm:inline">Zarządzaj zestawami</span>
-                  </button>
                 </>
               )}
               {canAddEquipment && (
@@ -470,34 +463,219 @@ export default function EquipmentPage() {
           )}
         </button>
         <button
-          onClick={() => setActiveTab('connectors')}
+          onClick={() => setActiveTab('cables')}
           className={`px-4 md:px-6 py-3 text-sm font-medium transition-colors relative whitespace-nowrap min-h-[44px] ${
-            activeTab === 'connectors'
+            activeTab === 'cables'
               ? 'text-[#d3bb73]'
               : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
           }`}
         >
           <div className="flex items-center gap-2">
             <Plug className="w-5 h-5 md:w-4 md:h-4" />
-            Wtyki
+            Przewody
           </div>
-          {activeTab === 'connectors' && (
+          {activeTab === 'cables' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
       </div>
 
-      {activeTab === 'connectors' ? (
+      {activeTab === 'cables' ? (
         <ConnectorsView viewMode={viewMode} />
       ) : activeTab === 'kits' ? (
-        <div className="space-y-4">
-          <KitsManagementModal
-            onClose={() => setActiveTab('equipment')}
-            equipment={equipment}
-            initialKitId={null}
-            inline={true}
-          />
-        </div>
+        <>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex gap-2">
+              {canManageEquipment && (
+                <button
+                  onClick={() => setShowKitsModal(true)}
+                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors min-h-[44px]"
+                >
+                  <Package className="w-5 h-5 md:w-4 md:h-4" />
+                  <span>Zarządzaj zestawami</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 relative min-h-[44px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Szukaj zestawów..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleViewModeChange('compact')}
+                className={`p-3 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                  viewMode === 'compact'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
+                }`}
+                title="Widok kompaktowy"
+              >
+                <AlignJustify className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => handleViewModeChange('list')}
+                className={`p-3 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
+                }`}
+                title="Widok listy"
+              >
+                <List className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => handleViewModeChange('grid')}
+                className={`p-3 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                  viewMode === 'grid'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2]'
+                }`}
+                title="Widok siatki"
+              >
+                <Grid className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#d3bb73]"></div>
+            </div>
+          ) : filteredKits.length === 0 ? (
+            <div className="text-center py-12 text-[#e5e4e2]/60">
+              <Package className="w-12 h-12 mx-auto mb-4 text-[#e5e4e2]/40" />
+              <p>Nie znaleziono zestawów</p>
+            </div>
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredKits.map((kit) => {
+                const kitInfo = getKitInfo(kit);
+                return (
+                  <div
+                    key={kit.id}
+                    onClick={() => {
+                      setSelectedKitId(kit.id);
+                      setShowKitsModal(true);
+                    }}
+                    className="group bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer relative"
+                  >
+                    <div className="flex items-start gap-4 mb-4">
+                      {kit.thumbnail_url ? (
+                        <img src={kit.thumbnail_url} alt={kit.name} className="w-16 h-16 object-cover rounded-lg" />
+                      ) : (
+                        <div className="w-16 h-16 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
+                          <Package className="w-8 h-8 text-[#d3bb73]" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-medium text-[#e5e4e2] mb-1 truncate">{kit.name}</h3>
+                        {kit.description && (
+                          <p className="text-sm text-[#e5e4e2]/60 line-clamp-2">{kit.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#e5e4e2]/40">
+                        {kit.equipment_kit_items.length} pozycji
+                      </span>
+                      <div className="text-right">
+                        <div className="text-xl font-light text-[#e5e4e2] mb-1">
+                          {kitInfo.available} / {kitInfo.required}
+                        </div>
+                        <div className={`text-sm ${kitInfo.color}`}>{kitInfo.label}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : viewMode === 'compact' ? (
+            <div className="space-y-2">
+              {filteredKits.map((kit) => {
+                const kitInfo = getKitInfo(kit);
+                return (
+                  <div
+                    key={kit.id}
+                    onClick={() => {
+                      setSelectedKitId(kit.id);
+                      setShowKitsModal(true);
+                    }}
+                    className="group bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/30 transition-all cursor-pointer flex items-center gap-4"
+                  >
+                    {kit.thumbnail_url ? (
+                      <img src={kit.thumbnail_url} alt={kit.name} className="w-10 h-10 object-cover rounded" />
+                    ) : (
+                      <div className="w-10 h-10 bg-[#d3bb73]/20 rounded flex items-center justify-center flex-shrink-0">
+                        <Package className="w-5 h-5 text-[#d3bb73]" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-medium text-[#e5e4e2] truncate">{kit.name}</h3>
+                      <span className="text-xs text-[#e5e4e2]/40">{kit.equipment_kit_items.length} pozycji</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-light text-[#e5e4e2]">
+                        {kitInfo.available} / {kitInfo.required}
+                      </div>
+                      <div className={`text-xs ${kitInfo.color}`}>{kitInfo.label}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredKits.map((kit) => {
+                const kitInfo = getKitInfo(kit);
+                return (
+                  <div
+                    key={kit.id}
+                    onClick={() => {
+                      setSelectedKitId(kit.id);
+                      setShowKitsModal(true);
+                    }}
+                    className="group bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer relative"
+                  >
+                    <div className="flex items-start gap-4">
+                      {kit.thumbnail_url ? (
+                        <img src={kit.thumbnail_url} alt={kit.name} className="w-20 h-20 object-cover rounded-lg" />
+                      ) : (
+                        <div className="w-20 h-20 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Package className="w-10 h-10 text-[#d3bb73]" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xl font-light text-[#e5e4e2] mb-2">{kit.name}</h3>
+                        {kit.description && (
+                          <p className="text-sm text-[#e5e4e2]/60 mb-2 line-clamp-2">{kit.description}</p>
+                        )}
+                        <span className="inline-block px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73]">
+                          {kit.equipment_kit_items.length} pozycji
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-light text-[#e5e4e2] mb-1">
+                          {kitInfo.available} / {kitInfo.required}
+                        </div>
+                        <div className={`text-sm ${kitInfo.color}`}>{kitInfo.label}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div className="flex flex-col lg:flex-row gap-4">
