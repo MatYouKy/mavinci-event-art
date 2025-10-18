@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid, List, MapPin, Edit, Trash2, X, Flag, Copy, AlignJustify, Plug } from 'lucide-react';
+import { Plus, Search, Package, AlertCircle, Settings, Filter, Grid2x2 as Grid, List, MapPin, CreditCard as Edit, Trash2, X, Flag, Copy, AlignJustify, Plug } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import KitsManagementModal from '@/components/crm/KitsManagementModal';
 import ConnectorsView from '@/components/crm/ConnectorsView';
@@ -734,467 +734,467 @@ export default function EquipmentPage() {
             </div>
           </div>
 
-      <div className="flex gap-2 flex-wrap md:flex-nowrap md:overflow-x-auto md:scrollbar-hide md:pb-2">
-        <button
-          onClick={() => setSelectedCategory(null)}
-          className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap flex-shrink-0 ${
-            selectedCategory === null
-              ? 'bg-[#d3bb73] text-[#1c1f33]'
-              : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
-          }`}
-        >
-          Wszystkie ({equipment.length + kits.length})
-        </button>
-        {categories.map((category) => (
-          <button
-            key={category.id}
-            onClick={() => setSelectedCategory(category.id)}
-            className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap flex-shrink-0 ${
-              selectedCategory === category.id
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
-            }`}
-          >
-            {category.name} ({equipment.filter(e => e.category_id === category.id).length})
-          </button>
-        ))}
-      </div>
-
-      {filteredEquipment.length === 0 ? (
-        <div className="text-center py-12">
-          <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60">
-            {searchTerm || selectedCategory ? 'Nie znaleziono sprzętu' : 'Brak sprzętu w magazynie'}
-          </p>
-        </div>
-      ) : viewMode === 'compact' ? (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden overflow-x-auto">
-          <div className="grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0 min-w-[700px]">
-            <div className="flex items-center justify-center">
-              <input
-                type="checkbox"
-                checked={selectedItems.length === filteredEquipment.length && filteredEquipment.length > 0}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedItems(filteredEquipment.map(e => e.id));
-                  } else {
-                    setSelectedItems([]);
-                  }
-                }}
-                className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/50 cursor-pointer"
-              />
-            </div>
-            <div className="w-6"></div>
-            <div>Nazwa / Model</div>
-            <div>Kategoria</div>
-            <div className="text-center">Stan</div>
-            <div className="text-center">Dostępne</div>
-            <div className="text-center">Razem</div>
-          </div>
-          {filteredEquipment.map((equipment) => {
-            const stockInfo = getStockInfo(equipment);
-            const itemData = equipment;
-
-            return (
-              <div
-                key={itemData.id}
-                onClick={() => {
-                  router.push(`/crm/equipment/${itemData.id}`);
-                }}
-                className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group min-w-[700px]`}
+          <div className="flex gap-2 flex-wrap md:flex-nowrap md:overflow-x-auto md:scrollbar-hide md:pb-2">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap flex-shrink-0 ${
+                selectedCategory === null
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
+              }`}
+            >
+              Wszystkie ({equipment.length + kits.length})
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                onClick={() => setSelectedCategory(category.id)}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors min-h-[44px] whitespace-nowrap flex-shrink-0 ${
+                  selectedCategory === category.id
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] hover:border-[#d3bb73]/40'
+                }`}
               >
-                <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                {category.name} ({equipment.filter(e => e.category_id === category.id).length})
+              </button>
+            ))}
+          </div>
+
+          {filteredEquipment.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+              <p className="text-[#e5e4e2]/60">
+                {searchTerm || selectedCategory ? 'Nie znaleziono sprzętu' : 'Brak sprzętu w magazynie'}
+              </p>
+            </div>
+          ) : viewMode === 'compact' ? (
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden overflow-x-auto">
+              <div className="grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-2 bg-[#d3bb73]/10 border-b border-[#d3bb73]/20 text-xs font-medium text-[#e5e4e2] sticky top-0 min-w-[700px]">
+                <div className="flex items-center justify-center">
                   <input
                     type="checkbox"
-                    checked={selectedItems.includes(itemData.id)}
+                    checked={selectedItems.length === filteredEquipment.length && filteredEquipment.length > 0}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedItems([...selectedItems, itemData.id]);
+                        setSelectedItems(filteredEquipment.map(e => e.id));
                       } else {
-                        setSelectedItems(selectedItems.filter(id => id !== itemData.id));
+                        setSelectedItems([]);
                       }
                     }}
                     className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/50 cursor-pointer"
                   />
                 </div>
-                <div
-                  className="relative w-6 h-6 flex-shrink-0"
-                  onMouseEnter={(e) => {
-                      e.stopPropagation();
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const timeout = setTimeout(() => {
-                        setTooltipItem(itemData);
-                        const centerY = rect.top + (rect.height / 2);
-                        let yPos = centerY - 20;
-                        if (centerY + 200 > window.innerHeight) {
-                          yPos = Math.max(10, centerY - 200);
-                        }
-                        setTooltipPosition({
-                          x: rect.right + 5,
-                          y: yPos,
-                        });
-                      }, 500);
-                      setTooltipTimeout(timeout);
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.stopPropagation();
-                    if (tooltipTimeout) {
-                      clearTimeout(tooltipTimeout);
-                      setTooltipTimeout(null);
-                    }
-                    setTooltipItem(null);
-                  }}
-                >
-                  {itemData.thumbnail_url && (
-                    <img
-                      src={itemData.thumbnail_url}
-                      alt=""
-                      className="w-6 h-6 rounded object-cover"
-                    />
-                  )}
-                </div>
-
-                <div className="min-w-0">
-                  <div className="font-medium text-[#e5e4e2] truncate">
-                    {itemData.name}
-                  </div>
-                  {itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
-                    <div className="text-xs text-[#e5e4e2]/50 truncate">
-                      {itemData.cable_specs.length_meters && `${itemData.cable_specs.length_meters}m`}
-                      {itemData.cable_specs.connector_in && ` · ${itemData.cable_specs.connector_in}`}
-                      {itemData.cable_specs.connector_out && ` → ${itemData.cable_specs.connector_out}`}
-                    </div>
-                  ) : (
-                    (itemData.brand || itemData.model) && (
-                      <div className="text-xs text-[#e5e4e2]/50 truncate">
-                        {itemData.brand} {itemData.model}
-                      </div>
-                    )
-                  )}
-                </div>
-
-                <div className="text-xs text-[#e5e4e2]/60 truncate">
-                  {itemData.equipment_categories?.name || '-'}
-                </div>
-
-                <div className={`text-xs ${stockInfo.color} text-center truncate`}>
-                  {stockInfo.label}
-                </div>
-
-                <div className="text-[#e5e4e2] font-medium text-center">
-                  {stockInfo.available}
-                </div>
-
-                <div className="text-[#e5e4e2]/60 text-center">
-                  {stockInfo.total}
-                </div>
-
-                {canManageEquipment && (
-                  <button
-                    onClick={(e) => handleDuplicateEquipment(itemData, e)}
-                    className="absolute right-2 p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded hover:bg-purple-500/10 transition-all opacity-0 md:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    title="Duplikuj"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                )}
+                <div className="w-6"></div>
+                <div>Nazwa / Model</div>
+                <div>Kategoria</div>
+                <div className="text-center">Stan</div>
+                <div className="text-center">Dostępne</div>
+                <div className="text-center">Razem</div>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
-          {filteredEquipment.map((equipment) => {
-            const stockInfo = getStockInfo(equipment);
-            const itemData = equipment;
+              {filteredEquipment.map((equipment) => {
+                const stockInfo = getStockInfo(equipment);
+                const itemData = equipment;
 
-            return (
-              <div
-                key={itemData.id}
-                className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group border border-[#d3bb73]/10 hover:border-[#d3bb73]/30`}
-              >
-                <div
-                  onClick={() => {
-                    router.push(`/crm/equipment/${itemData.id}`);
-                  }}
-                  className="flex items-start gap-4"
-                >
+                return (
                   <div
-                    className="relative flex-shrink-0"
-                    onMouseEnter={(e) => {
-                        e.stopPropagation();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const timeout = setTimeout(() => {
-                          setTooltipItem(itemData);
-                          const centerY = rect.top + (rect.height / 2);
-                          let yPos = centerY - 20;
-                          if (centerY + 200 > window.innerHeight) {
-                            yPos = Math.max(10, centerY - 200);
-                          }
-                          setTooltipPosition({
-                            x: rect.right + 5,
-                            y: yPos,
-                          });
-                        }, 500);
-                        setTooltipTimeout(timeout);
-                      }
+                    key={itemData.id}
+                    onClick={() => {
+                      router.push(`/crm/equipment/${itemData.id}`);
                     }}
-                    onMouseLeave={(e) => {
-                      e.stopPropagation();
-                      if (tooltipTimeout) {
-                        clearTimeout(tooltipTimeout);
-                        setTooltipTimeout(null);
-                      }
-                      setTooltipItem(null);
-                    }}
+                    className={`grid grid-cols-[40px_auto_1fr_120px_100px_80px_80px] gap-2 px-4 py-1.5 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 items-center text-sm group min-w-[700px]`}
                   >
-                    {itemData.thumbnail_url ? (
-                      <img
-                        src={itemData.thumbnail_url}
-                        alt={itemData.name}
-                        className="w-16 h-16 rounded-lg object-cover"
+                    <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.includes(itemData.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedItems([...selectedItems, itemData.id]);
+                          } else {
+                            setSelectedItems(selectedItems.filter(id => id !== itemData.id));
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] checked:bg-[#d3bb73] checked:border-[#d3bb73] focus:ring-2 focus:ring-[#d3bb73]/50 cursor-pointer"
                       />
-                    ) : (
-                      <div className="w-16 h-16 rounded-lg flex items-center justify-center bg-[#d3bb73]/20">
-                        <Package className="w-8 h-8 text-[#d3bb73]" />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1 truncate">
-                      {itemData.name}
-                    </h3>
-                    {itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
-                      <div className="text-sm text-[#e5e4e2]/60 mb-2">
-                        {itemData.cable_specs.length_meters && (
-                          <span className="font-medium text-[#d3bb73]">{itemData.cable_specs.length_meters}m</span>
-                        )}
-                        {itemData.cable_specs.connector_in && (
-                          <span className="ml-2">
-                            <span className="text-[#e5e4e2]/40">In:</span> {itemData.cable_specs.connector_in}
-                          </span>
-                        )}
-                        {itemData.cable_specs.connector_out && (
-                          <span className="ml-2">
-                            <span className="text-[#e5e4e2]/40">→</span> {itemData.cable_specs.connector_out}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      (itemData.brand || itemData.model) && (
-                        <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                          {itemData.brand} {itemData.model}
-                        </p>
-                      )
-                    )}
-                    {itemData.equipment_categories && (
-                      <span className="inline-block px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73]">
-                        {itemData.equipment_categories.name}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="text-right">
-                    <div className="text-2xl font-light text-[#e5e4e2] mb-1">
-                      {stockInfo.available} / {stockInfo.total}
                     </div>
-                    <div className={`text-sm ${stockInfo.color}`}>{stockInfo.label}</div>
-                  </div>
-                </div>
-
-                {canManageEquipment && (
-                  <div className="absolute top-2 right-2 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => {
+                    <div
+                      className="relative w-6 h-6 flex-shrink-0"
+                      onMouseEnter={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const timeout = setTimeout(() => {
+                            setTooltipItem(itemData);
+                            const centerY = rect.top + (rect.height / 2);
+                            let yPos = centerY - 20;
+                            if (centerY + 200 > window.innerHeight) {
+                              yPos = Math.max(10, centerY - 200);
+                            }
+                            setTooltipPosition({
+                              x: rect.right + 5,
+                              y: yPos,
+                            });
+                          }, 500);
+                          setTooltipTimeout(timeout);
+                        }
+                      }
+                      onMouseLeave={(e) => {
                         e.stopPropagation();
+                        if (tooltipTimeout) {
+                          clearTimeout(tooltipTimeout);
+                          setTooltipTimeout(null);
+                        }
+                        setTooltipItem(null);
+                      }}
+                    >
+                      {itemData.thumbnail_url && (
+                        <img
+                          src={itemData.thumbnail_url}
+                          alt=""
+                          className="w-6 h-6 rounded object-cover"
+                        />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="font-medium text-[#e5e4e2] truncate">
+                        {itemData.name}
+                      </div>
+                      {itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
+                        <div className="text-xs text-[#e5e4e2]/50 truncate">
+                          {itemData.cable_specs.length_meters && `${itemData.cable_specs.length_meters}m`}
+                          {itemData.cable_specs.connector_in && ` · ${itemData.cable_specs.connector_in}`}
+                          {itemData.cable_specs.connector_out && ` → ${itemData.cable_specs.connector_out}`}
+                        </div>
+                      ) : (
+                        (itemData.brand || itemData.model) && (
+                          <div className="text-xs text-[#e5e4e2]/50 truncate">
+                            {itemData.brand} {itemData.model}
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <div className="text-xs text-[#e5e4e2]/60 truncate">
+                      {itemData.equipment_categories?.name || '-'}
+                    </div>
+
+                    <div className={`text-xs ${stockInfo.color} text-center truncate`}>
+                      {stockInfo.label}
+                    </div>
+
+                    <div className="text-[#e5e4e2] font-medium text-center">
+                      {stockInfo.available}
+                    </div>
+
+                    <div className="text-[#e5e4e2]/60 text-center">
+                      {stockInfo.total}
+                    </div>
+
+                    {canManageEquipment && (
+                      <button
+                        onClick={(e) => handleDuplicateEquipment(itemData, e)}
+                        className="absolute right-2 p-2 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded hover:bg-purple-500/10 transition-all opacity-0 md:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        title="Duplikuj"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
+              {filteredEquipment.map((equipment) => {
+                const stockInfo = getStockInfo(equipment);
+                const itemData = equipment;
+
+                return (
+                  <div
+                    key={itemData.id}
+                    className={`bg-[#1c1f33] rounded-xl p-6 transition-all cursor-pointer relative group border border-[#d3bb73]/10 hover:border-[#d3bb73]/30`}
+                  >
+                    <div
+                      onClick={() => {
                         router.push(`/crm/equipment/${itemData.id}`);
                       }}
-                      className="p-3 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      title="Edytuj sprzęt"
+                      className="flex items-start gap-4"
                     >
-                      <Edit className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={(e) => handleDuplicateEquipment(itemData, e)}
-                      className="p-3 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded-lg hover:bg-purple-500/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      title="Duplikuj sprzęt"
-                    >
-                      <Copy className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={(e) => handleDeleteEquipment(itemData.id, e)}
-                      className="p-3 bg-[#1c1f33] border border-red-400/30 text-red-400 rounded-lg hover:bg-red-500/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      title="Usuń sprzęt"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
-
-                {stockInfo.total > 0 && (
-                  <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
-                    <div className="flex justify-between text-xs text-[#e5e4e2]/60 mb-2">
-                      <span>Dostępne: {itemData.equipment_units.filter((u: any) => u.status === 'available').length}</span>
-                      <span>Uszkodzone: {itemData.equipment_units.filter((u: any) => u.status === 'damaged').length}</span>
-                      <span>Serwis: {itemData.equipment_units.filter((u: any) => u.status === 'in_service').length}</span>
-                      <span>Wycofane: {itemData.equipment_units.filter((u: any) => u.status === 'retired').length}</span>
-                    </div>
-                    <div className="h-2 bg-[#0f1119] rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-[#d3bb73] rounded-full transition-all"
-                        style={{
-                          width: `${(stockInfo.available / stockInfo.total) * 100}%`,
+                        className="relative flex-shrink-0"
+                        onMouseEnter={(e) => {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const timeout = setTimeout(() => {
+                              setTooltipItem(itemData);
+                              const centerY = rect.top + (rect.height / 2);
+                              let yPos = centerY - 20;
+                              if (centerY + 200 > window.innerHeight) {
+                                yPos = Math.max(10, centerY - 200);
+                              }
+                              setTooltipPosition({
+                                x: rect.right + 5,
+                                y: yPos,
+                              });
+                            }, 500);
+                            setTooltipTimeout(timeout);
+                          }
+                        }
+                        onMouseLeave={(e) => {
+                          e.stopPropagation();
+                          if (tooltipTimeout) {
+                            clearTimeout(tooltipTimeout);
+                            setTooltipTimeout(null);
+                          }
+                          setTooltipItem(null);
                         }}
+                      >
+                        {itemData.thumbnail_url ? (
+                          <img
+                            src={itemData.thumbnail_url}
+                            alt={itemData.name}
+                            className="w-16 h-16 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-lg flex items-center justify-center bg-[#d3bb73]/20">
+                            <Package className="w-8 h-8 text-[#d3bb73]" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-medium text-[#e5e4e2] mb-1 truncate">
+                          {itemData.name}
+                        </h3>
+                        {itemData.equipment_categories?.name?.toLowerCase().includes('przewod') && itemData.cable_specs ? (
+                          <div className="text-sm text-[#e5e4e2]/60 mb-2">
+                            {itemData.cable_specs.length_meters && (
+                              <span className="font-medium text-[#d3bb73]">{itemData.cable_specs.length_meters}m</span>
+                            )}
+                            {itemData.cable_specs.connector_in && (
+                              <span className="ml-2">
+                                <span className="text-[#e5e4e2]/40">In:</span> {itemData.cable_specs.connector_in}
+                              </span>
+                            )}
+                            {itemData.cable_specs.connector_out && (
+                              <span className="ml-2">
+                                <span className="text-[#e5e4e2]/40">→</span> {itemData.cable_specs.connector_out}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          (itemData.brand || itemData.model) && (
+                            <p className="text-sm text-[#e5e4e2]/60 mb-2">
+                              {itemData.brand} {itemData.model}
+                            </p>
+                          )
+                        )}
+                        {itemData.equipment_categories && (
+                          <span className="inline-block px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73]">
+                            {itemData.equipment_categories.name}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-2xl font-light text-[#e5e4e2] mb-1">
+                          {stockInfo.available} / {stockInfo.total}
+                        </div>
+                        <div className={`text-sm ${stockInfo.color}`}>{stockInfo.label}</div>
+                      </div>
+                    </div>
+
+                    {canManageEquipment && (
+                      <div className="absolute top-2 right-2 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/crm/equipment/${itemData.id}`);
+                          }}
+                          className="p-3 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          title="Edytuj sprzęt"
+                        >
+                          <Edit className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDuplicateEquipment(itemData, e)}
+                          className="p-3 bg-[#1c1f33] border border-purple-400/30 text-purple-400 rounded-lg hover:bg-purple-500/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          title="Duplikuj sprzęt"
+                        >
+                          <Copy className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteEquipment(itemData.id, e)}
+                          className="p-3 bg-[#1c1f33] border border-red-400/30 text-red-400 rounded-lg hover:bg-red-500/10 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          title="Usuń sprzęt"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {stockInfo.total > 0 && (
+                      <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
+                        <div className="flex justify-between text-xs text-[#e5e4e2]/60 mb-2">
+                          <span>Dostępne: {itemData.equipment_units.filter((u: any) => u.status === 'available').length}</span>
+                          <span>Uszkodzone: {itemData.equipment_units.filter((u: any) => u.status === 'damaged').length}</span>
+                          <span>Serwis: {itemData.equipment_units.filter((u: any) => u.status === 'in_service').length}</span>
+                          <span>Wycofane: {itemData.equipment_units.filter((u: any) => u.status === 'retired').length}</span>
+                        </div>
+                        <div className="h-2 bg-[#0f1119] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#d3bb73] rounded-full transition-all"
+                            style={{
+                              width: `${(stockInfo.available / stockInfo.total) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {selectedItems.length > 0 && (
+            <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl shadow-2xl p-4 flex items-center gap-4 z-50 animate-slide-up">
+              <span className="text-[#e5e4e2] font-medium">
+                Zaznaczono: <span className="text-[#d3bb73]">{selectedItems.length}</span>
+              </span>
+              <button
+                onClick={handleBulkDelete}
+                className="px-4 py-2 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg hover:bg-red-500/30 transition-all flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Usuń zaznaczone
+              </button>
+              <button
+                onClick={() => setSelectedItems([])}
+                className="px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-all"
+              >
+                Anuluj
+              </button>
+            </div>
+          )}
+
+          {showCategoryModal && (
+            <CategoryManagementModal
+              categories={categories}
+              onClose={() => setShowCategoryModal(false)}
+              onUpdate={fetchCategories}
+            />
+          )}
+
+          {showLocationsModal && (
+            <LocationsManagementModal
+              onClose={() => setShowLocationsModal(false)}
+            />
+          )}
+
+          {showKitsModal && (
+            <KitsManagementModal
+              onClose={() => {
+                setShowKitsModal(false);
+                setSelectedKitId(null);
+                fetchKits();
+              }}
+              equipment={equipment}
+              initialKitId={selectedKitId}
+            />
+          )}
+
+          {tooltipItem && (
+            <div
+              className="fixed z-50 pointer-events-none"
+              style={{
+                left: `${tooltipPosition.x}px`,
+                top: `${tooltipPosition.y}px`,
+              }}
+            >
+              <div className="bg-[#1c1f33] border-l-4 border-l-[#d3bb73] border-r border-t border-b border-[#d3bb73]/30 rounded-r-lg shadow-xl p-4 max-w-sm">
+                <div className="space-y-2">
+                  <div className="flex items-start gap-3">
+                    {tooltipItem.thumbnail_url && (
+                      <img
+                        src={tooltipItem.thumbnail_url}
+                        alt={tooltipItem.name}
+                        className="w-16 h-16 rounded object-cover flex-shrink-0"
                       />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-[#e5e4e2] mb-1">{tooltipItem.name}</h4>
+                      {tooltipItem.brand && (
+                        <p className="text-xs text-[#e5e4e2]/60">{tooltipItem.brand} {tooltipItem.model}</p>
+                      )}
                     </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
-      {selectedItems.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl shadow-2xl p-4 flex items-center gap-4 z-50 animate-slide-up">
-          <span className="text-[#e5e4e2] font-medium">
-            Zaznaczono: <span className="text-[#d3bb73]">{selectedItems.length}</span>
-          </span>
-          <button
-            onClick={handleBulkDelete}
-            className="px-4 py-2 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg hover:bg-red-500/30 transition-all flex items-center gap-2"
-          >
-            <Trash2 className="w-4 h-4" />
-            Usuń zaznaczone
-          </button>
-          <button
-            onClick={() => setSelectedItems([])}
-            className="px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-all"
-          >
-            Anuluj
-          </button>
-        </div>
-      )}
+                  {tooltipItem.equipment_categories?.name?.toLowerCase().includes('przewod') && tooltipItem.cable_specs && (
+                    <div className="border-t border-[#d3bb73]/10 pt-2">
+                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Specyfikacja przewodu:</div>
+                      {tooltipItem.cable_specs.length_meters && (
+                        <div className="text-sm text-[#e5e4e2]">
+                          <span className="text-[#e5e4e2]/60">Długość:</span> {tooltipItem.cable_specs.length_meters}m
+                        </div>
+                      )}
+                      {tooltipItem.cable_specs.connector_in && (
+                        <div className="text-sm text-[#e5e4e2]">
+                          <span className="text-[#e5e4e2]/60">Wejście:</span> {tooltipItem.cable_specs.connector_in}
+                        </div>
+                      )}
+                      {tooltipItem.cable_specs.connector_out && (
+                        <div className="text-sm text-[#e5e4e2]">
+                          <span className="text-[#e5e4e2]/60">Wyjście:</span> {tooltipItem.cable_specs.connector_out}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-      {showCategoryModal && (
-        <CategoryManagementModal
-          categories={categories}
-          onClose={() => setShowCategoryModal(false)}
-          onUpdate={fetchCategories}
-        />
-      )}
+                  {tooltipItem.description && (
+                    <div className="border-t border-[#d3bb73]/10 pt-2">
+                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Opis:</div>
+                      <p className="text-sm text-[#e5e4e2] line-clamp-3">{tooltipItem.description}</p>
+                    </div>
+                  )}
 
-      {showLocationsModal && (
-        <LocationsManagementModal
-          onClose={() => setShowLocationsModal(false)}
-        />
-      )}
+                  <div className="border-t border-[#d3bb73]/10 pt-2 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Dostępne:</span>
+                      <span className="ml-1 text-green-400 font-medium">
+                        {tooltipItem.equipment_units?.filter((u: any) => u.status === 'available').length || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Razem:</span>
+                      <span className="ml-1 text-[#e5e4e2] font-medium">
+                        {tooltipItem.equipment_units?.length || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Uszkodzone:</span>
+                      <span className="ml-1 text-red-400 font-medium">
+                        {tooltipItem.equipment_units?.filter((u: any) => u.status === 'damaged').length || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Serwis:</span>
+                      <span className="ml-1 text-orange-400 font-medium">
+                        {tooltipItem.equipment_units?.filter((u: any) => u.status === 'in_service').length || 0}
+                      </span>
+                    </div>
+                  </div>
 
-      {showKitsModal && (
-        <KitsManagementModal
-          onClose={() => {
-            setShowKitsModal(false);
-            setSelectedKitId(null);
-            fetchKits();
-          }}
-          equipment={equipment}
-          initialKitId={selectedKitId}
-        />
-      )}
-
-      {tooltipItem && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{
-            left: `${tooltipPosition.x}px`,
-            top: `${tooltipPosition.y}px`,
-          }}
-        >
-          <div className="bg-[#1c1f33] border-l-4 border-l-[#d3bb73] border-r border-t border-b border-[#d3bb73]/30 rounded-r-lg shadow-xl p-4 max-w-sm">
-          <div className="space-y-2">
-            <div className="flex items-start gap-3">
-              {tooltipItem.thumbnail_url && (
-                <img
-                  src={tooltipItem.thumbnail_url}
-                  alt={tooltipItem.name}
-                  className="w-16 h-16 rounded object-cover flex-shrink-0"
-                />
-              )}
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-[#e5e4e2] mb-1">{tooltipItem.name}</h4>
-                {tooltipItem.brand && (
-                  <p className="text-xs text-[#e5e4e2]/60">{tooltipItem.brand} {tooltipItem.model}</p>
-                )}
+                  {tooltipItem.storage_location && (
+                    <div className="border-t border-[#d3bb73]/10 pt-2 text-xs">
+                      <span className="text-[#e5e4e2]/60">Lokalizacja:</span>
+                      <span className="ml-1 text-[#e5e4e2]">{tooltipItem.storage_location}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
-            {tooltipItem.equipment_categories?.name?.toLowerCase().includes('przewod') && tooltipItem.cable_specs && (
-              <div className="border-t border-[#d3bb73]/10 pt-2">
-                <div className="text-xs text-[#e5e4e2]/60 mb-1">Specyfikacja przewodu:</div>
-                {tooltipItem.cable_specs.length_meters && (
-                  <div className="text-sm text-[#e5e4e2]">
-                    <span className="text-[#e5e4e2]/60">Długość:</span> {tooltipItem.cable_specs.length_meters}m
-                  </div>
-                )}
-                {tooltipItem.cable_specs.connector_in && (
-                  <div className="text-sm text-[#e5e4e2]">
-                    <span className="text-[#e5e4e2]/60">Wejście:</span> {tooltipItem.cable_specs.connector_in}
-                  </div>
-                )}
-                {tooltipItem.cable_specs.connector_out && (
-                  <div className="text-sm text-[#e5e4e2]">
-                    <span className="text-[#e5e4e2]/60">Wyjście:</span> {tooltipItem.cable_specs.connector_out}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {tooltipItem.description && (
-              <div className="border-t border-[#d3bb73]/10 pt-2">
-                <div className="text-xs text-[#e5e4e2]/60 mb-1">Opis:</div>
-                <p className="text-sm text-[#e5e4e2] line-clamp-3">{tooltipItem.description}</p>
-              </div>
-            )}
-
-            <div className="border-t border-[#d3bb73]/10 pt-2 grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <span className="text-[#e5e4e2]/60">Dostępne:</span>
-                <span className="ml-1 text-green-400 font-medium">
-                  {tooltipItem.equipment_units?.filter((u: any) => u.status === 'available').length || 0}
-                </span>
-              </div>
-              <div>
-                <span className="text-[#e5e4e2]/60">Razem:</span>
-                <span className="ml-1 text-[#e5e4e2] font-medium">
-                  {tooltipItem.equipment_units?.length || 0}
-                </span>
-              </div>
-              <div>
-                <span className="text-[#e5e4e2]/60">Uszkodzone:</span>
-                <span className="ml-1 text-red-400 font-medium">
-                  {tooltipItem.equipment_units?.filter((u: any) => u.status === 'damaged').length || 0}
-                </span>
-              </div>
-              <div>
-                <span className="text-[#e5e4e2]/60">Serwis:</span>
-                <span className="ml-1 text-orange-400 font-medium">
-                  {tooltipItem.equipment_units?.filter((u: any) => u.status === 'in_service').length || 0}
-                </span>
-              </div>
-            </div>
-
-            {tooltipItem.storage_location && (
-              <div className="border-t border-[#d3bb73]/10 pt-2 text-xs">
-                <span className="text-[#e5e4e2]/60">Lokalizacja:</span>
-                <span className="ml-1 text-[#e5e4e2]">{tooltipItem.storage_location}</span>
-              </div>
-            )}
-          </div>
-          </div>
-        </div>
-      )}
+          )}
         </>
       )}
     </div>
@@ -1354,7 +1354,7 @@ function CategoryManagementModal({
   );
 }
 
-function LocationsManagementModal({ onClose }: { onClose: () => void }) {
+function LocationsManagementModal({ onClose }: { onClose: () => void; }) {
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1367,6 +1367,7 @@ function LocationsManagementModal({ onClose }: { onClose: () => void }) {
     notes: '',
   });
   const [saving, setSaving] = useState(false);
+  const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     fetchLocations();
