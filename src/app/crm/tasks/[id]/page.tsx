@@ -97,14 +97,51 @@ export default function TaskDetailPage() {
       fetchTask();
       fetchComments();
       fetchAttachments();
+
+      const commentsChannel = supabase
+        .channel('task_comments_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'task_comments',
+            filter: `task_id=eq.${taskId}`,
+          },
+          () => {
+            fetchComments();
+          }
+        )
+        .subscribe();
+
+      const attachmentsChannel = supabase
+        .channel('task_attachments_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'task_attachments',
+            filter: `task_id=eq.${taskId}`,
+          },
+          () => {
+            fetchAttachments();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(commentsChannel);
+        supabase.removeChannel(attachmentsChannel);
+      };
     }
   }, [taskId]);
 
   useEffect(() => {
-    if (activeTab === 'comments') {
-      scrollToBottom();
+    if (activeTab === 'comments' && comments.length > 0) {
+      setTimeout(scrollToBottom, 100);
     }
-  }, [comments, activeTab]);
+  }, [comments.length, activeTab]);
 
   const scrollToBottom = () => {
     commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -155,22 +192,30 @@ export default function TaskDetailPage() {
 
   const fetchComments = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: commentsData, error } = await supabase
         .from('task_comments')
-        .select(`
-          *,
-          employees:employee_id (
-            name,
-            surname,
-            avatar_url,
-            avatar_metadata
-          )
-        `)
+        .select('*')
         .eq('task_id', taskId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setComments(data || []);
+
+      const commentsWithEmployees = await Promise.all(
+        (commentsData || []).map(async (comment) => {
+          const { data: employee } = await supabase
+            .from('employees')
+            .select('name, surname, avatar_url, avatar_metadata')
+            .eq('id', comment.employee_id)
+            .maybeSingle();
+
+          return {
+            ...comment,
+            employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+          };
+        })
+      );
+
+      setComments(commentsWithEmployees);
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
@@ -440,41 +485,44 @@ export default function TaskDetailPage() {
 
         {activeTab === 'comments' && (
           <div className="flex flex-col h-full">
-            <div className="flex-1 space-y-4 mb-4">
+            <div className="flex-1 space-y-3 mb-4 overflow-y-auto">
               {comments.length === 0 ? (
-                <div className="text-center text-[#e5e4e2]/60 py-8">
+                <div className="text-center text-[#e5e4e2]/40 py-12 text-sm">
                   Brak komentarzy. Dodaj pierwszy komentarz.
                 </div>
               ) : (
                 comments.map((comment) => (
-                  <div key={comment.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="w-10 h-10 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0"
-                      >
-                        {comment.employees.avatar_url ? (
-                          <img
-                            src={comment.employees.avatar_url}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-sm text-[#e5e4e2]">
-                            {comment.employees.name[0]}{comment.employees.surname[0]}
-                          </span>
-                        )}
+                  <div key={comment.id} className="flex items-start gap-3 py-2 hover:bg-[#1c1f33]/30 rounded-lg px-2 -mx-2 transition-colors">
+                    <div
+                      className="w-8 h-8 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0"
+                    >
+                      {comment.employees.avatar_url ? (
+                        <img
+                          src={comment.employees.avatar_url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs text-[#e5e4e2]">
+                          {comment.employees.name[0]}{comment.employees.surname[0]}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className="text-sm font-medium text-[#e5e4e2]">
+                          {comment.employees.name} {comment.employees.surname}
+                        </span>
+                        <span className="text-xs text-[#e5e4e2]/40">
+                          {new Date(comment.created_at).toLocaleString('pl-PL', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium text-[#e5e4e2]">
-                            {comment.employees.name} {comment.employees.surname}
-                          </span>
-                          <span className="text-xs text-[#e5e4e2]/40">
-                            {new Date(comment.created_at).toLocaleString('pl-PL')}
-                          </span>
-                        </div>
-                        <p className="text-sm text-[#e5e4e2]/80 whitespace-pre-wrap">{comment.content}</p>
-                      </div>
+                      <p className="text-sm text-[#e5e4e2] whitespace-pre-wrap leading-relaxed">{comment.content}</p>
                     </div>
                   </div>
                 ))
@@ -482,27 +530,44 @@ export default function TaskDetailPage() {
               <div ref={commentsEndRef} />
             </div>
 
-            <div className="flex gap-2 pt-4 border-t border-[#d3bb73]/10">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendComment();
-                  }
-                }}
-                placeholder="Napisz komentarz..."
-                className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 resize-none"
-                rows={2}
-              />
-              <button
-                onClick={handleSendComment}
-                disabled={!newComment.trim()}
-                className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            <div className="flex gap-2 pt-3 border-t border-[#d3bb73]/10">
+              <div
+                className="w-8 h-8 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0"
               >
-                <Send className="w-4 h-4" />
-              </button>
+                {currentEmployee?.avatar_url ? (
+                  <img
+                    src={currentEmployee.avatar_url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xs text-[#e5e4e2]">
+                    {currentEmployee?.name?.[0]}{currentEmployee?.surname?.[0]}
+                  </span>
+                )}
+              </div>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendComment();
+                    }
+                  }}
+                  placeholder="Napisz komentarz..."
+                  className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                />
+                <button
+                  onClick={handleSendComment}
+                  disabled={!newComment.trim()}
+                  className="px-3 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -519,7 +584,7 @@ export default function TaskDetailPage() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadingFile}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 text-sm"
               >
                 <Upload className="w-4 h-4" />
                 {uploadingFile ? 'Przesyłanie...' : 'Dodaj plik'}
@@ -527,54 +592,76 @@ export default function TaskDetailPage() {
             </div>
 
             {attachments.length === 0 ? (
-              <div className="text-center text-[#e5e4e2]/60 py-8">
+              <div className="text-center text-[#e5e4e2]/40 py-12 text-sm">
                 Brak plików. Dodaj pierwszy plik.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {attachments.map((attachment) => (
                   <div
                     key={attachment.id}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-4 group hover:border-[#d3bb73]/30 transition-colors"
+                    className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg overflow-hidden group hover:border-[#d3bb73]/30 transition-colors"
                   >
                     {isImage(attachment.file_type) ? (
-                      <div className="w-full h-48 mb-3 rounded-lg overflow-hidden bg-[#0f1119]">
+                      <div className="w-full aspect-square bg-[#0f1119] relative group">
                         <img
                           src={attachment.file_url}
                           alt={attachment.file_name}
                           className="w-full h-full object-cover"
                         />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <a
+                            href={attachment.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                            title="Pobierz"
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
+                          <button
+                            onClick={() => handleDeleteAttachment(attachment.id, attachment.file_url)}
+                            className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                            title="Usuń"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <div className="w-full h-48 mb-3 rounded-lg bg-[#0f1119] flex items-center justify-center">
-                        <FileText className="w-16 h-16 text-[#e5e4e2]/20" />
+                      <div className="w-full aspect-square bg-[#0f1119] flex flex-col items-center justify-center relative group">
+                        <FileText className="w-12 h-12 text-[#e5e4e2]/20 mb-2" />
+                        <span className="text-xs text-[#e5e4e2]/60 font-medium">
+                          {attachment.file_name.split('.').pop()?.toUpperCase()}
+                        </span>
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <a
+                            href={attachment.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                            title="Pobierz"
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
+                          <button
+                            onClick={() => handleDeleteAttachment(attachment.id, attachment.file_url)}
+                            className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                            title="Usuń"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     )}
 
-                    <div className="space-y-2">
-                      <h4 className="text-sm text-[#e5e4e2] truncate">{attachment.file_name}</h4>
-                      <div className="text-xs text-[#e5e4e2]/60">
-                        {formatFileSize(attachment.file_size)}
-                      </div>
-                      <div className="text-xs text-[#e5e4e2]/40">
-                        {attachment.employees.name} {attachment.employees.surname}
-                      </div>
-                      <div className="flex gap-2">
-                        <a
-                          href={attachment.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-[#d3bb73]/10 text-[#d3bb73] rounded text-xs hover:bg-[#d3bb73]/20 transition-colors"
-                        >
-                          <Download className="w-3 h-3" />
-                          Pobierz
-                        </a>
-                        <button
-                          onClick={() => handleDeleteAttachment(attachment.id, attachment.file_url)}
-                          className="px-3 py-1.5 bg-red-500/10 text-red-400 rounded text-xs hover:bg-red-500/20 transition-colors"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                    <div className="p-2">
+                      <h4 className="text-xs text-[#e5e4e2] truncate mb-1" title={attachment.file_name}>
+                        {attachment.file_name}
+                      </h4>
+                      <div className="flex items-center justify-between text-xs text-[#e5e4e2]/40">
+                        <span>{formatFileSize(attachment.file_size)}</span>
+                        <span>{attachment.employees.name[0]}{attachment.employees.surname[0]}</span>
                       </div>
                     </div>
                   </div>
