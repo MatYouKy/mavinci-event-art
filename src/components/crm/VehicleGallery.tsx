@@ -32,8 +32,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
 
   useEffect(() => {
     fetchImages();
-    console.log('[VehicleGallery] Props:', { vehicleId, canManage, employeeId: employee?.id });
-  }, [vehicleId, canManage, employee]);
+  }, [vehicleId]);
 
   const fetchImages = async () => {
     try {
@@ -182,11 +181,6 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
 
   return (
     <div className="space-y-4">
-      {/* Debug info */}
-      <div className="bg-yellow-500/10 border border-yellow-500/20 rounded p-2 text-xs text-yellow-500">
-        Debug: canManage = {canManage ? 'TRUE' : 'FALSE'}, employee id = {employee?.id || 'NULL'}
-      </div>
-
       {/* Upload section */}
       {canManage && (
         <div className="flex items-center justify-between">

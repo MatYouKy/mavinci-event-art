@@ -30,6 +30,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRouter } from 'next/navigation';
+import QuickFuelModal from '@/components/crm/QuickFuelModal';
 
 interface Vehicle {
   id: string;
@@ -60,6 +61,8 @@ export default function FleetPage() {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
+
+  const [quickFuelVehicle, setQuickFuelVehicle] = useState<Vehicle | null>(null);
 
   const canManage = canManageModule('fleet');
   const canCreate = canCreateInModule('fleet');
@@ -166,6 +169,13 @@ export default function FleetPage() {
                 fuelConsumption.length
               : 0;
 
+          const { data: primaryImage } = await supabase
+            .from('vehicle_images')
+            .select('image_url')
+            .eq('vehicle_id', vehicle.id)
+            .eq('is_primary', true)
+            .maybeSingle();
+
           return {
             ...vehicle,
             assigned_to: activeAssignment?.employee_id || null,
@@ -176,6 +186,7 @@ export default function FleetPage() {
             yearly_maintenance_cost: yearlyMaintenanceCost,
             yearly_fuel_cost: yearlyFuelCost,
             avg_fuel_consumption_3months: avgFuelConsumption,
+            primary_image_url: primaryImage?.image_url || null,
           };
         })
       );
@@ -523,11 +534,22 @@ export default function FleetPage() {
                   </div>
                 )}
 
+                {/* Quick Action: Fuel */}
+                {canManage && (
+                  <button
+                    onClick={() => setQuickFuelVehicle(vehicle)}
+                    className="w-full flex items-center justify-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/20 transition-colors text-sm mb-2"
+                  >
+                    <Fuel className="w-4 h-4" />
+                    Dodaj tankowanie
+                  </button>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-2">
                   <button
                     onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
-                    className="flex-1 flex items-center justify-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/20 transition-colors text-sm"
+                    className="flex-1 flex items-center justify-center gap-2 bg-[#0f1119] text-[#e5e4e2] px-4 py-2 rounded-lg hover:bg-[#0f1119]/80 transition-colors text-sm"
                   >
                     <Eye className="w-4 h-4" />
                     Szczegóły
@@ -647,6 +669,20 @@ export default function FleetPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Quick Fuel Modal */}
+      {quickFuelVehicle && (
+        <QuickFuelModal
+          vehicleId={quickFuelVehicle.id}
+          vehicleName={quickFuelVehicle.name}
+          currentMileage={quickFuelVehicle.current_mileage || 0}
+          onClose={() => setQuickFuelVehicle(null)}
+          onSuccess={() => {
+            fetchVehicles();
+            fetchStats();
+          }}
+        />
       )}
     </div>
   );
