@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 
 interface Task {
   id: string;
@@ -22,7 +23,7 @@ interface Task {
   updated_at: string;
   employees_created?: { name: string; surname: string } | null;
   employees_assigned?: { name: string; surname: string } | null;
-  task_assignees: { employee_id: string; employees: { name: string; surname: string } }[];
+  task_assignees: { employee_id: string; employees: { name: string; surname: string; avatar_url: string | null; avatar_metadata?: any } }[];
 }
 
 interface Employee {
@@ -149,13 +150,13 @@ export default function TasksPage() {
             (assignees || []).map(async (assignee) => {
               const { data: employee } = await supabase
                 .from('employees')
-                .select('name, surname')
+                .select('name, surname, avatar_url, avatar_metadata')
                 .eq('id', assignee.employee_id)
                 .maybeSingle();
 
               return {
                 employee_id: assignee.employee_id,
-                employees: employee || { name: '', surname: '' },
+                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
               };
             })
           );
@@ -522,6 +523,10 @@ export default function TasksPage() {
         .eq('id', taskId);
 
       if (error) throw error;
+
+      if (columnId === 'in_progress' && oldColumn !== 'in_progress' && !activeTimer) {
+        await handleStartTimer(draggedTask);
+      }
     } catch (error) {
       console.error('Error moving task:', error);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
@@ -649,12 +654,14 @@ export default function TasksPage() {
                   {task.task_assignees.length > 0 && (
                     <div className="flex items-center gap-1 flex-wrap mb-2">
                       {task.task_assignees.map((assignee, idx) => (
-                        <span
+                        <EmployeeAvatar
                           key={idx}
-                          className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-[10px]"
-                        >
-                          {assignee.employees.name[0]}.{assignee.employees.surname}
-                        </span>
+                          name={assignee.employees.name}
+                          surname={assignee.employees.surname}
+                          avatarUrl={assignee.employees.avatar_url}
+                          metadata={assignee.employees.avatar_metadata}
+                          size="xs"
+                        />
                       ))}
                     </div>
                   )}

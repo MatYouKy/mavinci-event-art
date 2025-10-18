@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar } from 'lucide-react';
+import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar, Play, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 
 interface Task {
   id: string;
@@ -16,6 +17,8 @@ interface Task {
   due_date: string | null;
   created_at: string;
   updated_at: string;
+  is_private: boolean;
+  task_assignees?: { employee_id: string; employees: { name: string; surname: string; avatar_url: string | null; avatar_metadata?: any } }[];
 }
 
 interface PrivateTasksBoardProps {
@@ -33,6 +36,9 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { showSnackbar } = useSnackbar();
+  const [showTimerModal, setShowTimerModal] = useState(false);
+  const [taskToStart, setTaskToStart] = useState<Task | null>(null);
+  const [activeTimer, setActiveTimer] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -65,6 +71,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
   useEffect(() => {
     fetchTasks();
+    checkActiveTimer();
 
     const tasksChannel = supabase
       .channel(`private_tasks_${employeeId}`)
@@ -120,11 +127,40 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
       if (assignedError) throw assignedError;
 
-      const allTasks = [...(privateTasks || []), ...(assignedTasks || [])];
+      const allTasksBase = [...(privateTasks || []), ...(assignedTasks || [])];
+
+      const tasksWithAssignees = await Promise.all(
+        allTasksBase.map(async (task) => {
+          const { data: assignees } = await supabase
+            .from('task_assignees')
+            .select('employee_id')
+            .eq('task_id', task.id);
+
+          const assigneesWithEmployees = await Promise.all(
+            (assignees || []).map(async (assignee) => {
+              const { data: employee } = await supabase
+                .from('employees')
+                .select('name, surname, avatar_url, avatar_metadata')
+                .eq('id', assignee.employee_id)
+                .maybeSingle();
+
+              return {
+                employee_id: assignee.employee_id,
+                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+              };
+            })
+          );
+
+          return {
+            ...task,
+            task_assignees: assigneesWithEmployees,
+          };
+        })
+      );
 
       const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
 
-      const sortedTasks = allTasks.sort((a, b) => {
+      const sortedTasks = tasksWithAssignees.sort((a, b) => {
         const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
         if (priorityDiff !== 0) return priorityDiff;
 
@@ -143,6 +179,74 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       showSnackbar('Błąd podczas ładowania zadań', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkActiveTimer = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('time_entries')
+        .select('*, tasks(title)')
+        .eq('employee_id', employeeId)
+        .is('end_time', null)
+        .maybeSingle();
+
+      if (error) throw error;
+      setActiveTimer(data);
+    } catch (error) {
+      console.error('Error checking active timer:', error);
+    }
+  };
+
+  const handleStartTimer = async (task: Task) => {
+    if (activeTimer) {
+      setTaskToStart(task);
+      setShowTimerModal(true);
+    } else {
+      await startTimer(task);
+    }
+  };
+
+  const startTimer = async (task: Task) => {
+    try {
+      const { error } = await supabase.from('time_entries').insert({
+        employee_id: employeeId,
+        task_id: task.id,
+        event_id: null,
+        title: null,
+        description: null,
+        start_time: new Date().toISOString(),
+        end_time: null,
+        is_billable: false,
+        tags: [],
+      });
+
+      if (error) throw error;
+      showSnackbar(`Timer rozpoczęty dla: ${task.title}`, 'success');
+      checkActiveTimer();
+    } catch (error) {
+      console.error('Error starting timer:', error);
+      showSnackbar('Błąd podczas uruchamiania timera', 'error');
+    }
+  };
+
+  const stopCurrentTimerAndStartNew = async () => {
+    if (!activeTimer || !taskToStart) return;
+
+    try {
+      const { error: stopError } = await supabase
+        .from('time_entries')
+        .update({ end_time: new Date().toISOString() })
+        .eq('id', activeTimer.id);
+
+      if (stopError) throw stopError;
+
+      await startTimer(taskToStart);
+      setShowTimerModal(false);
+      setTaskToStart(null);
+    } catch (error) {
+      console.error('Error switching timers:', error);
+      showSnackbar('Błąd podczas przełączania timerów', 'error');
     }
   };
 
@@ -219,6 +323,10 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         .eq('id', taskId);
 
       if (error) throw error;
+
+      if (columnId === 'in_progress' && oldColumn !== 'in_progress' && !activeTimer) {
+        await handleStartTimer(draggedTask);
+      }
     } catch (error) {
       console.error('Error moving task:', error);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
@@ -456,6 +564,50 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                         </div>
                       )}
                     </div>
+
+                    {task.task_assignees && task.task_assignees.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap mb-2">
+                        {task.task_assignees.map((assignee, idx) => (
+                          <EmployeeAvatar
+                            key={idx}
+                            name={assignee.employees.name}
+                            surname={assignee.employees.surname}
+                            avatarUrl={assignee.employees.avatar_url}
+                            metadata={assignee.employees.avatar_metadata}
+                            size="xs"
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#d3bb73]/5">
+                      <button
+                        onClick={() => handleStartTimer(task)}
+                        disabled={activeTimer?.task_id === task.id}
+                        className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
+                          activeTimer?.task_id === task.id
+                            ? 'bg-green-500/20 text-green-400 cursor-default'
+                            : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
+                        }`}
+                        title={
+                          activeTimer?.task_id === task.id
+                            ? 'Timer aktywny'
+                            : 'Rozpocznij zadanie'
+                        }
+                      >
+                        {activeTimer?.task_id === task.id ? (
+                          <>
+                            <Clock className="w-3 h-3 animate-pulse" />
+                            <span>Aktywny</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3 h-3" />
+                            <span>Rozpocznij</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -557,6 +709,58 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showTimerModal && activeTimer && taskToStart && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-yellow-500/20 p-3 rounded-lg">
+                <Clock className="w-6 h-6 text-yellow-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-light text-[#e5e4e2]">Timer już aktywny</h2>
+                <p className="text-sm text-[#e5e4e2]/60">Masz włączony timer dla innego zadania</p>
+              </div>
+            </div>
+
+            <div className="bg-[#1c1f33] rounded-lg p-4 mb-4 border border-[#d3bb73]/10">
+              <div className="text-sm text-[#e5e4e2]/60 mb-2">Aktualnie pracujesz nad:</div>
+              <div className="text-[#e5e4e2] font-medium mb-1">
+                {activeTimer.tasks?.title || activeTimer.title || 'Bez nazwy'}
+              </div>
+              <div className="text-xs text-[#e5e4e2]/40">
+                Rozpoczęty: {new Date(activeTimer.start_time).toLocaleTimeString('pl-PL', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </div>
+            </div>
+
+            <div className="bg-[#1c1f33] rounded-lg p-4 mb-6 border border-[#d3bb73]/10">
+              <div className="text-sm text-[#e5e4e2]/60 mb-2">Chcesz rozpocząć:</div>
+              <div className="text-[#e5e4e2] font-medium">{taskToStart.title}</div>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={stopCurrentTimerAndStartNew}
+                className="w-full bg-[#d3bb73] text-[#1c1f33] px-4 py-3 rounded-lg hover:bg-[#d3bb73]/90 font-medium transition-colors"
+              >
+                Zatrzymaj poprzedni i rozpocznij nowy
+              </button>
+              <button
+                onClick={() => {
+                  setShowTimerModal(false);
+                  setTaskToStart(null);
+                }}
+                className="w-full bg-[#1c1f33] text-[#e5e4e2] px-4 py-3 rounded-lg hover:bg-[#1c1f33]/80 border border-[#d3bb73]/20 transition-colors"
+              >
+                Anuluj
+              </button>
+            </div>
           </div>
         </div>
       )}
