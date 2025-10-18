@@ -27,7 +27,9 @@ export default function Tooltip({ content, children, delay = 200 }: TooltipProps
       root.style.position = 'fixed';
       root.style.top = '0';
       root.style.left = '0';
-      root.style.zIndex = '999999';
+      root.style.width = '0';
+      root.style.height = '0';
+      root.style.zIndex = '2147483647';
       root.style.pointerEvents = 'none';
       document.body.appendChild(root);
     }
