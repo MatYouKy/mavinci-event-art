@@ -89,6 +89,26 @@ const permissionCategories: PermissionCategory[] = [
     ],
   },
   {
+    key: 'email',
+    label: 'Email',
+  },
+  {
+    key: 'mailing',
+    label: 'Mailing',
+  },
+  {
+    key: 'subcontractors',
+    label: 'Podwykonawcy',
+  },
+  {
+    key: 'fleet',
+    label: 'Flota',
+  },
+  {
+    key: 'time_tracking',
+    label: 'Śledzenie czasu',
+  },
+  {
     key: 'financials',
     label: 'Finanse',
   },

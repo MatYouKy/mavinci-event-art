@@ -656,11 +656,10 @@ export default function TasksPage() {
                       {task.task_assignees.map((assignee, idx) => (
                         <EmployeeAvatar
                           key={idx}
-                          name={assignee.employees.name}
-                          surname={assignee.employees.surname}
                           avatarUrl={assignee.employees.avatar_url}
-                          metadata={assignee.employees.avatar_metadata}
-                          size="xs"
+                          avatarMetadata={assignee.employees.avatar_metadata}
+                          employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
+                          size={20}
                         />
                       ))}
                     </div>
