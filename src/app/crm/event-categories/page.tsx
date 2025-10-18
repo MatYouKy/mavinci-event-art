@@ -199,26 +199,55 @@ export default function EventCategoriesPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
+      // Check user permissions
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('permissions')
+        .eq('id', session?.user?.id)
+        .maybeSingle();
+
+      console.log('User permissions:', employee?.permissions);
+
       if (editingIcon) {
-        const { error } = await supabase
+        console.log('Updating icon:', editingIcon.id, iconFormData);
+
+        const { data, error } = await supabase
           .from('custom_icons')
           .update({
-            ...iconFormData,
+            name: iconFormData.name,
+            svg_code: iconFormData.svg_code,
+            preview_color: iconFormData.preview_color,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', editingIcon.id);
+          .eq('id', editingIcon.id)
+          .select();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Update error details:', error);
+          throw error;
+        }
+
+        console.log('Update result:', data);
         alert('Ikona została zaktualizowana!');
       } else {
-        const { error } = await supabase
+        console.log('Creating icon:', iconFormData);
+
+        const { data, error } = await supabase
           .from('custom_icons')
           .insert([{
-            ...iconFormData,
+            name: iconFormData.name,
+            svg_code: iconFormData.svg_code,
+            preview_color: iconFormData.preview_color,
             created_by: session?.user?.id || null,
-          }]);
+          }])
+          .select();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Insert error details:', error);
+          throw error;
+        }
+
+        console.log('Insert result:', data);
         alert('Ikona została dodana!');
       }
 
@@ -227,7 +256,7 @@ export default function EventCategoriesPage() {
       handleCloseIconModal();
     } catch (error) {
       console.error('Error saving icon:', error);
-      alert('Błąd podczas zapisywania ikony: ' + (error as any).message);
+      alert('Błąd podczas zapisywania ikony: ' + JSON.stringify((error as any), null, 2));
     }
   };
 
