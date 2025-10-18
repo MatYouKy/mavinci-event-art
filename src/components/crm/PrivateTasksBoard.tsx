@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar, Play, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 
 interface Task {
   id: string;
@@ -566,16 +566,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                     </div>
 
                     {task.task_assignees && task.task_assignees.length > 0 && (
-                      <div className="flex items-center gap-1 flex-wrap mb-2">
-                        {task.task_assignees.map((assignee, idx) => (
-                          <EmployeeAvatar
-                            key={idx}
-                            avatarUrl={assignee.employees.avatar_url}
-                            avatarMetadata={assignee.employees.avatar_metadata}
-                            employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
-                            size={20}
-                          />
-                        ))}
+                      <div className="mb-2">
+                        <TaskAssigneeAvatars assignees={task.task_assignees} />
                       </div>
                     )}
 
