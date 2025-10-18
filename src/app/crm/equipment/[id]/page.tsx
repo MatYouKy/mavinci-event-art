@@ -483,7 +483,7 @@ export default function EquipmentDetailPage() {
           categories={categories}
           onInputChange={handleInputChange}
           onThumbnailUpload={handleThumbnailUpload}
-          equipmentId={id}
+          equipmentId={equipmentId}
           canEdit={canManage}
         />
       )}
