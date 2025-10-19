@@ -823,13 +823,11 @@ function DetailsTab({
                   {warehouseCategories?.filter(c => c.level === 1).map((cat) => (
                     <optgroup key={cat.id} label={cat.name}>
                       <option value={cat.id}>{cat.name}</option>
-                      {warehouseCategories
-                        ?.filter(sub => sub.parent_id === cat.id)
-                        .map(sub => (
-                          <option key={sub.id} value={sub.id}>
-                            &nbsp;&nbsp;└─ {sub.name}
-                          </option>
-                        ))}
+                      {warehouseCategories?.filter(sub => sub.parent_id === cat.id).map(sub => (
+                        <option key={sub.id} value={sub.id}>
+                          &nbsp;&nbsp;└─ {sub.name}
+                        </option>
+                      ))}
                     </optgroup>
                   ))}
                 </select>
