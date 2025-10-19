@@ -820,7 +820,7 @@ function DetailsTab({
                   className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 >
                   <option value="">Brak</option>
-                  {warehouseCategories.filter(c => c.level === 1).map((cat) => (
+                  {warehouseCategories?.filter(c => c.level === 1).map((cat) => (
                     <optgroup key={cat.id} label={cat.name}>
                       <option value={cat.id}>{cat.name}</option>
                       {warehouseCategories
