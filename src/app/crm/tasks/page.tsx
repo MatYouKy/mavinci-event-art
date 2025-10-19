@@ -609,6 +609,10 @@ export default function TasksPage() {
                       showDragHandle={true}
                       onEdit={handleOpenModal}
                       onDelete={handleDeleteTask}
+                      onAddSubtask={() => {
+                        setEditingTask(null);
+                        setShowModal(true);
+                      }}
                       additionalActions={
                         <button
                           onClick={() => handleStartTimer(task)}

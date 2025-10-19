@@ -492,6 +492,10 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                         onEdit={handleOpenModal}
                         onDelete={handleDelete}
                         onAssign={handleOpenAssignModal}
+                        onAddSubtask={() => {
+                          setEditingTask(null);
+                          setShowModal(true);
+                        }}
                       />
                     </div>
                   ))}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Calendar, GripVertical, Edit, Trash2, UserPlus } from 'lucide-react';
+import { Calendar, GripVertical, Edit, Trash2, UserPlus, Plus } from 'lucide-react';
 import TaskAssigneeAvatars from './TaskAssigneeAvatars';
 
 interface Task {
@@ -42,6 +42,7 @@ interface TaskCardProps {
   onEdit?: (task: Task) => void;
   onDelete?: (taskId: string) => void;
   onAssign?: (task: Task) => void;
+  onAddSubtask?: (task: Task) => void;
   additionalActions?: React.ReactNode;
 }
 
@@ -67,6 +68,7 @@ export default function TaskCard({
   onEdit,
   onDelete,
   onAssign,
+  onAddSubtask,
   additionalActions,
 }: TaskCardProps) {
   const router = useRouter();
@@ -106,6 +108,18 @@ export default function TaskCard({
         </div>
         {canManage && (
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2">
+            {onAddSubtask && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddSubtask(task);
+                }}
+                className="p-1 text-green-400 hover:bg-green-500/10 rounded transition-colors"
+                title="Dodaj podzadanie"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
             {onAssign && (
               <button
                 onClick={(e) => {
