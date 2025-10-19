@@ -207,9 +207,17 @@ export default function EquipmentDetailPage() {
           equipment_gallery(*)
         `)
         .eq('id', equipmentId)
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching equipment:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.error('Equipment not found');
+        return;
+      }
 
       const formData = {
         ...data,
@@ -225,6 +233,7 @@ export default function EquipmentDetailPage() {
       setEditForm(formData);
     } catch (error) {
       console.error('Error fetching equipment:', error);
+      showSnackbar('Błąd podczas pobierania danych sprzętu', 'error');
     } finally {
       setLoading(false);
     }
