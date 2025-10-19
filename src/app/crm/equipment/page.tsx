@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree } from 'lucide-react';
+import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Edit2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -110,17 +110,15 @@ export default function EquipmentPage() {
     while (currentParentId) {
       const parent = categories.find(c => c.id === currentParentId);
       if (!parent) break;
-      if (parent.level > 0) {
-        path = `${parent.name} > ${path}`;
-      }
+      path = `${parent.name} > ${path}`;
       currentParentId = parent.parent_id;
     }
 
     return path;
   };
 
-  const getLevel2Categories = () => {
-    return categories.filter(cat => cat.level === 2);
+  const getMainCategories = () => {
+    return categories.filter(cat => cat.level === 1);
   };
 
   const getParentCategoryId = (categoryId: string | null): string | null => {
@@ -128,8 +126,8 @@ export default function EquipmentPage() {
     const category = categories.find(c => c.id === categoryId);
     if (!category) return null;
 
-    if (category.level === 2) return category.id;
-    if (category.level === 3) return category.parent_id;
+    if (category.level === 1) return category.id;
+    if (category.level === 2) return category.parent_id;
     return null;
   };
 
@@ -158,7 +156,7 @@ export default function EquipmentPage() {
     return <div className="flex items-center justify-center h-64 text-[#e5e4e2]/60">Ładowanie...</div>;
   }
 
-  const level2Categories = getLevel2Categories();
+  const mainCategories = getMainCategories();
 
   return (
     <div className="space-y-6">
@@ -197,7 +195,7 @@ export default function EquipmentPage() {
           </div>
           {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
         </button>
-        {level2Categories.map(cat => (
+        {mainCategories.map(cat => (
           <button
             key={cat.id}
             onClick={() => setActiveTab(cat.id)}
@@ -359,9 +357,14 @@ function CategoryManagementModal({
   onUpdate: () => void;
 }) {
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [addingMain, setAddingMain] = useState(false);
+  const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [newDescription, setNewDescription] = useState('');
 
   const handleEdit = (category: WarehouseCategory) => {
     setEditingId(category.id);
@@ -370,7 +373,7 @@ function CategoryManagementModal({
   };
 
   const handleSave = async () => {
-    if (!editingId) return;
+    if (!editingId || !editName.trim()) return;
 
     try {
       const { error } = await supabase
@@ -393,29 +396,111 @@ function CategoryManagementModal({
     }
   };
 
-  const level1Categories = categories.filter(c => c.level === 1);
+  const handleAddMain = async () => {
+    if (!newName.trim()) return;
+
+    try {
+      const maxOrder = Math.max(...categories.filter(c => c.level === 1).map(c => c.order_index), -1);
+
+      const { error } = await supabase
+        .from('warehouse_categories')
+        .insert({
+          name: newName,
+          description: newDescription,
+          level: 1,
+          parent_id: null,
+          order_index: maxOrder + 1,
+        });
+
+      if (error) throw error;
+
+      showSnackbar('Dodano kategorię', 'success');
+      setAddingMain(false);
+      setNewName('');
+      setNewDescription('');
+      onUpdate();
+    } catch (error) {
+      console.error('Error:', error);
+      showSnackbar('Błąd dodawania', 'error');
+    }
+  };
+
+  const handleAddSub = async (parentId: string) => {
+    if (!newName.trim()) return;
+
+    try {
+      const siblings = categories.filter(c => c.parent_id === parentId);
+      const maxOrder = Math.max(...siblings.map(c => c.order_index), -1);
+
+      const { error } = await supabase
+        .from('warehouse_categories')
+        .insert({
+          name: newName,
+          description: newDescription,
+          level: 2,
+          parent_id: parentId,
+          order_index: maxOrder + 1,
+        });
+
+      if (error) throw error;
+
+      showSnackbar('Dodano podkategorię', 'success');
+      setAddingSubFor(null);
+      setNewName('');
+      setNewDescription('');
+      onUpdate();
+    } catch (error) {
+      console.error('Error:', error);
+      showSnackbar('Błąd dodawania', 'error');
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    const confirmed = await showConfirm(
+      `Czy na pewno chcesz usunąć kategorię "${name}"? To usunie także wszystkie podkategorie i odłączy sprzęt.`,
+      'Usuń kategorię'
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('warehouse_categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showSnackbar('Usunięto kategorię', 'success');
+      onUpdate();
+    } catch (error) {
+      console.error('Error:', error);
+      showSnackbar('Błąd usuwania', 'error');
+    }
+  };
+
+  const mainCategories = categories.filter(c => c.level === 1);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-4xl w-full max-h-[85vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Zarządzanie kategoriami</h3>
           <button
             onClick={onClose}
             className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="space-y-4">
-          {level1Categories.map(level1Cat => {
-            const level2Children = categories.filter(c => c.parent_id === level1Cat.id);
+          {mainCategories.map(mainCat => {
+            const subcategories = categories.filter(c => c.parent_id === mainCat.id);
 
             return (
-              <div key={level1Cat.id} className="bg-[#0f1119] rounded-lg p-4">
-                {editingId === level1Cat.id ? (
-                  <div className="space-y-3">
+              <div key={mainCat.id} className="bg-[#0f1119] rounded-lg p-4">
+                {editingId === mainCat.id ? (
+                  <div className="space-y-3 mb-3">
                     <input
                       type="text"
                       value={editName}
@@ -448,24 +533,32 @@ function CategoryManagementModal({
                 ) : (
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h4 className="text-[#e5e4e2] font-medium">{level1Cat.name}</h4>
-                      {level1Cat.description && (
-                        <p className="text-[#e5e4e2]/60 text-sm">{level1Cat.description}</p>
+                      <h4 className="text-[#e5e4e2] font-medium text-lg">{mainCat.name}</h4>
+                      {mainCat.description && (
+                        <p className="text-[#e5e4e2]/60 text-sm">{mainCat.description}</p>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleEdit(level1Cat)}
-                      className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
-                    >
-                      Edytuj
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEdit(mainCat)}
+                        className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(mainCat.id, mainCat.name)}
+                        className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 <div className="ml-6 space-y-2">
-                  {level2Children.map(level2Cat => (
-                    <div key={level2Cat.id} className="bg-[#1c1f33] rounded-lg p-3">
-                      {editingId === level2Cat.id ? (
+                  {subcategories.map(subCat => (
+                    <div key={subCat.id} className="bg-[#1c1f33] rounded-lg p-3">
+                      {editingId === subCat.id ? (
                         <div className="space-y-3">
                           <input
                             type="text"
@@ -501,26 +594,126 @@ function CategoryManagementModal({
                           <div className="flex items-center gap-2">
                             <ChevronRight className="w-4 h-4 text-[#e5e4e2]/40" />
                             <div>
-                              <span className="text-[#e5e4e2]">{level2Cat.name}</span>
-                              {level2Cat.description && (
-                                <span className="text-[#e5e4e2]/40 text-sm ml-2">- {level2Cat.description}</span>
+                              <span className="text-[#e5e4e2]">{subCat.name}</span>
+                              {subCat.description && (
+                                <span className="text-[#e5e4e2]/40 text-sm ml-2">- {subCat.description}</span>
                               )}
                             </div>
                           </div>
-                          <button
-                            onClick={() => handleEdit(level2Cat)}
-                            className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
-                          >
-                            Edytuj
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEdit(subCat)}
+                              className="p-1.5 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(subCat.id, subCat.name)}
+                              className="p-1.5 text-red-400 hover:bg-red-400/10 rounded-lg"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
                   ))}
+
+                  {addingSubFor === mainCat.id ? (
+                    <div className="bg-[#1c1f33] rounded-lg p-3 space-y-3">
+                      <input
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                        placeholder="Nazwa podkategorii"
+                        autoFocus
+                      />
+                      <input
+                        type="text"
+                        value={newDescription}
+                        onChange={(e) => setNewDescription(e.target.value)}
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                        placeholder="Opis (opcjonalny)"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleAddSub(mainCat.id)}
+                          className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm"
+                        >
+                          Dodaj
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAddingSubFor(null);
+                            setNewName('');
+                            setNewDescription('');
+                          }}
+                          className="px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg text-sm"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setAddingSubFor(mainCat.id)}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-3 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:border-[#d3bb73]/30 flex items-center gap-2 text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Dodaj podkategorię
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
+
+          {addingMain ? (
+            <div className="bg-[#0f1119] rounded-lg p-4 space-y-3">
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                placeholder="Nazwa kategorii"
+                autoFocus
+              />
+              <input
+                type="text"
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                placeholder="Opis (opcjonalny)"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddMain}
+                  className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
+                >
+                  Dodaj
+                </button>
+                <button
+                  onClick={() => {
+                    setAddingMain(false);
+                    setNewName('');
+                    setNewDescription('');
+                  }}
+                  className="px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg"
+                >
+                  Anuluj
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAddingMain(true)}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:border-[#d3bb73]/30 flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              Dodaj nową kategorię główną
+            </button>
+          )}
         </div>
       </div>
     </div>
