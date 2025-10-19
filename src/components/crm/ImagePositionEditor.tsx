@@ -99,8 +99,8 @@ export default function ImagePositionEditor({
                 showCircularPreview ? 'rounded-full' : 'rounded-lg'
               }`}
               style={{
-                width: `${previewWidth}px`,
-                height: `${previewHeight}px`,
+                width: '100%',
+                maxWidth: `${previewWidth}px`,
                 aspectRatio: previewAspectRatio,
               }}
             >
