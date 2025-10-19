@@ -30,7 +30,7 @@ const allNavigation: NavigationItem[] = [
   { key: 'subcontractors', name: 'Podwykonawcy', href: '/crm/subcontractors', icon: UserCheck, module: 'subcontractors' },
   { key: 'attractions', name: 'Atrakcje', href: '/crm/attractions', icon: Sparkles, module: 'attractions' },
   { key: 'employees', name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
-  { key: 'equipment', name: 'Sprzęt', href: '/crm/equipment', icon: Package, module: 'equipment' },
+  { key: 'equipment', name: 'Magazyn', href: '/crm/equipment', icon: Package, module: 'equipment' },
   { key: 'fleet', name: 'Flota', href: '/crm/fleet', icon: Car, module: 'fleet' },
   { key: 'tasks', name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
   { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', icon: Clock },

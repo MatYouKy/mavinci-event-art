@@ -45,9 +45,8 @@ export default function EquipmentPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [categories, setCategories] = useState<WarehouseCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'equipment' | 'cables'>('equipment');
+  const [activeTab, setActiveTab] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
 
@@ -111,22 +110,38 @@ export default function EquipmentPage() {
     while (currentParentId) {
       const parent = categories.find(c => c.id === currentParentId);
       if (!parent) break;
-      path = `${parent.name} > ${path}`;
+      if (parent.level > 0) {
+        path = `${parent.name} > ${path}`;
+      }
       currentParentId = parent.parent_id;
     }
 
     return path;
   };
 
-  const getLeafCategories = () => {
-    return categories.filter(cat => cat.level === 3);
+  const getLevel2Categories = () => {
+    return categories.filter(cat => cat.level === 2);
+  };
+
+  const getParentCategoryId = (categoryId: string | null): string | null => {
+    if (!categoryId) return null;
+    const category = categories.find(c => c.id === categoryId);
+    if (!category) return null;
+
+    if (category.level === 2) return category.id;
+    if (category.level === 3) return category.parent_id;
+    return null;
   };
 
   const filtered = equipment.filter((item) => {
     const search = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.brand?.toLowerCase().includes(searchTerm.toLowerCase());
-    const category = !selectedCategory || item.warehouse_category_id === selectedCategory;
-    return search && category;
+
+    if (activeTab === 'all') return search;
+    if (activeTab === 'cables') return false;
+
+    const parentCategoryId = getParentCategoryId(item.warehouse_category_id);
+    return search && parentCategoryId === activeTab;
   });
 
   const getStock = (item: Equipment) => {
@@ -143,12 +158,12 @@ export default function EquipmentPage() {
     return <div className="flex items-center justify-center h-64 text-[#e5e4e2]/60">Ładowanie...</div>;
   }
 
-  const leafCategories = getLeafCategories();
+  const level2Categories = getLevel2Categories();
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn sprzętu</h2>
+        <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn</h2>
         <div className="flex gap-2">
           {canManageModule('equipment') && (
             <button
@@ -171,20 +186,30 @@ export default function EquipmentPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-[#d3bb73]/10">
+      <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         <button
-          onClick={() => setActiveTab('equipment')}
-          className={`px-4 py-2 text-sm relative ${activeTab === 'equipment' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
+          onClick={() => setActiveTab('all')}
+          className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === 'all' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
         >
           <div className="flex items-center gap-2">
             <Package className="w-4 h-4" />
-            Sprzęt
+            Wszystko
           </div>
-          {activeTab === 'equipment' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
+          {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
         </button>
+        {level2Categories.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setActiveTab(cat.id)}
+            className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === cat.id ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
+          >
+            {cat.name}
+            {activeTab === cat.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
+          </button>
+        ))}
         <button
           onClick={() => setActiveTab('cables')}
-          className={`px-4 py-2 text-sm relative ${activeTab === 'cables' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
+          className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === 'cables' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
         >
           <div className="flex items-center gap-2">
             <Plug className="w-4 h-4" />
@@ -209,18 +234,6 @@ export default function EquipmentPage() {
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
               />
             </div>
-            <select
-              value={selectedCategory || ''}
-              onChange={(e) => setSelectedCategory(e.target.value || null)}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none min-w-[250px]"
-            >
-              <option value="">Wszystkie kategorie</option>
-              {leafCategories.map(cat => (
-                <option key={cat.id} value={cat.id}>
-                  {getCategoryPath(cat.id)}
-                </option>
-              ))}
-            </select>
             <div className="flex gap-2">
               <button
                 onClick={() => setViewMode('list')}
@@ -323,67 +336,193 @@ export default function EquipmentPage() {
       )}
 
       {showCategoryModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-light text-[#e5e4e2]">Zarządzanie kategoriami</h3>
-              <button
-                onClick={() => setShowCategoryModal(false)}
-                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="space-y-2">
-              {categories.filter(c => c.level === 0).map(rootCat => (
-                <CategoryTree
-                  key={rootCat.id}
-                  category={rootCat}
-                  allCategories={categories}
-                  level={0}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
+        <CategoryManagementModal
+          categories={categories}
+          onClose={() => setShowCategoryModal(false)}
+          onUpdate={() => {
+            fetchCategories();
+            setShowCategoryModal(false);
+          }}
+        />
       )}
     </div>
   );
 }
 
-function CategoryTree({
-  category,
-  allCategories,
-  level,
+function CategoryManagementModal({
+  categories,
+  onClose,
+  onUpdate,
 }: {
-  category: WarehouseCategory;
-  allCategories: WarehouseCategory[];
-  level: number;
+  categories: WarehouseCategory[];
+  onClose: () => void;
+  onUpdate: () => void;
 }) {
-  const children = allCategories.filter(c => c.parent_id === category.id);
+  const { showSnackbar } = useSnackbar();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+
+  const handleEdit = (category: WarehouseCategory) => {
+    setEditingId(category.id);
+    setEditName(category.name);
+    setEditDescription(category.description || '');
+  };
+
+  const handleSave = async () => {
+    if (!editingId) return;
+
+    try {
+      const { error } = await supabase
+        .from('warehouse_categories')
+        .update({
+          name: editName,
+          description: editDescription,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editingId);
+
+      if (error) throw error;
+
+      showSnackbar('Zapisano zmiany', 'success');
+      setEditingId(null);
+      onUpdate();
+    } catch (error) {
+      console.error('Error:', error);
+      showSnackbar('Błąd zapisu', 'error');
+    }
+  };
+
+  const level1Categories = categories.filter(c => c.level === 1);
 
   return (
-    <div>
-      <div
-        className={`flex items-center gap-2 p-2 rounded-lg ${
-          level === 0 ? 'bg-[#d3bb73]/10' : level === 1 ? 'bg-[#e5e4e2]/5' : 'bg-transparent'
-        }`}
-        style={{ marginLeft: `${level * 20}px` }}
-      >
-        <ChevronRight className="w-4 h-4 text-[#e5e4e2]/40" />
-        <span className="text-[#e5e4e2]">{category.name}</span>
-        {category.description && (
-          <span className="text-[#e5e4e2]/40 text-sm">- {category.description}</span>
-        )}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-light text-[#e5e4e2]">Zarządzanie kategoriami</h3>
+          <button
+            onClick={onClose}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {level1Categories.map(level1Cat => {
+            const level2Children = categories.filter(c => c.parent_id === level1Cat.id);
+
+            return (
+              <div key={level1Cat.id} className="bg-[#0f1119] rounded-lg p-4">
+                {editingId === level1Cat.id ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      placeholder="Nazwa kategorii"
+                    />
+                    <input
+                      type="text"
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      placeholder="Opis (opcjonalny)"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSave}
+                        className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
+                      >
+                        Zapisz
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg"
+                      >
+                        Anuluj
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="text-[#e5e4e2] font-medium">{level1Cat.name}</h4>
+                      {level1Cat.description && (
+                        <p className="text-[#e5e4e2]/60 text-sm">{level1Cat.description}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleEdit(level1Cat)}
+                      className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+                    >
+                      Edytuj
+                    </button>
+                  </div>
+                )}
+
+                <div className="ml-6 space-y-2">
+                  {level2Children.map(level2Cat => (
+                    <div key={level2Cat.id} className="bg-[#1c1f33] rounded-lg p-3">
+                      {editingId === level2Cat.id ? (
+                        <div className="space-y-3">
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                            placeholder="Nazwa podkategorii"
+                          />
+                          <input
+                            type="text"
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
+                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                            placeholder="Opis (opcjonalny)"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleSave}
+                              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm"
+                            >
+                              Zapisz
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg text-sm"
+                            >
+                              Anuluj
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ChevronRight className="w-4 h-4 text-[#e5e4e2]/40" />
+                            <div>
+                              <span className="text-[#e5e4e2]">{level2Cat.name}</span>
+                              {level2Cat.description && (
+                                <span className="text-[#e5e4e2]/40 text-sm ml-2">- {level2Cat.description}</span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleEdit(level2Cat)}
+                            className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+                          >
+                            Edytuj
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-      {children.map(child => (
-        <CategoryTree
-          key={child.id}
-          category={child}
-          allCategories={allCategories}
-          level={level + 1}
-        />
-      ))}
     </div>
   );
 }
