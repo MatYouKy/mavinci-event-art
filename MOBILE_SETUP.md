@@ -24,6 +24,8 @@ cd mobile
 npm install
 ```
 
+**⚠️ Uwaga:** Aplikacja używa **Expo SDK 54**. Upewnij się że masz najnowszą wersję **Expo Go** na telefonie!
+
 ### 3. Skopiuj konfigurację Supabase
 
 ```bash

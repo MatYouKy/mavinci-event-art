@@ -4,11 +4,11 @@ Aplikacja mobilna React Native dla systemu CRM Mavinci, działająca na Android 
 
 ## 🚀 Technologie
 
-- **React Native** + **Expo** (~50.0.0)
+- **React Native** 0.76.5 + **Expo** ~54.0.0
 - **TypeScript**
-- **React Navigation** (Stack + Bottom Tabs)
-- **Supabase** (współdzielona baza z aplikacją webową)
-- **Lucide React Native** (ikony)
+- **React Navigation 6** (Stack + Bottom Tabs)
+- **Supabase** 2.57+ (współdzielona baza z aplikacją webową)
+- **Lucide React Native** 0.460+ (ikony)
 
 ## 📱 Funkcjonalności
 
@@ -57,6 +57,10 @@ text.tertiary: '#808080'    // Pomocniczy
 cd mobile
 npm install
 ```
+
+**Uwaga:** Aplikacja używa **Expo SDK 54**. Upewnij się że masz zaktualizowane **Expo Go** na telefonie:
+- [Android Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent)
+- [iOS Expo Go](https://apps.apple.com/app/expo-go/id982107779)
 
 ### 2. Skonfiguruj zmienne środowiskowe
 

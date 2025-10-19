@@ -9,6 +9,8 @@ cd mobile
 npm install
 ```
 
+**⚠️ Ważne:** Aplikacja używa **Expo SDK 54**. Zaktualizuj **Expo Go** na telefonie do najnowszej wersji!
+
 ### 2. Skonfiguruj Supabase
 
 Skopiuj dane z głównej aplikacji (plik `.env` w głównym projekcie):

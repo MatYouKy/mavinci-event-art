@@ -4,10 +4,8 @@
     "slug": "mavinci-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0f1119"
     },
@@ -19,14 +17,7 @@
       "bundleIdentifier": "com.mavinci.crm"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0f1119"
-      },
       "package": "com.mavinci.crm"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
     }
   }
 }
