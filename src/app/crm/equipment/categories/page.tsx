@@ -64,6 +64,9 @@ export default function CategoriesPage() {
     if (!editingId || !editName.trim()) return;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Session for update:', session?.user?.id);
+
       const { data, error } = await supabase
         .from('warehouse_categories')
         .update({
@@ -79,6 +82,7 @@ export default function CategoriesPage() {
         throw error;
       }
 
+      console.log('Update success:', data);
       showSnackbar('Zapisano zmiany', 'success');
       setEditingId(null);
       setEditName('');
@@ -94,6 +98,9 @@ export default function CategoriesPage() {
     if (!newName.trim()) return;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Session for insert:', session?.user?.id);
+
       const maxOrder = Math.max(...categories.filter(c => c.level === 1).map(c => c.order_index), -1);
 
       const { data, error } = await supabase
@@ -114,6 +121,7 @@ export default function CategoriesPage() {
         throw error;
       }
 
+      console.log('Insert success:', data);
       showSnackbar('Dodano kategorię', 'success');
       setAddingMain(false);
       setNewName('');
