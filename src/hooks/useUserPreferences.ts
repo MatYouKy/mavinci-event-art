@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from './useCurrentEmployee';
 
-type ViewMode = 'list' | 'grid';
+type ViewMode = 'list' | 'grid' | 'cards' | 'detailed';
 
 interface ViewModePreference {
   viewMode: ViewMode;
@@ -28,6 +28,7 @@ interface Preferences {
   offers?: ViewModePreference;
   contracts?: ViewModePreference;
   fleet?: ViewModePreference;
+  employees?: ViewModePreference;
   notifications?: NotificationPreferences;
 }
 
@@ -62,7 +63,7 @@ export function useUserPreferences() {
   };
 
   const getViewMode = (module: string): ViewMode => {
-    return preferences[module as keyof Preferences]?.viewMode || 'list';
+    return preferences[module as keyof Preferences]?.viewMode || 'cards';
   };
 
   const setViewMode = async (module: string, viewMode: ViewMode) => {

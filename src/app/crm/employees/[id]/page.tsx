@@ -97,7 +97,7 @@ interface EventAssignment {
   role_in_event: string;
   hours_worked: number | null;
   hourly_rate: number | null;
-  assigned_at: string;
+  created_at: string;
   event: {
     id: string;
     name: string;
@@ -211,7 +211,7 @@ export default function EmployeeDetailPage() {
         .from('employee_assignments')
         .select('*, event:events(id, name, event_date, status)')
         .eq('employee_id', employeeId)
-        .order('assigned_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (!error && data) {
         setEvents(data as any);
