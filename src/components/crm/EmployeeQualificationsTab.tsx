@@ -191,6 +191,22 @@ export default function EmployeeQualificationsTab({ employeeId, canEdit }: Emplo
     setShowAddSkillModal(false);
   };
 
+  const handleUpdateCertification = async (id: string, formData: any) => {
+    const { error } = await supabase
+      .from('employee_certifications')
+      .update(formData)
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating certification:', error);
+      alert('Błąd podczas aktualizacji certyfikatu');
+      return;
+    }
+
+    fetchCertifications();
+    setEditingCert(null);
+  };
+
   const handleDeleteCertification = async (id: string) => {
     if (!confirm('Czy na pewno chcesz usunąć ten certyfikat?')) return;
 
@@ -206,6 +222,22 @@ export default function EmployeeQualificationsTab({ employeeId, canEdit }: Emplo
     }
 
     fetchCertifications();
+  };
+
+  const handleUpdateSkill = async (id: string, formData: any) => {
+    const { error } = await supabase
+      .from('employee_skills')
+      .update(formData)
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating skill:', error);
+      alert('Błąd podczas aktualizacji umiejętności');
+      return;
+    }
+
+    fetchSkills();
+    setEditingSkill(null);
   };
 
   const handleDeleteSkill = async (id: string) => {
@@ -352,12 +384,20 @@ export default function EmployeeQualificationsTab({ employeeId, canEdit }: Emplo
                   </div>
 
                   {canEdit && (
-                    <button
-                      onClick={() => handleDeleteCertification(cert.id)}
-                      className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditingCert(cert.id)}
+                        className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors text-[#d3bb73]"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCertification(cert.id)}
+                        className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -433,12 +473,20 @@ export default function EmployeeQualificationsTab({ employeeId, canEdit }: Emplo
                   </div>
 
                   {canEdit && (
-                    <button
-                      onClick={() => handleDeleteSkill(skill.id)}
-                      className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditingSkill(skill.id)}
+                        className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors text-[#d3bb73]"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSkill(skill.id)}
+                        className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -462,6 +510,26 @@ export default function EmployeeQualificationsTab({ employeeId, canEdit }: Emplo
           availableSkills={availableSkills}
           onSave={handleAddSkill}
           onClose={() => setShowAddSkillModal(false)}
+        />
+      )}
+
+      {/* Modal edycji certyfikatu */}
+      {editingCert && (
+        <EditCertificationModal
+          certification={certifications.find(c => c.id === editingCert)!}
+          availableTypes={availableCertTypes}
+          onSave={(data) => handleUpdateCertification(editingCert, data)}
+          onClose={() => setEditingCert(null)}
+        />
+      )}
+
+      {/* Modal edycji umiejętności */}
+      {editingSkill && (
+        <EditSkillModal
+          skill={skills.find(s => s.id === editingSkill)!}
+          availableSkills={availableSkills}
+          onSave={(data) => handleUpdateSkill(editingSkill, data)}
+          onClose={() => setEditingSkill(null)}
         />
       )}
     </div>
@@ -698,6 +766,248 @@ function AddSkillModal({
               className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
             >
               Dodaj
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Modal edycji certyfikatu
+function EditCertificationModal({
+  certification,
+  availableTypes,
+  onSave,
+  onClose,
+}: {
+  certification: Certification;
+  availableTypes: CertificationType[];
+  onSave: (data: any) => void;
+  onClose: () => void;
+}) {
+  const [formData, setFormData] = useState({
+    certification_type_id: certification.certification_type_id,
+    issued_date: certification.issued_date,
+    expiry_date: certification.expiry_date || '',
+    certification_number: certification.certification_number || '',
+    issuing_authority: certification.issuing_authority || '',
+    notes: certification.notes || '',
+    is_active: certification.is_active,
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({
+      ...formData,
+      expiry_date: formData.expiry_date || null,
+      certification_number: formData.certification_number || null,
+      issuing_authority: formData.issuing_authority || null,
+      notes: formData.notes || null,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Edytuj certyfikat</h3>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Typ certyfikatu *</label>
+            <select
+              required
+              value={formData.certification_type_id}
+              onChange={(e) => setFormData({ ...formData, certification_type_id: e.target.value })}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+            >
+              <option value="">Wybierz...</option>
+              {availableTypes.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-1">Data wydania *</label>
+              <input
+                type="date"
+                required
+                value={formData.issued_date}
+                onChange={(e) => setFormData({ ...formData, issued_date: e.target.value })}
+                className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-1">Data wygaśnięcia</label>
+              <input
+                type="date"
+                value={formData.expiry_date}
+                onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Numer certyfikatu</label>
+            <input
+              type="text"
+              value={formData.certification_number}
+              onChange={(e) => setFormData({ ...formData, certification_number: e.target.value })}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Wystawca</label>
+            <input
+              type="text"
+              value={formData.issuing_authority}
+              onChange={(e) => setFormData({ ...formData, issuing_authority: e.target.value })}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Notatki</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors"
+            >
+              Anuluj
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            >
+              Zapisz
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Modal edycji umiejętności
+function EditSkillModal({
+  skill,
+  availableSkills,
+  onSave,
+  onClose,
+}: {
+  skill: Skill;
+  availableSkills: SkillType[];
+  onSave: (data: any) => void;
+  onClose: () => void;
+}) {
+  const [formData, setFormData] = useState({
+    skill_id: skill.skill_id,
+    proficiency_level: skill.proficiency_level,
+    years_of_experience: skill.years_of_experience?.toString() || '',
+    notes: skill.notes || '',
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({
+      ...formData,
+      years_of_experience: formData.years_of_experience ? parseFloat(formData.years_of_experience) : null,
+      notes: formData.notes || null,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 max-w-lg w-full">
+        <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Edytuj umiejętność</h3>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Umiejętność *</label>
+            <select
+              required
+              value={formData.skill_id}
+              onChange={(e) => setFormData({ ...formData, skill_id: e.target.value })}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+            >
+              <option value="">Wybierz...</option>
+              {availableSkills.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.category && `(${s.category.name})`}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Poziom zaawansowania *</label>
+            <select
+              required
+              value={formData.proficiency_level}
+              onChange={(e) => setFormData({ ...formData, proficiency_level: e.target.value as any })}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+            >
+              <option value="basic">Podstawowy</option>
+              <option value="intermediate">Średniozaawansowany</option>
+              <option value="advanced">Zaawansowany</option>
+              <option value="expert">Ekspert</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Lata doświadczenia</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.years_of_experience}
+              onChange={(e) => setFormData({ ...formData, years_of_experience: e.target.value })}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Notatki</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+              placeholder="np. Projekty, osiągnięcia, szkolenia..."
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors"
+            >
+              Anuluj
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            >
+              Zapisz
             </button>
           </div>
         </form>

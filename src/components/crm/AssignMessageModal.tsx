@@ -173,7 +173,7 @@ export default function AssignMessageModal({
                   </div>
                   <div className="flex-1 text-left">
                     <div className="text-[#e5e4e2] font-medium">
-                      {employee.name} {employee.surname}
+                      {employee.nickname || employee.name}
                     </div>
                     <div className="text-sm text-[#e5e4e2]/60">{employee.email}</div>
                   </div>

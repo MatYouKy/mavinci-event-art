@@ -79,8 +79,10 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
     if (data && data.length > 0) {
       const employeesBySkill: Record<string, any[]> = {};
 
+      const proficiencyOrder = ['basic', 'intermediate', 'advanced', 'expert'];
+
       for (const req of data) {
-        const { data: employees, error: empError } = await supabase
+        const { data: employees, error: empError} = await supabase
           .from('employee_skills')
           .select(`
             employee_id,
@@ -88,11 +90,18 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             years_of_experience,
             employee:employees(id, name, surname, email)
           `)
-          .eq('skill_id', req.skill.id)
-          .gte('proficiency_level', req.minimum_proficiency || 'basic');
+          .eq('skill_id', req.skill.id);
 
         if (!empError && employees) {
-          employeesBySkill[req.skill.id] = employees.map(e => ({
+          const minLevel = req.minimum_proficiency || 'basic';
+          const minIndex = proficiencyOrder.indexOf(minLevel);
+
+          const qualified = employees.filter(e => {
+            const empIndex = proficiencyOrder.indexOf(e.proficiency_level);
+            return empIndex >= minIndex;
+          });
+
+          employeesBySkill[req.skill.id] = qualified.map(e => ({
             ...e.employee,
             proficiency_level: e.proficiency_level,
             years_of_experience: e.years_of_experience,

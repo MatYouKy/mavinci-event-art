@@ -685,7 +685,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                     </div>
                     <div className="flex-1 text-left">
                       <div className="text-sm font-medium text-[#e5e4e2]">
-                        {employee.name} {employee.surname}
+                        {employee.nickname || employee.name}
                       </div>
                     </div>
                     {isAssigned && (

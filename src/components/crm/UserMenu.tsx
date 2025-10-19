@@ -21,6 +21,7 @@ interface EmployeeData {
   id: string;
   name: string;
   surname: string;
+  nickname?: string | null;
   email: string;
   role: string;
   access_level: string;
@@ -108,7 +109,7 @@ export default function UserMenu() {
 
   const getDisplayName = () => {
     if (employee) {
-      return `${employee.name} ${employee.surname}`;
+      return employee.nickname || employee.name;
     }
     if (user?.email) {
       return user.email.split('@')[0];

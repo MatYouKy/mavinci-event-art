@@ -132,7 +132,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     if (!employee) return;
 
     const signatureData = {
-      full_name: `${employee.name} ${employee.surname}`,
+      full_name: employee.nickname || `${employee.name} ${employee.surname}`,
       position: employee.occupation || '',
       phone: employee.phone_number || '',
       email: employee.email,

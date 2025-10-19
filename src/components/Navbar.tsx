@@ -139,7 +139,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
 
   const getDisplayName = () => {
     if (employee) {
-      return `${employee.name} ${employee.surname}`;
+      return employee.nickname || employee.name;
     }
     if (crmUser?.email) {
       return crmUser.email.split('@')[0];

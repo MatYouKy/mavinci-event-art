@@ -86,7 +86,7 @@ export default function ComposeEmailModal({
     if (!signature && !employee) return '<p style="color: #999; font-style: italic;">Skonfiguruj stopkę w /crm/employees/signature</p>';
 
     const sig = signature || {
-      full_name: employee ? `${employee.name} ${employee.surname}` : '',
+      full_name: employee ? (employee.nickname || `${employee.name} ${employee.surname}`) : '',
       position: employee?.occupation || '',
       phone: employee?.phone_number || '',
       email: employee?.email || '',
