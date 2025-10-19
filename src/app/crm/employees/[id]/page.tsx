@@ -1238,6 +1238,7 @@ export default function EmployeeDetailPage() {
           previewAspectRatio="1/1"
           previewWidth={200}
           previewHeight={200}
+          showCircularPreview={true}
         />
       )}
     </div>

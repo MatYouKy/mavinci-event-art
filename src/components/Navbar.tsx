@@ -38,7 +38,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
         setCrmUser(session.user);
         const { data: employeeData } = await supabase
           .from('employees')
-          .select('*')
+          .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, access_level')
           .eq('email', session.user.email)
           .maybeSingle();
         if (employeeData) {
@@ -163,6 +163,18 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
     return 'U';
   };
 
+  const getAvatarStyle = () => {
+    if (!employee?.avatar_metadata?.desktop?.position) {
+      return {};
+    }
+    const { posX, posY, scale } = employee.avatar_metadata.desktop.position;
+    const objectFit = employee.avatar_metadata.desktop.objectFit || 'cover';
+    return {
+      objectFit: objectFit as any,
+      transform: `translate(${posX}%, ${posY}%) scale(${scale})`,
+    };
+  };
+
   const displayName = getDisplayName();
   const avatarUrl = employee?.avatar_url || authUser?.user_avatar?.image_metadata?.desktop?.src || authUser?.user_avatar;
   const userEmail = crmUser?.email || authUser?.user_email?.address;
@@ -243,11 +255,14 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                   className="flex items-center gap-2 bg-[#800020]/20 text-[#e5e4e2] px-3 py-2 rounded-full text-sm font-medium hover:bg-[#800020]/30 transition-colors duration-200"
                 >
                   {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt={displayName}
-                      className="w-8 h-8 rounded-full object-cover border-2 border-[#d3bb73]/30"
-                    />
+                    <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#d3bb73]/30">
+                      <img
+                        src={avatarUrl}
+                        alt={displayName}
+                        className="w-full h-full"
+                        style={getAvatarStyle()}
+                      />
+                    </div>
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
                       <span className="text-[#1c1f33] font-bold text-xs">
@@ -264,11 +279,14 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                     <div className="p-4 border-b border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-transparent">
                       <div className="flex items-center gap-3 mb-2">
                         {avatarUrl ? (
-                          <img
-                            src={avatarUrl}
-                            alt={displayName}
-                            className="w-12 h-12 rounded-full object-cover border-2 border-[#d3bb73]/30"
-                          />
+                          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#d3bb73]/30">
+                            <img
+                              src={avatarUrl}
+                              alt={displayName}
+                              className="w-full h-full"
+                              style={getAvatarStyle()}
+                            />
+                          </div>
                         ) : (
                           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
                             <span className="text-[#1c1f33] font-bold text-base">
@@ -434,27 +452,28 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
             </div>
             {isAuthenticated ? (
               <div className="space-y-2 mt-4">
-                <div className="mb-3 flex justify-center">
-                  <NotificationCenter />
-                </div>
-                <div className="flex items-center gap-3 px-4 py-3 bg-[#d3bb73]/10 rounded-lg">
+                <div className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 rounded-lg">
                   {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt={displayName}
-                      className="w-10 h-10 rounded-full object-cover border-2 border-[#d3bb73]/30"
-                    />
+                    <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-[#d3bb73]/30 flex-shrink-0">
+                      <img
+                        src={avatarUrl}
+                        alt={displayName}
+                        className="w-full h-full"
+                        style={getAvatarStyle()}
+                      />
+                    </div>
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30 flex-shrink-0">
                       <span className="text-[#1c1f33] font-bold text-sm">
                         {getInitials()}
                       </span>
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#e5e4e2] truncate">{displayName}</p>
-                    <p className="text-xs text-[#e5e4e2]/60 truncate">{userEmail}</p>
+                    <p className="text-xs font-medium text-[#e5e4e2] truncate">{displayName}</p>
+                    <p className="text-[10px] text-[#e5e4e2]/60 truncate">{userEmail}</p>
                   </div>
+                  <NotificationCenter />
                 </div>
                 {crmUser && (
                   <button

@@ -25,6 +25,7 @@ interface ImagePositionEditorProps {
   previewAspectRatio?: string;
   previewWidth?: number;
   previewHeight?: number;
+  showCircularPreview?: boolean;
 }
 
 export default function ImagePositionEditor({
@@ -36,6 +37,7 @@ export default function ImagePositionEditor({
   previewAspectRatio = '1/1',
   previewWidth = 200,
   previewHeight = 200,
+  showCircularPreview = false,
 }: ImagePositionEditorProps) {
   const [position, setPosition] = useState<ImagePosition>({
     posX: currentMetadata?.desktop?.position?.posX ?? 0,
@@ -89,9 +91,13 @@ export default function ImagePositionEditor({
         <div className="grid md:grid-cols-2 gap-6">
           {/* Preview */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Podgląd:</label>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Podgląd: {showCircularPreview && '(okrągły - jak avatar)'}
+            </label>
             <div
-              className="relative bg-[#0f1119] border-2 border-[#d3bb73]/20 rounded-lg overflow-hidden mx-auto"
+              className={`relative bg-[#0f1119] border-2 border-[#d3bb73]/20 overflow-hidden mx-auto ${
+                showCircularPreview ? 'rounded-full' : 'rounded-lg'
+              }`}
               style={{
                 width: `${previewWidth}px`,
                 height: `${previewHeight}px`,

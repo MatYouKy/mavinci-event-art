@@ -27,8 +27,8 @@ export default function Team() {
   const [editingMetadata, setEditingMetadata] = useState<ImageMetadata | null>(null);
 
   const { isEditMode } = useEditMode();
-  const { employee: currentEmployee, canManageModule } = useCurrentEmployee();
-  const canEdit = canManageModule && canManageModule('employees');
+  const { employee: currentEmployee, canManageModule, loading: employeeLoading } = useCurrentEmployee();
+  const canEdit = !employeeLoading && canManageModule && canManageModule('employees');
 
   useEffect(() => {
     fetchTeamMembers();
