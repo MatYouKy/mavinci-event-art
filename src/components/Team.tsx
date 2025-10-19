@@ -1,13 +1,34 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Linkedin, Mail } from 'lucide-react';
+import { Linkedin, Mail, MoreVertical } from 'lucide-react';
 import { TeamMember, supabase } from '../lib/supabase';
+import { useEditMode } from '@/contexts/EditModeContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
+
+interface ImageMetadata {
+  desktop?: {
+    position?: {
+      posX: number;
+      posY: number;
+      scale: number;
+    };
+    objectFit?: string;
+  };
+}
 
 export default function Team() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editingImageUrl, setEditingImageUrl] = useState<string | null>(null);
+  const [editingMetadata, setEditingMetadata] = useState<ImageMetadata | null>(null);
+
+  const { isEditMode } = useEditMode();
+  const { employee: currentEmployee, canManageModule } = useCurrentEmployee();
+  const canEdit = canManageModule && canManageModule('employees');
 
   useEffect(() => {
     fetchTeamMembers();
@@ -18,7 +39,7 @@ export default function Team() {
     try {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, occupation, role, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level')
+        .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, team_page_metadata, occupation, role, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level')
         .eq('show_on_website', true)
         .order('order_index', { ascending: true })
         .order('created_at', { ascending: true });
@@ -36,7 +57,7 @@ export default function Team() {
         role: emp.role || emp.occupation || '',
         email: emp.email,
         image: emp.avatar_url,
-        image_metadata: emp.avatar_metadata,
+        image_metadata: emp.team_page_metadata || emp.avatar_metadata,
         alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
         bio: emp.website_bio,
         linkedin: emp.linkedin_url,
@@ -51,6 +72,33 @@ export default function Team() {
       setTeamMembers([]);
     }
     setLoading(false);
+  };
+
+  const handleEditImagePosition = (member: TeamMember) => {
+    setEditingMemberId(member.id);
+    setEditingImageUrl(member.image);
+    setEditingMetadata(member.image_metadata as ImageMetadata | null);
+  };
+
+  const handleSaveImagePosition = async (metadata: ImageMetadata) => {
+    if (!editingMemberId) return;
+
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({ team_page_metadata: metadata })
+        .eq('id', editingMemberId);
+
+      if (error) throw error;
+
+      await fetchTeamMembers();
+      setEditingMemberId(null);
+      setEditingImageUrl(null);
+      setEditingMetadata(null);
+    } catch (error) {
+      console.error('Error saving image position:', error);
+      throw error;
+    }
   };
 
   return (
@@ -146,6 +194,17 @@ export default function Team() {
 
                   <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/40 to-transparent opacity-60 group-hover:opacity-90 transition-all duration-500"></div>
 
+                  {/* Edit menu - visible only in edit mode */}
+                  {isEditMode && canEdit && (
+                    <button
+                      onClick={() => handleEditImagePosition(member)}
+                      className="absolute top-4 left-4 z-20 p-2 bg-[#d3bb73] rounded-full hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
+                      title="Ustaw pozycję zdjęcia"
+                    >
+                      <MoreVertical className="w-5 h-5 text-[#1c1f33]" />
+                    </button>
+                  )}
+
                   <div
                     className={`absolute top-4 right-4 flex gap-2 transition-all duration-500 ${
                       hoveredId === member.id
@@ -231,6 +290,24 @@ export default function Team() {
           }
         }
       `}</style>
+
+      {/* Image Position Editor Modal */}
+      {editingMemberId && editingImageUrl && (
+        <ImagePositionEditor
+          imageUrl={editingImageUrl}
+          currentMetadata={editingMetadata}
+          onSave={handleSaveImagePosition}
+          onClose={() => {
+            setEditingMemberId(null);
+            setEditingImageUrl(null);
+            setEditingMetadata(null);
+          }}
+          title="Ustaw pozycję zdjęcia zespołu"
+          previewAspectRatio="3/4"
+          previewWidth={300}
+          previewHeight={400}
+        />
+      )}
     </section>
   );
 }

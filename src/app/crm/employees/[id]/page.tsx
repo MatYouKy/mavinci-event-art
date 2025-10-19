@@ -11,6 +11,7 @@ import { Formik, Form } from 'formik';
 import { ImageEditorField } from '@/components/ImageEditorField';
 import { AvatarEditorModal } from '@/components/AvatarEditorModal';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage, IImage } from '@/types/image';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -122,6 +123,7 @@ export default function EmployeeDetailPage() {
   const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showAvatarPositionEditor, setShowAvatarPositionEditor] = useState(false);
   const [accessLevels, setAccessLevels] = useState<Array<{id: string; name: string; description: string}>>([]);
 
   const { employee: currentEmployee, isAdmin, canManagePermissions, canManageModule, loading: currentUserLoading } = useCurrentEmployee();
@@ -299,6 +301,24 @@ export default function EmployeeDetailPage() {
   const handleDeleteDocument = async (docId: string) => {
     // Table employee_documents doesn't exist yet
     alert('Funkcja dokumentów nie jest jeszcze dostępna');
+  };
+
+  const handleSaveAvatarPosition = async (metadata: ImageMetadata) => {
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({ avatar_metadata: metadata })
+        .eq('id', employeeId);
+
+      if (error) throw error;
+
+      if (employee) {
+        setEmployee({ ...employee, avatar_metadata: metadata });
+      }
+    } catch (error) {
+      console.error('Error saving avatar position:', error);
+      throw error;
+    }
   };
 
   const getRoleLabel = (role: string) => {
@@ -486,18 +506,29 @@ export default function EmployeeDetailPage() {
               </div>
               <div className="relative" style={{ zIndex: isEditing ? 50 : 10 }}>
                 <div className="absolute -top-16 left-6" style={{ zIndex: isEditing ? 50 : 10 }}>
-                  <EmployeeAvatar
-                    avatarUrl={employee.avatar_url}
-                    avatarMetadata={employee.avatar_metadata}
-                    employeeName={employee.name}
-                    size={128}
-                    onClick={() => {
-                      if (isEditing && canEdit) {
-                        setShowAvatarModal(true);
-                      }
-                    }}
-                    showHoverEffect={isEditing && canEdit}
-                  />
+                  <div className="relative">
+                    <EmployeeAvatar
+                      avatarUrl={employee.avatar_url}
+                      avatarMetadata={employee.avatar_metadata}
+                      employeeName={employee.name}
+                      size={128}
+                      onClick={() => {
+                        if (isEditing && canEdit) {
+                          setShowAvatarModal(true);
+                        }
+                      }}
+                      showHoverEffect={isEditing && canEdit}
+                    />
+                    {canEdit && employee.avatar_url && (
+                      <button
+                        onClick={() => setShowAvatarPositionEditor(true)}
+                        className="absolute -bottom-2 -right-2 p-2 bg-[#d3bb73] text-[#1c1f33] rounded-full hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
+                        title="Ustaw pozycję avatara"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1196,6 +1227,19 @@ export default function EmployeeDetailPage() {
         onSave={(payload) => handleSaveImage('avatar', payload)}
         employeeName={`${employee?.name} ${employee?.surname}`}
       />
+
+      {showAvatarPositionEditor && employee?.avatar_url && (
+        <ImagePositionEditor
+          imageUrl={employee.avatar_url}
+          currentMetadata={employee.avatar_metadata}
+          onSave={handleSaveAvatarPosition}
+          onClose={() => setShowAvatarPositionEditor(false)}
+          title="Ustaw pozycję avatara"
+          previewAspectRatio="1/1"
+          previewWidth={200}
+          previewHeight={200}
+        />
+      )}
     </div>
   );
 }
