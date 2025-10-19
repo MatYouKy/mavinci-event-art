@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Brain, AlertCircle, User as UserIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 
 interface SkillRequirement {
   id: string;
@@ -90,7 +89,7 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             employee_id,
             proficiency_level,
             years_of_experience,
-            employee:employees!employee_skills_employee_id_fkey(id, name, surname, nickname, email)
+            employee:employees!employee_skills_employee_id_fkey(id, name, surname, nickname, email, avatar_url, avatar_metadata)
           `)
           .eq('skill_id', req.skill.id);
 
@@ -295,7 +294,18 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
                             Pracownicy z tą umiejętnością ({employees.length})
                           </span>
                         </div>
-                        <EmployeeAvatarsList employees={employees} />
+                        <TaskAssigneeAvatars
+                          assignees={employees.map((emp: any) => ({
+                            employee_id: emp.id,
+                            employees: {
+                              name: emp.name,
+                              surname: emp.surname,
+                              avatar_url: emp.avatar_url,
+                              avatar_metadata: emp.avatar_metadata,
+                            },
+                          }))}
+                          maxVisible={8}
+                        />
                       </div>
                     )}
 
@@ -534,112 +544,6 @@ function AddSkillRequirementModal({
           </div>
         </form>
       </div>
-    </div>
-  );
-}
-
-function EmployeeAvatarsList({ employees }: { employees: any[] }) {
-  const router = useRouter();
-  const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
-  const maxVisible = 8;
-  const visibleEmployees = employees.slice(0, maxVisible);
-  const remainingCount = employees.length - maxVisible;
-
-  const getProficiencyLabel = (level: string) => {
-    const labels = {
-      basic: 'Podstawowy',
-      intermediate: 'Średniozaawansowany',
-      advanced: 'Zaawansowany',
-      expert: 'Ekspert',
-    };
-    return labels[level as keyof typeof labels] || level;
-  };
-
-  const getProficiencyColor = (level: string) => {
-    const colors = {
-      basic: 'text-blue-400',
-      intermediate: 'text-green-400',
-      advanced: 'text-orange-400',
-      expert: 'text-purple-400',
-    };
-    return colors[level as keyof typeof colors] || 'text-gray-400';
-  };
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {visibleEmployees.map((emp: any) => (
-        <div
-          key={emp.id}
-          className="relative"
-          onMouseEnter={() => setHoveredEmployee(emp.id)}
-          onMouseLeave={() => setHoveredEmployee(null)}
-        >
-          <div
-            onClick={() => router.push(`/crm/employees/${emp.id}`)}
-            className="cursor-pointer"
-          >
-            <EmployeeAvatar
-              avatarUrl={emp.avatar_url}
-              avatarMetadata={emp.avatar_metadata}
-              employeeName={emp.nickname || `${emp.name} ${emp.surname}`}
-              size={40}
-              className="border-2 border-[#d3bb73]/20 hover:border-[#d3bb73]/50 transition-colors"
-            />
-          </div>
-
-          {hoveredEmployee === emp.id && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-64">
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-3 shadow-xl">
-                <div className="flex items-start gap-3 mb-2">
-                  <EmployeeAvatar
-                    avatarUrl={emp.avatar_url}
-                    avatarMetadata={emp.avatar_metadata}
-                    employeeName={emp.nickname || `${emp.name} ${emp.surname}`}
-                    size={48}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-[#e5e4e2] truncate">
-                      {emp.nickname || `${emp.name} ${emp.surname}`}
-                    </p>
-                    {emp.nickname && (
-                      <p className="text-xs text-[#e5e4e2]/40 truncate">
-                        {emp.name} {emp.surname}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#e5e4e2]/60">Poziom:</span>
-                    <span className={`font-medium ${getProficiencyColor(emp.proficiency_level)}`}>
-                      {getProficiencyLabel(emp.proficiency_level)}
-                    </span>
-                  </div>
-                  {emp.years_of_experience && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-[#e5e4e2]/60">Doświadczenie:</span>
-                      <span className="text-[#e5e4e2]">{emp.years_of_experience} lat</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => router.push(`/crm/employees/${emp.id}`)}
-                    className="w-full mt-2 py-1 text-xs bg-[#d3bb73]/10 text-[#d3bb73] rounded hover:bg-[#d3bb73]/20 transition-colors"
-                  >
-                    Zobacz profil
-                  </button>
-                </div>
-              </div>
-              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-[#d3bb73]/20" style={{ marginTop: '-1px' }} />
-            </div>
-          )}
-        </div>
-      ))}
-      {remainingCount > 0 && (
-        <div className="w-10 h-10 rounded-full bg-[#1c1f33] border-2 border-[#d3bb73]/20 flex items-center justify-center text-xs text-[#e5e4e2]/60">
-          +{remainingCount}
-        </div>
-      )}
     </div>
   );
 }
