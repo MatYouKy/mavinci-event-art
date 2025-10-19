@@ -105,26 +105,44 @@ npm error File exists: /Users/.../.npm/_cacache/content-v2/sha512/...
 
 **Rozwiązanie:**
 
-**1. Wyczyść npm cache (najprostsze):**
+**1. Wyczyść wszystko i zainstaluj od nowa (NAJPEWNIEJSZE):**
 ```bash
+# Usuń node_modules i cache:
+rm -rf node_modules
+rm -rf package-lock.json
 npm cache clean --force
+
+# Zainstaluj ponownie:
 npm install
 ```
 
-**2. Jeśli nadal błąd - usuń cache ręcznie:**
+**2. Wyczyść tylko npm cache (szybsze):**
+```bash
+npm cache clean --force
+rm -rf node_modules
+npm install
+```
+
+**3. Jeśli nadal błąd - usuń cache ręcznie:**
 ```bash
 # macOS/Linux:
 rm -rf ~/.npm/_cacache
 npm cache verify
+
+# Potem:
+rm -rf node_modules
+rm -rf package-lock.json
 npm install
 
 # Windows:
 # Usuń folder: C:\Users\USERNAME\AppData\Local\npm-cache
 npm cache verify
+rm -rf node_modules
+rm -rf package-lock.json
 npm install
 ```
 
-**3. Sprawdź uprawnienia npm:**
+**4. Sprawdź uprawnienia npm:**
 ```bash
 # macOS/Linux:
 ls -la ~/.npm
@@ -132,14 +150,19 @@ ls -la ~/.npm
 # Jeśli owner jest root:
 sudo chown -R $(whoami) ~/.npm
 sudo chown -R $(whoami) ~/.config
+
+# Potem:
+rm -rf node_modules
+npm install
 ```
 
-**4. Użyj innego cache location (tymczasowo):**
+**5. Użyj innego cache location (tymczasowo):**
 ```bash
+rm -rf node_modules
 npm install --cache /tmp/npm-cache
 ```
 
-**5. Ostateczność - reinstall npm:**
+**6. Ostateczność - reinstall npm:**
 ```bash
 # Z nvm (zalecane):
 nvm reinstall-packages current
@@ -147,6 +170,42 @@ nvm reinstall-packages current
 # Lub zaktualizuj npm:
 npm install -g npm@latest
 ```
+
+---
+
+### ❌ Błąd: "Cannot find module 'metro/private/lib/TerminalReporter'"
+
+**Problem:**
+```
+Error: Cannot find module 'metro/private/lib/TerminalReporter'
+Require stack:
+- /Users/.../mobile/node_modules/@expo/metro/metro/lib/TerminalReporter.js
+```
+
+**Przyczyna:**
+- Poprzedni `npm install` zakończył się błędem EACCES
+- node_modules są **niepełne** - część pakietów nie zainstalowała się
+- Metro nie ma wszystkich zależności
+
+**Rozwiązanie - MUSISZ przeinstalować node_modules:**
+
+```bash
+cd mobile
+
+# Usuń wszystko i zainstaluj od nowa:
+rm -rf node_modules
+rm -rf package-lock.json
+npm cache clean --force
+npm install
+
+# Po udanej instalacji:
+npm start
+```
+
+**WAŻNE:**
+- `npm install` **MUSI** zakończyć się sukcesem (bez błędów EACCES)
+- Jeśli nadal widzisz EACCES - najpierw napraw cache (patrz sekcja wyżej)
+- NIE uruchamiaj `npm start` dopóki `npm install` nie przejdzie bez błędów!
 
 ---
 

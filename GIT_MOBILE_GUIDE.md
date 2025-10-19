@@ -2,16 +2,35 @@
 
 ## 🚨 Szybkie rozwiązania problemów
 
+### "Cannot find module 'metro/...'" lub błędy npm
+
+**Problem:** Poprzedni `npm install` nie powiódł się (EACCES), node_modules niepełne.
+
+**Rozwiązanie:**
+```bash
+cd mobile
+
+# Usuń wszystko i zainstaluj od nowa:
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
+
+# Po udanej instalacji:
+npm start
+```
+
 ### npm install: EACCES permission denied
 
 ```bash
 # Wyczyść cache i spróbuj ponownie:
 npm cache clean --force
+rm -rf node_modules
 npm install
 
 # Jeśli nie działa - usuń cache całkowicie:
 rm -rf ~/.npm/_cacache
 npm cache verify
+rm -rf node_modules package-lock.json
 npm install
 ```
 
@@ -21,6 +40,8 @@ npm install
 npm warn EBADENGINE Unsupported engine...
 ```
 **To są tylko ostrzeżenia!** npm je ignoruje. Instalacja powinna się udać.
+
+**WAŻNE:** `npm install` MUSI zakończyć się **bez błędów EACCES**. Jeśli widzisz błąd - napraw go najpierw!
 
 ---
 

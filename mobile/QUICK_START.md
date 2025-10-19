@@ -1,5 +1,23 @@
 # 🚀 Mavinci Mobile - Quick Start
 
+## ⚡ TL;DR - Jeśli coś nie działa:
+
+```bash
+cd mobile
+
+# Usuń wszystko i zainstaluj od nowa:
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
+
+# Uruchom:
+npm start
+```
+
+**Ignoruj warningi EBADENGINE!** To normalne.
+
+---
+
 ## Wymagania
 
 - **Node.js** >= 18.0.0 (sprawdź: `node -v`)
@@ -18,6 +36,8 @@ npm install
 **⚠️ WAŻNE:**
 - Aplikacja używa **Expo SDK 54** - zaktualizuj **Expo Go** na telefonie!
 - **Używaj `npm`, NIE `yarn`!** (yarn tworzy `yarn.lock` który jest ignorowany przez Git)
+- **Ignoruj warningi EBADENGINE** - to normalne ostrzeżenia, npm je ignoruje
+- Jeśli widzisz błąd **EACCES** lub **"Cannot find module 'metro/..."** - patrz sekcja "Jeśli coś nie działa" poniżej
 
 ### 2. Skonfiguruj Supabase
 
@@ -73,10 +93,40 @@ Hasło: twoje-hasło-crm
 
 ## 🆘 Problemy?
 
+### ❌ "Cannot find module 'metro/...'" lub błędy npm?
+
+**Poprzedni `npm install` się nie powiódł!**
+
+```bash
+cd mobile
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
+npm start
+```
+
+### ❌ EACCES permission denied?
+
+```bash
+# Napraw cache:
+npm cache clean --force
+rm -rf ~/.npm/_cacache
+npm cache verify
+
+# Przeinstaluj:
+cd mobile
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### ⚠️ Warningi EBADENGINE?
+
+**IGNORUJ!** To normalne ostrzeżenia, npm je ignoruje. Instalacja powinna przejść.
+
 ### Expo nie uruchamia się?
 
 ```bash
-# Wyczyść cache
+# Wyczyść cache Expo:
 npm start -- --clear
 ```
 
