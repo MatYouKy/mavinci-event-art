@@ -88,20 +88,25 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             employee_id,
             proficiency_level,
             years_of_experience,
-            employee:employees(id, name, surname, nickname, email)
+            employee:employees!employee_skills_employee_id_fkey(id, name, surname, nickname, email)
           `)
           .eq('skill_id', req.skill.id);
 
-        if (!empError && employees) {
+        if (empError) {
+          console.error(`Error fetching employees for skill ${req.skill.name}:`, empError);
+          employeesBySkill[req.skill.id] = [];
+        } else if (employees) {
           const minLevel = req.minimum_proficiency || 'basic';
           const minIndex = proficiencyOrder.indexOf(minLevel);
+
+          console.log(`Fetched ${employees.length} employees with skill: ${req.skill.name}`);
 
           const qualified = employees.filter(e => {
             const empIndex = proficiencyOrder.indexOf(e.proficiency_level);
             const isQualified = empIndex >= minIndex;
 
             // Debug log
-            console.log(`Skill: ${req.skill.name}, Employee proficiency: ${e.proficiency_level} (index: ${empIndex}), Required: ${minLevel} (index: ${minIndex}), Qualified: ${isQualified}`);
+            console.log(`  - Employee: ${e.employee?.name || 'Unknown'}, Level: ${e.proficiency_level} (${empIndex}), Required: ${minLevel} (${minIndex}), Qualified: ${isQualified}`);
 
             return isQualified;
           });
@@ -112,8 +117,7 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             years_of_experience: e.years_of_experience,
           }));
 
-          // Debug log wyników
-          console.log(`Qualified employees for ${req.skill.name}:`, employeesBySkill[req.skill.id]);
+          console.log(`✅ ${qualified.length} qualified employees for ${req.skill.name}`);
         }
       }
 
