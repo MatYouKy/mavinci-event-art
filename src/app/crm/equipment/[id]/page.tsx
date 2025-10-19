@@ -824,7 +824,7 @@ function DetailsTab({
                     <optgroup key={cat.id} label={cat.name}>
                       <option value={cat.id}>{cat.name}</option>
                       {warehouseCategories
-                        .filter(sub => sub.parent_id === cat.id)
+                        ?.filter(sub => sub.parent_id === cat.id)
                         .map(sub => (
                           <option key={sub.id} value={sub.id}>
                             &nbsp;&nbsp;└─ {sub.name}
@@ -838,7 +838,7 @@ function DetailsTab({
                   {(() => {
                     const cat = equipment.warehouse_categories;
                     if (cat.level === 2 && cat.parent_id) {
-                      const parent = warehouseCategories.find(c => c.id === cat.parent_id);
+                      const parent = warehouseCategories?.find(c => c.id === cat.parent_id);
                       return parent ? `${parent.name} / ${cat.name}` : cat.name;
                     }
                     return cat.name;
