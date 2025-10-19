@@ -492,7 +492,6 @@ export default function EquipmentDetailPage() {
           equipment={equipment}
           editForm={editForm}
           isEditing={isEditing}
-          categories={categories}
           onInputChange={handleInputChange}
           onThumbnailUpload={handleThumbnailUpload}
           equipmentId={equipmentId}
@@ -743,7 +742,6 @@ function DetailsTab({
   equipment,
   editForm,
   isEditing,
-  categories,
   onInputChange,
   onThumbnailUpload,
   equipmentId,
