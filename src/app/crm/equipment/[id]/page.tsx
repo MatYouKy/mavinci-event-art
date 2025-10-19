@@ -9,6 +9,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import EquipmentSkillRequirementsPanel from '@/components/crm/EquipmentSkillRequirementsPanel';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 interface EquipmentStock {
   id: string;
@@ -445,44 +446,41 @@ export default function EquipmentDetailPage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          {isEditing ? (
-            <>
-              <button
-                onClick={handleCancelEdit}
-                className="flex items-center gap-2 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
-              >
-                <X className="w-4 h-4" />
-                Anuluj
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {saving ? 'Zapisywanie...' : 'Zapisz'}
-              </button>
-            </>
-          ) : canEdit ? (
-            <>
-              <button
-                onClick={handleDelete}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                Usuń
-              </button>
-              <button
-                onClick={handleEdit}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-              >
-                <Edit className="w-4 h-4" />
-                Edytuj
-              </button>
-            </>
-          ) : null}
-        </div>
+        {isEditing ? (
+          <ResponsiveActionBar
+            actions={[
+              {
+                label: 'Anuluj',
+                onClick: handleCancelEdit,
+                icon: <X className="w-4 h-4" />,
+                variant: 'default'
+              },
+              {
+                label: saving ? 'Zapisywanie...' : 'Zapisz',
+                onClick: handleSave,
+                icon: <Save className="w-4 h-4" />,
+                variant: 'primary'
+              }
+            ]}
+          />
+        ) : canEdit ? (
+          <ResponsiveActionBar
+            actions={[
+              {
+                label: 'Usuń',
+                onClick: handleDelete,
+                icon: <Trash2 className="w-4 h-4" />,
+                variant: 'danger'
+              },
+              {
+                label: 'Edytuj',
+                onClick: handleEdit,
+                icon: <Edit className="w-4 h-4" />,
+                variant: 'primary'
+              }
+            ]}
+          />
+        ) : null}
       </div>
 
       <TabCarousel activeTab={activeTab} setActiveTab={setActiveTab} equipment={equipment} units={units} />
