@@ -1,15 +1,27 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Mail, Quote, ArrowRight } from 'lucide-react';
+import { Users, Mail, Quote, ArrowRight, MoreVertical } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { TeamMember } from '@/lib/supabase';
+import { TeamMember, supabase } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import WebsiteEditPanel from '@/components/WebsiteEditPanel';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
+
+interface ImageMetadata {
+  desktop?: {
+    position?: {
+      posX: number;
+      posY: number;
+      scale: number;
+    };
+    objectFit?: string;
+  };
+}
 
 export default function TeamPage() {
   const { isEditMode } = useEditMode();
@@ -18,6 +30,9 @@ export default function TeamPage() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editingImageUrl, setEditingImageUrl] = useState<string | null>(null);
+  const [editingMetadata, setEditingMetadata] = useState<ImageMetadata | null>(null);
 
   const canEdit = !employeeLoading && canManageModule && canManageModule('employees');
 
@@ -72,6 +87,36 @@ export default function TeamPage() {
   useEffect(() => {
     fetchTeam();
   }, []);
+
+  const handleEditImagePosition = (member: TeamMember) => {
+    setEditingMemberId(member.id);
+    setEditingImageUrl(member.image || '');
+    setEditingMetadata(member.image_metadata as ImageMetadata || null);
+  };
+
+  const handleSavePosition = async (metadata: ImageMetadata) => {
+    if (!editingMemberId) return;
+
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({ team_page_metadata: metadata })
+        .eq('id', editingMemberId);
+
+      if (error) throw error;
+
+      showSnackbar('Pozycja zdjęcia została zapisana!', 'success');
+
+      await fetchTeam();
+
+      setEditingMemberId(null);
+      setEditingImageUrl(null);
+      setEditingMetadata(null);
+    } catch (error) {
+      console.error('Error saving position:', error);
+      showSnackbar('Błąd podczas zapisywania pozycji', 'error');
+    }
+  };
 
   return (
     <>
@@ -183,6 +228,17 @@ export default function TeamPage() {
                         }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
+
+                      {/* Edit button - visible only in edit mode for admins */}
+                      {isEditMode && canEdit && (
+                        <button
+                          onClick={() => handleEditImagePosition(member)}
+                          className="absolute top-4 right-4 z-20 p-2 bg-[#d3bb73] rounded-full hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
+                          title="Edytuj pozycję zdjęcia"
+                        >
+                          <MoreVertical className="w-5 h-5 text-[#1c1f33]" />
+                        </button>
+                      )}
 
                       <div className="absolute bottom-0 left-0 right-0 p-6">
                         <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-1">
@@ -301,6 +357,25 @@ export default function TeamPage() {
       </main>
       <Footer />
       <WebsiteEditPanel />
+
+      {/* Image Position Editor Modal */}
+      {editingMemberId && editingImageUrl && (
+        <ImagePositionEditor
+          imageUrl={editingImageUrl}
+          currentMetadata={editingMetadata}
+          onSave={handleSavePosition}
+          onClose={() => {
+            setEditingMemberId(null);
+            setEditingImageUrl(null);
+            setEditingMetadata(null);
+          }}
+          title="Edytuj pozycję zdjęcia na stronie zespołu"
+          previewAspectRatio="1/1"
+          previewWidth={300}
+          previewHeight={300}
+          showCircularPreview={false}
+        />
+      )}
     </>
   );
 }

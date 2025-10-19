@@ -139,7 +139,7 @@ export default function ImagePositionEditor({
                 step="0.5"
                 value={position.posX}
                 onChange={(e) => setPosition({ ...position, posX: parseFloat(e.target.value) })}
-                className="w-full h-2 bg-[#252842] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#d3bb73] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+                className="w-full h-3 bg-[#0f1119] rounded-lg appearance-none cursor-pointer border border-[#d3bb73]/20 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#1c1f33] [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#d3bb73] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-[#1c1f33] [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:shadow-lg"
               />
               <div className="flex justify-between text-xs text-[#e5e4e2]/40 mt-1">
                 <span>Lewo</span>
@@ -159,7 +159,7 @@ export default function ImagePositionEditor({
                 step="0.5"
                 value={position.posY}
                 onChange={(e) => setPosition({ ...position, posY: parseFloat(e.target.value) })}
-                className="w-full h-2 bg-[#252842] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#d3bb73] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+                className="w-full h-3 bg-[#0f1119] rounded-lg appearance-none cursor-pointer border border-[#d3bb73]/20 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#1c1f33] [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#d3bb73] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-[#1c1f33] [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:shadow-lg"
               />
               <div className="flex justify-between text-xs text-[#e5e4e2]/40 mt-1">
                 <span>Góra</span>
@@ -179,7 +179,7 @@ export default function ImagePositionEditor({
                 step="0.05"
                 value={position.scale}
                 onChange={(e) => setPosition({ ...position, scale: parseFloat(e.target.value) })}
-                className="w-full h-2 bg-[#252842] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#d3bb73] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+                className="w-full h-3 bg-[#0f1119] rounded-lg appearance-none cursor-pointer border border-[#d3bb73]/20 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#1c1f33] [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#d3bb73] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-[#1c1f33] [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:shadow-lg"
               />
               <div className="flex justify-between text-xs text-[#e5e4e2]/40 mt-1">
                 <span>Mniejsze</span>

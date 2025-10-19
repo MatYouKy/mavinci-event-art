@@ -40,15 +40,9 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
   };
 
   const getDropdownClasses = () => {
-    switch (menuPosition) {
-      case 'right-top':
-      case 'left-top':
-        return 'top-full mt-2';
-      case 'right-bottom':
-      case 'left-bottom':
-      default:
-        return 'bottom-full mb-2';
-    }
+    const verticalPosition = menuPosition.includes('top') ? 'top-full mt-2' : 'bottom-full mb-2';
+    const horizontalPosition = menuPosition.includes('left') ? 'left-0' : 'right-0';
+    return `${verticalPosition} ${horizontalPosition}`;
   };
 
   React.useEffect(() => {
@@ -100,7 +94,7 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
           </button>
 
           {isOpen && (
-            <div className={`absolute right-0 ${getDropdownClasses()} w-56 bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 overflow-hidden z-[9999]`}>
+            <div className={`absolute ${getDropdownClasses()} w-56 bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 overflow-hidden z-[9999]`}>
               {menu_items.map((item, index) => (
                 <button
                   key={index}
