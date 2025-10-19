@@ -7,6 +7,7 @@ pnpm-debug.log*
 lerna-debug.log*
 mobile/.expo/
 mobile/node_modules/
+mobile/package-lock.json
 
 node_modules
 dist
