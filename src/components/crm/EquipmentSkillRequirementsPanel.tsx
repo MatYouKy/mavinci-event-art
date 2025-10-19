@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Brain, AlertCircle, User as UserIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 
 interface SkillRequirement {
   id: string;
@@ -293,22 +295,7 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
                             Pracownicy z tą umiejętnością ({employees.length})
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {employees.slice(0, 5).map((emp: any) => (
-                            <span
-                              key={emp.id}
-                              className="text-xs px-2 py-1 bg-[#1c1f33] border border-[#d3bb73]/10 rounded text-[#e5e4e2]"
-                              title={`${emp.proficiency_level}${emp.years_of_experience ? ` - ${emp.years_of_experience} lat` : ''}`}
-                            >
-                              {emp.nickname || emp.name}
-                            </span>
-                          ))}
-                          {employees.length > 5 && (
-                            <span className="text-xs px-2 py-1 text-[#e5e4e2]/60">
-                              +{employees.length - 5} więcej
-                            </span>
-                          )}
-                        </div>
+                        <EmployeeAvatarsList employees={employees} />
                       </div>
                     )}
 
@@ -366,11 +353,54 @@ function AddSkillRequirementModal({
     is_required: true,
     notes: '',
   });
+  const [showNewSkillForm, setShowNewSkillForm] = useState(false);
+  const [newSkillName, setNewSkillName] = useState('');
+  const [isCreatingSkill, setIsCreatingSkill] = useState(false);
 
   // Filtruj już dodane umiejętności
   const availableSkillsFiltered = availableSkills.filter(
     skill => !existingRequirements.some(req => req.skill.id === skill.id)
   );
+
+  const handleCreateNewSkill = async () => {
+    if (!newSkillName.trim()) {
+      alert('Podaj nazwę umiejętności');
+      return;
+    }
+
+    setIsCreatingSkill(true);
+    try {
+      const { data, error } = await supabase
+        .from('skills')
+        .insert([{
+          name: newSkillName.trim(),
+          description: 'Dodane przez użytkownika',
+          is_active: true,
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating skill:', error);
+        alert('Błąd podczas dodawania umiejętności: ' + error.message);
+        return;
+      }
+
+      // Dodaj nową umiejętność do listy
+      const newSkill = { ...data, category: null };
+      availableSkills.push(newSkill as any);
+
+      // Ustaw jako wybraną
+      setFormData({ ...formData, skill_id: data.id });
+      setShowNewSkillForm(false);
+      setNewSkillName('');
+    } catch (err) {
+      console.error('Error:', err);
+      alert('Błąd podczas dodawania umiejętności');
+    } finally {
+      setIsCreatingSkill(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -389,19 +419,62 @@ function AddSkillRequirementModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-[#e5e4e2]/60 mb-1">Umiejętność *</label>
-            <select
-              required
-              value={formData.skill_id}
-              onChange={(e) => setFormData({ ...formData, skill_id: e.target.value })}
-              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
-            >
-              <option value="">Wybierz...</option>
-              {availableSkillsFiltered.map((skill) => (
-                <option key={skill.id} value={skill.id}>
-                  {skill.name} {skill.category && `(${skill.category.name})`}
-                </option>
-              ))}
-            </select>
+            {!showNewSkillForm ? (
+              <>
+                <select
+                  required
+                  value={formData.skill_id}
+                  onChange={(e) => {
+                    if (e.target.value === '__new__') {
+                      setShowNewSkillForm(true);
+                    } else {
+                      setFormData({ ...formData, skill_id: e.target.value });
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+                >
+                  <option value="">Wybierz...</option>
+                  {availableSkillsFiltered.map((skill) => (
+                    <option key={skill.id} value={skill.id}>
+                      {skill.name} {skill.category && `(${skill.category.name})`}
+                    </option>
+                  ))}
+                  <option value="__new__" className="text-[#d3bb73] font-medium">+ Dodaj nową umiejętność</option>
+                </select>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newSkillName}
+                    onChange={(e) => setNewSkillName(e.target.value)}
+                    placeholder="Nazwa nowej umiejętności..."
+                    className="flex-1 px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateNewSkill}
+                    disabled={isCreatingSkill || !newSkillName.trim()}
+                    className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                  >
+                    {isCreatingSkill ? 'Dodawanie...' : 'Dodaj'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewSkillForm(false);
+                      setNewSkillName('');
+                    }}
+                    className="px-4 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+                <p className="text-xs text-[#e5e4e2]/40">Nowa umiejętność będzie dostępna dla wszystkich pracowników i sprzętu</p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -461,6 +534,112 @@ function AddSkillRequirementModal({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function EmployeeAvatarsList({ employees }: { employees: any[] }) {
+  const router = useRouter();
+  const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
+  const maxVisible = 8;
+  const visibleEmployees = employees.slice(0, maxVisible);
+  const remainingCount = employees.length - maxVisible;
+
+  const getProficiencyLabel = (level: string) => {
+    const labels = {
+      basic: 'Podstawowy',
+      intermediate: 'Średniozaawansowany',
+      advanced: 'Zaawansowany',
+      expert: 'Ekspert',
+    };
+    return labels[level as keyof typeof labels] || level;
+  };
+
+  const getProficiencyColor = (level: string) => {
+    const colors = {
+      basic: 'text-blue-400',
+      intermediate: 'text-green-400',
+      advanced: 'text-orange-400',
+      expert: 'text-purple-400',
+    };
+    return colors[level as keyof typeof colors] || 'text-gray-400';
+  };
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {visibleEmployees.map((emp: any) => (
+        <div
+          key={emp.id}
+          className="relative"
+          onMouseEnter={() => setHoveredEmployee(emp.id)}
+          onMouseLeave={() => setHoveredEmployee(null)}
+        >
+          <div
+            onClick={() => router.push(`/crm/employees/${emp.id}`)}
+            className="cursor-pointer"
+          >
+            <EmployeeAvatar
+              avatarUrl={emp.avatar_url}
+              avatarMetadata={emp.avatar_metadata}
+              employeeName={emp.nickname || `${emp.name} ${emp.surname}`}
+              size={40}
+              className="border-2 border-[#d3bb73]/20 hover:border-[#d3bb73]/50 transition-colors"
+            />
+          </div>
+
+          {hoveredEmployee === emp.id && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-64">
+              <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-3 shadow-xl">
+                <div className="flex items-start gap-3 mb-2">
+                  <EmployeeAvatar
+                    avatarUrl={emp.avatar_url}
+                    avatarMetadata={emp.avatar_metadata}
+                    employeeName={emp.nickname || `${emp.name} ${emp.surname}`}
+                    size={48}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[#e5e4e2] truncate">
+                      {emp.nickname || `${emp.name} ${emp.surname}`}
+                    </p>
+                    {emp.nickname && (
+                      <p className="text-xs text-[#e5e4e2]/40 truncate">
+                        {emp.name} {emp.surname}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[#e5e4e2]/60">Poziom:</span>
+                    <span className={`font-medium ${getProficiencyColor(emp.proficiency_level)}`}>
+                      {getProficiencyLabel(emp.proficiency_level)}
+                    </span>
+                  </div>
+                  {emp.years_of_experience && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-[#e5e4e2]/60">Doświadczenie:</span>
+                      <span className="text-[#e5e4e2]">{emp.years_of_experience} lat</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => router.push(`/crm/employees/${emp.id}`)}
+                    className="w-full mt-2 py-1 text-xs bg-[#d3bb73]/10 text-[#d3bb73] rounded hover:bg-[#d3bb73]/20 transition-colors"
+                  >
+                    Zobacz profil
+                  </button>
+                </div>
+              </div>
+              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-[#d3bb73]/20" style={{ marginTop: '-1px' }} />
+            </div>
+          )}
+        </div>
+      ))}
+      {remainingCount > 0 && (
+        <div className="w-10 h-10 rounded-full bg-[#1c1f33] border-2 border-[#d3bb73]/20 flex items-center justify-center text-xs text-[#e5e4e2]/60">
+          +{remainingCount}
+        </div>
+      )}
     </div>
   );
 }

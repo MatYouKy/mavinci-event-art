@@ -160,19 +160,8 @@ export default function EmployeeDetailPage() {
   };
 
   const fetchDocuments = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('employee_documents')
-        .select('*')
-        .eq('employee_id', employeeId)
-        .order('uploaded_at', { ascending: false });
-
-      if (!error && data) {
-        setDocuments(data);
-      }
-    } catch (err) {
-      // Table employee_documents doesn't exist yet - silently ignore
-    }
+    // Table employee_documents doesn't exist yet - skip for now
+    setDocuments([]);
   };
 
   const fetchTasks = async () => {
@@ -308,21 +297,8 @@ export default function EmployeeDetailPage() {
   };
 
   const handleDeleteDocument = async (docId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć ten dokument?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('employee_documents')
-        .delete()
-        .eq('id', docId);
-
-      if (error) throw error;
-
-      fetchDocuments();
-    } catch (err) {
-      console.error('Error deleting document:', err);
-      alert('Błąd podczas usuwania dokumentu');
-    }
+    // Table employee_documents doesn't exist yet
+    alert('Funkcja dokumentów nie jest jeszcze dostępna');
   };
 
   const getRoleLabel = (role: string) => {
@@ -1261,17 +1237,8 @@ function AddDocumentModal({
     }
 
     try {
-      const { error } = await supabase.from('employee_documents').insert([
-        {
-          employee_id: employeeId,
-          ...formData,
-          expiry_date: formData.expiry_date || null,
-        },
-      ]);
-
-      if (error) throw error;
-
-      onAdded();
+      // Table employee_documents doesn't exist yet
+      alert('Funkcja dokumentów nie jest jeszcze dostępna');
       onClose();
     } catch (err) {
       console.error('Error adding document:', err);
