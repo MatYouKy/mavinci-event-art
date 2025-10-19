@@ -10,11 +10,6 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import EquipmentSkillRequirementsPanel from '@/components/crm/EquipmentSkillRequirementsPanel';
 
-interface Category {
-  id: string;
-  name: string;
-}
-
 interface EquipmentStock {
   id: string;
   total_quantity: number;
@@ -93,7 +88,6 @@ interface WarehouseCategory {
 interface Equipment {
   id: string;
   name: string;
-  category_id: string | null;
   warehouse_category_id: string | null;
   brand: string | null;
   model: string | null;
@@ -111,7 +105,6 @@ interface Equipment {
   barcode: string | null;
   notes: string | null;
   is_active: boolean;
-  equipment_categories: Category | null;
   warehouse_categories: WarehouseCategory | null;
   equipment_stock: EquipmentStock[];
   equipment_components: Component[];
@@ -126,7 +119,6 @@ export default function EquipmentDetailPage() {
   const { showSnackbar } = useSnackbar();
 
   const [equipment, setEquipment] = useState<Equipment | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [warehouseCategories, setWarehouseCategories] = useState<WarehouseCategory[]>([]);
   const [connectorTypes, setConnectorTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,7 +141,6 @@ export default function EquipmentDetailPage() {
 
   useEffect(() => {
     fetchEquipment();
-    fetchCategories();
     fetchWarehouseCategories();
     fetchConnectorTypes();
   }, [equipmentId]);
@@ -161,16 +152,6 @@ export default function EquipmentDetailPage() {
       fetchUnits();
     }
   }, [activeTab]);
-
-  const fetchCategories = async () => {
-    const { data } = await supabase
-      .from('equipment_categories')
-      .select('*')
-      .eq('is_active', true)
-      .order('order_index');
-
-    if (data) setCategories(data);
-  };
 
   const fetchWarehouseCategories = async () => {
     const { data } = await supabase
@@ -200,7 +181,6 @@ export default function EquipmentDetailPage() {
         .from('equipment_items')
         .select(`
           *,
-          equipment_categories(id, name),
           warehouse_categories(id, name, parent_id, level),
           equipment_stock(*),
           equipment_components(*),
@@ -325,7 +305,6 @@ export default function EquipmentDetailPage() {
         .from('equipment_items')
         .update({
           name: editForm.name,
-          category_id: editForm.category_id,
           warehouse_category_id: editForm.warehouse_category_id || null,
           brand: editForm.brand || null,
           model: editForm.model || null,
@@ -350,7 +329,7 @@ export default function EquipmentDetailPage() {
       // Log changes
       const fieldsToLog = [
         { name: 'name', old: equipment?.name, new: editForm.name },
-        { name: 'category_id', old: equipment?.category_id, new: editForm.category_id },
+        { name: 'warehouse_category_id', old: equipment?.warehouse_category_id, new: editForm.warehouse_category_id },
         { name: 'brand', old: equipment?.brand, new: editForm.brand },
         { name: 'model', old: equipment?.model, new: editForm.model },
         { name: 'description', old: equipment?.description, new: editForm.description },
@@ -824,32 +803,7 @@ function DetailsTab({
 
           <div className="mt-6 space-y-4">
             <div>
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria (stary system)</div>
-              {isEditing ? (
-                <select
-                  name="category_id"
-                  value={editForm.category_id || ''}
-                  onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                >
-                  <option value="">Brak</option>
-                  {categories.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              ) : equipment.equipment_categories ? (
-                <div className="inline-block px-3 py-1 rounded bg-[#d3bb73]/20 text-[#d3bb73]">
-                  {equipment.equipment_categories.name}
-                </div>
-              ) : (
-                <div className="text-[#e5e4e2]/60">-</div>
-              )}
-            </div>
-
-            <div>
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria magazynowa</div>
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria</div>
               {isEditing ? (
                 <select
                   name="warehouse_category_id"
