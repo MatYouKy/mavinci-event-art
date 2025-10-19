@@ -9,13 +9,17 @@ import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import WebsiteEditPanel from '@/components/WebsiteEditPanel';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 export default function TeamPage() {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
+  const { employee: currentEmployee, canManageModule, loading: employeeLoading } = useCurrentEmployee();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const canEdit = !employeeLoading && canManageModule && canManageModule('employees');
 
   const fetchTeam = async () => {
     console.log('[fetchTeam] START');
@@ -99,7 +103,7 @@ export default function TeamPage() {
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            {isEditMode && (
+            {isEditMode && !canEdit && (
               <div className="mb-8 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-xl p-6">
                 <div className="flex items-start gap-4">
                   <Users className="w-6 h-6 text-[#d3bb73] flex-shrink-0 mt-1" />
