@@ -266,6 +266,16 @@ export default function EquipmentDetailPage() {
   };
 
   const handleEdit = () => {
+    const formData = {
+      ...equipment,
+      dimensions_length: equipment?.dimensions_cm?.length || '',
+      dimensions_width: equipment?.dimensions_cm?.width || '',
+      dimensions_height: equipment?.dimensions_cm?.height || '',
+      cable_length_meters: equipment?.cable_specs?.length_meters || '',
+      cable_connector_in: equipment?.cable_specs?.connector_in || '',
+      cable_connector_out: equipment?.cable_specs?.connector_out || '',
+    };
+    setEditForm(formData);
     setIsEditing(true);
   };
 
