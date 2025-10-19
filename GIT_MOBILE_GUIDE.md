@@ -1,5 +1,29 @@
 # 📋 Git & Mobile - Przewodnik
 
+## 🚨 Szybkie rozwiązania problemów
+
+### npm install: EACCES permission denied
+
+```bash
+# Wyczyść cache i spróbuj ponownie:
+npm cache clean --force
+npm install
+
+# Jeśli nie działa - usuń cache całkowicie:
+rm -rf ~/.npm/_cacache
+npm cache verify
+npm install
+```
+
+### Warningi EBADENGINE - IGNORUJ!
+
+```
+npm warn EBADENGINE Unsupported engine...
+```
+**To są tylko ostrzeżenia!** npm je ignoruje. Instalacja powinna się udać.
+
+---
+
 ## Problem: Expo generuje pliki które pojawiają się w `git status`
 
 ### Co się dzieje?

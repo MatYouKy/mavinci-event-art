@@ -90,6 +90,88 @@ nvm use 22
 
 ---
 
+### ❌ Błąd: "EACCES: permission denied" w npm cache
+
+**Problem:**
+```
+npm error EACCES: permission denied, rename '/Users/.../.npm/_cacache/tmp/...'
+npm error File exists: /Users/.../.npm/_cacache/content-v2/sha512/...
+```
+
+**Przyczyna:**
+- Uszkodzony npm cache
+- Konflikt uprawnień w cache
+- Poprzednia instalacja przerwana
+
+**Rozwiązanie:**
+
+**1. Wyczyść npm cache (najprostsze):**
+```bash
+npm cache clean --force
+npm install
+```
+
+**2. Jeśli nadal błąd - usuń cache ręcznie:**
+```bash
+# macOS/Linux:
+rm -rf ~/.npm/_cacache
+npm cache verify
+npm install
+
+# Windows:
+# Usuń folder: C:\Users\USERNAME\AppData\Local\npm-cache
+npm cache verify
+npm install
+```
+
+**3. Sprawdź uprawnienia npm:**
+```bash
+# macOS/Linux:
+ls -la ~/.npm
+
+# Jeśli owner jest root:
+sudo chown -R $(whoami) ~/.npm
+sudo chown -R $(whoami) ~/.config
+```
+
+**4. Użyj innego cache location (tymczasowo):**
+```bash
+npm install --cache /tmp/npm-cache
+```
+
+**5. Ostateczność - reinstall npm:**
+```bash
+# Z nvm (zalecane):
+nvm reinstall-packages current
+
+# Lub zaktualizuj npm:
+npm install -g npm@latest
+```
+
+---
+
+### ⚠️ Warningi "EBADENGINE" - IGNORUJ!
+
+**Widzisz:**
+```
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-babel-transformer@0.83.1',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v20.18.1', npm: '10.8.2' }
+}
+```
+
+**To jest OK!** ✅
+
+- To są tylko **ostrzeżenia** (warnings), nie błędy
+- npm je **ignoruje** dzięki `.npmrc` (`engine-strict=false`)
+- Aplikacja **działa poprawnie** z Node 18+, 20.x, 22.x
+- Metro 0.80.x (z overrides) wspiera Node 18+
+
+**Ignoruj te warningi!** Instalacja powinna zakończyć się sukcesem.
+
+---
+
 ### ❌ Błąd: "Unable to resolve asset"
 
 **Problem:**
