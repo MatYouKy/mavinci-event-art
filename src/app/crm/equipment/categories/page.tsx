@@ -64,23 +64,29 @@ export default function CategoriesPage() {
     if (!editingId || !editName.trim()) return;
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('warehouse_categories')
         .update({
-          name: editName,
-          description: editDescription,
+          name: editName.trim(),
+          description: editDescription.trim() || null,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', editingId);
+        .eq('id', editingId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
 
       showSnackbar('Zapisano zmiany', 'success');
       setEditingId(null);
-      fetchCategories();
-    } catch (error) {
-      console.error('Error:', error);
-      showSnackbar('Błąd zapisu', 'error');
+      setEditName('');
+      setEditDescription('');
+      await fetchCategories();
+    } catch (error: any) {
+      console.error('Error updating category:', error);
+      showSnackbar(error?.message || 'Błąd zapisu', 'error');
     }
   };
 
@@ -90,26 +96,32 @@ export default function CategoriesPage() {
     try {
       const maxOrder = Math.max(...categories.filter(c => c.level === 1).map(c => c.order_index), -1);
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('warehouse_categories')
         .insert({
-          name: newName,
-          description: newDescription,
+          name: newName.trim(),
+          description: newDescription.trim() || null,
           level: 1,
           parent_id: null,
           order_index: maxOrder + 1,
-        });
+          is_active: true,
+          color: '#d3bb73',
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Insert error:', error);
+        throw error;
+      }
 
       showSnackbar('Dodano kategorię', 'success');
       setAddingMain(false);
       setNewName('');
       setNewDescription('');
       fetchCategories();
-    } catch (error) {
-      console.error('Error:', error);
-      showSnackbar('Błąd dodawania', 'error');
+    } catch (error: any) {
+      console.error('Error adding main category:', error);
+      showSnackbar(error?.message || 'Błąd dodawania', 'error');
     }
   };
 
@@ -120,26 +132,32 @@ export default function CategoriesPage() {
       const siblings = categories.filter(c => c.parent_id === parentId);
       const maxOrder = Math.max(...siblings.map(c => c.order_index), -1);
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('warehouse_categories')
         .insert({
-          name: newName,
-          description: newDescription,
+          name: newName.trim(),
+          description: newDescription.trim() || null,
           level: 2,
           parent_id: parentId,
           order_index: maxOrder + 1,
-        });
+          is_active: true,
+          color: '#d3bb73',
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Insert error:', error);
+        throw error;
+      }
 
       showSnackbar('Dodano podkategorię', 'success');
       setAddingSubFor(null);
       setNewName('');
       setNewDescription('');
       fetchCategories();
-    } catch (error) {
-      console.error('Error:', error);
-      showSnackbar('Błąd dodawania', 'error');
+    } catch (error: any) {
+      console.error('Error adding subcategory:', error);
+      showSnackbar(error?.message || 'Błąd dodawania', 'error');
     }
   };
 
@@ -157,13 +175,16 @@ export default function CategoriesPage() {
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error:', error);
+        throw error;
+      }
 
       showSnackbar('Usunięto kategorię', 'success');
-      fetchCategories();
-    } catch (error) {
-      console.error('Error:', error);
-      showSnackbar('Błąd usuwania', 'error');
+      await fetchCategories();
+    } catch (error: any) {
+      console.error('Error deleting category:', error);
+      showSnackbar(error?.message || 'Błąd usuwania', 'error');
     }
   };
 
