@@ -460,6 +460,12 @@ export default function EquipmentDetailPage() {
           <ResponsiveActionBar
             actions={[
               {
+                label: 'Usuń',
+                onClick: handleDelete,
+                icon: <Trash2 className="w-4 h-4" />,
+                variant: 'danger'
+              },
+              {
                 label: 'Anuluj',
                 onClick: handleCancelEdit,
                 icon: <X className="w-4 h-4" />,
@@ -476,12 +482,6 @@ export default function EquipmentDetailPage() {
         ) : canEdit ? (
           <ResponsiveActionBar
             actions={[
-              {
-                label: 'Usuń',
-                onClick: handleDelete,
-                icon: <Trash2 className="w-4 h-4" />,
-                variant: 'danger'
-              },
               {
                 label: 'Edytuj',
                 onClick: handleEdit,
