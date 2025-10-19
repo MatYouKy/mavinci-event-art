@@ -1,5 +1,11 @@
 # 🚀 Mavinci Mobile - Quick Start
 
+## Wymagania
+
+- **Node.js** >= 18.0.0 (sprawdź: `node -v`)
+- **npm** >= 9.0.0 (sprawdź: `npm -v`)
+- **Expo Go** na telefonie (SDK 54)
+
 ## Szybki start w 5 minut
 
 ### 1. Zainstaluj zależności
@@ -9,7 +15,9 @@ cd mobile
 npm install
 ```
 
-**⚠️ Ważne:** Aplikacja używa **Expo SDK 54**. Zaktualizuj **Expo Go** na telefonie do najnowszej wersji!
+**⚠️ WAŻNE:**
+- Aplikacja używa **Expo SDK 54** - zaktualizuj **Expo Go** na telefonie!
+- **Używaj `npm`, NIE `yarn`!** (yarn tworzy `yarn.lock` który jest ignorowany przez Git)
 
 ### 2. Skonfiguruj Supabase
 

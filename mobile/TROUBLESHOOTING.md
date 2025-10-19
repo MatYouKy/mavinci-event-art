@@ -36,6 +36,60 @@ Aplikacja wymaga **Expo SDK 54**. Upewnij się że:
 
 ---
 
+### ❌ Błąd: "The engine node is incompatible with this module"
+
+**Problem:**
+```
+error metro-core@0.83.1: The engine "node" is incompatible with this module.
+Expected version ">=20.19.4". Got "20.18.1"
+```
+
+**Rozwiązanie:**
+
+**1. Najprostsze rozwiązanie - używaj npm zamiast yarn:**
+```bash
+cd mobile
+
+# ✅ Używaj npm (ignoruje engine warnings)
+npm install
+npm start
+
+# ❌ NIE używaj yarn
+yarn install  # Wyrzuci błąd engine!
+```
+
+**2. Dlaczego to działa?**
+- Plik `.npmrc` zawiera `engine-strict=false`
+- `package.json` ma `overrides` dla Metro 0.80.x (działa z Node 18+)
+- Expo SDK 54 oficjalnie wspiera Node 18+
+
+**3. Jeśli MUSISZ używać yarn:**
+```bash
+# Zignoruj engine warnings
+yarn install --ignore-engines
+
+# Lub dodaj do .yarnrc (nie zalecane!)
+echo '--ignore-engines true' > .yarnrc
+```
+
+**4. Zaktualizuj Node (opcjonalnie):**
+```bash
+# Sprawdź wersję
+node -v
+
+# Jeśli chcesz zaktualizować do 20.19.4+:
+nvm install 20.19.4
+nvm use 20.19.4
+
+# Lub użyj Node 22 LTS:
+nvm install 22
+nvm use 22
+```
+
+**Zalecenie:** **Używaj npm**, nie yarn! Projekt jest skonfigurowany dla npm.
+
+---
+
 ### ❌ Błąd: "Unable to resolve asset"
 
 **Problem:**

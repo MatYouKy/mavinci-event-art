@@ -49,18 +49,26 @@ text.secondary: '#b0b0b0'   // Wtórny
 text.tertiary: '#808080'    // Pomocniczy
 ```
 
+## 📋 Wymagania
+
+- **Node.js** >= 18.0.0 (`node -v`)
+- **npm** >= 9.0.0 (`npm -v`)
+- **Expo Go** na telefonie (SDK 54)
+
 ## 🛠️ Instalacja
 
 ### 1. Zainstaluj zależności
 
 ```bash
 cd mobile
-npm install
+npm install  # UWAGA: Używaj npm, NIE yarn!
 ```
 
-**Uwaga:** Aplikacja używa **Expo SDK 54**. Upewnij się że masz zaktualizowane **Expo Go** na telefonie:
-- [Android Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent)
-- [iOS Expo Go](https://apps.apple.com/app/expo-go/id982107779)
+**⚠️ Ważne:**
+- Aplikacja używa **Expo SDK 54** - upewnij się że masz najnowsze **Expo Go**:
+  - [Android Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent)
+  - [iOS Expo Go](https://apps.apple.com/app/expo-go/id982107779)
+- **NIE używaj `yarn`** - projekt używa `npm` (`.npmrc` wymusza npm)
 
 ### 2. Skonfiguruj zmienne środowiskowe
 
