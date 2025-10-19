@@ -504,6 +504,7 @@ export default function EquipmentDetailPage() {
           onThumbnailUpload={handleThumbnailUpload}
           equipmentId={equipmentId}
           canEdit={canEdit}
+          warehouseCategories={warehouseCategories}
         />
       )}
 
@@ -754,6 +755,7 @@ function DetailsTab({
   onThumbnailUpload,
   equipmentId,
   canEdit,
+  warehouseCategories,
 }: any) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

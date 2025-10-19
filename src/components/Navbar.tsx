@@ -255,7 +255,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                       </span>
                     </div>
                   )}
-                  <span className="text-[#d3bb73] truncate max-w-[120px]">{displayName}</span>
+                  <span className="hidden lg:block text-[#d3bb73] truncate max-w-[120px]">{displayName}</span>
                   <ChevronDown className={`w-4 h-4 text-[#d3bb73] transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
