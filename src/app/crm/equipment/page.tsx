@@ -8,6 +8,7 @@ import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 interface WarehouseCategory {
   id: string;
@@ -257,8 +258,22 @@ export default function EquipmentPage() {
                   <div
                     key={item.id}
                     onClick={() => router.push(`/crm/equipment/${item.id}`)}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 cursor-pointer"
+                    className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 cursor-pointer relative"
                   >
+                    {canManageModule('equipment') && (
+                      <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
+                        <ResponsiveActionBar
+                          actions={[
+                            {
+                              label: 'Usuń',
+                              onClick: (e) => handleDelete(item.id, e as any),
+                              icon: <Trash2 className="w-4 h-4" />,
+                              variant: 'danger'
+                            }
+                          ]}
+                        />
+                      </div>
+                    )}
                     {item.thumbnail_url ? (
                       <img src={item.thumbnail_url} alt={item.name} className="w-full h-32 object-cover rounded-lg mb-4" />
                     ) : (
@@ -316,12 +331,18 @@ export default function EquipmentPage() {
                     <div className="flex items-center gap-4">
                       <span className={`text-sm ${stock.color}`}>{stock.available}/{stock.total}</span>
                       {canManageModule('equipment') && (
-                        <button
-                          onClick={(e) => handleDelete(item.id, e)}
-                          className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <ResponsiveActionBar
+                            actions={[
+                              {
+                                label: 'Usuń',
+                                onClick: (e) => handleDelete(item.id, e as any),
+                                icon: <Trash2 className="w-4 h-4" />,
+                                variant: 'danger'
+                              }
+                            ]}
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
