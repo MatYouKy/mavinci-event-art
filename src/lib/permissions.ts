@@ -17,6 +17,7 @@
  * - messages_view, messages_manage, messages_assign
  * - financials_view, financials_manage
  * - fleet_view, fleet_manage, fleet_create
+ * - website_edit - edycja strony WWW (portfolio, usługi, zespół, itp.)
  */
 
 export interface Employee {
@@ -161,5 +162,17 @@ export const getAllScopes = (): string[] => {
   scopes.push('employees_permissions');
   scopes.push('messages_assign');
   scopes.push('event_categories_manage');
+  scopes.push('website_edit');
   return scopes;
+};
+
+/**
+ * Sprawdza czy użytkownik może edytować stronę WWW
+ */
+export const canEditWebsite = (
+  employee: Employee | null | undefined
+): boolean => {
+  if (!employee) return false;
+  if (isAdmin(employee)) return true;
+  return hasPermission(employee, 'website_edit');
 };

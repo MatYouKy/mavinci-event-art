@@ -8,6 +8,7 @@ import { TeamMember } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { PageHeroImage } from '@/components/PageHeroImage';
+import WebsiteEditPanel from '@/components/WebsiteEditPanel';
 
 export default function TeamPage() {
   const { isEditMode } = useEditMode();
@@ -295,6 +296,7 @@ export default function TeamPage() {
         `}</style>
       </main>
       <Footer />
+      <WebsiteEditPanel />
     </>
   );
 }

@@ -112,6 +112,17 @@ const permissionCategories: PermissionCategory[] = [
     key: 'financials',
     label: 'Finanse',
   },
+  {
+    key: 'website',
+    label: 'Strona WWW',
+    extraPermissions: [
+      {
+        key: 'website_edit',
+        label: 'Edycja strony WWW',
+        description: 'Może edytować zawartość strony publicznej (portfolio, usługi, zespół)',
+      },
+    ],
+  },
 ];
 
 export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmployeeRole, currentEmployeeId }: Props) {

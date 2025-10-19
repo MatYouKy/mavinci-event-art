@@ -11,6 +11,7 @@ import Process from '@/components/Process';
 import DividerFour from '@/components/DividerFour';
 import Contact from '@/components/Contact';
 import Footer from '@/components/Footer';
+import WebsiteEditPanel from '@/components/WebsiteEditPanel';
 
 export default function HomePage() {
   return (
@@ -28,6 +29,7 @@ export default function HomePage() {
       <DividerFour />
       <Contact />
       <Footer />
+      <WebsiteEditPanel />
     </div>
   );
 }
