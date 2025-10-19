@@ -26,6 +26,16 @@ interface EmployeeData {
   role: string;
   access_level: string;
   avatar_url: string | null;
+  avatar_metadata?: {
+    desktop?: {
+      position?: {
+        posX: number;
+        posY: number;
+        scale: number;
+      };
+      objectFit?: string;
+    };
+  };
 }
 
 export default function UserMenu() {
@@ -64,7 +74,7 @@ export default function UserMenu() {
 
       const { data: employeeData, error } = await supabase
         .from('employees')
-        .select('*')
+        .select('id, name, surname, nickname, email, role, access_level, avatar_url, avatar_metadata')
         .eq('email', session.user.email)
         .maybeSingle();
 
@@ -139,6 +149,18 @@ export default function UserMenu() {
     return colors[level] || 'text-[#e5e4e2]/60';
   };
 
+  const getAvatarStyle = () => {
+    if (!employee?.avatar_metadata?.desktop?.position) {
+      return {};
+    }
+    const { posX, posY, scale } = employee.avatar_metadata.desktop.position;
+    const objectFit = employee.avatar_metadata.desktop.objectFit || 'cover';
+    return {
+      objectFit: objectFit as any,
+      transform: `translate(${posX}%, ${posY}%) scale(${scale})`,
+    };
+  };
+
   if (loading) {
     return (
       <div className="w-10 h-10 bg-[#1c1f33] rounded-full animate-pulse" />
@@ -153,11 +175,14 @@ export default function UserMenu() {
       >
         <div className="flex items-center gap-3">
           {employee?.avatar_url ? (
-            <img
-              src={employee.avatar_url}
-              alt={getDisplayName()}
-              className="w-10 h-10 rounded-full border-2 border-[#d3bb73]/30 object-cover"
-            />
+            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#d3bb73]/30">
+              <img
+                src={employee.avatar_url}
+                alt={getDisplayName()}
+                className="w-full h-full"
+                style={getAvatarStyle()}
+              />
+            </div>
           ) : (
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
               <span className="text-[#1c1f33] font-bold text-sm">
@@ -191,11 +216,14 @@ export default function UserMenu() {
             <div className="p-4 border-b border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-transparent">
               <div className="flex items-center gap-3 mb-3">
                 {employee?.avatar_url ? (
-                  <img
-                    src={employee.avatar_url}
-                    alt={getDisplayName()}
-                    className="w-12 h-12 rounded-full border-2 border-[#d3bb73]/30 object-cover"
-                  />
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#d3bb73]/30">
+                    <img
+                      src={employee.avatar_url}
+                      alt={getDisplayName()}
+                      className="w-full h-full"
+                      style={getAvatarStyle()}
+                    />
+                  </div>
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
                     <span className="text-[#1c1f33] font-bold">

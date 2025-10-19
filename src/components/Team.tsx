@@ -57,7 +57,7 @@ export default function Team() {
         role: emp.role || emp.occupation || '',
         email: emp.email,
         image: emp.avatar_url,
-        image_metadata: emp.team_page_metadata || emp.avatar_metadata,
+        image_metadata: emp.team_page_metadata,
         alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
         bio: emp.website_bio,
         linkedin: emp.linkedin_url,

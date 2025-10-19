@@ -31,7 +31,7 @@ export default function TeamPage() {
 
       const { data, error } = await supabase
         .from('employees')
-        .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index')
+        .select('id, name, surname, nickname, email, avatar_url, team_page_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index')
         .eq('show_on_website', true)
         .order('order_index', { ascending: true })
         .order('created_at', { ascending: true });
@@ -51,7 +51,7 @@ export default function TeamPage() {
         role: emp.role || emp.occupation || '',
         email: emp.email,
         image: emp.avatar_url,
-        image_metadata: emp.avatar_metadata,
+        image_metadata: emp.team_page_metadata,
         alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
         bio: emp.website_bio,
         linkedin: emp.linkedin_url,
