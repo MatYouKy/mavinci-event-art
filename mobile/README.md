@@ -225,3 +225,20 @@ eas build --platform ios --profile production
 ## 📝 Licencja
 
 © 2025 Mavinci. Wszystkie prawa zastrzeżone.
+
+---
+
+## ⚠️ Ważne uwagi o Git
+
+### Folder `.expo/` jest ignorowany
+
+Expo automatycznie generuje folder `.expo/` podczas uruchamiania. Jest on **już dodany do `.gitignore`** i nie powinien być commitowany!
+
+Jeśli widzisz zmiany w:
+- `mobile/.expo/` - ignoruj, nie commituj
+- `mobile/yarn.lock` - ignoruj, używamy npm
+- Pliki `mobile/.expo/metro/...` - automatycznie generowane
+
+### Po uruchomieniu `npm start`
+
+Expo tworzy cache i pliki tymczasowe. Są one **ignorowane** przez Git.

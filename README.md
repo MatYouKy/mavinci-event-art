@@ -195,6 +195,17 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=xxx
 
 **Używaj tych samych wartości dla web i mobile!** ⚠️
 
+### ⚠️ Git & Mobile
+
+**WAŻNE:** Folder `mobile/.expo/` jest **automatycznie ignorowany** przez Git!
+
+Expo podczas uruchamiania generuje pliki cache w `mobile/.expo/`. Są one już dodane do `.gitignore` i **nie powinny** być commitowane.
+
+Jeśli `git status` pokazuje zmiany w:
+- `mobile/.expo/**` → Ignoruj
+- `mobile/yarn.lock` → Ignoruj (używamy npm)
+- `mobile/.metro-health-check*` → Ignoruj
+
 ## 📚 Dokumentacja
 
 - [📱 Mobile App](./mobile/README.md) - Pełna dokumentacja aplikacji mobilnej
