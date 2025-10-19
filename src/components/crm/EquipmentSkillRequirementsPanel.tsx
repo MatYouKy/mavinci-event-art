@@ -88,7 +88,7 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             employee_id,
             proficiency_level,
             years_of_experience,
-            employee:employees(id, name, surname, email)
+            employee:employees(id, name, surname, nickname, email)
           `)
           .eq('skill_id', req.skill.id);
 
@@ -98,7 +98,12 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
 
           const qualified = employees.filter(e => {
             const empIndex = proficiencyOrder.indexOf(e.proficiency_level);
-            return empIndex >= minIndex;
+            const isQualified = empIndex >= minIndex;
+
+            // Debug log
+            console.log(`Skill: ${req.skill.name}, Employee proficiency: ${e.proficiency_level} (index: ${empIndex}), Required: ${minLevel} (index: ${minIndex}), Qualified: ${isQualified}`);
+
+            return isQualified;
           });
 
           employeesBySkill[req.skill.id] = qualified.map(e => ({
@@ -106,6 +111,9 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             proficiency_level: e.proficiency_level,
             years_of_experience: e.years_of_experience,
           }));
+
+          // Debug log wyników
+          console.log(`Qualified employees for ${req.skill.name}:`, employeesBySkill[req.skill.id]);
         }
       }
 
@@ -288,7 +296,7 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
                               className="text-xs px-2 py-1 bg-[#1c1f33] border border-[#d3bb73]/10 rounded text-[#e5e4e2]"
                               title={`${emp.proficiency_level}${emp.years_of_experience ? ` - ${emp.years_of_experience} lat` : ''}`}
                             >
-                              {emp.name} {emp.surname}
+                              {emp.nickname || emp.name}
                             </span>
                           ))}
                           {employees.length > 5 && (
