@@ -83,10 +83,18 @@ interface UnitEvent {
   employees: { name: string; surname: string } | null;
 }
 
+interface WarehouseCategory {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  level: number;
+}
+
 interface Equipment {
   id: string;
   name: string;
   category_id: string | null;
+  warehouse_category_id: string | null;
   brand: string | null;
   model: string | null;
   description: string | null;
@@ -104,6 +112,7 @@ interface Equipment {
   notes: string | null;
   is_active: boolean;
   equipment_categories: Category | null;
+  warehouse_categories: WarehouseCategory | null;
   equipment_stock: EquipmentStock[];
   equipment_components: Component[];
   equipment_gallery: GalleryImage[];
@@ -118,6 +127,7 @@ export default function EquipmentDetailPage() {
 
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [warehouseCategories, setWarehouseCategories] = useState<WarehouseCategory[]>([]);
   const [connectorTypes, setConnectorTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -140,6 +150,7 @@ export default function EquipmentDetailPage() {
   useEffect(() => {
     fetchEquipment();
     fetchCategories();
+    fetchWarehouseCategories();
     fetchConnectorTypes();
   }, [equipmentId]);
 
@@ -161,6 +172,17 @@ export default function EquipmentDetailPage() {
     if (data) setCategories(data);
   };
 
+  const fetchWarehouseCategories = async () => {
+    const { data } = await supabase
+      .from('warehouse_categories')
+      .select('*')
+      .eq('is_active', true)
+      .order('level', { ascending: true })
+      .order('order_index', { ascending: true });
+
+    if (data) setWarehouseCategories(data);
+  };
+
   const fetchConnectorTypes = async () => {
     const { data } = await supabase
       .from('connector_types')
@@ -179,6 +201,7 @@ export default function EquipmentDetailPage() {
         .select(`
           *,
           equipment_categories(id, name),
+          warehouse_categories(id, name, parent_id, level),
           equipment_stock(*),
           equipment_components(*),
           equipment_gallery(*)
@@ -294,6 +317,7 @@ export default function EquipmentDetailPage() {
         .update({
           name: editForm.name,
           category_id: editForm.category_id,
+          warehouse_category_id: editForm.warehouse_category_id || null,
           brand: editForm.brand || null,
           model: editForm.model || null,
           description: editForm.description || null,
@@ -791,14 +815,15 @@ function DetailsTab({
 
           <div className="mt-6 space-y-4">
             <div>
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria</div>
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria (stary system)</div>
               {isEditing ? (
                 <select
                   name="category_id"
-                  value={editForm.category_id}
+                  value={editForm.category_id || ''}
                   onChange={onInputChange}
                   className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 >
+                  <option value="">Brak</option>
                   {categories.map((cat: any) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
@@ -808,6 +833,47 @@ function DetailsTab({
               ) : equipment.equipment_categories ? (
                 <div className="inline-block px-3 py-1 rounded bg-[#d3bb73]/20 text-[#d3bb73]">
                   {equipment.equipment_categories.name}
+                </div>
+              ) : (
+                <div className="text-[#e5e4e2]/60">-</div>
+              )}
+            </div>
+
+            <div>
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria magazynowa</div>
+              {isEditing ? (
+                <select
+                  name="warehouse_category_id"
+                  value={editForm.warehouse_category_id || ''}
+                  onChange={(e) => {
+                    onInputChange(e);
+                  }}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                >
+                  <option value="">Brak</option>
+                  {warehouseCategories.filter(c => c.level === 1).map((cat) => (
+                    <optgroup key={cat.id} label={cat.name}>
+                      <option value={cat.id}>{cat.name}</option>
+                      {warehouseCategories
+                        .filter(sub => sub.parent_id === cat.id)
+                        .map(sub => (
+                          <option key={sub.id} value={sub.id}>
+                            &nbsp;&nbsp;└─ {sub.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
+              ) : equipment.warehouse_categories ? (
+                <div className="inline-block px-3 py-1 rounded bg-blue-500/20 text-blue-400">
+                  {(() => {
+                    const cat = equipment.warehouse_categories;
+                    if (cat.level === 2 && cat.parent_id) {
+                      const parent = warehouseCategories.find(c => c.id === cat.parent_id);
+                      return parent ? `${parent.name} / ${cat.name}` : cat.name;
+                    }
+                    return cat.name;
+                  })()}
                 </div>
               ) : (
                 <div className="text-[#e5e4e2]/60">-</div>
