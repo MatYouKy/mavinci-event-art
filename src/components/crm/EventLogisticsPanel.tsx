@@ -134,6 +134,9 @@ export default function EventLogisticsPanel({
   const { showConfirm } = useDialog();
   const { employee } = useCurrentEmployee();
 
+  console.log('EventLogisticsPanel - Current employee:', employee);
+  console.log('EventLogisticsPanel - canManage:', canManage);
+
   const [vehicles, setVehicles] = useState<EventVehicle[]>([]);
   const [timeline, setTimeline] = useState<LogisticsActivity[]>([]);
   const [loadingItems, setLoadingItems] = useState<LoadingItem[]>([]);
@@ -204,6 +207,13 @@ export default function EventLogisticsPanel({
         ...v,
         conflicts_count: conflictCounts[v.id] || 0,
       }));
+
+      console.log('Fetched vehicles with invitation_status:', vehiclesWithConflicts.map(v => ({
+        id: v.id,
+        driver_id: v.driver_id,
+        invitation_status: v.invitation_status,
+        pickup_timestamp: v.pickup_timestamp
+      })));
 
       // Jeśli użytkownik nie jest adminem, pokaż tylko jego pojazdy
       console.log('Filter debug:', { canManage, employeeId: employee?.id, vehiclesCount: vehiclesWithConflicts.length });
@@ -551,6 +561,16 @@ export default function EventLogisticsPanel({
                         </div>
                       ) : employee && vehicle.driver_id === employee.id ? (
                         <div className="flex items-center gap-2">
+                          {console.log('DEBUG VEHICLE:', {
+                            vehicleId: vehicle.id,
+                            driverId: vehicle.driver_id,
+                            employeeId: employee.id,
+                            invitationStatus: vehicle.invitation_status,
+                            pickupTimestamp: vehicle.pickup_timestamp,
+                            returnTimestamp: vehicle.return_timestamp,
+                            canManage,
+                            match: vehicle.driver_id === employee.id
+                          })}
                           {vehicle.invitation_status === 'pending' ? (
                             <>
                               <button
