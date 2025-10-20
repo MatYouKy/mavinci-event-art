@@ -518,6 +518,14 @@ export default function EventLogisticsPanel({
                       </div>
 
                       {/* Przyciski akcji */}
+                      {console.log('Debug przyciski:', {
+                        canManage,
+                        employeeId: employee?.id,
+                        driverId: vehicle.driver_id,
+                        match: employee?.id === vehicle.driver_id,
+                        invitationStatus: vehicle.invitation_status,
+                        vehicleName: vehicle.vehicles?.name || vehicle.external_company_name
+                      })}
                       {canManage ? (
                         <div className="flex items-center gap-2">
                           <button

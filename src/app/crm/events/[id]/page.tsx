@@ -1758,7 +1758,7 @@ export default function EventDetailPage() {
           eventId={event.id}
           eventLocation={event.location}
           eventDate={event.event_date}
-          canManage={true}
+          canManage={canManageTeam}
         />
       )}
 
@@ -1767,7 +1767,7 @@ export default function EventDetailPage() {
       )}
 
       {activeTab === 'tasks' && event && (
-        <EventTasksBoard eventId={event.id} canManage={true} />
+        <EventTasksBoard eventId={event.id} canManage={canManageTeam} />
       )}
 
       {activeTab === 'history' && (
