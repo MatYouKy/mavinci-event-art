@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Paperclip, Send, X, Download, Trash2, Link as LinkIcon, ExternalLink, Image as ImageIcon, File } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import LinkEventFileModal from '@/components/crm/LinkEventFileModal';
 
 interface Task {
@@ -19,6 +19,7 @@ interface Task {
   board_column: string;
   due_date: string | null;
   event_id: string | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   task_assignees: {
@@ -30,6 +31,12 @@ interface Task {
       avatar_metadata?: any;
     };
   }[];
+  creator?: {
+    name: string;
+    surname: string;
+    avatar_url: string | null;
+    avatar_metadata?: any;
+  };
 }
 
 interface Comment {
@@ -60,6 +67,8 @@ interface Attachment {
   employees: {
     name: string;
     surname: string;
+    avatar_url: string | null;
+    avatar_metadata?: any;
   };
 }
 
@@ -67,7 +76,12 @@ interface ChatItem {
   id: string;
   type: 'comment' | 'attachment';
   created_at: string;
-  employee_name: string;
+  employee: {
+    name: string;
+    surname: string;
+    avatar_url: string | null;
+    avatar_metadata?: any;
+  };
   content?: string;
   attachment?: Attachment;
 }
@@ -191,9 +205,20 @@ export default function TaskDetailPage() {
         })
       );
 
+      let creator = null;
+      if (data.created_by) {
+        const { data: creatorData } = await supabase
+          .from('employees')
+          .select('name, surname, avatar_url, avatar_metadata')
+          .eq('id', data.created_by)
+          .maybeSingle();
+        creator = creatorData;
+      }
+
       setTask({
         ...data,
         task_assignees: assigneesWithEmployees,
+        creator,
       });
     } catch (error) {
       console.error('Error fetching task:', error);
@@ -213,7 +238,7 @@ export default function TaskDetailPage() {
 
       const { data: attachmentsData } = await supabase
         .from('task_attachments')
-        .select('*, employees:uploaded_by(name, surname)')
+        .select('*, employees:uploaded_by(name, surname, avatar_url, avatar_metadata)')
         .eq('task_id', taskId)
         .order('created_at', { ascending: true });
 
@@ -221,7 +246,7 @@ export default function TaskDetailPage() {
         id: c.id,
         type: 'comment' as const,
         created_at: c.created_at,
-        employee_name: `${c.employees.name} ${c.employees.surname}`,
+        employee: c.employees,
         content: c.content,
       }));
 
@@ -229,7 +254,7 @@ export default function TaskDetailPage() {
         id: a.id,
         type: 'attachment' as const,
         created_at: a.created_at,
-        employee_name: `${a.employees.name} ${a.employees.surname}`,
+        employee: a.employees,
         attachment: a,
       }));
 
@@ -261,6 +286,7 @@ export default function TaskDetailPage() {
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
+      showSnackbar('Komentarz dodany', 'success');
     } catch (error) {
       console.error('Error adding comment:', error);
       showSnackbar('Błąd podczas dodawania komentarza', 'error');
@@ -414,30 +440,70 @@ export default function TaskDetailPage() {
           <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold text-[#e5e4e2] truncate">{task.title}</h1>
-          {task.description && (
-            <p className="text-sm text-[#e5e4e2]/60 truncate">{task.description}</p>
-          )}
+          <h1 className="text-2xl font-bold text-[#e5e4e2]">{task.title}</h1>
         </div>
       </div>
 
-      {/* Task Info */}
-      <div className="flex flex-wrap items-center gap-3 p-4 bg-[#0f1119] border-b border-[#d3bb73]/10">
-        <span className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
-          {priorityLabels[task.priority]}
-        </span>
-        <span className="text-xs px-3 py-1 rounded-full bg-[#d3bb73]/10 text-[#d3bb73]">
-          {task.status}
-        </span>
-        {task.due_date && (
-          <div className="flex items-center gap-1 text-xs text-[#e5e4e2]/60">
-            <Calendar className="w-3 h-3" />
-            {new Date(task.due_date).toLocaleDateString('pl-PL')}
+      {/* Task Meta Info */}
+      <div className="bg-[#0f1119] border-b border-[#d3bb73]/10">
+        <div className="p-6 space-y-4">
+          {/* Creator & Priority Row */}
+          <div className="flex items-center gap-4 flex-wrap">
+            {task.creator && (
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-[#e5e4e2]/60" />
+                <span className="text-sm text-[#e5e4e2]/60">Utworzono przez:</span>
+                <span className="text-sm text-[#e5e4e2]">
+                  {task.creator.name} {task.creator.surname}
+                </span>
+              </div>
+            )}
+            <span className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
+              {priorityLabels[task.priority]}
+            </span>
+            <span className="text-xs px-3 py-1 rounded-full bg-[#d3bb73]/10 text-[#d3bb73]">
+              {task.status}
+            </span>
+            {task.due_date && (
+              <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                <Calendar className="w-4 h-4" />
+                {new Date(task.due_date).toLocaleDateString('pl-PL')}
+              </div>
+            )}
           </div>
-        )}
-        {task.task_assignees.length > 0 && (
-          <TaskAssigneeAvatars assignees={task.task_assignees} />
-        )}
+
+          {/* Description */}
+          {task.description && (
+            <p className="text-sm text-[#e5e4e2]/80">{task.description}</p>
+          )}
+
+          {/* Assignees */}
+          {task.task_assignees.length > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-[#e5e4e2]/60">Przypisane osoby:</span>
+              <div className="flex -space-x-2">
+                {task.task_assignees.map((assignee) => (
+                  <div
+                    key={assignee.employee_id}
+                    className="relative group"
+                    title={`${assignee.employees.name} ${assignee.employees.surname}`}
+                  >
+                    <EmployeeAvatar
+                      employee={{
+                        avatar_url: assignee.employees.avatar_url,
+                        avatar_metadata: assignee.employees.avatar_metadata,
+                        name: assignee.employees.name,
+                        surname: assignee.employees.surname,
+                      }}
+                      size={40}
+                      className="ring-2 ring-[#0f1119]"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Chat Area */}
@@ -463,9 +529,21 @@ export default function TaskDetailPage() {
         ) : (
           chatItems.map((item) => (
             <div key={item.id} className="flex gap-3">
-              <div className="flex-1">
+              <EmployeeAvatar
+                employee={{
+                  avatar_url: item.employee.avatar_url,
+                  avatar_metadata: item.employee.avatar_metadata,
+                  name: item.employee.name,
+                  surname: item.employee.surname,
+                }}
+                size={40}
+                className="flex-shrink-0"
+              />
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium text-[#e5e4e2]">{item.employee_name}</span>
+                  <span className="text-sm font-medium text-[#e5e4e2]">
+                    {item.employee.name} {item.employee.surname}
+                  </span>
                   <span className="text-xs text-[#e5e4e2]/40">
                     {new Date(item.created_at).toLocaleString('pl-PL')}
                   </span>
