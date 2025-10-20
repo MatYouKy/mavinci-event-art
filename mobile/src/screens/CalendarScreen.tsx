@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Calendar } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 
 export default function CalendarScreen() {
   return (
     <View style={styles.container}>
-      <Calendar color={colors.primary.gold} size={64} />
+      <Feather name="calendar" color={colors.primary.gold} size={64} />
       <Text style={styles.title}>Kalendarz</Text>
       <Text style={styles.subtitle}>Widok kalendarza będzie tutaj</Text>
     </View>

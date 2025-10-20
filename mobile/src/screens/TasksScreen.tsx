@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { CheckSquare } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 
 export default function TasksScreen() {
   return (
     <View style={styles.container}>
-      <CheckSquare color={colors.primary.gold} size={64} />
+      <Feather name="check-square" color={colors.primary.gold} size={64} />
       <Text style={styles.title}>Zadania</Text>
       <Text style={styles.subtitle}>Lista zadań będzie tutaj</Text>
     </View>

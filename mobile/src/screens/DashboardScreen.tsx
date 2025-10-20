@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { Calendar, CheckSquare, Users, AlertCircle } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, Event, Task } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -92,13 +92,13 @@ export default function DashboardScreen() {
       {/* Quick Stats */}
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { borderLeftColor: colors.primary.gold }]}>
-          <Calendar color={colors.primary.gold} size={24} />
+          <Feather name="calendar" color={colors.primary.gold} size={24} />
           <Text style={styles.statValue}>{upcomingEvents.length}</Text>
           <Text style={styles.statLabel}>Nadchodzące wydarzenia</Text>
         </View>
 
         <View style={[styles.statCard, { borderLeftColor: colors.status.info }]}>
-          <CheckSquare color={colors.status.info} size={24} />
+          <Feather name="check-square" color={colors.status.info} size={24} />
           <Text style={styles.statValue}>{myTasks.length}</Text>
           <Text style={styles.statLabel}>Moje zadania</Text>
         </View>
@@ -109,7 +109,7 @@ export default function DashboardScreen() {
         <Text style={styles.sectionTitle}>Nadchodzące wydarzenia</Text>
         {upcomingEvents.length === 0 ? (
           <View style={styles.emptyState}>
-            <Calendar color={colors.text.tertiary} size={48} />
+            <Feather name="calendar" color={colors.text.tertiary} size={48} />
             <Text style={styles.emptyText}>Brak nadchodzących wydarzeń</Text>
           </View>
         ) : (
@@ -129,7 +129,7 @@ export default function DashboardScreen() {
                 </Text>
               )}
               <View style={styles.cardFooter}>
-                <Calendar color={colors.text.tertiary} size={16} />
+                <Feather name="calendar" color={colors.text.tertiary} size={16} />
                 <Text style={styles.cardDate}>
                   {new Date(event.event_date).toLocaleDateString('pl-PL')}
                 </Text>
@@ -144,7 +144,7 @@ export default function DashboardScreen() {
         <Text style={styles.sectionTitle}>Moje zadania</Text>
         {myTasks.length === 0 ? (
           <View style={styles.emptyState}>
-            <CheckSquare color={colors.text.tertiary} size={48} />
+            <Feather name="check-square" color={colors.text.tertiary} size={48} />
             <Text style={styles.emptyText}>Brak zadań do wykonania</Text>
           </View>
         ) : (
@@ -153,7 +153,7 @@ export default function DashboardScreen() {
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>{task.title}</Text>
                 <View style={[styles.priorityBadge, { borderColor: getPriorityColor(task.priority) }]}>
-                  <AlertCircle color={getPriorityColor(task.priority)} size={12} />
+                  <Feather name="alert-circle" color={getPriorityColor(task.priority)} size={12} />
                 </View>
               </View>
               {task.description && (

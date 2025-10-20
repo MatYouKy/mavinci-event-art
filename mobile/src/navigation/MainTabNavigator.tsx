@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Home, Calendar, CheckSquare, Users, Settings } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme';
 
 // Screens
@@ -43,7 +43,7 @@ export default function MainTabNavigator() {
         component={DashboardScreen}
         options={{
           title: 'Dashboard',
-          tabBarIcon: ({ color, size }) => <Home color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Feather name="home" color={color} size={size} />,
         }}
       />
       <Tab.Screen
@@ -51,7 +51,7 @@ export default function MainTabNavigator() {
         component={CalendarScreen}
         options={{
           title: 'Kalendarz',
-          tabBarIcon: ({ color, size }) => <Calendar color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
         }}
       />
       <Tab.Screen
@@ -59,7 +59,7 @@ export default function MainTabNavigator() {
         component={TasksScreen}
         options={{
           title: 'Zadania',
-          tabBarIcon: ({ color, size }) => <CheckSquare color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
         }}
       />
       <Tab.Screen
@@ -67,7 +67,7 @@ export default function MainTabNavigator() {
         component={ClientsScreen}
         options={{
           title: 'Klienci',
-          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} />,
         }}
       />
       <Tab.Screen
@@ -75,7 +75,7 @@ export default function MainTabNavigator() {
         component={SettingsScreen}
         options={{
           title: 'Ustawienia',
-          tabBarIcon: ({ color, size }) => <Settings color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Feather name="settings" color={color} size={size} />,
         }}
       />
     </Tab.Navigator>

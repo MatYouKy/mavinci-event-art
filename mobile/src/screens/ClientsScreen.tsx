@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Users } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 
 export default function ClientsScreen() {
   return (
     <View style={styles.container}>
-      <Users color={colors.primary.gold} size={64} />
+      <Feather name="users" color={colors.primary.gold} size={64} />
       <Text style={styles.title}>Klienci</Text>
       <Text style={styles.subtitle}>Lista klientów będzie tutaj</Text>
     </View>

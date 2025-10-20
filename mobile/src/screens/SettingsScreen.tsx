@@ -7,7 +7,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { LogOut, User, Bell, Lock, Info } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
 
@@ -40,7 +40,7 @@ export default function SettingsScreen() {
       {/* User Info */}
       <View style={styles.userSection}>
         <View style={styles.avatar}>
-          <User color={colors.primary.gold} size={32} />
+          <Feather name="user" color={colors.primary.gold} size={32} />
         </View>
         <Text style={styles.userName}>
           {employee?.nickname || `${employee?.name} ${employee?.surname}`}
@@ -59,28 +59,28 @@ export default function SettingsScreen() {
 
         <TouchableOpacity style={styles.menuItem}>
           <View style={styles.menuIcon}>
-            <User color={colors.text.secondary} size={20} />
+            <Feather name="user" color={colors.text.secondary} size={20} />
           </View>
           <Text style={styles.menuText}>Profil</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem}>
           <View style={styles.menuIcon}>
-            <Bell color={colors.text.secondary} size={20} />
+            <Feather name="bell" color={colors.text.secondary} size={20} />
           </View>
           <Text style={styles.menuText}>Powiadomienia</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem}>
           <View style={styles.menuIcon}>
-            <Lock color={colors.text.secondary} size={20} />
+            <Feather name="lock" color={colors.text.secondary} size={20} />
           </View>
           <Text style={styles.menuText}>Bezpieczeństwo</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem}>
           <View style={styles.menuIcon}>
-            <Info color={colors.text.secondary} size={20} />
+            <Feather name="info" color={colors.text.secondary} size={20} />
           </View>
           <Text style={styles.menuText}>O aplikacji</Text>
         </TouchableOpacity>
@@ -92,7 +92,7 @@ export default function SettingsScreen() {
           style={styles.signOutButton}
           onPress={handleSignOut}
         >
-          <LogOut color={colors.status.error} size={20} />
+          <Feather name="log-out" color={colors.status.error} size={20} />
           <Text style={styles.signOutText}>Wyloguj się</Text>
         </TouchableOpacity>
       </View>
