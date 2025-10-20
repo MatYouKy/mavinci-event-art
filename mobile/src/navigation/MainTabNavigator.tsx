@@ -6,7 +6,7 @@ import { colors } from '../theme';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
-import TasksScreen from '../screens/TasksScreen';
+import TasksStackNavigator from './TasksStackNavigator';
 import ClientsScreen from '../screens/ClientsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import CustomDrawer from '../components/CustomDrawer';
@@ -82,10 +82,11 @@ export default function MainTabNavigator() {
         />
         <Tab.Screen
           name="Tasks"
-          component={TasksScreen}
+          component={TasksStackNavigator}
           options={{
             title: 'Zadania',
             tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
+            headerShown: false,
           }}
         />
         <Tab.Screen

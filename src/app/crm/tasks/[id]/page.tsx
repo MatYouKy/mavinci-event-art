@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, User, MessageSquare, Image as ImageIcon, FileText, Send, X, Upload, Download, Trash2, Edit } from 'lucide-react';
+import { ArrowLeft, Calendar, User, MessageSquare, Image as ImageIcon, FileText, Send, X, Upload, Download, Trash2, Edit, Link as LinkIcon, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
+import LinkEventFileModal from '@/components/crm/LinkEventFileModal';
 
 interface Task {
   id: string;
@@ -17,6 +18,7 @@ interface Task {
   status: string;
   board_column: string;
   due_date: string | null;
+  event_id: string | null;
   created_at: string;
   updated_at: string;
   task_assignees: {
@@ -47,8 +49,10 @@ interface Comment {
 interface Attachment {
   id: string;
   task_id: string;
+  event_file_id: string | null;
+  is_linked: boolean;
   file_name: string;
-  file_url: string;
+  file_url: string | null;
   file_type: string;
   file_size: number;
   uploaded_by: string;
@@ -88,6 +92,7 @@ export default function TaskDetailPage() {
   const [newComment, setNewComment] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'files'>('details');
+  const [showLinkFileModal, setShowLinkFileModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
@@ -312,21 +317,26 @@ export default function TaskDetailPage() {
     }
   };
 
-  const handleDeleteAttachment = async (attachmentId: string, fileUrl: string) => {
+  const handleDeleteAttachment = async (attachmentId: string, fileUrl: string | null, isLinked: boolean) => {
     const confirmed = await showConfirm(
-      'Czy na pewno chcesz usunąć ten plik?',
-      'Usuń plik'
+      isLinked ? 'Czy na pewno chcesz odlinkować ten plik?' : 'Czy na pewno chcesz usunąć ten plik?',
+      isLinked ? 'Odlinkuj plik' : 'Usuń plik'
     );
 
     if (!confirmed) return;
 
     try {
-      const filePath = fileUrl.split('/task-files/')[1];
+      // Jeśli plik nie jest linkowany, usuń go z storage
+      if (!isLinked && fileUrl) {
+        const filePath = fileUrl.split('/task-files/')[1];
+        if (filePath) {
+          await supabase.storage
+            .from('task-files')
+            .remove([filePath]);
+        }
+      }
 
-      await supabase.storage
-        .from('task-files')
-        .remove([filePath]);
-
+      // Usuń wpis z tabeli attachments (link lub własny plik)
       const { error } = await supabase
         .from('task_attachments')
         .delete()
@@ -335,7 +345,7 @@ export default function TaskDetailPage() {
       if (error) throw error;
 
       fetchAttachments();
-      showSnackbar('Plik został usunięty', 'success');
+      showSnackbar(isLinked ? 'Plik został odlinkowany' : 'Plik został usunięty', 'success');
     } catch (error) {
       console.error('Error deleting attachment:', error);
       showSnackbar('Błąd podczas usuwania pliku', 'error');
@@ -574,20 +584,29 @@ export default function TaskDetailPage() {
 
         {activeTab === 'files' && (
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
               <input
                 ref={fileInputRef}
                 type="file"
                 onChange={handleFileUpload}
                 className="hidden"
               />
+              {task?.event_id && (
+                <button
+                  onClick={() => setShowLinkFileModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
+                >
+                  <LinkIcon className="w-4 h-4" />
+                  Dodaj z wydarzenia
+                </button>
+              )}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadingFile}
                 className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 text-sm"
               >
                 <Upload className="w-4 h-4" />
-                {uploadingFile ? 'Przesyłanie...' : 'Dodaj plik'}
+                {uploadingFile ? 'Przesyłanie...' : 'Wgraj plik'}
               </button>
             </div>
 
@@ -620,9 +639,9 @@ export default function TaskDetailPage() {
                             <Download className="w-4 h-4" />
                           </a>
                           <button
-                            onClick={() => handleDeleteAttachment(attachment.id, attachment.file_url)}
+                            onClick={() => handleDeleteAttachment(attachment.id, attachment.file_url, attachment.is_linked)}
                             className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                            title="Usuń"
+                            title={attachment.is_linked ? "Odlinkuj" : "Usuń"}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -645,9 +664,9 @@ export default function TaskDetailPage() {
                             <Download className="w-4 h-4" />
                           </a>
                           <button
-                            onClick={() => handleDeleteAttachment(attachment.id, attachment.file_url)}
+                            onClick={() => handleDeleteAttachment(attachment.id, attachment.file_url, attachment.is_linked)}
                             className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                            title="Usuń"
+                            title={attachment.is_linked ? "Odlinkuj" : "Usuń"}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -656,9 +675,16 @@ export default function TaskDetailPage() {
                     )}
 
                     <div className="p-2">
-                      <h4 className="text-xs text-[#e5e4e2] truncate mb-1" title={attachment.file_name}>
-                        {attachment.file_name}
-                      </h4>
+                      <div className="flex items-start gap-1 mb-1">
+                        <h4 className="text-xs text-[#e5e4e2] truncate flex-1" title={attachment.file_name}>
+                          {attachment.file_name}
+                        </h4>
+                        {attachment.is_linked && (
+                          <div className="flex-shrink-0">
+                            <ExternalLink className="w-3 h-3 text-blue-400" title="Plik z wydarzenia" />
+                          </div>
+                        )}
+                      </div>
                       <div className="flex items-center justify-between text-xs text-[#e5e4e2]/40">
                         <span>{formatFileSize(attachment.file_size)}</span>
                         <span>{attachment.employees.name[0]}{attachment.employees.surname[0]}</span>
@@ -671,6 +697,17 @@ export default function TaskDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Link Event File Modal */}
+      {task?.event_id && (
+        <LinkEventFileModal
+          isOpen={showLinkFileModal}
+          onClose={() => setShowLinkFileModal(false)}
+          taskId={taskId}
+          eventId={task.event_id}
+          onFileLinked={fetchAttachments}
+        />
+      )}
     </div>
   );
 }
