@@ -9,6 +9,8 @@ import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import EventFilesExplorer from '@/components/crm/EventFilesExplorer';
 import EventSubcontractorsPanel from '@/components/crm/EventSubcontractorsPanel';
 import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
+import { useDialog } from '@/contexts/DialogContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Event {
   id: string;
@@ -119,6 +121,8 @@ export default function EventDetailPage() {
   const router = useRouter();
   const params = useParams();
   const eventId = params.id as string;
+  const { showConfirm } = useDialog();
+  const { showSnackbar } = useSnackbar();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
@@ -135,6 +139,7 @@ export default function EventDetailPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [canManageTeam, setCanManageTeam] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [userAssignmentStatus, setUserAssignmentStatus] = useState<'pending' | 'accepted' | 'rejected' | null>(null);
   const [hasLimitedAccess, setHasLimitedAccess] = useState(false);
 
@@ -186,14 +191,15 @@ export default function EventDetailPage() {
       // Sprawdź czy użytkownik jest adminem
       const { data: employee } = await supabase
         .from('employees')
-        .select('permissions')
+        .select('permissions, role')
         .eq('id', session.user.id)
         .single();
 
-      const isAdmin = employee?.permissions?.includes('events_manage');
+      const userIsAdmin = employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
+      setIsAdmin(userIsAdmin);
 
       // Jeśli admin, może zarządzać
-      if (isAdmin) {
+      if (userIsAdmin) {
         setCanManageTeam(true);
         return;
       }
@@ -597,6 +603,36 @@ export default function EventDetailPage() {
     } catch (err) {
       console.error('Error:', err);
       alert('Wystąpił błąd');
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!event) return;
+
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć to wydarzenie?',
+      `Wydarzenie "${event.name}" zostanie trwale usunięte wraz z całą historią, przypisaniami i plikami. Tej operacji nie można cofnąć.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventId);
+
+      if (error) {
+        console.error('Error deleting event:', error);
+        showSnackbar('Błąd podczas usuwania wydarzenia', 'error');
+        return;
+      }
+
+      showSnackbar('Wydarzenie zostało usunięte', 'success');
+      router.push('/crm/events');
+    } catch (err) {
+      console.error('Error:', err);
+      showSnackbar('Wystąpił błąd podczas usuwania', 'error');
     }
   };
 
@@ -1034,6 +1070,15 @@ export default function EventDetailPage() {
             <Edit className="w-4 h-4" />
             Edytuj
           </button>
+          {isAdmin && (
+            <button
+              onClick={handleDeleteEvent}
+              className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Usuń
+            </button>
+          )}
         </div>
       </div>
 
