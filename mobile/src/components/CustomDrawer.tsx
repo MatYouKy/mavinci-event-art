@@ -9,11 +9,11 @@ import {
   Animated,
   Dimensions,
   Alert,
-  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
+import EmployeeAvatar from './EmployeeAvatar';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = 280;
@@ -72,12 +72,6 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
     navigation.navigate(screen);
   };
 
-  const getAvatarSource = () => {
-    if (employee?.avatar_url) {
-      return { uri: employee.avatar_url };
-    }
-    return null;
-  };
 
   return (
     <Modal
@@ -98,16 +92,12 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
           {/* Compact Header with user info */}
           <View style={styles.drawerHeader}>
             <View style={styles.userRow}>
-              <View style={styles.avatarContainer}>
-                {getAvatarSource() ? (
-                  <Image
-                    source={getAvatarSource()!}
-                    style={styles.avatarImage}
-                  />
-                ) : (
-                  <Feather name="user" color={colors.primary.gold} size={20} />
-                )}
-              </View>
+              <EmployeeAvatar
+                avatarUrl={employee?.avatar_url}
+                avatarMetadata={employee?.avatar_metadata}
+                employeeName={employee?.nickname || employee?.name || 'Użytkownik'}
+                size={48}
+              />
               <View style={styles.userInfo}>
                 <Text style={styles.userName} numberOfLines={1}>
                   {employee?.nickname || employee?.name || 'Użytkownik'}
@@ -196,22 +186,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  avatarContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.background.tertiary,
-    borderWidth: 2,
-    borderColor: colors.primary.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
   },
   userInfo: {
     flex: 1,

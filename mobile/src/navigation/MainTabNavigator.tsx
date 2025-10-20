@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { TouchableOpacity, View, Text, Image } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
@@ -24,8 +26,52 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainTabNavigator() {
   const navigation = useNavigation();
+  const { employee } = useAuth();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentScreen, setCurrentScreen] = useState('Dashboard');
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (employee?.id) {
+      fetchUnreadNotifications();
+
+      const channel = supabase
+        .channel('notification_recipients_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notification_recipients',
+            filter: `employee_id=eq.${employee.id}`,
+          },
+          () => {
+            fetchUnreadNotifications();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [employee?.id]);
+
+  const fetchUnreadNotifications = async () => {
+    if (!employee?.id) return;
+
+    try {
+      const { count } = await supabase
+        .from('notification_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('employee_id', employee.id)
+        .eq('is_read', false);
+
+      setUnreadCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  };
 
   return (
     <>
@@ -38,6 +84,42 @@ export default function MainTabNavigator() {
               style={{ marginLeft: 16 }}
             >
               <Feather name="menu" color={colors.text.primary} size={24} />
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <View style={{ alignItems: 'center' }}>
+              <Image
+                source={require('../../public/logo-mavinci-crm.png')}
+                style={{ width: 120, height: 32, resizeMode: 'contain' }}
+              />
+            </View>
+          ),
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Notifications' as never)}
+              style={{ marginRight: 16, position: 'relative' }}
+            >
+              <Feather name="bell" color={colors.text.primary} size={24} />
+              {unreadCount > 0 && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    backgroundColor: colors.status.error,
+                    borderRadius: 10,
+                    minWidth: 20,
+                    height: 20,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           ),
           headerStyle: {
