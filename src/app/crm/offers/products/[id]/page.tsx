@@ -88,6 +88,7 @@ export default function ProductDetailPage() {
   const [equipment, setEquipment] = useState<ProductEquipment[]>([]);
   const [staff, setStaff] = useState<ProductStaff[]>([]);
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
+  const [showAddStaffModal, setShowAddStaffModal] = useState(false);
 
   const canEdit = isAdmin || hasScope('offers_manage');
 
@@ -752,7 +753,10 @@ export default function ProductDetailPage() {
             <h2 className="text-lg font-medium text-[#e5e4e2]">Wymagani pracownicy</h2>
           </div>
           {canEdit && (
-            <button className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm">
+            <button
+              onClick={() => setShowAddStaffModal(true)}
+              className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
+            >
               + Dodaj rolę
             </button>
           )}
@@ -798,6 +802,18 @@ export default function ProductDetailPage() {
           onSuccess={() => {
             fetchEquipment();
             setShowAddEquipmentModal(false);
+          }}
+        />
+      )}
+
+      {/* Add Staff Modal */}
+      {showAddStaffModal && (
+        <AddStaffModal
+          productId={params.id as string}
+          onClose={() => setShowAddStaffModal(false)}
+          onSuccess={() => {
+            fetchStaff();
+            setShowAddStaffModal(false);
           }}
         />
       )}
@@ -852,9 +868,21 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
       .select('id, name, brand, model, warehouse_categories(name)')
       .eq('is_active', true)
       .order('name');
+
     if (data) {
-      setEquipmentItems(data);
-      setFilteredItems(data);
+      const itemsWithAvailability = await Promise.all(
+        data.map(async (item) => {
+          const { data: availData } = await supabase.rpc('get_available_equipment_quantity', {
+            p_equipment_id: item.id
+          });
+          return {
+            ...item,
+            available_quantity: availData || 0
+          };
+        })
+      );
+      setEquipmentItems(itemsWithAvailability);
+      setFilteredItems(itemsWithAvailability);
     }
   };
 
@@ -1022,11 +1050,27 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
                         key={item.id}
                         type="button"
                         onClick={() => setSelectedItemId(item.id)}
-                        className={`w-full text-left px-4 py-3 border-b border-[#d3bb73]/10 hover:bg-[#d3bb73]/10 transition-colors ${
-                          selectedItemId === item.id ? 'bg-[#d3bb73]/20' : ''
+                        disabled={item.available_quantity === 0}
+                        className={`w-full text-left px-4 py-3 border-b border-[#d3bb73]/10 transition-colors ${
+                          selectedItemId === item.id
+                            ? 'bg-[#d3bb73]/20'
+                            : item.available_quantity === 0
+                            ? 'opacity-50 cursor-not-allowed'
+                            : 'hover:bg-[#d3bb73]/10'
                         }`}
                       >
-                        <div className="text-[#e5e4e2] font-medium">{item.name}</div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-[#e5e4e2] font-medium">{item.name}</div>
+                          <div className={`text-xs px-2 py-0.5 rounded ${
+                            item.available_quantity === 0
+                              ? 'bg-red-500/20 text-red-400'
+                              : item.available_quantity < 5
+                              ? 'bg-yellow-500/20 text-yellow-400'
+                              : 'bg-green-500/20 text-green-400'
+                          }`}>
+                            {item.available_quantity === 0 ? 'Brak' : `${item.available_quantity} szt.`}
+                          </div>
+                        </div>
                         <div className="text-xs text-[#e5e4e2]/60 mt-1">
                           {item.brand && <span>{item.brand} </span>}
                           {item.model && <span>• {item.model} </span>}
@@ -1042,14 +1086,47 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
 
           {/* Quantity */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość</label>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Ilość
+              {mode === 'item' && selectedItemId && (() => {
+                const selected = equipmentItems.find(item => item.id === selectedItemId);
+                return selected && (
+                  <span className="ml-2 text-xs">
+                    (dostępne: <span className={selected.available_quantity < 5 ? 'text-yellow-400' : 'text-green-400'}>
+                      {selected.available_quantity} szt.
+                    </span>)
+                  </span>
+                );
+              })()}
+            </label>
             <input
               type="number"
               min="1"
+              max={mode === 'item' && selectedItemId ? equipmentItems.find(item => item.id === selectedItemId)?.available_quantity : undefined}
               value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+              onChange={(e) => {
+                const val = parseInt(e.target.value) || 1;
+                if (mode === 'item' && selectedItemId) {
+                  const selected = equipmentItems.find(item => item.id === selectedItemId);
+                  if (selected) {
+                    setQuantity(Math.min(val, selected.available_quantity));
+                  } else {
+                    setQuantity(val);
+                  }
+                } else {
+                  setQuantity(val);
+                }
+              }}
               className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
             />
+            {mode === 'item' && selectedItemId && (() => {
+              const selected = equipmentItems.find(item => item.id === selectedItemId);
+              return selected && selected.available_quantity < 10 && (
+                <p className="text-xs text-yellow-400 mt-1">
+                  ⚠️ Niska dostępność - dostępne tylko {selected.available_quantity} szt.
+                </p>
+              );
+            })()}
           </div>
 
           {/* Optional */}
@@ -1088,6 +1165,238 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
           <button
             onClick={handleSubmit}
             disabled={loading || (mode === 'item' ? !selectedItemId : !selectedKitId)}
+            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Dodawanie...' : 'Dodaj'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; onClose: () => void; onSuccess: () => void }) {
+  const [role, setRole] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [hourlyRate, setHourlyRate] = useState('');
+  const [estimatedHours, setEstimatedHours] = useState('');
+  const [isOptional, setIsOptional] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [skills, setSkills] = useState<any[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<Array<{skill_id: string, minimum_proficiency: string}>>([]);
+  const [loading, setLoading] = useState(false);
+  const { showSnackbar } = useSnackbar();
+
+  useEffect(() => {
+    fetchSkills();
+  }, []);
+
+  const fetchSkills = async () => {
+    const { data } = await supabase
+      .from('skills')
+      .select('id, name, skill_categories(name)')
+      .eq('is_active', true)
+      .order('name');
+    if (data) setSkills(data);
+  };
+
+  const toggleSkill = (skillId: string) => {
+    const exists = selectedSkills.find(s => s.skill_id === skillId);
+    if (exists) {
+      setSelectedSkills(selectedSkills.filter(s => s.skill_id !== skillId));
+    } else {
+      setSelectedSkills([...selectedSkills, { skill_id: skillId, minimum_proficiency: 'basic' }]);
+    }
+  };
+
+  const updateSkillLevel = (skillId: string, level: string) => {
+    setSelectedSkills(selectedSkills.map(s =>
+      s.skill_id === skillId ? { ...s, minimum_proficiency: level } : s
+    ));
+  };
+
+  const handleSubmit = async () => {
+    if (!role) {
+      showSnackbar('Podaj nazwę roli', 'error');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: staffData, error: staffError } = await supabase
+        .from('offer_product_staff')
+        .insert({
+          product_id: productId,
+          role,
+          quantity,
+          hourly_rate: hourlyRate ? parseFloat(hourlyRate) : null,
+          estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
+          is_optional: isOptional,
+          notes: notes || null,
+        })
+        .select()
+        .single();
+
+      if (staffError) throw staffError;
+
+      if (selectedSkills.length > 0) {
+        const skillsToInsert = selectedSkills.map(s => ({
+          staff_requirement_id: staffData.id,
+          skill_id: s.skill_id,
+          minimum_proficiency: s.minimum_proficiency,
+          is_required: true,
+        }));
+
+        const { error: skillsError } = await supabase
+          .from('offer_product_staff_skills')
+          .insert(skillsToInsert);
+
+        if (skillsError) throw skillsError;
+      }
+
+      showSnackbar('Rola dodana', 'success');
+      onSuccess();
+    } catch (error) {
+      console.error('Error adding staff:', error);
+      showSnackbar('Błąd podczas dodawania roli', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
+          <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj wymagania kadrowe</h3>
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa roli *</label>
+            <input
+              type="text"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              placeholder="np. Realizator dźwięku, Operator świateł..."
+              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość osób</label>
+              <input
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stawka godzinowa (zł)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={hourlyRate}
+                onChange={(e) => setHourlyRate(e.target.value)}
+                placeholder="opcjonalne"
+                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Szacowane godziny</label>
+              <input
+                type="number"
+                step="0.5"
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+                placeholder="opcjonalne"
+                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-3">Wymagane umiejętności</label>
+            <div className="max-h-60 overflow-y-auto bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg divide-y divide-[#d3bb73]/10">
+              {skills.map((skill) => {
+                const selected = selectedSkills.find(s => s.skill_id === skill.id);
+                return (
+                  <div key={skill.id} className="p-3">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={!!selected}
+                        onChange={() => toggleSkill(skill.id)}
+                        className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                      />
+                      <div className="flex-1">
+                        <div className="text-[#e5e4e2] text-sm">{skill.name}</div>
+                        <div className="text-xs text-[#e5e4e2]/60">{skill.skill_categories?.name}</div>
+                      </div>
+                      {selected && (
+                        <select
+                          value={selected.minimum_proficiency}
+                          onChange={(e) => updateSkillLevel(skill.id, e.target.value)}
+                          className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-xs text-[#e5e4e2]"
+                        >
+                          <option value="basic">Podstawowy</option>
+                          <option value="intermediate">Średniozaawansowany</option>
+                          <option value="advanced">Zaawansowany</option>
+                          <option value="expert">Ekspert</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {selectedSkills.length > 0 && (
+              <p className="text-xs text-[#d3bb73] mt-2">
+                Wybrano {selectedSkills.length} umiejętności
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isOptional}
+                onChange={(e) => setIsOptional(e.target.checked)}
+                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+              />
+              <span className="text-sm text-[#e5e4e2]">Opcjonalny (można usunąć z oferty)</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki (opcjonalnie)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Dodatkowe informacje..."
+              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            />
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end sticky bottom-0 bg-[#1c1f33]">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+          >
+            Anuluj
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !role}
             className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
           >
             {loading ? 'Dodawanie...' : 'Dodaj'}
