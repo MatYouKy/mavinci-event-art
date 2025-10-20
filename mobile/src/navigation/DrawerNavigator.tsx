@@ -13,9 +13,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
 
 import MainTabNavigator from './MainTabNavigator';
+import NotificationsScreen from '../screens/NotificationsScreen';
 
 export type DrawerParamList = {
   MainTabs: undefined;
+  Notifications: undefined;
 };
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -138,6 +140,14 @@ export default function DrawerNavigator() {
       }}
     >
       <Drawer.Screen name="MainTabs" component={MainTabNavigator} />
+      <Drawer.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          headerShown: true,
+          title: 'Powiadomienia',
+        }}
+      />
     </Drawer.Navigator>
   );
 }

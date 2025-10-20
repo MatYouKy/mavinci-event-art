@@ -43,7 +43,7 @@ export default function MainTabNavigator() {
             event: '*',
             schema: 'public',
             table: 'notification_recipients',
-            filter: `employee_id=eq.${employee.id}`,
+            filter: `user_id=eq.${employee.id}`,
           },
           () => {
             fetchUnreadNotifications();
@@ -64,7 +64,7 @@ export default function MainTabNavigator() {
       const { count } = await supabase
         .from('notification_recipients')
         .select('*', { count: 'exact', head: true })
-        .eq('employee_id', employee.id)
+        .eq('user_id', employee.id)
         .eq('is_read', false);
 
       setUnreadCount(count || 0);
