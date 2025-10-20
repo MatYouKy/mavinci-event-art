@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List } from 'lucide-react';
+import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -594,6 +594,15 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
               <List className="w-4 h-4" />
             </button>
           </div>
+
+          <button
+            onClick={() => router.push('/crm/offers/categories')}
+            className="px-4 py-2 bg-[#0a0d1a] text-[#e5e4e2] border border-[#d3bb73]/20 rounded-lg hover:bg-[#1c1f33] transition-colors flex items-center space-x-2 whitespace-nowrap"
+            title="Zarządzaj kategoriami"
+          >
+            <Settings className="w-4 h-4" />
+            <span>Kategorie</span>
+          </button>
 
           <button
             onClick={onRefresh}
