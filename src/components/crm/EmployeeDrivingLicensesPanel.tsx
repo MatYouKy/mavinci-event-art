@@ -25,6 +25,7 @@ interface LicenseCategory {
   code: string;
   name: string;
   description: string | null;
+  order_index?: number;
 }
 
 interface EmployeeDrivingLicensesPanelProps {
@@ -68,13 +69,17 @@ export default function EmployeeDrivingLicensesPanel({
           expiry_date,
           license_number,
           notes,
-          license_category:driving_license_categories(id, code, name, description)
+          license_category:driving_license_categories(id, code, name, description, order_index)
         `)
-        .eq('employee_id', employeeId)
-        .order('license_category(order_index)');
+        .eq('employee_id', employeeId);
 
       if (error) throw error;
-      setLicenses(data || []);
+
+      const sorted = (data || []).sort((a, b) => {
+        return (a.license_category.order_index || 0) - (b.license_category.order_index || 0);
+      });
+
+      setLicenses(sorted);
     } catch (error) {
       console.error('Error fetching licenses:', error);
       showSnackbar('Błąd podczas pobierania praw jazdy', 'error');

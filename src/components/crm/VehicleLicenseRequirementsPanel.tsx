@@ -10,6 +10,7 @@ interface LicenseCategory {
   code: string;
   name: string;
   description: string;
+  order_index?: number;
 }
 
 interface VehicleLicenseRequirement {
@@ -51,13 +52,17 @@ export default function VehicleLicenseRequirementsPanel({
           license_category_id,
           is_required,
           notes,
-          license_category:driving_license_categories(id, code, name, description)
+          license_category:driving_license_categories(id, code, name, description, order_index)
         `)
-        .eq('vehicle_id', vehicleId)
-        .order('license_category(order_index)');
+        .eq('vehicle_id', vehicleId);
 
       if (error) throw error;
-      setRequirements(data || []);
+
+      const sorted = (data || []).sort((a, b) => {
+        return (a.license_category.order_index || 0) - (b.license_category.order_index || 0);
+      });
+
+      setRequirements(sorted);
     } catch (error) {
       console.error('Error fetching requirements:', error);
       showSnackbar('Błąd podczas pobierania wymagań', 'error');
