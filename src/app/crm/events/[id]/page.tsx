@@ -135,6 +135,8 @@ export default function EventDetailPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [canManageTeam, setCanManageTeam] = useState(false);
+  const [userAssignmentStatus, setUserAssignmentStatus] = useState<'pending' | 'accepted' | 'rejected' | null>(null);
+  const [hasLimitedAccess, setHasLimitedAccess] = useState(false);
 
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
@@ -232,6 +234,28 @@ export default function EventDetailPage() {
     try {
       setLoading(true);
 
+      // Sprawdź status przypisania użytkownika do wydarzenia
+      const { data: { session } } = await supabase.auth.getSession();
+      let assignmentStatus: 'pending' | 'accepted' | 'rejected' | null = null;
+      let limitedAccess = false;
+
+      if (session?.user?.id) {
+        const { data: assignment } = await supabase
+          .from('employee_assignments')
+          .select('status')
+          .eq('event_id', eventId)
+          .eq('employee_id', session.user.id)
+          .maybeSingle();
+
+        if (assignment) {
+          assignmentStatus = assignment.status;
+          limitedAccess = assignment.status === 'pending';
+        }
+      }
+
+      setUserAssignmentStatus(assignmentStatus);
+      setHasLimitedAccess(limitedAccess);
+
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select(`
@@ -265,6 +289,15 @@ export default function EventDetailPage() {
       }
 
       setEvent(eventData);
+
+      // Jeśli użytkownik ma ograniczony dostęp (pending), nie pobieraj szczegółów
+      if (limitedAccess) {
+        setEquipment([]);
+        setEmployees([]);
+        setChecklists([]);
+        setLoading(false);
+        return;
+      }
 
       const { data: equipmentData, error: equipmentError } = await supabase
         .from('event_equipment')
@@ -1015,7 +1048,15 @@ export default function EventDetailPage() {
           { id: 'files', label: 'Pliki', icon: FileText },
           { id: 'tasks', label: 'Zadania', icon: CheckSquare },
           { id: 'history', label: 'Historia', icon: History },
-        ].map((tab) => {
+        ]
+        .filter((tab) => {
+          // Jeśli użytkownik ma ograniczony dostęp, pokaż tylko przegląd
+          if (hasLimitedAccess) {
+            return tab.id === 'overview';
+          }
+          return true;
+        })
+        .map((tab) => {
           const Icon = tab.icon;
           return (
             <button
@@ -1037,6 +1078,76 @@ export default function EventDetailPage() {
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+            {/* Banner z zaproszeniem dla użytkowników z ograniczonym dostępem */}
+            {hasLimitedAccess && userAssignmentStatus === 'pending' && (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6">
+                <div className="flex items-start gap-4">
+                  <AlertCircle className="w-6 h-6 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-blue-400 mb-2">
+                      Zaproszenie do zespołu wydarzenia
+                    </h3>
+                    <p className="text-[#e5e4e2]/80 mb-4">
+                      Zostałeś zaproszony do udziału w tym wydarzeniu. Po akceptacji zaproszenia
+                      uzyskasz dostęp do pełnych szczegółów wydarzenia, w tym sprzętu, zadań i plików.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={async () => {
+                          const { data: { session } } = await supabase.auth.getSession();
+                          if (!session?.user?.id) return;
+
+                          const { data: assignment } = await supabase
+                            .from('employee_assignments')
+                            .select('id')
+                            .eq('event_id', eventId)
+                            .eq('employee_id', session.user.id)
+                            .single();
+
+                          if (assignment) {
+                            await supabase
+                              .from('employee_assignments')
+                              .update({ status: 'accepted', responded_at: new Date().toISOString() })
+                              .eq('id', assignment.id);
+
+                            await fetchEventDetails();
+                          }
+                        }}
+                        className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg transition-colors"
+                      >
+                        Akceptuj zaproszenie
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const { data: { session } } = await supabase.auth.getSession();
+                          if (!session?.user?.id) return;
+
+                          const { data: assignment } = await supabase
+                            .from('employee_assignments')
+                            .select('id')
+                            .eq('event_id', eventId)
+                            .eq('employee_id', session.user.id)
+                            .single();
+
+                          if (assignment) {
+                            await supabase
+                              .from('employee_assignments')
+                              .update({ status: 'rejected', responded_at: new Date().toISOString() })
+                              .eq('id', assignment.id);
+
+                            router.push('/crm/events');
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg transition-colors"
+                      >
+                        Odrzuć zaproszenie
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
               <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
                 Informacje podstawowe
@@ -1078,15 +1189,18 @@ export default function EventDetailPage() {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
-                  <div>
-                    <p className="text-sm text-[#e5e4e2]/60">Klient</p>
-                    <p className="text-[#e5e4e2]">
-                      {event.client?.company_name || 'Brak klienta'}
-                    </p>
+                {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
+                {!hasLimitedAccess && (
+                  <div className="flex items-start gap-3">
+                    <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                    <div>
+                      <p className="text-sm text-[#e5e4e2]/60">Klient</p>
+                      <p className="text-[#e5e4e2]">
+                        {event.client?.company_name || 'Brak klienta'}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {event.category && (
                   <div className="flex items-start gap-3">
@@ -1118,7 +1232,7 @@ export default function EventDetailPage() {
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-light text-[#e5e4e2]">Opis</h2>
-                {!isEditingDescription && (
+                {!isEditingDescription && !hasLimitedAccess && (
                   <button
                     onClick={() => {
                       setEditedDescription(event.description || '');
