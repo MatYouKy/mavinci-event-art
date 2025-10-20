@@ -1,9 +1,10 @@
 import React from 'react';
+import { TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme';
 
-// Screens
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import TasksScreen from '../screens/TasksScreen';
@@ -20,11 +21,25 @@ export type MainTabParamList = {
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+function HamburgerButton() {
+  const navigation = useNavigation();
+
+  return (
+    <TouchableOpacity
+      onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+      style={{ marginLeft: 16 }}
+    >
+      <Feather name="menu" color={colors.text.primary} size={24} />
+    </TouchableOpacity>
+  );
+}
+
 export default function MainTabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
+        headerLeft: () => <HamburgerButton />,
         headerStyle: {
           backgroundColor: colors.background.secondary,
         },
