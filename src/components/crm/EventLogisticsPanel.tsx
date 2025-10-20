@@ -55,7 +55,21 @@ interface EventVehicle {
   status: string;
   notes: string | null;
   conflicts_count?: number;
+  has_trailer: boolean;
+  trailer_vehicle_id: string | null;
+  is_trailer_external: boolean;
+  external_trailer_name: string | null;
+  external_trailer_company: string | null;
+  external_trailer_rental_cost: number | null;
+  external_trailer_return_date: string | null;
+  external_trailer_return_location: string | null;
+  external_trailer_notes: string | null;
   vehicles: {
+    name: string;
+    registration_number: string;
+    fuel_type: string;
+  } | null;
+  trailer: {
     name: string;
     registration_number: string;
     fuel_type: string;
@@ -133,7 +147,8 @@ export default function EventLogisticsPanel({
           .from('event_vehicles')
           .select(`
             *,
-            vehicles(name, registration_number, fuel_type),
+            vehicles!event_vehicles_vehicle_id_fkey(name, registration_number, fuel_type),
+            trailer:vehicles!event_vehicles_trailer_vehicle_id_fkey(name, registration_number, fuel_type),
             driver:employees!event_vehicles_driver_id_fkey(name, surname)
           `)
           .eq('event_id', eventId)
@@ -406,12 +421,69 @@ export default function EventLogisticsPanel({
                               {(
                                 (vehicle.fuel_cost_estimate || 0) +
                                 (vehicle.toll_cost_estimate || 0) +
-                                (vehicle.external_rental_cost || 0)
+                                (vehicle.external_rental_cost || 0) +
+                                (vehicle.external_trailer_rental_cost || 0)
                               ).toFixed(0)}{' '}
                               zł
                             </p>
                           </div>
                         </div>
+
+                        {vehicle.has_trailer && (
+                          <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Package className="w-4 h-4 text-[#d3bb73]" />
+                              <span className="text-sm font-medium text-[#d3bb73]">
+                                Przyczepka
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                              {vehicle.is_trailer_external ? (
+                                <>
+                                  <div>
+                                    <span className="text-[#e5e4e2]/60">Nazwa:</span>
+                                    <p className="text-[#e5e4e2]">
+                                      {vehicle.external_trailer_name || '-'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-[#e5e4e2]/60">Firma:</span>
+                                    <p className="text-[#e5e4e2]">
+                                      {vehicle.external_trailer_company || '-'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-[#e5e4e2]/60">Koszt wynajmu:</span>
+                                    <p className="text-[#e5e4e2]">
+                                      {vehicle.external_trailer_rental_cost?.toFixed(0) || 0} zł
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-[#e5e4e2]/60">Miejsce zwrotu:</span>
+                                    <p className="text-[#e5e4e2]">
+                                      {vehicle.external_trailer_return_location || '-'}
+                                    </p>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div>
+                                    <span className="text-[#e5e4e2]/60">Nazwa:</span>
+                                    <p className="text-[#e5e4e2]">
+                                      {vehicle.trailer?.name || '-'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-[#e5e4e2]/60">Rejestracja:</span>
+                                    <p className="text-[#e5e4e2]">
+                                      {vehicle.trailer?.registration_number || '-'}
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
