@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw } from 'lucide-react';
+import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
@@ -48,7 +48,7 @@ export default function SettingsPage() {
   const { showSnackbar } = useSnackbar();
   const { employee, loading: employeeLoading } = useCurrentEmployee();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'password' | 'notifications'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'password' | 'notifications' | 'admin'>('general');
   const [preferences, setPreferences] = useState<Preferences>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -221,6 +221,23 @@ export default function SettingsPage() {
             Powiadomienia
           </div>
           {activeTab === 'notifications' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('admin')}
+          className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === 'admin'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            Administracja
+          </div>
+          {activeTab === 'admin' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
@@ -433,6 +450,91 @@ export default function SettingsPage() {
               <RefreshCw className="w-4 h-4" />
               Przywróć domyślne
             </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'admin' && (
+        <div className="space-y-6">
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+            <h3 className="text-lg font-light text-[#e5e4e2] mb-4">
+              Zarządzanie systemem
+            </h3>
+            <p className="text-sm text-[#e5e4e2]/60 mb-6">
+              Ustawienia dostępne tylko dla administratorów
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => router.push('/crm/settings/access-levels')}
+                className="w-full flex items-center justify-between p-4 bg-[#0f1119] rounded-lg hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+              >
+                <div className="flex items-center gap-3">
+                  <Shield className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="text-[#e5e4e2] font-medium">Poziomy dostępu</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Zarządzaj rolami i uprawnieniami</div>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
+                onClick={() => router.push('/crm/settings/skills')}
+                className="w-full flex items-center justify-between p-4 bg-[#0f1119] rounded-lg hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+              >
+                <div className="flex items-center gap-3">
+                  <Tag className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="text-[#e5e4e2] font-medium">Umiejętności pracowników</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Zarządzaj listą umiejętności i kategoriami</div>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
+                onClick={() => router.push('/crm/equipment/categories')}
+                className="w-full flex items-center justify-between p-4 bg-[#0f1119] rounded-lg hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+              >
+                <div className="flex items-center gap-3">
+                  <LayoutGrid className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="text-[#e5e4e2] font-medium">Kategorie sprzętu</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Zarządzaj hierarchią kategorii sprzętu</div>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
+                onClick={() => router.push('/crm/event-categories')}
+                className="w-full flex items-center justify-between p-4 bg-[#0f1119] rounded-lg hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+              >
+                <div className="flex items-center gap-3">
+                  <LayoutList className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="text-[#e5e4e2] font-medium">Kategorie wydarzeń</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Zarządzaj typami wydarzeń</div>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
+                onClick={() => router.push('/crm/offers/categories')}
+                className="w-full flex items-center justify-between p-4 bg-[#0f1119] rounded-lg hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+              >
+                <div className="flex items-center gap-3">
+                  <LayoutGrid className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="text-[#e5e4e2] font-medium">Kategorie produktów ofertowych</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Zarządzaj kategoriami produktów w ofercie</div>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-[#e5e4e2]/40" />
+              </button>
+            </div>
           </div>
         </div>
       )}

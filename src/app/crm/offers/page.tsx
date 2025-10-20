@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings } from 'lucide-react';
+import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -105,6 +105,8 @@ export default function OffersPage() {
 
   // Szablony
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
 
   useEffect(() => {
     const tab = searchParams.get('tab') as Tab;
@@ -377,6 +379,30 @@ export default function OffersPage() {
         <TemplatesTab
           templates={templates}
           onRefresh={fetchTemplates}
+          onNew={() => {
+            setEditingTemplate(null);
+            setShowTemplateModal(true);
+          }}
+          onEdit={(template) => {
+            setEditingTemplate(template);
+            setShowTemplateModal(true);
+          }}
+        />
+      )}
+
+      {/* Template Modal */}
+      {showTemplateModal && (
+        <TemplateEditorModal
+          template={editingTemplate}
+          onClose={() => {
+            setShowTemplateModal(false);
+            setEditingTemplate(null);
+          }}
+          onSuccess={() => {
+            fetchTemplates();
+            setShowTemplateModal(false);
+            setEditingTemplate(null);
+          }}
         />
       )}
     </div>
@@ -738,14 +764,14 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
 }
 
 // Templates Tab Component
-function TemplatesTab({ templates, onRefresh }: any) {
+function TemplatesTab({ templates, onRefresh, onNew, onEdit }: any) {
   return (
     <>
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-lg font-medium text-[#e5e4e2]">Szablony ofert PDF</h2>
           <button
-            onClick={onRefresh}
+            onClick={onNew}
             className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2"
           >
             <Plus className="w-5 h-5" />
@@ -785,10 +811,10 @@ function TemplatesTab({ templates, onRefresh }: any) {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors">
-                      <Eye className="w-4 h-4 text-[#e5e4e2]/60" />
-                    </button>
-                    <button className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors">
+                    <button
+                      onClick={() => onEdit(template)}
+                      className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+                    >
                       <Edit className="w-4 h-4 text-[#e5e4e2]/60" />
                     </button>
                   </div>
@@ -799,5 +825,144 @@ function TemplatesTab({ templates, onRefresh }: any) {
         )}
       </div>
     </>
+  );
+}
+
+
+function TemplateEditorModal({ template, onClose, onSuccess }: { template: Template | null; onClose: () => void; onSuccess: () => void }) {
+  const { showSnackbar } = useSnackbar();
+  const [loading, setLoading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [formData, setFormData] = useState({
+    name: template?.name || "",
+    description: template?.description || "",
+    logo_url: "",
+    show_logo: template ? (template as any).show_logo ?? true : true,
+    show_company_details: template ? (template as any).show_company_details ?? true : true,
+    show_client_details: template ? (template as any).show_client_details ?? true : true,
+    show_terms: template ? (template as any).show_terms ?? true : true,
+    show_payment_info: template ? (template as any).show_payment_info ?? true : true,
+    terms_text: (template as any)?.terms_text || "",
+    payment_info_text: (template as any)?.payment_info_text || "",
+    footer_text: (template as any)?.footer_text || "",
+    is_default: template?.is_default || false,
+    is_active: template?.is_active ?? true,
+  });
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `offer-logos/${fileName}`;
+      const { error: uploadError } = await supabase.storage.from("site-images").upload(filePath, file);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from("site-images").getPublicUrl(filePath);
+      setFormData(prev => ({ ...prev, logo_url: publicUrl }));
+      showSnackbar("Logo przesłane", "success");
+    } catch (error) {
+      showSnackbar("Błąd przesyłania logo", "error");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name) { showSnackbar("Podaj nazwę szablonu", "error"); return; }
+    setLoading(true);
+    try {
+      if (template) {
+        const { error } = await supabase.from("offer_templates").update(formData).eq("id", template.id);
+        if (error) throw error;
+        showSnackbar("Szablon zaktualizowany", "success");
+      } else {
+        const { error } = await supabase.from("offer_templates").insert(formData);
+        if (error) throw error;
+        showSnackbar("Szablon utworzony", "success");
+      }
+      onSuccess();
+    } catch (error) {
+      showSnackbar("Błąd zapisu szablonu", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
+          <h3 className="text-xl font-light text-[#e5e4e2]">{template ? "Edytuj szablon" : "Nowy szablon"}</h3>
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-6 space-y-6">
+          <div>
+            <h4 className="text-sm font-medium text-[#e5e4e2] mb-4">Podstawowe informacje</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa szablonu *</label>
+                <input type="text" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]" />
+              </div>
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+                <textarea value={formData.description} onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))} rows={2} className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]" />
+              </div>
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-[#e5e4e2] mb-4">Logo firmy</h4>
+            <div className="space-y-4">
+              <label className="flex items-center gap-2 px-4 py-2 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg cursor-pointer hover:bg-[#0a0d1a]/70 transition-colors w-fit">
+                <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
+                <Upload className="w-5 h-5 text-[#d3bb73]" />
+                <span className="text-[#e5e4e2]">{uploadingLogo ? "Przesyłanie..." : "Prześlij logo"}</span>
+              </label>
+              {formData.logo_url && <img src={formData.logo_url} alt="Logo" className="w-32 h-32 object-contain" />}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-[#e5e4e2] mb-4">Widoczne elementy</h4>
+            <div className="space-y-2">
+              {[{ key: "show_logo", label: "Pokaż logo" }, { key: "show_company_details", label: "Pokaż dane firmy" }, { key: "show_client_details", label: "Pokaż dane klienta" }, { key: "show_terms", label: "Pokaż warunki oferty" }, { key: "show_payment_info", label: "Pokaż informacje o płatności" }].map((item) => (
+                <label key={item.key} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formData[item.key as keyof typeof formData] as boolean} onChange={(e) => setFormData(prev => ({ ...prev, [item.key]: e.target.checked }))} className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]" />
+                  <span className="text-sm text-[#e5e4e2]">{item.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Warunki oferty</label>
+              <textarea value={formData.terms_text} onChange={(e) => setFormData(prev => ({ ...prev, terms_text: e.target.value }))} rows={4} placeholder="WARUNKI OFERTY..." className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] font-mono text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Informacje o płatności</label>
+              <textarea value={formData.payment_info_text} onChange={(e) => setFormData(prev => ({ ...prev, payment_info_text: e.target.value }))} rows={4} placeholder="DANE DO PRZELEWU..." className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] font-mono text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stopka</label>
+              <textarea value={formData.footer_text} onChange={(e) => setFormData(prev => ({ ...prev, footer_text: e.target.value }))} rows={2} placeholder="Dziękujemy za zainteresowanie..." className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]" />
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={formData.is_default} onChange={(e) => setFormData(prev => ({ ...prev, is_default: e.target.checked }))} className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]" />
+              <span className="text-sm text-[#e5e4e2]">Szablon domyślny</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={formData.is_active} onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))} className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]" />
+              <span className="text-sm text-[#e5e4e2]">Aktywny</span>
+            </label>
+          </div>
+        </div>
+        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end sticky bottom-0 bg-[#1c1f33]">
+          <button onClick={onClose} className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20">Anuluj</button>
+          <button onClick={handleSubmit} disabled={loading} className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50">{loading ? "Zapisuję..." : "Zapisz"}</button>
+        </div>
+      </div>
+    </div>
   );
 }
