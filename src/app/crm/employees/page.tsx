@@ -8,6 +8,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import AdminResetPasswordModal from '@/components/crm/AdminResetPasswordModal';
+import AddEmployeeModal from '@/components/crm/AddEmployeeModal';
 import { EmployeeCardsView, EmployeeListView, EmployeeDetailedView } from '@/components/crm/EmployeeViews';
 
 interface Employee {
@@ -249,24 +250,13 @@ export default function EmployeesPage() {
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-2xl w-full">
-            <h3 className="text-xl font-medium text-[#e5e4e2] mb-4">
-              Dodaj nowego pracownika
-            </h3>
-            <p className="text-[#e5e4e2]/70 mb-6">
-              Użyj funkcji edge function "create-employee" w Supabase aby utworzyć nowego pracownika z kontem Auth.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
-              >
-                Zamknij
-              </button>
-            </div>
-          </div>
-        </div>
+        <AddEmployeeModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            setShowAddModal(false);
+            fetchEmployees();
+          }}
+        />
       )}
 
       {resetPasswordEmployee && (
