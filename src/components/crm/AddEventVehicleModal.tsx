@@ -19,6 +19,7 @@ interface AddEventVehicleModalProps {
   eventId: string;
   eventDate: string;
   eventLocation: string;
+  existingVehicleIds: string[];
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -52,6 +53,7 @@ export default function AddEventVehicleModal({
   eventId,
   eventDate,
   eventLocation,
+  existingVehicleIds,
   onClose,
   onSuccess,
 }: AddEventVehicleModalProps) {
@@ -121,7 +123,10 @@ export default function AddEventVehicleModal({
         .order('name');
 
       if (error) throw error;
-      setVehicles(data || []);
+
+      // Filtruj pojazdy już dodane do wydarzenia
+      const availableVehicles = (data || []).filter(v => !existingVehicleIds.includes(v.id));
+      setVehicles(availableVehicles);
     } catch (error) {
       console.error('Error fetching vehicles:', error);
     }

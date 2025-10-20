@@ -751,6 +751,7 @@ export default function EventLogisticsPanel({
           eventId={eventId}
           eventDate={eventDate}
           eventLocation={eventLocation}
+          existingVehicleIds={vehicles.map(v => v.vehicle_id).filter(Boolean) as string[]}
           onClose={() => setShowVehicleModal(false)}
           onSuccess={fetchLogisticsData}
         />

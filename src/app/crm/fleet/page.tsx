@@ -722,20 +722,30 @@ export default function FleetPage() {
                         <button
                           onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
                           className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                          title="Podgląd"
                         >
                           <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setQuickFuelVehicle(vehicle)}
+                          className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                          title="Dodaj tankowanie"
+                        >
+                          <Fuel className="w-4 h-4" />
                         </button>
                         {canManage && (
                           <>
                             <button
                               onClick={() => router.push(`/crm/fleet/${vehicle.id}/edit`)}
                               className="p-2 text-[#e5e4e2] hover:bg-[#0f1119] rounded-lg transition-colors"
+                              title="Edytuj"
                             >
                               <Edit className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteVehicle(vehicle.id, vehicle.name)}
                               className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                              title="Usuń"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

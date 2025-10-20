@@ -36,6 +36,8 @@ export default function QuickFuelModal({
   });
 
   const [loading, setLoading] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const totalCost = formData.liters && formData.price_per_liter
     ? (parseFloat(formData.liters) * parseFloat(formData.price_per_liter)).toFixed(2)
@@ -59,17 +61,42 @@ export default function QuickFuelModal({
     try {
       const dateTime = new Date(`${formData.date}T${formData.time}`);
 
+      let receiptUrl = null;
+
+      // Upload receipt if provided
+      if (receiptFile) {
+        setUploadingReceipt(true);
+        const fileExt = receiptFile.name.split('.').pop();
+        const fileName = `${vehicleId}_${Date.now()}.${fileExt}`;
+        const filePath = `${vehicleId}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('fuel-receipts')
+          .upload(filePath, receiptFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('fuel-receipts')
+          .getPublicUrl(filePath);
+
+        receiptUrl = publicUrl;
+        setUploadingReceipt(false);
+      }
+
       const { error } = await supabase.from('fuel_entries').insert({
         vehicle_id: vehicleId,
         date: dateTime.toISOString(),
         liters: parseFloat(formData.liters),
         price_per_liter: parseFloat(formData.price_per_liter),
         total_cost: parseFloat(totalCost),
-        mileage: parseInt(formData.mileage),
+        odometer_reading: parseInt(formData.mileage),
         payment_method: formData.payment_method === 'other'
           ? formData.other_payment_method
           : formData.payment_method,
-        added_by: employee?.id,
+        filled_by: employee?.id,
+        receipt_url: receiptUrl,
+        fuel_type: 'unknown',
       });
 
       if (error) throw error;
@@ -246,6 +273,23 @@ export default function QuickFuelModal({
             </div>
           </div>
 
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/80 mb-2">
+              Paragon/Faktura (opcjonalnie)
+            </label>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#d3bb73] file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
+            />
+            {receiptFile && (
+              <p className="text-xs text-[#d3bb73] mt-1">
+                Wybrano: {receiptFile.name} ({(receiptFile.size / 1024 / 1024).toFixed(2)} MB)
+              </p>
+            )}
+          </div>
+
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -262,7 +306,7 @@ export default function QuickFuelModal({
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Dodawanie...
+                  {uploadingReceipt ? 'Przesyłanie paragonu...' : 'Dodawanie...'}
                 </>
               ) : (
                 'Dodaj tankowanie'
