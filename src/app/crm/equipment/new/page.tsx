@@ -336,7 +336,7 @@ export default function NewEquipmentPage() {
               <option value="">Wybierz kategorię sprzętu</option>
               {categories.filter(c => c.level === 1).map(cat => (
                 <option key={cat.id} value={cat.id}>
-                  {cat.icon ? `${cat.icon} ` : ''}{cat.name}
+                  {cat.name}
                 </option>
               ))}
             </select>
@@ -359,7 +359,7 @@ export default function NewEquipmentPage() {
                 <option value="">Wybierz podkategorię (opcjonalnie)</option>
                 {subcategories.map(subcat => (
                   <option key={subcat.id} value={subcat.id}>
-                    {subcat.icon ? `${subcat.icon} ` : ''}{subcat.name}
+                    {subcat.name}
                   </option>
                 ))}
               </select>

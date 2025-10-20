@@ -813,6 +813,8 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
   const [isOptional, setIsOptional] = useState(false);
   const [notes, setNotes] = useState('');
   const [equipmentItems, setEquipmentItems] = useState<any[]>([]);
+  const [filteredItems, setFilteredItems] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [kits, setKits] = useState<any[]>([]);
   const [kitDetails, setKitDetails] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -831,13 +833,29 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
     }
   }, [selectedKitId]);
 
+  useEffect(() => {
+    if (searchQuery) {
+      const filtered = equipmentItems.filter(item =>
+        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.model?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredItems(filtered);
+    } else {
+      setFilteredItems(equipmentItems);
+    }
+  }, [searchQuery, equipmentItems]);
+
   const fetchEquipmentItems = async () => {
     const { data } = await supabase
       .from('equipment_items')
       .select('id, name, brand, model, warehouse_categories(name)')
       .eq('is_active', true)
       .order('name');
-    if (data) setEquipmentItems(data);
+    if (data) {
+      setEquipmentItems(data);
+      setFilteredItems(data);
+    }
   };
 
   const fetchKits = async () => {
@@ -979,21 +997,47 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
 
           {/* Item selection */}
           {mode === 'item' && (
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz sprzęt *</label>
-              <select
-                value={selectedItemId}
-                onChange={(e) => setSelectedItemId(e.target.value)}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="">-- Wybierz sprzęt --</option>
-                {equipmentItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} {item.brand && `(${item.brand})`} - {item.warehouse_categories?.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyszukaj sprzęt</label>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Szukaj po nazwie, marce lub modelu..."
+                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz sprzęt * ({filteredItems.length} wyników)</label>
+                <div className="max-h-60 overflow-y-auto bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg">
+                  {filteredItems.length === 0 ? (
+                    <div className="p-4 text-center text-[#e5e4e2]/60 text-sm">
+                      Brak wyników wyszukiwania
+                    </div>
+                  ) : (
+                    filteredItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedItemId(item.id)}
+                        className={`w-full text-left px-4 py-3 border-b border-[#d3bb73]/10 hover:bg-[#d3bb73]/10 transition-colors ${
+                          selectedItemId === item.id ? 'bg-[#d3bb73]/20' : ''
+                        }`}
+                      >
+                        <div className="text-[#e5e4e2] font-medium">{item.name}</div>
+                        <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                          {item.brand && <span>{item.brand} </span>}
+                          {item.model && <span>• {item.model} </span>}
+                          {item.warehouse_categories?.name && <span>• {item.warehouse_categories.name}</span>}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
           )}
 
           {/* Quantity */}
