@@ -309,7 +309,7 @@ export default function EventDetailPage() {
             model,
             cable_specs,
             thumbnail_url,
-            category:equipment_categories(name)
+            category:warehouse_categories(name)
           ),
           kit:equipment_kits(
             name,
@@ -321,7 +321,7 @@ export default function EventDetailPage() {
                 model,
                 cable_specs,
                 thumbnail_url,
-                category:equipment_categories(name)
+                category:warehouse_categories(name)
               )
             )
           )
@@ -678,7 +678,7 @@ export default function EventDetailPage() {
         .from('equipment_items')
         .select(`
           *,
-          category:equipment_categories(name)
+          category:warehouse_categories(name)
         `)
         .order('name');
 
@@ -715,7 +715,7 @@ export default function EventDetailPage() {
             equipment:equipment_items(
               id,
               name,
-              category:equipment_categories(name)
+              category:warehouse_categories(name)
             )
           )
         `)

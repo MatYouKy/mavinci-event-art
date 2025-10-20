@@ -117,7 +117,7 @@ export default function AddEventVehicleModal({
         .from('vehicles')
         .select('id, name, registration_number, brand, model, fuel_type, max_load_kg')
         .eq('status', 'active')
-        .neq('vehicle_type', 'trailer')
+        .neq('category', 'trailer')
         .order('name');
 
       if (error) throw error;
@@ -133,7 +133,7 @@ export default function AddEventVehicleModal({
         .from('vehicles')
         .select('id, name, registration_number, brand, model, fuel_type, max_load_kg')
         .eq('status', 'active')
-        .eq('vehicle_type', 'trailer')
+        .eq('category', 'trailer')
         .order('name');
 
       if (error) throw error;

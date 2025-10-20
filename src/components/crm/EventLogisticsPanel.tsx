@@ -205,6 +205,32 @@ export default function EventLogisticsPanel({
     }
   };
 
+  const handleDeleteVehicle = async (vehicleId: string) => {
+    const { confirm } = useDialog();
+
+    const confirmed = await confirm({
+      title: 'Usuń pojazd',
+      message: 'Czy na pewno chcesz usunąć ten pojazd z wydarzenia?',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('event_vehicles')
+        .delete()
+        .eq('id', vehicleId);
+
+      if (error) throw error;
+
+      showSnackbar('Pojazd został usunięty', 'success');
+      fetchLogisticsData();
+    } catch (error: any) {
+      console.error('Error deleting vehicle:', error);
+      showSnackbar(error.message || 'Błąd podczas usuwania pojazdu', 'error');
+    }
+  };
+
   const getActivityTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       loading: 'Załadunek',
@@ -355,7 +381,8 @@ export default function EventLogisticsPanel({
                   <div key={vehicle.id} className="p-4 hover:bg-[#0f1119]/30">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
+                        <div className="flex items-center gap-3 mb-2 justify-between">
+                          <div className="flex items-center gap-3">
                           <h4 className="font-semibold text-[#e5e4e2]">
                             {vehicle.is_external
                               ? `${vehicle.external_company_name || 'Zewnętrzny'}`
@@ -377,6 +404,18 @@ export default function EventLogisticsPanel({
                               <AlertCircle className="w-3 h-3" />
                               Konflikt
                             </span>
+                          )}
+                          </div>
+                          {canManage && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleDeleteVehicle(vehicle.id)}
+                                className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                                title="Usuń pojazd"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-400" />
+                              </button>
+                            </div>
                           )}
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
