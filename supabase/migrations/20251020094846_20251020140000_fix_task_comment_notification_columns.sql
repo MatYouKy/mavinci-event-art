@@ -2,10 +2,12 @@
   # Naprawa triggera powiadomień o komentarzach
 
   1. Problem
-    - Trigger używał NEW.created_by, ale kolumna to employee_id
+    - Trigger używał entity_type, ale kolumna to related_entity_type
+    - Trigger używał entity_id, ale kolumna to related_entity_id
+    - Trigger używał employee_id w recipients, ale kolumna to user_id
 
   2. Rozwiązanie
-    - Zmiana wszystkich odwołań z created_by na employee_id
+    - Zmiana wszystkich nazw kolumn na właściwe
 */
 
 -- Naprawa funkcji do wysyłania powiadomień o nowych komentarzach
