@@ -27,6 +27,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddEventVehicleModal from './AddEventVehicleModal';
+import VehicleHandoverModal from './VehicleHandoverModal';
 
 interface EventLogisticsProps {
   eventId: string;
@@ -368,14 +369,11 @@ export default function EventLogisticsPanel({
       {/* Pojazdy */}
       <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden">
         <div className="flex items-center justify-between p-4">
-          <button
-            onClick={() => toggleSection('vehicles')}
-            className="flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
-          >
+          <div className="flex items-center gap-3 flex-1">
             <Truck className="w-5 h-5 text-[#d3bb73]" />
             <h3 className="text-lg font-semibold text-[#e5e4e2]">Transport</h3>
             <span className="text-sm text-[#e5e4e2]/60">({vehicles.length})</span>
-          </button>
+          </div>
           <div className="flex items-center gap-2">
             {canManage && (
               <button
@@ -830,76 +828,18 @@ export default function EventLogisticsPanel({
 
       {/* Modal odbioru/zdania pojazdu */}
       {showHandoverModal && selectedVehicleForHandover && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 max-w-md w-full p-6">
-            <h3 className="text-xl font-semibold text-[#e5e4e2] mb-4">
-              Odbierz/Zdaj pojazd
-            </h3>
-            <p className="text-[#e5e4e2]/60 mb-6">
-              {selectedVehicleForHandover.vehicles?.name || selectedVehicleForHandover.external_company_name}
-              {selectedVehicleForHandover.vehicles?.registration_number && (
-                <> ({selectedVehicleForHandover.vehicles.registration_number})</>
-              )}
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Stan licznika (km)
-                </label>
-                <input
-                  type="number"
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]"
-                  placeholder="np. 125000"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Typ operacji
-                </label>
-                <select className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]">
-                  <option value="pickup">Odbiór pojazdu</option>
-                  <option value="return">Zdanie pojazdu</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Uwagi (opcjonalnie)
-                </label>
-                <textarea
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]"
-                  rows={3}
-                  placeholder="np. Stan techniczny, uszkodzenia..."
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => {
-                  setShowHandoverModal(false);
-                  setSelectedVehicleForHandover(null);
-                }}
-                className="flex-1 px-4 py-2 border border-[#d3bb73]/20 rounded hover:bg-[#0f1119] transition-colors text-[#e5e4e2]"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={() => {
-                  // TODO: Implementacja zapisu
-                  showSnackbar('Zapisano pomyślnie', 'success');
-                  setShowHandoverModal(false);
-                  setSelectedVehicleForHandover(null);
-                }}
-                className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors font-medium"
-              >
-                Zapisz
-              </button>
-            </div>
-          </div>
-        </div>
+        <VehicleHandoverModal
+          vehicle={selectedVehicleForHandover}
+          onClose={() => {
+            setShowHandoverModal(false);
+            setSelectedVehicleForHandover(null);
+          }}
+          onSuccess={() => {
+            fetchLogisticsData();
+            setShowHandoverModal(false);
+            setSelectedVehicleForHandover(null);
+          }}
+        />
       )}
     </div>
   );
