@@ -6,7 +6,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { colors } from '../theme';
 
 import LoginScreen from '../screens/LoginScreen';
-import DrawerNavigator from './DrawerNavigator';
+import MainTabNavigator from './MainTabNavigator';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -42,7 +42,7 @@ export default function RootNavigator() {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {session ? (
-          <Stack.Screen name="Main" component={DrawerNavigator} />
+          <Stack.Screen name="Main" component={MainTabNavigator} />
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}

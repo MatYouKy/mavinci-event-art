@@ -133,6 +133,8 @@ export default function DrawerNavigator() {
           backgroundColor: colors.background.primary,
           width: 280,
         },
+        swipeEnabled: true,
+        unmountOnBlur: false,
       }}
     >
       <Drawer.Screen name="MainTabs" component={MainTabNavigator} />
