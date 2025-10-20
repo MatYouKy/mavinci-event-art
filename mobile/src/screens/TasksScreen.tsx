@@ -55,21 +55,24 @@ const priorityLabels = {
 };
 
 const BOARD_COLUMNS = [
-  { id: 'do_zrobienia', title: 'Do zrobienia', color: '#6b7280' },
-  { id: 'w_trakcie', title: 'W trakcie', color: '#3b82f6' },
-  { id: 'gotowe', title: 'Gotowe', color: '#10b981' },
+  { id: 'todo', title: 'Do zrobienia', color: '#eab308' },
+  { id: 'in_progress', title: 'W trakcie', color: '#3b82f6' },
+  { id: 'review', title: 'Sprawdzenie', color: '#a855f7' },
+  { id: 'completed', title: 'Zakończone', color: '#10b981' },
 ];
 
 export default function TasksScreen() {
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { employee } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetchTasks();
+    if (employee) {
+      fetchTasks();
+    }
 
     const channel = supabase
       .channel('tasks_changes')
@@ -81,7 +84,9 @@ export default function TasksScreen() {
           table: 'tasks',
         },
         () => {
-          fetchTasks();
+          if (employee) {
+            fetchTasks();
+          }
         }
       )
       .subscribe();
@@ -89,13 +94,13 @@ export default function TasksScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [employee]);
 
   const fetchTasks = async () => {
     try {
-      if (!user) return;
+      if (!employee) return;
 
-      // Fetch tasks where user is creator
+      // Fetch tasks where employee is creator
       const { data: createdTasks, error: error1 } = await supabase
         .from('tasks')
         .select(`
@@ -105,11 +110,13 @@ export default function TasksScreen() {
             employees:employee_id(name, surname, avatar_url, avatar_metadata)
           )
         `)
-        .eq('created_by', user.id);
+        .eq('created_by', employee.id)
+        .eq('is_private', false)
+        .is('event_id', null);
 
       if (error1) throw error1;
 
-      // Fetch tasks where user is assigned
+      // Fetch tasks where employee is assigned
       const { data: assignedTasksData, error: error2 } = await supabase
         .from('task_assignees')
         .select(`
@@ -121,14 +128,14 @@ export default function TasksScreen() {
             )
           )
         `)
-        .eq('employee_id', user.id);
+        .eq('employee_id', employee.id);
 
       if (error2) throw error2;
 
       // Combine and deduplicate
       const assignedTasks = (assignedTasksData || [])
         .map((item: any) => item.tasks)
-        .filter((task: any) => task !== null);
+        .filter((task: any) => task !== null && task.is_private === false && task.event_id === null);
 
       const allTasks = [...(createdTasks || []), ...assignedTasks];
       const uniqueTasks = Array.from(
