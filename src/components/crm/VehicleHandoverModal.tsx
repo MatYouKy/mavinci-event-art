@@ -41,6 +41,16 @@ export default function VehicleHandoverModal({
     fetchLastOdometer();
   }, [vehicle.vehicle_id]);
 
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('pl-PL', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   const fetchLastOdometer = async () => {
     if (!vehicle.vehicle_id) {
       setLoadingLastOdometer(false);
@@ -97,6 +107,38 @@ export default function VehicleHandoverModal({
     setLoading(true);
 
     try {
+      // Walidacja: sprawdź czy pojazd nie jest w użyciu
+      if (handoverType === 'pickup' && vehicle.vehicle_id) {
+        const { data: eventVehicles } = await supabase
+          .from('event_vehicles')
+          .select('id')
+          .eq('vehicle_id', vehicle.vehicle_id);
+
+        const eventVehicleIds = eventVehicles?.map(ev => ev.id) || [];
+
+        if (eventVehicleIds.length > 0) {
+          const { data: lastHandover } = await supabase
+            .from('vehicle_handovers')
+            .select('handover_type, timestamp, driver_id, employees(name, surname)')
+            .in('event_vehicle_id', eventVehicleIds)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastHandover && lastHandover.handover_type === 'pickup') {
+            const driverName = lastHandover.employees
+              ? `${lastHandover.employees.name} ${lastHandover.employees.surname}`
+              : 'Nieznany kierowca';
+            showSnackbar(
+              `Pojazd nie został jeszcze zdany! Ostatni odbiór: ${driverName} (${formatDate(lastHandover.timestamp)})`,
+              'error'
+            );
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
       const { error } = await supabase.from('vehicle_handovers').insert({
         event_vehicle_id: vehicle.id,
         driver_id: employee.id,
