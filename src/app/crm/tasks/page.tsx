@@ -285,7 +285,7 @@ export default function TasksPage() {
     }
   };
 
-  const handleOpenModal = (task?: Task) => {
+  const handleOpenModal = (task?: Task, defaultColumn?: string) => {
     if (task) {
       setEditingTask(task);
       setFormData({
@@ -302,7 +302,7 @@ export default function TasksPage() {
         title: '',
         description: '',
         priority: 'medium',
-        board_column: 'todo',
+        board_column: defaultColumn || 'todo',
         due_date: '',
         assigned_employees: [],
       });
@@ -598,10 +598,7 @@ export default function TasksPage() {
                   </span>
                   {canCreateTasks && (
                     <button
-                      onClick={() => {
-                        setEditingTask(null);
-                        setShowModal(true);
-                      }}
+                      onClick={() => handleOpenModal(undefined, column.id)}
                       className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
                       title="Dodaj zadanie"
                     >

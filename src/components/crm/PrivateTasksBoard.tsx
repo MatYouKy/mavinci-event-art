@@ -344,7 +344,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     }
   };
 
-  const handleOpenModal = (task?: Task) => {
+  const handleOpenModal = (task?: Task, defaultColumn?: string) => {
     if (task) {
       setEditingTask(task);
       setFormData({
@@ -360,7 +360,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         title: '',
         description: '',
         priority: 'medium',
-        board_column: 'todo',
+        board_column: defaultColumn || 'todo',
         due_date: '',
       });
     }
@@ -509,7 +509,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                     {getTasksByColumn(column.id).length}
                   </span>
                   <button
-                    onClick={() => handleOpenModal()}
+                    onClick={() => handleOpenModal(undefined, column.id)}
                     className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
                     title="Dodaj zadanie"
                   >
