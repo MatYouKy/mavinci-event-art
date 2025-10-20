@@ -106,13 +106,7 @@ export default function TasksScreen() {
       // Fetch tasks where employee is creator
       const { data: createdTasks, error: error1 } = await supabase
         .from('tasks')
-        .select(`
-          *,
-          task_assignees(
-            employee_id,
-            employees(name, surname, avatar_url, avatar_metadata)
-          )
-        `)
+        .select('*')
         .eq('created_by', employee.id)
         .eq('is_private', false)
         .is('event_id', null);
@@ -122,28 +116,67 @@ export default function TasksScreen() {
       // Fetch tasks where employee is assigned
       const { data: assignedTasksData, error: error2 } = await supabase
         .from('task_assignees')
-        .select(`
-          tasks(
-            *,
-            task_assignees(
-              employee_id,
-              employees(name, surname, avatar_url, avatar_metadata)
-            )
-          )
-        `)
+        .select('task_id')
         .eq('employee_id', employee.id);
 
       if (error2) throw error2;
 
-      // Combine and deduplicate
-      const assignedTasks = (assignedTasksData || [])
-        .map((item: any) => item.tasks)
-        .filter((task: any) => task !== null && task.is_private === false && task.event_id === null);
+      // Get unique task IDs
+      const assignedTaskIds = assignedTasksData?.map(ta => ta.task_id) || [];
 
+      // Fetch assigned tasks
+      let assignedTasks: any[] = [];
+      if (assignedTaskIds.length > 0) {
+        const { data: fetchedTasks, error: error3 } = await supabase
+          .from('tasks')
+          .select('*')
+          .in('id', assignedTaskIds)
+          .eq('is_private', false)
+          .is('event_id', null);
+
+        if (error3) throw error3;
+        assignedTasks = fetchedTasks || [];
+      }
+
+      // Combine and deduplicate
       const allTasks = [...(createdTasks || []), ...assignedTasks];
       const uniqueTasks = Array.from(
         new Map(allTasks.map((task) => [task.id, task])).values()
       );
+
+      // Fetch assignees for all tasks
+      const taskIds = uniqueTasks.map(t => t.id);
+      if (taskIds.length > 0) {
+        const { data: assigneesData, error: error4 } = await supabase
+          .from('task_assignees')
+          .select('task_id, employee_id')
+          .in('task_id', taskIds);
+
+        if (error4) throw error4;
+
+        // Fetch employee details
+        const employeeIds = [...new Set(assigneesData?.map(a => a.employee_id) || [])];
+        if (employeeIds.length > 0) {
+          const { data: employeesData, error: error5 } = await supabase
+            .from('employees')
+            .select('id, name, surname, avatar_url, avatar_metadata')
+            .in('id', employeeIds);
+
+          if (error5) throw error5;
+
+          // Map employees by ID
+          const employeesMap = new Map(employeesData?.map(e => [e.id, e]) || []);
+
+          // Attach assignees to tasks
+          uniqueTasks.forEach(task => {
+            const taskAssignees = assigneesData?.filter(a => a.task_id === task.id) || [];
+            task.task_assignees = taskAssignees.map(ta => ({
+              employee_id: ta.employee_id,
+              employees: employeesMap.get(ta.employee_id)
+            }));
+          });
+        }
+      }
 
       uniqueTasks.sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
