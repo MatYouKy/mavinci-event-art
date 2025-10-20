@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme';
 
@@ -22,12 +23,9 @@ export type MainTabParamList = {
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainTabNavigator() {
+  const navigation = useNavigation();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentScreen, setCurrentScreen] = useState('Dashboard');
-
-  const handleNavigate = (screen: string) => {
-    setCurrentScreen(screen);
-  };
 
   return (
     <>
@@ -110,7 +108,7 @@ export default function MainTabNavigator() {
       <CustomDrawer
         visible={drawerVisible}
         onClose={() => setDrawerVisible(false)}
-        onNavigate={handleNavigate}
+        navigation={navigation}
         currentScreen={currentScreen}
       />
     </>

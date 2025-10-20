@@ -9,6 +9,7 @@ import {
   Animated,
   Dimensions,
   Alert,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,11 +21,11 @@ const DRAWER_WIDTH = 280;
 interface DrawerProps {
   visible: boolean;
   onClose: () => void;
-  onNavigate: (screen: string) => void;
+  navigation: any;
   currentScreen?: string;
 }
 
-export default function CustomDrawer({ visible, onClose, onNavigate, currentScreen }: DrawerProps) {
+export default function CustomDrawer({ visible, onClose, navigation, currentScreen }: DrawerProps) {
   const { employee, signOut } = useAuth();
   const slideAnim = React.useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
@@ -67,8 +68,15 @@ export default function CustomDrawer({ visible, onClose, onNavigate, currentScre
   ];
 
   const handleNavigate = (screen: string) => {
-    onNavigate(screen);
     onClose();
+    navigation.navigate(screen);
+  };
+
+  const getAvatarSource = () => {
+    if (employee?.avatar_url) {
+      return { uri: employee.avatar_url };
+    }
+    return null;
   };
 
   return (
@@ -79,11 +87,6 @@ export default function CustomDrawer({ visible, onClose, onNavigate, currentScre
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={onClose}
-        />
         <Animated.View
           style={[
             styles.drawer,
@@ -92,28 +95,35 @@ export default function CustomDrawer({ visible, onClose, onNavigate, currentScre
             },
           ]}
         >
-          {/* Header with user info */}
+          {/* Compact Header with user info */}
           <View style={styles.drawerHeader}>
-            <View style={styles.avatar}>
-              <Feather name="user" color={colors.primary.gold} size={32} />
-            </View>
-            <Text style={styles.userName} numberOfLines={1}>
-              {employee?.nickname || employee?.name}
-            </Text>
-            <Text style={styles.userEmail} numberOfLines={1}>
-              {employee?.email}
-            </Text>
-            {employee?.role && (
-              <View style={styles.roleBadge}>
-                <Text style={styles.roleText}>{employee.role}</Text>
+            <View style={styles.userRow}>
+              <View style={styles.avatarContainer}>
+                {getAvatarSource() ? (
+                  <Image
+                    source={getAvatarSource()!}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <Feather name="user" color={colors.primary.gold} size={20} />
+                )}
               </View>
-            )}
+              <View style={styles.userInfo}>
+                <Text style={styles.userName} numberOfLines={1}>
+                  {employee?.nickname || employee?.name || 'Użytkownik'}
+                </Text>
+                {employee?.role && (
+                  <Text style={styles.userRole} numberOfLines={1}>
+                    {employee.role}
+                  </Text>
+                )}
+              </View>
+            </View>
           </View>
 
           {/* Menu Items */}
           <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
             <View style={styles.menuSection}>
-              <Text style={styles.sectionTitle}>NAWIGACJA</Text>
               {menuItems.map((item, index) => (
                 <TouchableOpacity
                   key={index}
@@ -123,9 +133,17 @@ export default function CustomDrawer({ visible, onClose, onNavigate, currentScre
                   ]}
                   onPress={() => handleNavigate(item.screen)}
                 >
-                  <Feather name={item.icon as any} color={colors.text.secondary} size={20} />
-                  <Text style={styles.menuItemText}>{item.label}</Text>
-                  <Feather name="chevron-right" color={colors.text.tertiary} size={16} />
+                  <Feather
+                    name={item.icon as any}
+                    color={currentScreen === item.screen ? colors.primary.gold : colors.text.secondary}
+                    size={20}
+                  />
+                  <Text style={[
+                    styles.menuItemText,
+                    currentScreen === item.screen && styles.menuItemTextActive,
+                  ]}>
+                    {item.label}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -134,12 +152,18 @@ export default function CustomDrawer({ visible, onClose, onNavigate, currentScre
           {/* Footer with logout */}
           <View style={styles.drawerFooter}>
             <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
-              <Feather name="log-out" color={colors.status.error} size={20} />
-              <Text style={styles.logoutText}>Wyloguj się</Text>
+              <Feather name="log-out" color={colors.status.error} size={18} />
+              <Text style={styles.logoutText}>Wyloguj</Text>
             </TouchableOpacity>
-            <Text style={styles.version}>Mavinci CRM Mobile v1.0.0</Text>
+            <Text style={styles.version}>v1.0.0</Text>
           </View>
         </Animated.View>
+
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={onClose}
+        />
       </View>
     </Modal>
   );
@@ -150,55 +174,56 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
   },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
   drawer: {
     width: DRAWER_WIDTH,
     backgroundColor: colors.background.primary,
     borderRightWidth: 1,
     borderRightColor: colors.border.default,
   },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
   drawerHeader: {
-    padding: spacing.xl,
-    paddingTop: spacing.xxxl + 20,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xxl + spacing.md,
+    paddingBottom: spacing.lg,
     backgroundColor: colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
-    alignItems: 'center',
   },
-  avatar: {
-    width: 80,
-    height: 80,
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  avatarContainer: {
+    width: 48,
+    height: 48,
     borderRadius: borderRadius.full,
     backgroundColor: colors.background.tertiary,
     borderWidth: 2,
     borderColor: colors.primary.gold,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  userInfo: {
+    flex: 1,
   },
   userName: {
-    fontSize: typography.fontSizes.lg,
+    fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold,
     color: colors.text.primary,
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
-  userEmail: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
-    marginBottom: spacing.sm,
-  },
-  roleBadge: {
-    backgroundColor: colors.primary.gold + '20',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-  },
-  roleText: {
+  userRole: {
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium,
     color: colors.primary.gold,
     textTransform: 'uppercase',
   },
@@ -208,23 +233,18 @@ const styles = StyleSheet.create({
   },
   menuSection: {
     paddingHorizontal: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.text.tertiary,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.md,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.lg,
+    padding: spacing.md,
     backgroundColor: colors.background.secondary,
     borderRadius: borderRadius.md,
     marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border.default,
+    gap: spacing.md,
   },
   menuItemActive: {
     backgroundColor: colors.primary.gold + '20',
@@ -235,19 +255,21 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.medium,
     color: colors.text.primary,
-    marginLeft: spacing.md,
+  },
+  menuItemTextActive: {
+    color: colors.primary.gold,
   },
   drawerFooter: {
     padding: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border.default,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.md,
+    padding: spacing.sm,
     backgroundColor: colors.background.secondary,
     borderRadius: borderRadius.md,
     borderWidth: 1,
@@ -255,7 +277,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   logoutText: {
-    fontSize: typography.fontSizes.md,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.status.error,
   },
