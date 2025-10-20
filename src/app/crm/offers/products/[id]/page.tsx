@@ -209,11 +209,22 @@ export default function ProductDetailPage() {
     setProduct({ ...product, cost_net: net, cost_gross: gross });
   };
 
-  const margin = product ? ((product.price_net - product.cost_net) / product.price_net) * 100 : 0;
-  const totalCostNet = product ? product.cost_net + product.transport_cost_net + product.logistics_cost_net : 0;
-  const totalCostGross = product ? product.cost_gross + product.transport_cost_gross + product.logistics_cost_gross : 0;
-  const totalPriceNet = product ? product.price_net + product.transport_cost_net + product.logistics_cost_net : 0;
-  const totalPriceGross = product ? product.price_gross + product.transport_cost_gross + product.logistics_cost_gross : 0;
+  // Fallback dla starych danych (przed migracją VAT)
+  const priceNet = product?.price_net ?? product?.base_price ?? 0;
+  const priceGross = product?.price_gross ?? (priceNet * 1.23) ?? 0;
+  const costNet = product?.cost_net ?? product?.cost_price ?? 0;
+  const costGross = product?.cost_gross ?? (costNet * 1.23) ?? 0;
+  const transportNet = product?.transport_cost_net ?? product?.transport_cost ?? 0;
+  const transportGross = product?.transport_cost_gross ?? (transportNet * 1.23) ?? 0;
+  const logisticsNet = product?.logistics_cost_net ?? product?.logistics_cost ?? 0;
+  const logisticsGross = product?.logistics_cost_gross ?? (logisticsNet * 1.23) ?? 0;
+  const vatRate = product?.vat_rate ?? 23;
+
+  const margin = priceNet > 0 ? ((priceNet - costNet) / priceNet) * 100 : 0;
+  const totalCostNet = costNet + transportNet + logisticsNet;
+  const totalCostGross = costGross + transportGross + logisticsGross;
+  const totalPriceNet = priceNet + transportNet + logisticsNet;
+  const totalPriceGross = priceGross + transportGross + logisticsGross;
 
   if (loading) {
     return (
@@ -268,10 +279,10 @@ export default function ProductDetailPage() {
             <DollarSign className="w-5 h-5 text-[#d3bb73]" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
-                {product.price_net.toLocaleString('pl-PL')} zł
+                {priceNet.toLocaleString('pl-PL')} zł
               </div>
               <div className="text-xs text-[#e5e4e2]/40">
-                brutto: {product.price_gross.toLocaleString('pl-PL')} zł
+                brutto: {priceGross.toLocaleString('pl-PL')} zł
               </div>
             </div>
           </div>
@@ -283,10 +294,10 @@ export default function ProductDetailPage() {
             <DollarSign className="w-5 h-5 text-red-400" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
-                {product.cost_net.toLocaleString('pl-PL')} zł
+                {costNet.toLocaleString('pl-PL')} zł
               </div>
               <div className="text-xs text-[#e5e4e2]/40">
-                brutto: {product.cost_gross.toLocaleString('pl-PL')} zł
+                brutto: {costGross.toLocaleString('pl-PL')} zł
               </div>
             </div>
           </div>
@@ -301,7 +312,7 @@ export default function ProductDetailPage() {
                 {margin.toFixed(1)}%
               </div>
               <div className="text-xs text-[#e5e4e2]/40">
-                {(product.price_net - product.cost_net).toLocaleString('pl-PL')} zł netto
+                {(priceNet - costNet).toLocaleString('pl-PL')} zł netto
               </div>
             </div>
           </div>
@@ -439,16 +450,16 @@ export default function ProductDetailPage() {
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stawka VAT (%)</label>
               <input
                 type="number"
-                value={product.vat_rate}
+                value={vatRate}
                 onChange={(e) => {
                   const newVat = parseFloat(e.target.value);
                   setProduct({
                     ...product,
                     vat_rate: newVat,
-                    price_gross: product.price_net * (1 + newVat / 100),
-                    cost_gross: product.cost_net * (1 + newVat / 100),
-                    transport_cost_gross: product.transport_cost_net * (1 + newVat / 100),
-                    logistics_cost_gross: product.logistics_cost_net * (1 + newVat / 100),
+                    price_gross: priceNet * (1 + newVat / 100),
+                    cost_gross: costNet * (1 + newVat / 100),
+                    transport_cost_gross: transportNet * (1 + newVat / 100),
+                    logistics_cost_gross: logisticsNet * (1 + newVat / 100),
                   });
                 }}
                 disabled={!canEdit}
@@ -462,7 +473,7 @@ export default function ProductDetailPage() {
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena netto</label>
                 <input
                   type="number"
-                  value={product.price_net}
+                  value={priceNet}
                   onChange={(e) => updateNetPrice(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
@@ -473,7 +484,7 @@ export default function ProductDetailPage() {
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena brutto</label>
                 <input
                   type="number"
-                  value={product.price_gross}
+                  value={priceGross}
                   onChange={(e) => updateGrossPrice(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
@@ -487,7 +498,7 @@ export default function ProductDetailPage() {
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">Koszt netto</label>
                 <input
                   type="number"
-                  value={product.cost_net}
+                  value={costNet}
                   onChange={(e) => updateNetCost(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
@@ -498,7 +509,7 @@ export default function ProductDetailPage() {
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">Koszt brutto</label>
                 <input
                   type="number"
-                  value={product.cost_gross}
+                  value={costGross}
                   onChange={(e) => updateGrossCost(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
@@ -512,13 +523,13 @@ export default function ProductDetailPage() {
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">Transport netto</label>
                 <input
                   type="number"
-                  value={product.transport_cost_net}
+                  value={transportNet}
                   onChange={(e) => {
                     const net = parseFloat(e.target.value);
                     setProduct({
                       ...product,
                       transport_cost_net: net,
-                      transport_cost_gross: net * (1 + product.vat_rate / 100),
+                      transport_cost_gross: net * (1 + vatRate / 100),
                     });
                   }}
                   disabled={!canEdit}
@@ -530,13 +541,13 @@ export default function ProductDetailPage() {
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">Logistyka netto</label>
                 <input
                   type="number"
-                  value={product.logistics_cost_net}
+                  value={logisticsNet}
                   onChange={(e) => {
                     const net = parseFloat(e.target.value);
                     setProduct({
                       ...product,
                       logistics_cost_net: net,
-                      logistics_cost_gross: net * (1 + product.vat_rate / 100),
+                      logistics_cost_gross: net * (1 + vatRate / 100),
                     });
                   }}
                   disabled={!canEdit}
@@ -550,7 +561,7 @@ export default function ProductDetailPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Marża:</span>
                 <span className={`font-medium ${margin > 50 ? 'text-green-400' : margin > 30 ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {margin.toFixed(1)}% ({(product.price_net - product.cost_net).toLocaleString('pl-PL')} zł netto)
+                  {margin.toFixed(1)}% ({(priceNet - costNet).toLocaleString('pl-PL')} zł netto)
                 </span>
               </div>
               <div className="flex justify-between text-sm">
