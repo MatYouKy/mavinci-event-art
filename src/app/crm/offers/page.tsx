@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+
+type Tab = 'offers' | 'catalog' | 'templates';
 
 interface Offer {
   id: string;
@@ -31,6 +34,36 @@ interface Offer {
   };
 }
 
+interface ProductCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+interface Product {
+  id: string;
+  category_id: string;
+  name: string;
+  description: string;
+  base_price: number;
+  cost_price: number;
+  transport_cost: number;
+  logistics_cost: number;
+  unit: string;
+  tags: string[];
+  is_active: boolean;
+  category?: ProductCategory;
+}
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  is_active: boolean;
+}
+
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   sent: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -49,29 +82,63 @@ const statusLabels: Record<string, string> = {
 
 export default function OffersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { employee, isAdmin } = useCurrentEmployee();
+  const { showSnackbar } = useSnackbar();
+
+  const [activeTab, setActiveTab] = useState<Tab>((searchParams.get('tab') as Tab) || 'offers');
+  const [loading, setLoading] = useState(true);
+
+  // Oferty
   const [offers, setOffers] = useState<Offer[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [employeeFilter, setEmployeeFilter] = useState('all');
-  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Katalog produktów
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+
+  // Szablony
+  const [templates, setTemplates] = useState<Template[]>([]);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab') as Tab;
+    if (tab && (tab === 'offers' || tab === 'catalog' || tab === 'templates')) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (employee) {
-      fetchOffers();
-      if (isAdmin) {
-        fetchEmployees();
+      if (activeTab === 'offers') {
+        fetchOffers();
+      } else if (activeTab === 'catalog') {
+        fetchCategories();
+        fetchProducts();
+      } else if (activeTab === 'templates') {
+        fetchTemplates();
       }
     }
-  }, [employee, isAdmin]);
+  }, [employee, activeTab]);
 
   useEffect(() => {
     filterOffers();
-  }, [searchQuery, statusFilter, employeeFilter, offers]);
+  }, [searchQuery, statusFilter, offers]);
 
+  useEffect(() => {
+    filterProducts();
+  }, [productSearch, categoryFilter, products]);
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    router.push(`/crm/offers?tab=${tab}`);
+  };
+
+  // Fetch functions
   const fetchOffers = async () => {
     try {
       setLoading(true);
@@ -85,41 +152,68 @@ export default function OffersPage() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching offers:', error);
-        return;
-      }
-
-      if (data) {
-        setOffers(data);
-      }
-    } catch (err) {
-      console.error('Error:', err);
+      if (error) throw error;
+      if (data) setOffers(data);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd pobierania ofert', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchEmployees = async () => {
+  const fetchCategories = async () => {
     try {
       const { data, error } = await supabase
-        .from('employees')
-        .select('id, name, surname')
-        .order('name');
+        .from('offer_product_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order');
 
-      if (error) {
-        console.error('Error fetching employees:', error);
-        return;
-      }
-
-      if (data) {
-        setEmployees(data);
-      }
-    } catch (err) {
-      console.error('Error:', err);
+      if (error) throw error;
+      if (data) setCategories(data);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd pobierania kategorii', 'error');
     }
   };
 
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('offer_products')
+        .select(`
+          *,
+          category:offer_product_categories(id, name, icon)
+        `)
+        .order('display_order');
+
+      if (error) throw error;
+      if (data) setProducts(data);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd pobierania produktów', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('offer_templates')
+        .select('*')
+        .order('is_default', { ascending: false });
+
+      if (error) throw error;
+      if (data) setTemplates(data);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd pobierania szablonów', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter functions
   const filterOffers = () => {
     let filtered = [...offers];
 
@@ -136,11 +230,26 @@ export default function OffersPage() {
       filtered = filtered.filter((offer) => offer.status === statusFilter);
     }
 
-    if (employeeFilter !== 'all') {
-      filtered = filtered.filter((offer) => offer.created_by === employeeFilter);
+    setFilteredOffers(filtered);
+  };
+
+  const filterProducts = () => {
+    let filtered = [...products];
+
+    if (productSearch) {
+      filtered = filtered.filter(
+        (product) =>
+          product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+          product.description?.toLowerCase().includes(productSearch.toLowerCase()) ||
+          product.tags?.some(tag => tag.toLowerCase().includes(productSearch.toLowerCase()))
+      );
     }
 
-    setFilteredOffers(filtered);
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter((product) => product.category_id === categoryFilter);
+    }
+
+    setFilteredProducts(filtered);
   };
 
   const getClientName = (offer: Offer) => {
@@ -163,25 +272,123 @@ export default function OffersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-light text-[#e5e4e2]">Oferty</h1>
+          <h1 className="text-2xl font-light text-[#e5e4e2]">Oferty i Katalog</h1>
           <p className="text-sm text-[#e5e4e2]/60 mt-1">
-            Zarządzaj ofertami dla klientów
+            Zarządzaj ofertami, katalogiem produktów i szablonami
           </p>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex space-x-1 border-b border-[#d3bb73]/10">
         <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+          onClick={() => handleTabChange('offers')}
+          className={`px-6 py-3 font-medium transition-colors relative ${
+            activeTab === 'offers'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
         >
-          <Plus className="w-4 h-4" />
-          Nowa oferta
+          <div className="flex items-center space-x-2">
+            <FileText className="w-5 h-5" />
+            <span>Oferty</span>
+            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
+              {offers.length}
+            </span>
+          </div>
+          {activeTab === 'offers' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
+
+        <button
+          onClick={() => handleTabChange('catalog')}
+          className={`px-6 py-3 font-medium transition-colors relative ${
+            activeTab === 'catalog'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <Package className="w-5 h-5" />
+            <span>Katalog produktów</span>
+            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
+              {products.length}
+            </span>
+          </div>
+          {activeTab === 'catalog' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
+
+        <button
+          onClick={() => handleTabChange('templates')}
+          className={`px-6 py-3 font-medium transition-colors relative ${
+            activeTab === 'templates'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <FileType className="w-5 h-5" />
+            <span>Szablony</span>
+            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
+              {templates.length}
+            </span>
+          </div>
+          {activeTab === 'templates' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
         </button>
       </div>
 
+      {/* Content */}
+      {activeTab === 'offers' && (
+        <OffersTab
+          offers={filteredOffers}
+          allOffers={offers}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          getClientName={getClientName}
+          router={router}
+          onRefresh={fetchOffers}
+        />
+      )}
+
+      {activeTab === 'catalog' && (
+        <CatalogTab
+          products={filteredProducts}
+          categories={categories}
+          productSearch={productSearch}
+          setProductSearch={setProductSearch}
+          categoryFilter={categoryFilter}
+          setCategoryFilter={setCategoryFilter}
+          onRefresh={fetchProducts}
+        />
+      )}
+
+      {activeTab === 'templates' && (
+        <TemplatesTab
+          templates={templates}
+          onRefresh={fetchTemplates}
+        />
+      )}
+    </div>
+  );
+}
+
+// Offers Tab Component
+function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilter, setStatusFilter, getClientName, router, onRefresh }: any) {
+  return (
+    <>
+      {/* Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             <FileText className="w-5 h-5 text-[#d3bb73]" />
-            <span className="text-2xl font-light text-[#e5e4e2]">{offers.length}</span>
+            <span className="text-2xl font-light text-[#e5e4e2]">{allOffers.length}</span>
           </div>
           <p className="text-sm text-[#e5e4e2]/60">Wszystkie</p>
         </div>
@@ -190,7 +397,7 @@ export default function OffersPage() {
           <div className="flex items-center gap-3 mb-2">
             <FileText className="w-5 h-5 text-gray-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
-              {offers.filter((o) => o.status === 'draft').length}
+              {allOffers.filter((o: any) => o.status === 'draft').length}
             </span>
           </div>
           <p className="text-sm text-[#e5e4e2]/60">Szkice</p>
@@ -200,7 +407,7 @@ export default function OffersPage() {
           <div className="flex items-center gap-3 mb-2">
             <FileText className="w-5 h-5 text-blue-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
-              {offers.filter((o) => o.status === 'sent').length}
+              {allOffers.filter((o: any) => o.status === 'sent').length}
             </span>
           </div>
           <p className="text-sm text-[#e5e4e2]/60">Wysłane</p>
@@ -210,7 +417,7 @@ export default function OffersPage() {
           <div className="flex items-center gap-3 mb-2">
             <FileText className="w-5 h-5 text-green-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
-              {offers.filter((o) => o.status === 'accepted').length}
+              {allOffers.filter((o: any) => o.status === 'accepted').length}
             </span>
           </div>
           <p className="text-sm text-[#e5e4e2]/60">Zaakceptowane</p>
@@ -220,8 +427,8 @@ export default function OffersPage() {
           <div className="flex items-center gap-3 mb-2">
             <DollarSign className="w-5 h-5 text-yellow-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
-              {offers
-                .reduce((sum, o) => sum + (o.total_amount || 0), 0)
+              {allOffers
+                .reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0)
                 .toLocaleString('pl-PL')}
               zł
             </span>
@@ -230,6 +437,7 @@ export default function OffersPage() {
         </div>
       </div>
 
+      {/* Filters and List */}
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="flex-1 relative">
@@ -253,43 +461,29 @@ export default function OffersPage() {
             <option value="sent">Wysłane</option>
             <option value="accepted">Zaakceptowane</option>
             <option value="rejected">Odrzucone</option>
-            <option value="expired">Wygasłe</option>
           </select>
 
-          {isAdmin && employees.length > 0 && (
-            <select
-              value={employeeFilter}
-              onChange={(e) => setEmployeeFilter(e.target.value)}
-              className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              <option value="all">Wszyscy pracownicy</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} {emp.surname}
-                </option>
-              ))}
-            </select>
-          )}
+          <button
+            onClick={onRefresh}
+            className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Nowa oferta</span>
+          </button>
         </div>
 
-        {filteredOffers.length === 0 ? (
+        {offers.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
             <p className="text-[#e5e4e2]/60">
               {searchQuery || statusFilter !== 'all'
                 ? 'Brak ofert spełniających kryteria'
-                : 'Brak ofert'}
+                : 'Brak ofert. Kliknij "Nowa oferta" aby rozpocząć.'}
             </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="mt-4 text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
-            >
-              Utwórz pierwszą ofertę
-            </button>
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredOffers.map((offer) => (
+            {offers.map((offer: any) => (
               <div
                 key={offer.id}
                 className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
@@ -324,33 +518,19 @@ export default function OffersPage() {
                           <Building2 className="w-4 h-4" />
                           <span>{getClientName(offer)}</span>
                         </div>
-                        {offer.creator && (
-                          <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/50">
-                            <User className="w-4 h-4" />
-                            <span>
-                              {offer.creator.name} {offer.creator.surname}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
 
                   <div className="text-right">
                     <div className="text-2xl font-light text-[#d3bb73] mb-1">
-                      {offer.total_amount
-                        ? offer.total_amount.toLocaleString('pl-PL')
-                        : '0'}{' '}
-                      zł
+                      {offer.total_amount ? offer.total_amount.toLocaleString('pl-PL') : '0'} zł
                     </div>
                     {offer.valid_until && (
                       <div className="text-xs text-[#e5e4e2]/60">
                         Ważna do: {new Date(offer.valid_until).toLocaleDateString('pl-PL')}
                       </div>
                     )}
-                    <div className="text-xs text-[#e5e4e2]/40 mt-1">
-                      Utworzona: {new Date(offer.created_at).toLocaleDateString('pl-PL')}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -358,219 +538,179 @@ export default function OffersPage() {
           </div>
         )}
       </div>
-
-      {showCreateModal && (
-        <CreateOfferModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
-            setShowCreateModal(false);
-            fetchOffers();
-          }}
-        />
-      )}
-    </div>
+    </>
   );
 }
 
-function CreateOfferModal({
-  isOpen,
-  onClose,
-  onSuccess,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const { employee } = useCurrentEmployee();
-  const [clients, setClients] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]);
-  const [formData, setFormData] = useState({
-    offer_number: '',
-    client_id: '',
-    event_id: '',
-    valid_until: '',
-    notes: '',
-  });
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchClients();
-      fetchEvents();
-    }
-  }, [isOpen]);
-
-  const fetchClients = async () => {
-    const { data } = await supabase
-      .from('clients')
-      .select('id, company_name, first_name, last_name')
-      .order('company_name');
-    if (data) setClients(data);
-  };
-
-  const fetchEvents = async () => {
-    const { data } = await supabase
-      .from('events')
-      .select('id, name, event_date')
-      .order('event_date', { ascending: false });
-    if (data) setEvents(data);
-  };
-
-  const handleSubmit = async () => {
-    if (!employee) {
-      alert('Nie można utworzyć oferty - brak danych pracownika');
-      return;
-    }
-
-    try {
-      const offerData: any = {
-        client_id: formData.client_id || null,
-        event_id: formData.event_id || null,
-        valid_until: formData.valid_until || null,
-        notes: formData.notes || null,
-        status: 'draft',
-        total_amount: 0,
-        created_by: employee.id,
-      };
-
-      if (formData.offer_number.trim()) {
-        offerData.offer_number = formData.offer_number;
-      }
-
-      const { data, error } = await supabase
-        .from('offers')
-        .insert([offerData])
-        .select();
-
-      if (error) {
-        console.error('Error creating offer:', error);
-        alert('Błąd podczas tworzenia oferty: ' + error.message);
-        return;
-      }
-
-      if (data && data[0]) {
-        alert(`Utworzono ofertę: ${data[0].offer_number}`);
-      }
-
-      onSuccess();
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
-    }
-  };
-
-  if (!isOpen) return null;
-
+// Catalog Tab Component
+function CatalogTab({ products, categories, productSearch, setProductSearch, categoryFilter, setCategoryFilter, onRefresh }: any) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-lg w-full">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-light text-[#e5e4e2]">Utwórz nową ofertę</h2>
-          <button
-            onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+    <>
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+        <div className="flex flex-col lg:flex-row gap-4 mb-6">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+            <input
+              type="text"
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Szukaj produktu..."
+              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            />
+          </div>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
           >
-            ✕
+            <option value="all">Wszystkie kategorie</option>
+            {categories.map((cat: any) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={onRefresh}
+            className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Nowy produkt</span>
           </button>
         </div>
 
-        <div className="space-y-4">
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-4">
-            <p className="text-sm text-blue-400">
-              Numer oferty zostanie wygenerowany automatycznie w formacie OF/RRRR/MM/NNN (np. OF/2025/10/001)
-            </p>
+        {products.length === 0 ? (
+          <div className="text-center py-12">
+            <Package className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <p className="text-[#e5e4e2]/60">Brak produktów w katalogu</p>
           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {products.map((product: any) => (
+              <div
+                key={product.id}
+                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-5 hover:border-[#d3bb73]/30 transition-all"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="font-semibold text-[#e5e4e2] mb-1">{product.name}</h3>
+                    <p className="text-xs text-[#d3bb73]">{product.category?.name}</p>
+                  </div>
+                  {!product.is_active && (
+                    <span className="px-2 py-1 text-xs bg-gray-500/20 text-gray-400 rounded">
+                      Nieaktywny
+                    </span>
+                  )}
+                </div>
 
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Numer oferty
-            </label>
-            <input
-              type="text"
-              value={formData.offer_number}
-              onChange={(e) => setFormData({ ...formData, offer_number: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-              placeholder="Zostaw puste dla automatycznego numeru lub wpisz własny"
-            />
-            <p className="text-xs text-[#e5e4e2]/40 mt-1">
-              System sprawdzi czy numer jest unikalny
-            </p>
-          </div>
+                {product.description && (
+                  <p className="text-sm text-[#e5e4e2]/60 mb-4 line-clamp-2">
+                    {product.description}
+                  </p>
+                )}
 
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Klient</label>
-            <select
-              value={formData.client_id}
-              onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              <option value="">Wybierz klienta...</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.company_name ||
-                    `${client.first_name || ''} ${client.last_name || ''}`.trim()}
-                </option>
-              ))}
-            </select>
-          </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-[#e5e4e2]/60">Cena:</span>
+                    <span className="text-[#d3bb73] font-medium">
+                      {product.base_price.toLocaleString('pl-PL')} zł/{product.unit}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#e5e4e2]/60">Koszt:</span>
+                    <span className="text-[#e5e4e2]/80">
+                      {product.cost_price.toLocaleString('pl-PL')} zł
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#e5e4e2]/60">Marża:</span>
+                    <span className="text-green-400 font-medium">
+                      {((product.base_price - product.cost_price) / product.base_price * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                </div>
 
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Event</label>
-            <select
-              value={formData.event_id}
-              onChange={(e) => setFormData({ ...formData, event_id: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              <option value="">Wybierz event...</option>
-              {events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name} -{' '}
-                  {new Date(event.event_date).toLocaleDateString('pl-PL')}
-                </option>
-              ))}
-            </select>
+                {product.tags && product.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-4">
+                    {product.tags.slice(0, 3).map((tag: string, idx: number) => (
+                      <span key={idx} className="text-xs px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Ważna do
-            </label>
-            <input
-              type="date"
-              value={formData.valid_until}
-              onChange={(e) => setFormData({ ...formData, valid_until: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Notatki
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px] focus:outline-none focus:border-[#d3bb73]"
-              placeholder="Dodatkowe informacje..."
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={handleSubmit}
-              className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90"
-            >
-              Utwórz ofertę
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
-            >
-              Anuluj
-            </button>
-          </div>
-        </div>
+        )}
       </div>
-    </div>
+    </>
+  );
+}
+
+// Templates Tab Component
+function TemplatesTab({ templates, onRefresh }: any) {
+  return (
+    <>
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-medium text-[#e5e4e2]">Szablony ofert PDF</h2>
+          <button
+            onClick={onRefresh}
+            className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Nowy szablon</span>
+          </button>
+        </div>
+
+        {templates.length === 0 ? (
+          <div className="text-center py-12">
+            <FileType className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <p className="text-[#e5e4e2]/60">Brak szablonów ofert</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {templates.map((template: any) => (
+              <div
+                key={template.id}
+                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-5 hover:border-[#d3bb73]/30 transition-all"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="font-semibold text-[#e5e4e2]">{template.name}</h3>
+                      {template.is_default && (
+                        <span className="px-2 py-1 text-xs bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                          Domyślny
+                        </span>
+                      )}
+                      {!template.is_active && (
+                        <span className="px-2 py-1 text-xs bg-gray-500/20 text-gray-400 rounded">
+                          Nieaktywny
+                        </span>
+                      )}
+                    </div>
+                    {template.description && (
+                      <p className="text-sm text-[#e5e4e2]/60">{template.description}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors">
+                      <Eye className="w-4 h-4 text-[#e5e4e2]/60" />
+                    </button>
+                    <button className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors">
+                      <Edit className="w-4 h-4 text-[#e5e4e2]/60" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
