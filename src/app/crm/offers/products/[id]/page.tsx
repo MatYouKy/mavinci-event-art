@@ -62,7 +62,7 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const params = useParams();
   const { showSnackbar } = useSnackbar();
-  const { employee, hasPermission } = useCurrentEmployee();
+  const { employee, hasScope, isAdmin } = useCurrentEmployee();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,7 +71,7 @@ export default function ProductDetailPage() {
   const [equipment, setEquipment] = useState<ProductEquipment[]>([]);
   const [staff, setStaff] = useState<ProductStaff[]>([]);
 
-  const canEdit = hasPermission('offers_manage');
+  const canEdit = isAdmin || hasScope('offers_manage');
 
   useEffect(() => {
     if (params.id) {
