@@ -246,7 +246,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
       {/* Header */}
       <View style={styles.header}>
