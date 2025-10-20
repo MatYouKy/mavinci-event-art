@@ -96,11 +96,13 @@ export default function AddEventVehicleModal({
   });
 
   useEffect(() => {
-    fetchVehicles();
-    fetchTrailers();
-    if (editingVehicleId) {
-      loadVehicleData();
-    }
+    const init = async () => {
+      await Promise.all([fetchVehicles(), fetchTrailers()]);
+      if (editingVehicleId) {
+        await loadVehicleData();
+      }
+    };
+    init();
   }, []);
 
   useEffect(() => {
@@ -201,26 +203,23 @@ export default function AddEventVehicleModal({
   const fetchEmployees = async () => {
     try {
       // Pobierz kierowców już przypisanych do pojazdów w tym wydarzeniu
-      const { data: assignedDrivers } = await supabase
+      // (z wyjątkiem edytowanego pojazdu)
+      let query = supabase
         .from('event_vehicles')
         .select('driver_id')
         .eq('event_id', eventId)
         .not('driver_id', 'is', null);
 
+      if (editingVehicleId) {
+        query = query.neq('id', editingVehicleId);
+      }
+
+      const { data: assignedDrivers } = await query;
       const assignedDriverIds = assignedDrivers?.map(v => v.driver_id) || [];
 
+      // Jeśli nie wybrano pojazdu lub jest zewnętrzny, nie pokazuj żadnych kierowców
       if (!formData.vehicle_id || isExternal) {
-        const { data, error } = await supabase
-          .from('employees')
-          .select('id, name, surname')
-          .eq('is_active', true)
-          .order('name');
-
-        if (error) throw error;
-
-        // Filtruj już przypisanych kierowców
-        const availableEmployees = (data || []).filter(e => !assignedDriverIds.includes(e.id));
-        setEmployees(availableEmployees);
+        setEmployees([]);
         return;
       }
 
@@ -233,6 +232,7 @@ export default function AddEventVehicleModal({
       if (reqError) throw reqError;
 
       if (!requirements || requirements.length === 0) {
+        // Pojazd nie ma wymagań - pokaż wszystkich aktywnych, którzy nie są zajęci
         const { data, error } = await supabase
           .from('employees')
           .select('id, name, surname')
@@ -240,7 +240,9 @@ export default function AddEventVehicleModal({
           .order('name');
 
         if (error) throw error;
-        setEmployees(data || []);
+
+        const availableEmployees = (data || []).filter(e => !assignedDriverIds.includes(e.id));
+        setEmployees(availableEmployees);
         return;
       }
 

@@ -62,6 +62,11 @@ interface EventVehicle {
   external_trailer_name: string | null;
   external_trailer_company: string | null;
   external_trailer_rental_cost: number | null;
+  pickup_odometer: number | null;
+  pickup_timestamp: string | null;
+  return_odometer: number | null;
+  return_timestamp: string | null;
+  return_notes: string | null;
   external_trailer_return_date: string | null;
   external_trailer_return_location: string | null;
   external_trailer_notes: string | null;
@@ -442,81 +447,84 @@ export default function EventLogisticsPanel({
               <div className="divide-y divide-[#d3bb73]/5">
                 {vehicles.map((vehicle) => (
                   <div key={vehicle.id} className="p-4 hover:bg-[#0f1119]/30">
+                    {/* Nagłówek z przyciskami akcji */}
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2 justify-between">
-                          <div className="flex items-center gap-3">
-                          <h4 className="font-semibold text-[#e5e4e2]">
-                            {vehicle.is_external
-                              ? `${vehicle.external_company_name || 'Zewnętrzny'}`
-                              : vehicle.vehicles?.name || 'Brak nazwy'}
-                          </h4>
-                          {!vehicle.is_external && vehicle.vehicles?.registration_number && (
-                            <span className="text-sm text-[#e5e4e2]/60">
-                              {vehicle.vehicles.registration_number}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h4 className="font-semibold text-[#e5e4e2]">
+                          {vehicle.is_external
+                            ? `${vehicle.external_company_name || 'Zewnętrzny'}`
+                            : vehicle.vehicles?.name || 'Brak nazwy'}
+                        </h4>
+                        {!vehicle.is_external && vehicle.vehicles?.registration_number && (
+                          <span className="text-sm text-[#e5e4e2]/60">
+                            {vehicle.vehicles.registration_number}
+                          </span>
+                        )}
+                        {vehicle.is_external && (
+                          <span className="px-2 py-1 rounded text-xs bg-purple-500/20 text-purple-400">
+                            Zewnętrzny
+                          </span>
+                        )}
+                        {getStatusBadge(vehicle.status)}
+                        {vehicle.conflicts_count && vehicle.conflicts_count > 0 && (
+                          <span className="px-2 py-1 rounded text-xs bg-orange-500/20 text-orange-400 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            Konflikt
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Przyciski akcji */}
+                      {canManage ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingVehicleId(vehicle.id);
+                              setShowVehicleModal(true);
+                            }}
+                            className="p-1.5 hover:bg-blue-500/20 rounded transition-colors"
+                            title="Edytuj pojazd"
+                          >
+                            <Edit className="w-4 h-4 text-blue-400" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteVehicle(vehicle.id)}
+                            className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                            title="Usuń pojazd"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-400" />
+                          </button>
+                        </div>
+                      ) : employee && vehicle.driver_id === employee.id ? (
+                        <div className="flex items-center gap-2">
+                          {!vehicle.pickup_timestamp ? (
+                            <button
+                              onClick={() => handlePickupVehicle(vehicle)}
+                              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Odbierz auto
+                            </button>
+                          ) : !vehicle.return_timestamp ? (
+                            <button
+                              onClick={() => handleReturnVehicle(vehicle)}
+                              className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Zdaj auto
+                            </button>
+                          ) : (
+                            <span className="text-sm text-green-400 flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4" />
+                              Pojazd zdany
                             </span>
-                          )}
-                          {vehicle.is_external && (
-                            <span className="px-2 py-1 rounded text-xs bg-purple-500/20 text-purple-400">
-                              Zewnętrzny
-                            </span>
-                          )}
-                          {getStatusBadge(vehicle.status)}
-                          {vehicle.conflicts_count && vehicle.conflicts_count > 0 && (
-                            <span className="px-2 py-1 rounded text-xs bg-orange-500/20 text-orange-400 flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3" />
-                              Konflikt
-                            </span>
-                          )}
-                          </div>
-                          {canManage ? (
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingVehicleId(vehicle.id);
-                                  setShowVehicleModal(true);
-                                }}
-                                className="p-1.5 hover:bg-blue-500/20 rounded transition-colors"
-                                title="Edytuj pojazd"
-                              >
-                                <Edit className="w-4 h-4 text-blue-400" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteVehicle(vehicle.id)}
-                                className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
-                                title="Usuń pojazd"
-                              >
-                                <Trash2 className="w-4 h-4 text-red-400" />
-                              </button>
-                            </div>
-                          ) : employee && vehicle.driver_id === employee.id && (
-                            <div className="flex items-center gap-2">
-                              {!vehicle.pickup_timestamp ? (
-                                <button
-                                  onClick={() => handlePickupVehicle(vehicle)}
-                                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                                >
-                                  <CheckCircle className="w-4 h-4" />
-                                  Odbierz auto
-                                </button>
-                              ) : !vehicle.return_timestamp ? (
-                                <button
-                                  onClick={() => handleReturnVehicle(vehicle)}
-                                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors"
-                                >
-                                  <CheckCircle className="w-4 h-4" />
-                                  Zdaj auto
-                                </button>
-                              ) : (
-                                <span className="text-sm text-green-400 flex items-center gap-2">
-                                  <CheckCircle className="w-4 h-4" />
-                                  Pojazd zdany
-                                </span>
-                              )}
-                            </div>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                      ) : null}
+                    </div>
+
+                    {/* Szczegóły pojazdu */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                           <div>
                             <span className="text-[#e5e4e2]/60">Rola:</span>
                             <p className="text-[#e5e4e2]">
@@ -621,7 +629,6 @@ export default function EventLogisticsPanel({
                             </div>
                           </div>
                         )}
-                      </div>
                     </div>
                   </div>
                 ))}
