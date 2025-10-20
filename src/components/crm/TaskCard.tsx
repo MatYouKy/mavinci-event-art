@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Calendar, GripVertical, Edit, Trash2, UserPlus } from 'lucide-react';
+import { Calendar, GripVertical, Edit, Trash2, UserPlus, MessageSquare } from 'lucide-react';
 import TaskAssigneeAvatars from './TaskAssigneeAvatars';
 
 interface Task {
@@ -12,6 +12,7 @@ interface Task {
   status: string;
   board_column?: string;
   due_date: string | null;
+  comments_count?: number;
   task_assignees?: {
     employee_id: string;
     employees: {
@@ -165,6 +166,13 @@ export default function TaskCard({
           <div className="flex items-center gap-1 text-xs text-[#e5e4e2]/60">
             <Calendar className="w-3 h-3" />
             {new Date(task.due_date).toLocaleDateString('pl-PL')}
+          </div>
+        )}
+
+        {task.comments_count !== undefined && task.comments_count > 0 && (
+          <div className="flex items-center gap-1 text-xs text-blue-400 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/30">
+            <MessageSquare className="w-3 h-3" />
+            {task.comments_count}
           </div>
         )}
       </div>

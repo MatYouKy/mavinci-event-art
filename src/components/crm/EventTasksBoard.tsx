@@ -141,7 +141,22 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
       if (error) throw error;
 
-      setTasks(data || []);
+      // Add comments count to each task
+      const tasksWithCounts = await Promise.all(
+        (data || []).map(async (task) => {
+          const { count } = await supabase
+            .from('task_comments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', task.id);
+
+          return {
+            ...task,
+            comments_count: count || 0,
+          };
+        })
+      );
+
+      setTasks(tasksWithCounts);
     } catch (err) {
       console.error('Error fetching tasks:', err);
       showSnackbar('Błąd podczas pobierania zadań', 'error');

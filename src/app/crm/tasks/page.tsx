@@ -163,9 +163,16 @@ export default function TasksPage() {
             })
           );
 
+          // Get comments count
+          const { count } = await supabase
+            .from('task_comments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', task.id);
+
           return {
             ...task,
             task_assignees: assigneesWithEmployees,
+            comments_count: count || 0,
           };
         })
       );

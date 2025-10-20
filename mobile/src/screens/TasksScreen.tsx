@@ -3,11 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -16,12 +17,16 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const COLUMN_WIDTH = SCREEN_WIDTH - 32;
+
 interface Task {
   id: string;
   title: string;
   description: string | null;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   status: string;
+  board_column: string;
   due_date: string | null;
   created_at: string;
   task_assignees: {
@@ -49,6 +54,12 @@ const priorityLabels = {
   urgent: 'Pilne',
 };
 
+const BOARD_COLUMNS = [
+  { id: 'do_zrobienia', title: 'Do zrobienia', color: '#6b7280' },
+  { id: 'w_trakcie', title: 'W trakcie', color: '#3b82f6' },
+  { id: 'gotowe', title: 'Gotowe', color: '#10b981' },
+];
+
 export default function TasksScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -56,7 +67,6 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('active');
 
   useEffect(() => {
     fetchTasks();
@@ -85,7 +95,8 @@ export default function TasksScreen() {
     try {
       if (!user) return;
 
-      const { data, error } = await supabase
+      // Fetch tasks where user is creator
+      const { data: createdTasks, error: error1 } = await supabase
         .from('tasks')
         .select(`
           *,
@@ -94,12 +105,41 @@ export default function TasksScreen() {
             employees:employee_id(name, surname, avatar_url, avatar_metadata)
           )
         `)
-        .or(`created_by.eq.${user.id},task_assignees.employee_id.eq.${user.id}`)
-        .order('created_at', { ascending: false });
+        .eq('created_by', user.id);
 
-      if (error) throw error;
+      if (error1) throw error1;
 
-      setTasks(data || []);
+      // Fetch tasks where user is assigned
+      const { data: assignedTasksData, error: error2 } = await supabase
+        .from('task_assignees')
+        .select(`
+          tasks(
+            *,
+            task_assignees(
+              employee_id,
+              employees:employee_id(name, surname, avatar_url, avatar_metadata)
+            )
+          )
+        `)
+        .eq('employee_id', user.id);
+
+      if (error2) throw error2;
+
+      // Combine and deduplicate
+      const assignedTasks = (assignedTasksData || [])
+        .map((item: any) => item.tasks)
+        .filter((task: any) => task !== null);
+
+      const allTasks = [...(createdTasks || []), ...assignedTasks];
+      const uniqueTasks = Array.from(
+        new Map(allTasks.map((task) => [task.id, task])).values()
+      );
+
+      uniqueTasks.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setTasks(uniqueTasks);
     } catch (error) {
       console.error('Error fetching tasks:', error);
     } finally {
@@ -113,42 +153,67 @@ export default function TasksScreen() {
     fetchTasks();
   };
 
-  const filteredTasks = tasks.filter((task) => {
-    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      filterStatus === 'all' ||
-      (filterStatus === 'active' && task.status !== 'Ukończone') ||
-      (filterStatus === 'completed' && task.status === 'Ukończone');
+  const moveTask = async (taskId: string, newColumn: string) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ board_column: newColumn })
+        .eq('id', taskId);
 
-    return matchesSearch && matchesStatus;
-  });
+      if (error) throw error;
 
-  const renderTaskItem = ({ item }: { item: Task }) => (
+      // Update local state
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? { ...task, board_column: newColumn } : task
+        )
+      );
+    } catch (error) {
+      console.error('Error moving task:', error);
+    }
+  };
+
+  const filteredTasks = tasks.filter((task) =>
+    task.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const getTasksByColumn = (columnId: string) => {
+    return filteredTasks.filter((task) => task.board_column === columnId);
+  };
+
+  const renderTaskCard = (task: Task) => (
     <TouchableOpacity
+      key={task.id}
       style={styles.taskCard}
-      onPress={() => navigation.navigate('TaskDetail' as never, { taskId: item.id } as never)}
+      onPress={() => navigation.navigate('TaskDetail' as never, { taskId: task.id } as never)}
+      onLongPress={() => {
+        // Show column picker on long press
+        // For now, just cycle through columns
+        const currentIndex = BOARD_COLUMNS.findIndex((col) => col.id === task.board_column);
+        const nextIndex = (currentIndex + 1) % BOARD_COLUMNS.length;
+        moveTask(task.id, BOARD_COLUMNS[nextIndex].id);
+      }}
     >
       <View style={styles.taskHeader}>
-        <View style={styles.taskTitleRow}>
-          <Text style={styles.taskTitle} numberOfLines={1}>
-            {item.title}
+        <Text style={styles.taskTitle} numberOfLines={2}>
+          {task.title}
+        </Text>
+        <View style={[styles.priorityBadge, { backgroundColor: `${priorityColors[task.priority]}20` }]}>
+          <Text style={[styles.priorityText, { color: priorityColors[task.priority] }]}>
+            {priorityLabels[task.priority]}
           </Text>
-          <View style={[styles.priorityBadge, { backgroundColor: `${priorityColors[item.priority]}20` }]}>
-            <Text style={[styles.priorityText, { color: priorityColors[item.priority] }]}>
-              {priorityLabels[item.priority]}
-            </Text>
-          </View>
         </View>
-        {item.description && (
-          <Text style={styles.taskDescription} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
       </View>
+
+      {task.description && (
+        <Text style={styles.taskDescription} numberOfLines={2}>
+          {task.description}
+        </Text>
+      )}
 
       <View style={styles.taskFooter}>
         <View style={styles.assignees}>
-          {item.task_assignees.slice(0, 3).map((assignee, index) => (
+          {task.task_assignees.slice(0, 3).map((assignee, index) => (
             <View key={assignee.employee_id} style={[styles.avatarWrapper, { marginLeft: index > 0 ? -8 : 0 }]}>
               <EmployeeAvatar
                 employee={{
@@ -161,18 +226,18 @@ export default function TasksScreen() {
               />
             </View>
           ))}
-          {item.task_assignees.length > 3 && (
+          {task.task_assignees.length > 3 && (
             <View style={styles.moreAvatars}>
-              <Text style={styles.moreAvatarsText}>+{item.task_assignees.length - 3}</Text>
+              <Text style={styles.moreAvatarsText}>+{task.task_assignees.length - 3}</Text>
             </View>
           )}
         </View>
 
-        {item.due_date && (
+        {task.due_date && (
           <View style={styles.dueDateContainer}>
             <Feather name="calendar" size={12} color={colors.text.secondary} />
             <Text style={styles.dueDate}>
-              {new Date(item.due_date).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })}
+              {new Date(task.due_date).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })}
             </Text>
           </View>
         )}
@@ -206,52 +271,49 @@ export default function TasksScreen() {
             </TouchableOpacity>
           )}
         </View>
-
-        <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={[styles.filterButton, filterStatus === 'all' && styles.filterButtonActive]}
-            onPress={() => setFilterStatus('all')}
-          >
-            <Text style={[styles.filterButtonText, filterStatus === 'all' && styles.filterButtonTextActive]}>
-              Wszystkie
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, filterStatus === 'active' && styles.filterButtonActive]}
-            onPress={() => setFilterStatus('active')}
-          >
-            <Text style={[styles.filterButtonText, filterStatus === 'active' && styles.filterButtonTextActive]}>
-              Aktywne
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, filterStatus === 'completed' && styles.filterButtonActive]}
-            onPress={() => setFilterStatus('completed')}
-          >
-            <Text style={[styles.filterButtonText, filterStatus === 'completed' && styles.filterButtonTextActive]}>
-              Ukończone
-            </Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
-      {filteredTasks.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Feather name="check-square" color={colors.text.secondary} size={64} />
-          <Text style={styles.emptyTitle}>Brak zadań</Text>
-          <Text style={styles.emptySubtitle}>
-            {searchQuery ? 'Nie znaleziono zadań' : 'Nie masz jeszcze żadnych zadań'}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredTasks}
-          renderItem={renderTaskItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary.gold]} />}
-        />
-      )}
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        style={styles.boardContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary.gold]} />}
+      >
+        {BOARD_COLUMNS.map((column) => {
+          const columnTasks = getTasksByColumn(column.id);
+          return (
+            <View key={column.id} style={styles.column}>
+              <View style={[styles.columnHeader, { borderLeftColor: column.color }]}>
+                <Text style={styles.columnTitle}>{column.title}</Text>
+                <View style={styles.columnBadge}>
+                  <Text style={styles.columnCount}>{columnTasks.length}</Text>
+                </View>
+              </View>
+
+              <ScrollView
+                style={styles.columnContent}
+                contentContainerStyle={styles.columnContentContainer}
+                showsVerticalScrollIndicator={false}
+              >
+                {columnTasks.length === 0 ? (
+                  <View style={styles.emptyColumn}>
+                    <Feather name="inbox" size={32} color={colors.text.secondary} />
+                    <Text style={styles.emptyText}>Brak zadań</Text>
+                  </View>
+                ) : (
+                  columnTasks.map((task) => renderTaskCard(task))
+                )}
+              </ScrollView>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      <View style={styles.hintContainer}>
+        <Feather name="info" size={14} color={colors.text.secondary} />
+        <Text style={styles.hintText}>Przytrzymaj zadanie, aby przenieść do następnej kolumny</Text>
+      </View>
     </View>
   );
 }
@@ -279,7 +341,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
     borderRadius: 8,
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border.primary,
   },
@@ -292,34 +353,48 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontSize: typography.fontSizes.md,
   },
-  filterContainer: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  filterButton: {
+  boardContainer: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  },
+  column: {
+    width: COLUMN_WIDTH,
+    marginHorizontal: 16,
+    paddingBottom: spacing.md,
+  },
+  columnHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.background.secondary,
     borderRadius: 8,
-    backgroundColor: colors.background.primary,
-    borderWidth: 1,
-    borderColor: colors.border.primary,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 4,
+  },
+  columnTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text.primary,
+  },
+  columnBadge: {
+    backgroundColor: colors.primary.gold,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 12,
+    minWidth: 24,
     alignItems: 'center',
   },
-  filterButtonActive: {
-    backgroundColor: colors.primary.gold,
-    borderColor: colors.primary.gold,
-  },
-  filterButtonText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
-    fontWeight: typography.fontWeights.medium,
-  },
-  filterButtonTextActive: {
+  columnCount: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
     color: colors.background.primary,
   },
-  listContent: {
-    padding: spacing.md,
+  columnContent: {
+    flex: 1,
+  },
+  columnContentContainer: {
+    paddingBottom: spacing.xl,
   },
   taskCard: {
     backgroundColor: colors.background.secondary,
@@ -330,17 +405,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border.primary,
   },
   taskHeader: {
-    marginBottom: spacing.md,
-  },
-  taskTitleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
   taskTitle: {
     flex: 1,
-    fontSize: typography.fontSizes.lg,
+    fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold,
     color: colors.text.primary,
     marginRight: spacing.sm,
@@ -357,7 +429,8 @@ const styles = StyleSheet.create({
   taskDescription: {
     fontSize: typography.fontSizes.sm,
     color: colors.text.secondary,
-    lineHeight: 20,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
   },
   taskFooter: {
     flexDirection: 'row',
@@ -398,22 +471,29 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.text.secondary,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  emptyColumn: {
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
   },
-  emptyTitle: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.text.primary,
-    marginTop: spacing.lg,
-  },
-  emptySubtitle: {
-    fontSize: typography.fontSizes.md,
+  emptyText: {
+    fontSize: typography.fontSizes.sm,
     color: colors.text.secondary,
     marginTop: spacing.sm,
-    textAlign: 'center',
+  },
+  hintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background.secondary,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.primary,
+  },
+  hintText: {
+    flex: 1,
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.secondary,
   },
 });
