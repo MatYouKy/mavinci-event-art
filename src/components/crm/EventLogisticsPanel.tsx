@@ -206,10 +206,13 @@ export default function EventLogisticsPanel({
       }));
 
       // Jeśli użytkownik nie jest adminem, pokaż tylko jego pojazdy
+      console.log('Filter debug:', { canManage, employeeId: employee?.id, vehiclesCount: vehiclesWithConflicts.length });
       if (!canManage && employee) {
         vehiclesWithConflicts = vehiclesWithConflicts.filter((v: any) => v.driver_id === employee.id);
+        console.log('Filtered vehicles for driver:', vehiclesWithConflicts.length);
       }
 
+      console.log('Final vehicles:', vehiclesWithConflicts);
       setVehicles(vehiclesWithConflicts);
       setTimeline(timelineRes.data || []);
       setLoadingItems(loadingRes.data || []);
