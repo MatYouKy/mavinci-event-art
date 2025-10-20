@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye } from 'lucide-react';
+import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -101,6 +101,7 @@ export default function OffersPage() {
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Szablony
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -365,6 +366,9 @@ export default function OffersPage() {
           setProductSearch={setProductSearch}
           categoryFilter={categoryFilter}
           setCategoryFilter={setCategoryFilter}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          router={router}
           onRefresh={fetchProducts}
         />
       )}
@@ -543,7 +547,7 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
 }
 
 // Catalog Tab Component
-function CatalogTab({ products, categories, productSearch, setProductSearch, categoryFilter, setCategoryFilter, onRefresh }: any) {
+function CatalogTab({ products, categories, productSearch, setProductSearch, categoryFilter, setCategoryFilter, viewMode, setViewMode, router, onRefresh }: any) {
   return (
     <>
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
@@ -572,6 +576,25 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
             ))}
           </select>
 
+          <div className="flex items-center gap-2 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded transition-colors ${
+                viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+            >
+              <Grid3x3 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded transition-colors ${
+                viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+
           <button
             onClick={onRefresh}
             className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
@@ -586,12 +609,13 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
             <Package className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
             <p className="text-[#e5e4e2]/60">Brak produktów w katalogu</p>
           </div>
-        ) : (
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {products.map((product: any) => (
               <div
                 key={product.id}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-5 hover:border-[#d3bb73]/30 transition-all"
+                onClick={() => router.push(`/crm/offers/products/${product.id}`)}
+                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-5 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -641,6 +665,60 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
                     ))}
                   </div>
                 )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {products.map((product: any) => (
+              <div
+                key={product.id}
+                onClick={() => router.push(`/crm/offers/products/${product.id}`)}
+                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="w-10 h-10 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
+                      <Package className="w-5 h-5 text-[#d3bb73]" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="font-medium text-[#e5e4e2]">{product.name}</h3>
+                        {!product.is_active && (
+                          <span className="px-2 py-0.5 text-xs bg-gray-500/20 text-gray-400 rounded">
+                            Nieaktywny
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+                        <span className="text-[#d3bb73]">{product.category?.name}</span>
+                        {product.description && (
+                          <span className="line-clamp-1">{product.description}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6 text-sm">
+                    <div className="text-right">
+                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Cena</div>
+                      <div className="text-[#d3bb73] font-medium">
+                        {product.base_price.toLocaleString('pl-PL')} zł
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Koszt</div>
+                      <div className="text-[#e5e4e2]/80">
+                        {product.cost_price.toLocaleString('pl-PL')} zł
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Marża</div>
+                      <div className="text-green-400 font-medium">
+                        {((product.base_price - product.cost_price) / product.base_price * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
