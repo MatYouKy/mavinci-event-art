@@ -103,6 +103,19 @@ interface InsurancePolicy {
   notes: string;
 }
 
+interface VehicleHandover {
+  id: string;
+  handover_type: 'pickup' | 'return';
+  odometer_reading: number;
+  timestamp: string;
+  notes: string | null;
+  event_name: string;
+  event_date: string;
+  event_location: string;
+  driver_name: string;
+  driver_email: string;
+}
+
 export default function VehicleDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -115,8 +128,9 @@ export default function VehicleDetailPage() {
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
   const [insurancePolicies, setInsurancePolicies] = useState<InsurancePolicy[]>([]);
+  const [handoverHistory, setHandoverHistory] = useState<VehicleHandover[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery' | 'history'>('overview');
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
@@ -132,7 +146,7 @@ export default function VehicleDetailPage() {
     try {
       setLoading(true);
 
-      const [vehicleRes, fuelRes, maintenanceRes, insuranceRes] = await Promise.all([
+      const [vehicleRes, fuelRes, maintenanceRes, insuranceRes, handoverRes] = await Promise.all([
         supabase.from('vehicles').select('*').eq('id', vehicleId).single(),
         supabase
           .from('fuel_entries')
@@ -151,6 +165,11 @@ export default function VehicleDetailPage() {
           .select('*')
           .eq('vehicle_id', vehicleId)
           .order('end_date', { ascending: false }),
+        supabase
+          .from('vehicle_handover_history')
+          .select('*')
+          .eq('vehicle_id', vehicleId)
+          .order('timestamp', { ascending: false }),
       ]);
 
       if (vehicleRes.error) throw vehicleRes.error;
@@ -159,6 +178,7 @@ export default function VehicleDetailPage() {
       setFuelEntries(fuelRes.data || []);
       setMaintenanceRecords(maintenanceRes.data || []);
       setInsurancePolicies(insuranceRes.data || []);
+      setHandoverHistory(handoverRes.data || []);
     } catch (error) {
       console.error('Error fetching vehicle data:', error);
       showSnackbar('Błąd podczas ładowania danych pojazdu', 'error');
@@ -356,6 +376,7 @@ export default function VehicleDetailPage() {
             { id: 'fuel', label: 'Tankowania', icon: Fuel },
             { id: 'maintenance', label: 'Serwis i naprawy', icon: Wrench },
             { id: 'insurance', label: 'Ubezpieczenia', icon: Shield },
+            { id: 'history', label: 'Historia użytkowania', icon: Clock },
             { id: 'gallery', label: 'Galeria', icon: ImageIcon },
           ].map((tab) => (
             <button
@@ -717,6 +738,87 @@ export default function VehicleDetailPage() {
         )}
 
         {/* Gallery Tab */}
+        {activeTab === 'history' && (
+          <div className="space-y-4">
+            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
+              <h3 className="text-lg font-semibold text-[#e5e4e2] mb-4">
+                Historia odbiorów i zdań pojazdu
+              </h3>
+
+              {handoverHistory.length === 0 ? (
+                <div className="text-center py-12">
+                  <Clock className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-3" />
+                  <p className="text-[#e5e4e2]/60">Brak historii użytkowania pojazdu</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {handoverHistory.map((handover) => (
+                    <div
+                      key={handover.id}
+                      className="bg-[#0f1119] rounded-lg p-4 border border-[#d3bb73]/10"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${
+                                handover.handover_type === 'pickup'
+                                  ? 'bg-blue-500/20 text-blue-400'
+                                  : 'bg-green-500/20 text-green-400'
+                              }`}
+                            >
+                              {handover.handover_type === 'pickup' ? 'Odbiór' : 'Zdanie'}
+                            </span>
+                            <span className="text-[#e5e4e2] font-medium">
+                              {handover.odometer_reading.toLocaleString('pl-PL')} km
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 text-sm">
+                            <div className="flex items-center gap-2 text-[#e5e4e2]/80">
+                              <User className="w-4 h-4 text-[#d3bb73]" />
+                              <span>{handover.driver_name}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-[#e5e4e2]/80">
+                              <Calendar className="w-4 h-4 text-[#d3bb73]" />
+                              <span>{formatDate(handover.timestamp)}</span>
+                              <span className="text-[#e5e4e2]/60">
+                                {new Date(handover.timestamp).toLocaleTimeString('pl-PL', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-[#e5e4e2]/80">
+                              <Activity className="w-4 h-4 text-[#d3bb73]" />
+                              <span>{handover.event_name}</span>
+                            </div>
+
+                            {handover.event_location && (
+                              <div className="flex items-center gap-2 text-[#e5e4e2]/60">
+                                <MapPin className="w-4 h-4 text-[#d3bb73]/60" />
+                                <span>{handover.event_location}</span>
+                              </div>
+                            )}
+
+                            {handover.notes && (
+                              <div className="mt-2 pt-2 border-t border-[#d3bb73]/10">
+                                <p className="text-[#e5e4e2]/70 text-sm">{handover.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'gallery' && (
           <div className="space-y-4">
             <VehicleGallery vehicleId={vehicleId} canManage={canManage} />
