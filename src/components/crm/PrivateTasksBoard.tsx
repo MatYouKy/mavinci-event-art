@@ -504,9 +504,18 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
-                <span className="text-sm text-[#e5e4e2]/60">
-                  {getTasksByColumn(column.id).length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-[#e5e4e2]/60">
+                    {getTasksByColumn(column.id).length}
+                  </span>
+                  <button
+                    onClick={() => handleOpenModal()}
+                    className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                    title="Dodaj zadanie"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-3 overflow-y-auto flex-1 pr-2 -mr-2">
