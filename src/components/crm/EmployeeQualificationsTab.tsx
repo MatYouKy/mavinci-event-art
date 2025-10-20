@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Award, BookOpen, FileCheck, Edit, Save, X, AlertCircle, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import EmployeeDrivingLicensesPanel from './EmployeeDrivingLicensesPanel';
 
 interface Certification {
   id: string;
@@ -494,6 +495,12 @@ export default function EmployeeQualificationsTab({ employeeId, canEdit }: Emplo
           )}
         </div>
       </div>
+
+      {/* Prawa jazdy */}
+      <EmployeeDrivingLicensesPanel
+        employeeId={employeeId}
+        canEdit={canEdit}
+      />
 
       {/* Modal dodawania certyfikatu */}
       {showAddCertModal && (

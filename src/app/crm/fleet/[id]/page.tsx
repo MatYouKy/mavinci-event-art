@@ -31,6 +31,7 @@ import AddInsuranceModal from '@/components/crm/AddInsuranceModal';
 import AddFuelEntryModal from '@/components/crm/AddFuelEntryModal';
 import VehicleGallery from '@/components/crm/VehicleGallery';
 import VehicleAttributesPanel from '@/components/crm/VehicleAttributesPanel';
+import VehicleLicenseRequirementsPanel from '@/components/crm/VehicleLicenseRequirementsPanel';
 
 interface Vehicle {
   id: string;
@@ -442,6 +443,9 @@ export default function VehicleDetailPage() {
             <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
               <VehicleAttributesPanel vehicleId={vehicleId} canEdit={canManage} />
             </div>
+
+            {/* Wymagane kategorie prawa jazdy */}
+            <VehicleLicenseRequirementsPanel vehicleId={vehicleId} canEdit={canManage} />
 
             {/* Opis i notatki */}
             {(vehicle.description || vehicle.notes) && (
