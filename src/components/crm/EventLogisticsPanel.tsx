@@ -630,7 +630,7 @@ export default function EventLogisticsPanel({
                           </div>
                         )}
                     </div>
-                  </div>
+                  
                 ))}
               </div>
             )}
