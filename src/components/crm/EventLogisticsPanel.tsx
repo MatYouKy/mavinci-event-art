@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Gauge,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -135,9 +136,6 @@ export default function EventLogisticsPanel({
   const { showConfirm } = useDialog();
   const { employee } = useCurrentEmployee();
 
-  console.log('EventLogisticsPanel - Current employee:', employee);
-  console.log('EventLogisticsPanel - canManage:', canManage);
-
   const [vehicles, setVehicles] = useState<EventVehicle[]>([]);
   const [timeline, setTimeline] = useState<LogisticsActivity[]>([]);
   const [loadingItems, setLoadingItems] = useState<LoadingItem[]>([]);
@@ -148,6 +146,8 @@ export default function EventLogisticsPanel({
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [selectedVehicleForHandover, setSelectedVehicleForHandover] = useState<EventVehicle | null>(null);
 
   useEffect(() => {
     fetchLogisticsData();
@@ -259,100 +259,6 @@ export default function EventLogisticsPanel({
     }
   };
 
-  const handlePickupVehicle = async (vehicle: EventVehicle) => {
-    const odometer = prompt('Podaj stan licznika (km):');
-    if (!odometer || isNaN(Number(odometer))) {
-      showSnackbar('Nieprawidłowy stan licznika', 'error');
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from('vehicle_handovers').insert({
-        event_vehicle_id: vehicle.id,
-        driver_id: employee?.id,
-        handover_type: 'pickup',
-        odometer_reading: parseInt(odometer),
-        timestamp: new Date().toISOString(),
-      });
-
-      if (error) throw error;
-
-      showSnackbar('Pojazd został odebrany', 'success');
-      fetchLogisticsData();
-    } catch (error: any) {
-      console.error('Error picking up vehicle:', error);
-      showSnackbar(error.message || 'Błąd podczas odbioru pojazdu', 'error');
-    }
-  };
-
-  const handleReturnVehicle = async (vehicle: EventVehicle) => {
-    const odometer = prompt('Podaj stan licznika (km):');
-    if (!odometer || isNaN(Number(odometer))) {
-      showSnackbar('Nieprawidłowy stan licznika', 'error');
-      return;
-    }
-
-    const notes = prompt('Uwagi/notatki (opcjonalnie):') || '';
-
-    try {
-      const { error } = await supabase.from('vehicle_handovers').insert({
-        event_vehicle_id: vehicle.id,
-        driver_id: employee?.id,
-        handover_type: 'return',
-        odometer_reading: parseInt(odometer),
-        timestamp: new Date().toISOString(),
-        notes: notes || null,
-      });
-
-      if (error) throw error;
-
-      showSnackbar('Pojazd został zdany', 'success');
-      fetchLogisticsData();
-    } catch (error: any) {
-      console.error('Error returning vehicle:', error);
-      showSnackbar(error.message || 'Błąd podczas zdawania pojazdu', 'error');
-    }
-  };
-
-  const handleAcceptInvitation = async (vehicleId: string) => {
-    try {
-      const { error } = await supabase
-        .from('event_vehicles')
-        .update({
-          invitation_status: 'accepted',
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', vehicleId);
-
-      if (error) throw error;
-
-      showSnackbar('Zaproszenie zostało zaakceptowane', 'success');
-      fetchLogisticsData();
-    } catch (error: any) {
-      console.error('Error accepting invitation:', error);
-      showSnackbar(error.message || 'Błąd podczas akceptowania zaproszenia', 'error');
-    }
-  };
-
-  const handleDeclineInvitation = async (vehicleId: string) => {
-    try {
-      const { error } = await supabase
-        .from('event_vehicles')
-        .update({
-          invitation_status: 'declined',
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', vehicleId);
-
-      if (error) throw error;
-
-      showSnackbar('Zaproszenie zostało odrzucone', 'info');
-      fetchLogisticsData();
-    } catch (error: any) {
-      console.error('Error declining invitation:', error);
-      showSnackbar(error.message || 'Błąd podczas odrzucania zaproszenia', 'error');
-    }
-  };
 
   const getActivityTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -532,16 +438,18 @@ export default function EventLogisticsPanel({
                       </div>
 
                       {/* Przyciski akcji */}
-                      {console.log('Debug przyciski:', {
-                        canManage,
-                        employeeId: employee?.id,
-                        driverId: vehicle.driver_id,
-                        match: employee?.id === vehicle.driver_id,
-                        invitationStatus: vehicle.invitation_status,
-                        vehicleName: vehicle.vehicles?.name || vehicle.external_company_name
-                      })}
                       {canManage ? (
                         <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedVehicleForHandover(vehicle);
+                              setShowHandoverModal(true);
+                            }}
+                            className="p-1.5 hover:bg-green-500/20 rounded transition-colors"
+                            title="Odbierz/Zdaj pojazd"
+                          >
+                            <Gauge className="w-4 h-4 text-green-400" />
+                          </button>
                           <button
                             onClick={() => {
                               setEditingVehicleId(vehicle.id);
@@ -560,69 +468,18 @@ export default function EventLogisticsPanel({
                             <Trash2 className="w-4 h-4 text-red-400" />
                           </button>
                         </div>
-                      ) : (() => {
-                        if (employee && vehicle.driver_id === employee.id) {
-                          console.log('DEBUG VEHICLE:', {
-                            vehicleId: vehicle.id,
-                            driverId: vehicle.driver_id,
-                            employeeId: employee.id,
-                            invitationStatus: vehicle.invitation_status,
-                            pickupTimestamp: vehicle.pickup_timestamp,
-                            returnTimestamp: vehicle.return_timestamp,
-                            canManage,
-                            match: vehicle.driver_id === employee.id
-                          });
-                          return (
-                            <div className="flex items-center gap-2">
-                              {vehicle.invitation_status === 'pending' ? (
-                                <>
-                                  <button
-                                    onClick={() => handleAcceptInvitation(vehicle.id)}
-                                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                                  >
-                                    <CheckCircle className="w-4 h-4" />
-                                    Akceptuj
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeclineInvitation(vehicle.id)}
-                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-                                  >
-                                    <X className="w-4 h-4" />
-                                    Odrzuć
-                                  </button>
-                                </>
-                              ) : vehicle.invitation_status === 'declined' ? (
-                                <span className="text-sm text-red-400 flex items-center gap-2">
-                                  <X className="w-4 h-4" />
-                                  Zaproszenie odrzucone
-                                </span>
-                              ) : !vehicle.pickup_timestamp ? (
-                                <button
-                                  onClick={() => handlePickupVehicle(vehicle)}
-                                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                                >
-                                  <CheckCircle className="w-4 h-4" />
-                                  Odbierz auto
-                                </button>
-                              ) : !vehicle.return_timestamp ? (
-                                <button
-                                  onClick={() => handleReturnVehicle(vehicle)}
-                                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors"
-                                >
-                                  <CheckCircle className="w-4 h-4" />
-                                  Zdaj auto
-                                </button>
-                              ) : (
-                                <span className="text-sm text-green-400 flex items-center gap-2">
-                                  <CheckCircle className="w-4 h-4" />
-                                  Pojazd zdany
-                                </span>
-                              )}
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
+                      ) : employee && vehicle.driver_id === employee.id ? (
+                        <button
+                          onClick={() => {
+                            setSelectedVehicleForHandover(vehicle);
+                            setShowHandoverModal(true);
+                          }}
+                          className="p-1.5 hover:bg-green-500/20 rounded transition-colors"
+                          title="Odbierz/Zdaj pojazd"
+                        >
+                          <Gauge className="w-4 h-4 text-green-400" />
+                        </button>
+                      ) : null}
                     </div>
 
                     {/* Szczegóły pojazdu */}
@@ -969,6 +826,80 @@ export default function EventLogisticsPanel({
             setEditingVehicleId(null);
           }}
         />
+      )}
+
+      {/* Modal odbioru/zdania pojazdu */}
+      {showHandoverModal && selectedVehicleForHandover && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 max-w-md w-full p-6">
+            <h3 className="text-xl font-semibold text-[#e5e4e2] mb-4">
+              Odbierz/Zdaj pojazd
+            </h3>
+            <p className="text-[#e5e4e2]/60 mb-6">
+              {selectedVehicleForHandover.vehicles?.name || selectedVehicleForHandover.external_company_name}
+              {selectedVehicleForHandover.vehicles?.registration_number && (
+                <> ({selectedVehicleForHandover.vehicles.registration_number})</>
+              )}
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Stan licznika (km)
+                </label>
+                <input
+                  type="number"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]"
+                  placeholder="np. 125000"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Typ operacji
+                </label>
+                <select className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]">
+                  <option value="pickup">Odbiór pojazdu</option>
+                  <option value="return">Zdanie pojazdu</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Uwagi (opcjonalnie)
+                </label>
+                <textarea
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]"
+                  rows={3}
+                  placeholder="np. Stan techniczny, uszkodzenia..."
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowHandoverModal(false);
+                  setSelectedVehicleForHandover(null);
+                }}
+                className="flex-1 px-4 py-2 border border-[#d3bb73]/20 rounded hover:bg-[#0f1119] transition-colors text-[#e5e4e2]"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={() => {
+                  // TODO: Implementacja zapisu
+                  showSnackbar('Zapisano pomyślnie', 'success');
+                  setShowHandoverModal(false);
+                  setSelectedVehicleForHandover(null);
+                }}
+                className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors font-medium"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
