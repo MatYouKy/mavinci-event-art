@@ -9,6 +9,7 @@ import {
   RefreshControl,
   TextInput,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -68,6 +69,8 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
 
   useEffect(() => {
     if (employee) {
@@ -107,7 +110,7 @@ export default function TasksScreen() {
           *,
           task_assignees(
             employee_id,
-            employees:employee_id(name, surname, avatar_url, avatar_metadata)
+            employees(name, surname, avatar_url, avatar_metadata)
           )
         `)
         .eq('created_by', employee.id)
@@ -124,7 +127,7 @@ export default function TasksScreen() {
             *,
             task_assignees(
               employee_id,
-              employees:employee_id(name, surname, avatar_url, avatar_metadata)
+              employees(name, surname, avatar_url, avatar_metadata)
             )
           )
         `)
@@ -194,12 +197,10 @@ export default function TasksScreen() {
       style={styles.taskCard}
       onPress={() => navigation.navigate('TaskDetail' as never, { taskId: task.id } as never)}
       onLongPress={() => {
-        // Show column picker on long press
-        // For now, just cycle through columns
-        const currentIndex = BOARD_COLUMNS.findIndex((col) => col.id === task.board_column);
-        const nextIndex = (currentIndex + 1) % BOARD_COLUMNS.length;
-        moveTask(task.id, BOARD_COLUMNS[nextIndex].id);
+        setSelectedTask(task);
+        setShowColumnPicker(true);
       }}
+      delayLongPress={500}
     >
       <View style={styles.taskHeader}>
         <Text style={styles.taskTitle} numberOfLines={2}>
@@ -223,12 +224,9 @@ export default function TasksScreen() {
           {task.task_assignees.slice(0, 3).map((assignee, index) => (
             <View key={assignee.employee_id} style={[styles.avatarWrapper, { marginLeft: index > 0 ? -8 : 0 }]}>
               <EmployeeAvatar
-                employee={{
-                  avatar_url: assignee.employees.avatar_url,
-                  avatar_metadata: assignee.employees.avatar_metadata,
-                  name: assignee.employees.name,
-                  surname: assignee.employees.surname,
-                }}
+                avatarUrl={assignee.employees.avatar_url}
+                avatarMetadata={assignee.employees.avatar_metadata}
+                employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
                 size={24}
               />
             </View>
@@ -319,8 +317,56 @@ export default function TasksScreen() {
 
       <View style={styles.hintContainer}>
         <Feather name="info" size={14} color={colors.text.secondary} />
-        <Text style={styles.hintText}>Przytrzymaj zadanie, aby przenieść do następnej kolumny</Text>
+        <Text style={styles.hintText}>Przytrzymaj zadanie, aby przenieść do innej kolumny</Text>
       </View>
+
+      <Modal
+        visible={showColumnPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowColumnPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowColumnPicker(false)}
+        >
+          <View style={styles.columnPickerModal}>
+            <Text style={styles.modalTitle}>Przenieś zadanie do:</Text>
+            {BOARD_COLUMNS.map((column) => (
+              <TouchableOpacity
+                key={column.id}
+                style={[
+                  styles.columnOption,
+                  selectedTask?.board_column === column.id && styles.columnOptionActive,
+                ]}
+                onPress={() => {
+                  if (selectedTask) {
+                    moveTask(selectedTask.id, column.id);
+                  }
+                  setShowColumnPicker(false);
+                  setSelectedTask(null);
+                }}
+              >
+                <View style={[styles.columnColorIndicator, { backgroundColor: column.color }]} />
+                <Text style={styles.columnOptionText}>{column.title}</Text>
+                {selectedTask?.board_column === column.id && (
+                  <Feather name="check" size={20} color={colors.primary.gold} />
+                )}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => {
+                setShowColumnPicker(false);
+                setSelectedTask(null);
+              }}
+            >
+              <Text style={styles.modalCancelText}>Anuluj</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -502,5 +548,68 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.fontSizes.xs,
     color: colors.text.secondary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  columnPickerModal: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    padding: spacing.lg,
+    width: '100%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border.primary,
+  },
+  modalTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  columnOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.primary,
+  },
+  columnOptionActive: {
+    borderColor: colors.primary.gold,
+    borderWidth: 2,
+  },
+  columnColorIndicator: {
+    width: 4,
+    height: 24,
+    borderRadius: 2,
+    marginRight: spacing.md,
+  },
+  columnOptionText: {
+    flex: 1,
+    fontSize: typography.fontSizes.md,
+    color: colors.text.primary,
+    fontWeight: typography.fontWeights.medium,
+  },
+  modalCancelButton: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: 8,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.primary,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: typography.fontSizes.md,
+    color: colors.text.secondary,
+    fontWeight: typography.fontWeights.medium,
   },
 });

@@ -170,7 +170,6 @@ export default function MainTabNavigator() {
           options={{
             title: 'Zadania',
             tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
-            headerShown: false,
           }}
         />
         <Tab.Screen
