@@ -255,7 +255,7 @@ export default function AddEventVehicleModal({
         .select(`
           employee_id,
           license_category_id,
-          employee:employees!inner(id, name, surname, is_active)
+          employee:employees!employee_driving_licenses_employee_id_fkey(id, name, surname, is_active)
         `)
         .in('license_category_id', categoryIds)
         .eq('employee.is_active', true);
