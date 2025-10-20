@@ -59,6 +59,7 @@ export default function AddEventVehicleModal({
 
   const [isExternal, setIsExternal] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [trailers, setTrailers] = useState<Vehicle[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(false);
@@ -79,12 +80,25 @@ export default function AddEventVehicleModal({
     fuel_cost_estimate: '',
     toll_cost_estimate: '',
     notes: '',
+    has_trailer: false,
+    trailer_vehicle_id: '',
+    is_trailer_external: false,
+    external_trailer_name: '',
+    external_trailer_company: '',
+    external_trailer_rental_cost: '',
+    external_trailer_return_date: '',
+    external_trailer_return_location: '',
+    external_trailer_notes: '',
   });
 
   useEffect(() => {
     fetchVehicles();
-    fetchEmployees();
+    fetchTrailers();
   }, []);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [formData.vehicle_id, isExternal]);
 
   useEffect(() => {
     if (formData.vehicle_id && !isExternal) {
@@ -103,6 +117,7 @@ export default function AddEventVehicleModal({
         .from('vehicles')
         .select('id, name, registration_number, brand, model, fuel_type, max_load_kg')
         .eq('status', 'active')
+        .neq('vehicle_type', 'trailer')
         .order('name');
 
       if (error) throw error;
@@ -112,16 +127,79 @@ export default function AddEventVehicleModal({
     }
   };
 
-  const fetchEmployees = async () => {
+  const fetchTrailers = async () => {
     try {
       const { data, error } = await supabase
-        .from('employees')
-        .select('id, name, surname')
-        .eq('is_active', true)
+        .from('vehicles')
+        .select('id, name, registration_number, brand, model, fuel_type, max_load_kg')
+        .eq('status', 'active')
+        .eq('vehicle_type', 'trailer')
         .order('name');
 
       if (error) throw error;
-      setEmployees(data || []);
+      setTrailers(data || []);
+    } catch (error) {
+      console.error('Error fetching trailers:', error);
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      if (!formData.vehicle_id || isExternal) {
+        const { data, error } = await supabase
+          .from('employees')
+          .select('id, name, surname')
+          .eq('is_active', true)
+          .order('name');
+
+        if (error) throw error;
+        setEmployees(data || []);
+        return;
+      }
+
+      const { data: requirements, error: reqError } = await supabase
+        .from('vehicle_license_requirements')
+        .select('license_category_id')
+        .eq('vehicle_id', formData.vehicle_id)
+        .eq('is_required', true);
+
+      if (reqError) throw reqError;
+
+      if (!requirements || requirements.length === 0) {
+        const { data, error } = await supabase
+          .from('employees')
+          .select('id, name, surname')
+          .eq('is_active', true)
+          .order('name');
+
+        if (error) throw error;
+        setEmployees(data || []);
+        return;
+      }
+
+      const categoryIds = requirements.map(r => r.license_category_id);
+
+      const { data: qualifiedEmployees, error: empError } = await supabase
+        .from('employee_driving_licenses')
+        .select(`
+          employee_id,
+          employee:employees!inner(id, name, surname)
+        `)
+        .in('license_category_id', categoryIds)
+        .order('employee(name)');
+
+      if (empError) throw empError;
+
+      const uniqueEmployees = Array.from(
+        new Map(
+          qualifiedEmployees.map(item => [
+            item.employee.id,
+            { id: item.employee.id, name: item.employee.name, surname: item.employee.surname }
+          ])
+        ).values()
+      );
+
+      setEmployees(uniqueEmployees);
     } catch (error) {
       console.error('Error fetching employees:', error);
     }
@@ -213,6 +291,22 @@ export default function AddEventVehicleModal({
         insertData.vehicle_id = null;
       } else {
         insertData.vehicle_id = formData.vehicle_id;
+      }
+
+      if (formData.has_trailer) {
+        insertData.has_trailer = true;
+
+        if (formData.is_trailer_external) {
+          insertData.is_trailer_external = true;
+          insertData.external_trailer_name = formData.external_trailer_name || null;
+          insertData.external_trailer_company = formData.external_trailer_company || null;
+          insertData.external_trailer_rental_cost = parseFloat(formData.external_trailer_rental_cost) || null;
+          insertData.external_trailer_return_date = formData.external_trailer_return_date || null;
+          insertData.external_trailer_return_location = formData.external_trailer_return_location || null;
+          insertData.external_trailer_notes = formData.external_trailer_notes || null;
+        } else {
+          insertData.trailer_vehicle_id = formData.trailer_vehicle_id || null;
+        }
       }
 
       const { error } = await supabase.from('event_vehicles').insert([insertData]);
@@ -412,7 +506,11 @@ export default function AddEventVehicleModal({
 
             <div>
               <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Kierowca
+                Kierowca {!isExternal && formData.vehicle_id && (
+                  <span className="text-xs text-[#d3bb73]">
+                    (tylko z wymaganymi prawami jazdy)
+                  </span>
+                )}
               </label>
               <select
                 value={formData.driver_id}
@@ -428,6 +526,161 @@ export default function AddEventVehicleModal({
               </select>
             </div>
           </div>
+
+          {/* Przyczepka */}
+          {!isExternal && (
+            <div className="bg-[#0f1119] rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="has_trailer"
+                  checked={formData.has_trailer}
+                  onChange={(e) => setFormData({ ...formData, has_trailer: e.target.checked })}
+                  className="w-5 h-5 rounded bg-[#1c1f33] border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                />
+                <label htmlFor="has_trailer" className="font-medium text-[#e5e4e2] cursor-pointer">
+                  Pojazd z przyczepką
+                </label>
+              </div>
+
+              {formData.has_trailer && (
+                <div className="space-y-4 pl-8 border-l-2 border-[#d3bb73]/20">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      id="trailer_own"
+                      name="trailer_type"
+                      checked={!formData.is_trailer_external}
+                      onChange={() => setFormData({ ...formData, is_trailer_external: false })}
+                      className="w-4 h-4 text-[#d3bb73] focus:ring-[#d3bb73]"
+                    />
+                    <label htmlFor="trailer_own" className="text-sm text-[#e5e4e2] cursor-pointer">
+                      Własna przyczepka
+                    </label>
+                  </div>
+
+                  {!formData.is_trailer_external && (
+                    <div>
+                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        Wybierz przyczepkę
+                      </label>
+                      <select
+                        value={formData.trailer_vehicle_id}
+                        onChange={(e) => setFormData({ ...formData, trailer_vehicle_id: e.target.value })}
+                        className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      >
+                        <option value="">Wybierz przyczepkę...</option>
+                        {trailers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} {t.registration_number && `(${t.registration_number})`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      id="trailer_external"
+                      name="trailer_type"
+                      checked={formData.is_trailer_external}
+                      onChange={() => setFormData({ ...formData, is_trailer_external: true })}
+                      className="w-4 h-4 text-[#d3bb73] focus:ring-[#d3bb73]"
+                    />
+                    <label htmlFor="trailer_external" className="text-sm text-[#e5e4e2] cursor-pointer">
+                      Przyczepka wynajęta
+                    </label>
+                  </div>
+
+                  {formData.is_trailer_external && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                          Nazwa przyczepki
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.external_trailer_name}
+                          onChange={(e) => setFormData({ ...formData, external_trailer_name: e.target.value })}
+                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                          placeholder="np. Przyczepka 3.5t"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                          Firma wypożyczająca
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.external_trailer_company}
+                          onChange={(e) => setFormData({ ...formData, external_trailer_company: e.target.value })}
+                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                          placeholder="np. Rent-a-Trailer Sp. z o.o."
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                            Koszt wynajmu (PLN)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.external_trailer_rental_cost}
+                            onChange={(e) => setFormData({ ...formData, external_trailer_rental_cost: e.target.value })}
+                            className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                            Termin zwrotu
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={formData.external_trailer_return_date}
+                            onChange={(e) => setFormData({ ...formData, external_trailer_return_date: e.target.value })}
+                            className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                          Miejsce zwrotu
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.external_trailer_return_location}
+                          onChange={(e) => setFormData({ ...formData, external_trailer_return_location: e.target.value })}
+                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                          placeholder="np. Warszawa, ul. Przykładowa 123"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                          Dodatkowe informacje
+                        </label>
+                        <textarea
+                          value={formData.external_trailer_notes}
+                          onChange={(e) => setFormData({ ...formData, external_trailer_notes: e.target.value })}
+                          rows={2}
+                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] resize-none"
+                          placeholder="Dodatkowe notatki..."
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Czasy */}
           <div className="bg-[#0f1119] rounded-lg p-4 space-y-4">
