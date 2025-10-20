@@ -184,27 +184,42 @@ export default function AddEventVehicleModal({
 
       const categoryIds = requirements.map(r => r.license_category_id);
 
+      // Znajdź pracowników którzy mają WSZYSTKIE wymagane kategorie
       const { data: qualifiedEmployees, error: empError } = await supabase
         .from('employee_driving_licenses')
         .select(`
           employee_id,
-          employee:employees!inner(id, name, surname)
+          license_category_id,
+          employee:employees!inner(id, name, surname, is_active)
         `)
         .in('license_category_id', categoryIds)
-        .order('employee(name)');
+        .eq('employee.is_active', true);
 
       if (empError) throw empError;
 
-      const uniqueEmployees = Array.from(
-        new Map(
-          qualifiedEmployees.map(item => [
-            item.employee.id,
-            { id: item.employee.id, name: item.employee.name, surname: item.employee.surname }
-          ])
-        ).values()
-      );
+      // Grupuj według employee_id i sprawdź czy mają wszystkie wymagane kategorie
+      const employeeMap = new Map<string, { id: string; name: string; surname: string; categories: Set<string> }>();
 
-      setEmployees(uniqueEmployees);
+      qualifiedEmployees?.forEach(item => {
+        const emp = item.employee as any;
+        if (!employeeMap.has(item.employee_id)) {
+          employeeMap.set(item.employee_id, {
+            id: emp.id,
+            name: emp.name,
+            surname: emp.surname,
+            categories: new Set()
+          });
+        }
+        employeeMap.get(item.employee_id)!.categories.add(item.license_category_id);
+      });
+
+      // Filtruj tylko tych, którzy mają wszystkie wymagane kategorie
+      const fullyQualifiedEmployees = Array.from(employeeMap.values())
+        .filter(emp => categoryIds.every(catId => emp.categories.has(catId)))
+        .map(({ id, name, surname }) => ({ id, name, surname }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setEmployees(fullyQualifiedEmployees);
     } catch (error) {
       console.error('Error fetching employees:', error);
     }

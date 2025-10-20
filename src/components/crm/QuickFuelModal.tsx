@@ -96,7 +96,7 @@ export default function QuickFuelModal({
           : formData.payment_method,
         filled_by: employee?.id,
         receipt_url: receiptUrl,
-        fuel_type: 'unknown',
+        fuel_type: 'other',
       });
 
       if (error) throw error;

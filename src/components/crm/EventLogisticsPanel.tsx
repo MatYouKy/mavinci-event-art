@@ -206,9 +206,7 @@ export default function EventLogisticsPanel({
   };
 
   const handleDeleteVehicle = async (vehicleId: string) => {
-    const { confirm } = useDialog();
-
-    const confirmed = await confirm({
+    const confirmed = await showConfirm({
       title: 'Usuń pojazd',
       message: 'Czy na pewno chcesz usunąć ten pojazd z wydarzenia?',
     });
@@ -338,35 +336,37 @@ export default function EventLogisticsPanel({
 
       {/* Pojazdy */}
       <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden">
-        <button
-          onClick={() => toggleSection('vehicles')}
-          className="w-full flex items-center justify-between p-4 hover:bg-[#0f1119]/50 transition-colors"
-        >
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between p-4">
+          <button
+            onClick={() => toggleSection('vehicles')}
+            className="flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
+          >
             <Truck className="w-5 h-5 text-[#d3bb73]" />
             <h3 className="text-lg font-semibold text-[#e5e4e2]">Transport</h3>
             <span className="text-sm text-[#e5e4e2]/60">({vehicles.length})</span>
-          </div>
+          </button>
           <div className="flex items-center gap-2">
             {canManage && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowVehicleModal(true);
-                }}
+                onClick={() => setShowVehicleModal(true)}
                 className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-3 py-1.5 rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
               >
                 <Plus className="w-4 h-4" />
                 Dodaj pojazd
               </button>
             )}
-            {expandedSection === 'vehicles' ? (
-              <ChevronUp className="w-5 h-5 text-[#e5e4e2]/60" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-[#e5e4e2]/60" />
-            )}
+            <button
+              onClick={() => toggleSection('vehicles')}
+              className="p-1 hover:bg-[#0f1119]/50 rounded transition-colors"
+            >
+              {expandedSection === 'vehicles' ? (
+                <ChevronUp className="w-5 h-5 text-[#e5e4e2]/60" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-[#e5e4e2]/60" />
+              )}
+            </button>
           </div>
-        </button>
+        </div>
 
         {expandedSection === 'vehicles' && (
           <div className="border-t border-[#d3bb73]/10">
@@ -408,6 +408,16 @@ export default function EventLogisticsPanel({
                           </div>
                           {canManage && (
                             <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  // TODO: Implement edit vehicle modal
+                                  showSnackbar('Funkcja edycji będzie dostępna wkrótce', 'info');
+                                }}
+                                className="p-1.5 hover:bg-blue-500/20 rounded transition-colors"
+                                title="Edytuj pojazd"
+                              >
+                                <Edit className="w-4 h-4 text-blue-400" />
+                              </button>
                               <button
                                 onClick={() => handleDeleteVehicle(vehicle.id)}
                                 className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
