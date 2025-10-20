@@ -635,7 +635,7 @@ export default function EquipmentDetailPage() {
 function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visibleTabs, setVisibleTabs] = useState(5);
-  const isCable = equipment.equipment_categories?.name?.toLowerCase().includes('przewod');
+  const isCable = equipment.warehouse_categories?.name?.toLowerCase().includes('przewod');
 
   const allTabs = [
     { id: 'details', label: 'Podstawowe' },
@@ -943,7 +943,7 @@ function DetailsTab({
 }
 
 function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes, setConnectorTooltip, setConnectorTooltipPosition, setShowAddConnectorModal, setConnectorField, onConnectorClick }: any) {
-  const isCable = equipment.equipment_categories?.name?.toLowerCase().includes('przewod');
+  const isCable = equipment.warehouse_categories?.name?.toLowerCase().includes('przewod');
 
   return (
     <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">

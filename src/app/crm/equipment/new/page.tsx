@@ -9,18 +9,11 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Category {
   id: string;
+  parent_id: string | null;
   name: string;
   description: string | null;
   icon: string | null;
-  order_index: number;
-  is_active: boolean;
-}
-
-interface Subcategory {
-  id: string;
-  category_id: string;
-  name: string;
-  description: string | null;
+  level: number;
   order_index: number;
   is_active: boolean;
 }
@@ -47,8 +40,7 @@ export default function NewEquipmentPage() {
   const canCreate = canCreateInModule('equipment');
 
   const [categories, setCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [filteredSubcategories, setFilteredSubcategories] = useState<Subcategory[]>([]);
+  const [subcategories, setSubcategories] = useState<Category[]>([]);
   const [connectorTypes, setConnectorTypes] = useState<ConnectorType[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
@@ -93,40 +85,33 @@ export default function NewEquipmentPage() {
 
   useEffect(() => {
     fetchCategories();
-    fetchSubcategories();
     fetchConnectorTypes();
   }, []);
 
   // Filtruj podkategorie gdy zmienia się kategoria
   useEffect(() => {
     if (formData.category_id) {
-      const filtered = subcategories.filter(sc => sc.category_id === formData.category_id);
-      setFilteredSubcategories(filtered);
+      const filtered = categories.filter(c => c.parent_id === formData.category_id && c.level === 2);
+      setSubcategories(filtered);
     } else {
-      setFilteredSubcategories([]);
+      setSubcategories([]);
     }
     // Wyczyść podkategorię gdy zmienia się kategoria
     setFormData(prev => ({ ...prev, subcategory_id: '' }));
-  }, [formData.category_id, subcategories]);
+  }, [formData.category_id, categories]);
 
   const fetchCategories = async () => {
     const { data, error } = await supabase
-      .from('equipment_categories')
+      .from('warehouse_categories')
       .select('*')
       .eq('is_active', true)
-      .order('order_index');
+      .order('level, order_index');
 
+    if (error) {
+      console.error('Error fetching categories:', error);
+      return;
+    }
     if (data) setCategories(data);
-  };
-
-  const fetchSubcategories = async () => {
-    const { data, error } = await supabase
-      .from('equipment_subcategories')
-      .select('*')
-      .eq('is_active', true)
-      .order('order_index');
-
-    if (data) setSubcategories(data);
   };
 
   const fetchConnectorTypes = async () => {
@@ -349,9 +334,9 @@ export default function NewEquipmentPage() {
               className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 text-base"
             >
               <option value="">Wybierz kategorię sprzętu</option>
-              {categories.map(cat => (
+              {categories.filter(c => c.level === 1).map(cat => (
                 <option key={cat.id} value={cat.id}>
-                  {cat.name}
+                  {cat.icon ? `${cat.icon} ` : ''}{cat.name}
                 </option>
               ))}
             </select>
@@ -360,7 +345,7 @@ export default function NewEquipmentPage() {
             </p>
           </div>
 
-          {filteredSubcategories.length > 0 && (
+          {subcategories.length > 0 && (
             <div className="mb-6">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">
                 Podkategoria
@@ -372,9 +357,9 @@ export default function NewEquipmentPage() {
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 text-base"
               >
                 <option value="">Wybierz podkategorię (opcjonalnie)</option>
-                {filteredSubcategories.map(subcat => (
+                {subcategories.map(subcat => (
                   <option key={subcat.id} value={subcat.id}>
-                    {subcat.name}
+                    {subcat.icon ? `${subcat.icon} ` : ''}{subcat.name}
                   </option>
                 ))}
               </select>

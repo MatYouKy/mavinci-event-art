@@ -51,7 +51,7 @@ interface ProductEquipment {
   equipment_item?: {
     id: string;
     name: string;
-    category?: {
+    warehouse_category?: {
       name: string;
     };
   };
@@ -128,7 +128,7 @@ export default function ProductDetailPage() {
       .from('offer_product_equipment')
       .select(`
         *,
-        equipment_item:equipment_items(id, name, category:equipment_categories(name))
+        equipment_item:equipment_items(id, name, warehouse_category:warehouse_categories(name))
       `)
       .eq('product_id', params.id);
     if (data) setEquipment(data);
