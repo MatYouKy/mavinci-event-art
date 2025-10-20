@@ -6,11 +6,13 @@ import { ActivityIndicator, View } from 'react-native';
 import { colors } from '../theme';
 
 import LoginScreen from '../screens/LoginScreen';
-import DrawerNavigator from './DrawerNavigator';
+import MainTabNavigator from './MainTabNavigator';
+import NotificationsScreen from '../screens/NotificationsScreen';
 
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  Notifications: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -42,7 +44,21 @@ export default function RootNavigator() {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {session ? (
-          <Stack.Screen name="Main" component={DrawerNavigator} />
+          <>
+            <Stack.Screen name="Main" component={MainTabNavigator} />
+            <Stack.Screen
+              name="Notifications"
+              component={NotificationsScreen}
+              options={{
+                headerShown: true,
+                title: 'Powiadomienia',
+                headerStyle: {
+                  backgroundColor: colors.background.secondary,
+                },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+          </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}
