@@ -575,49 +575,49 @@ export default function EventLogisticsPanel({
                           return (
                             <div className="flex items-center gap-2">
                               {vehicle.invitation_status === 'pending' ? (
-                            <>
-                              <button
-                                onClick={() => handleAcceptInvitation(vehicle.id)}
-                                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                                Akceptuj
-                              </button>
-                              <button
-                                onClick={() => handleDeclineInvitation(vehicle.id)}
-                                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-                              >
-                                <X className="w-4 h-4" />
-                                Odrzuć
-                              </button>
-                            </>
-                          ) : vehicle.invitation_status === 'declined' ? (
-                            <span className="text-sm text-red-400 flex items-center gap-2">
-                              <X className="w-4 h-4" />
-                              Zaproszenie odrzucone
-                            </span>
-                          ) : !vehicle.pickup_timestamp ? (
-                            <button
-                              onClick={() => handlePickupVehicle(vehicle)}
-                              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              Odbierz auto
-                            </button>
-                          ) : !vehicle.return_timestamp ? (
-                            <button
-                              onClick={() => handleReturnVehicle(vehicle)}
-                              className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              Zdaj auto
-                            </button>
-                          ) : (
-                            <span className="text-sm text-green-400 flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4" />
-                              Pojazd zdany
-                            </span>
-                          )}
+                                <>
+                                  <button
+                                    onClick={() => handleAcceptInvitation(vehicle.id)}
+                                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                    Akceptuj
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeclineInvitation(vehicle.id)}
+                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                  >
+                                    <X className="w-4 h-4" />
+                                    Odrzuć
+                                  </button>
+                                </>
+                              ) : vehicle.invitation_status === 'declined' ? (
+                                <span className="text-sm text-red-400 flex items-center gap-2">
+                                  <X className="w-4 h-4" />
+                                  Zaproszenie odrzucone
+                                </span>
+                              ) : !vehicle.pickup_timestamp ? (
+                                <button
+                                  onClick={() => handlePickupVehicle(vehicle)}
+                                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                  Odbierz auto
+                                </button>
+                              ) : !vehicle.return_timestamp ? (
+                                <button
+                                  onClick={() => handleReturnVehicle(vehicle)}
+                                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                  Zdaj auto
+                                </button>
+                              ) : (
+                                <span className="text-sm text-green-400 flex items-center gap-2">
+                                  <CheckCircle className="w-4 h-4" />
+                                  Pojazd zdany
+                                </span>
+                              )}
                             </div>
                           );
                         }
