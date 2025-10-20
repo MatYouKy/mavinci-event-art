@@ -23,6 +23,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddEventVehicleModal from './AddEventVehicleModal';
 
 interface EventLogisticsProps {
@@ -123,6 +124,7 @@ export default function EventLogisticsPanel({
 }: EventLogisticsProps) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
+  const { employee } = useCurrentEmployee();
 
   const [vehicles, setVehicles] = useState<EventVehicle[]>([]);
   const [timeline, setTimeline] = useState<LogisticsActivity[]>([]);
@@ -131,6 +133,7 @@ export default function EventLogisticsPanel({
   const [expandedSection, setExpandedSection] = useState<string>('vehicles');
 
   const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [showLoadingModal, setShowLoadingModal] = useState(false);
 
@@ -189,10 +192,15 @@ export default function EventLogisticsPanel({
         conflictCounts[key] = (conflictCounts[key] || 0) + 1;
       });
 
-      const vehiclesWithConflicts = (vehiclesRes.data || []).map((v: any) => ({
+      let vehiclesWithConflicts = (vehiclesRes.data || []).map((v: any) => ({
         ...v,
         conflicts_count: conflictCounts[v.id] || 0,
       }));
+
+      // Jeśli użytkownik nie jest adminem, pokaż tylko jego pojazdy
+      if (!canManage && employee) {
+        vehiclesWithConflicts = vehiclesWithConflicts.filter((v: any) => v.driver_id === employee.id);
+      }
 
       setVehicles(vehiclesWithConflicts);
       setTimeline(timelineRes.data || []);
@@ -226,6 +234,61 @@ export default function EventLogisticsPanel({
     } catch (error: any) {
       console.error('Error deleting vehicle:', error);
       showSnackbar(error.message || 'Błąd podczas usuwania pojazdu', 'error');
+    }
+  };
+
+  const handlePickupVehicle = async (vehicle: EventVehicle) => {
+    const odometer = prompt('Podaj stan licznika (km):');
+    if (!odometer || isNaN(Number(odometer))) {
+      showSnackbar('Nieprawidłowy stan licznika', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('vehicle_handovers').insert({
+        event_vehicle_id: vehicle.id,
+        driver_id: employee?.id,
+        handover_type: 'pickup',
+        odometer_reading: parseInt(odometer),
+        timestamp: new Date().toISOString(),
+      });
+
+      if (error) throw error;
+
+      showSnackbar('Pojazd został odebrany', 'success');
+      fetchLogisticsData();
+    } catch (error: any) {
+      console.error('Error picking up vehicle:', error);
+      showSnackbar(error.message || 'Błąd podczas odbioru pojazdu', 'error');
+    }
+  };
+
+  const handleReturnVehicle = async (vehicle: EventVehicle) => {
+    const odometer = prompt('Podaj stan licznika (km):');
+    if (!odometer || isNaN(Number(odometer))) {
+      showSnackbar('Nieprawidłowy stan licznika', 'error');
+      return;
+    }
+
+    const notes = prompt('Uwagi/notatki (opcjonalnie):') || '';
+
+    try {
+      const { error } = await supabase.from('vehicle_handovers').insert({
+        event_vehicle_id: vehicle.id,
+        driver_id: employee?.id,
+        handover_type: 'return',
+        odometer_reading: parseInt(odometer),
+        timestamp: new Date().toISOString(),
+        notes: notes || null,
+      });
+
+      if (error) throw error;
+
+      showSnackbar('Pojazd został zdany', 'success');
+      fetchLogisticsData();
+    } catch (error: any) {
+      console.error('Error returning vehicle:', error);
+      showSnackbar(error.message || 'Błąd podczas zdawania pojazdu', 'error');
     }
   };
 
@@ -406,12 +469,12 @@ export default function EventLogisticsPanel({
                             </span>
                           )}
                           </div>
-                          {canManage && (
+                          {canManage ? (
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => {
-                                  // TODO: Implement edit vehicle modal
-                                  showSnackbar('Funkcja edycji będzie dostępna wkrótce', 'info');
+                                  setEditingVehicleId(vehicle.id);
+                                  setShowVehicleModal(true);
                                 }}
                                 className="p-1.5 hover:bg-blue-500/20 rounded transition-colors"
                                 title="Edytuj pojazd"
@@ -425,6 +488,31 @@ export default function EventLogisticsPanel({
                               >
                                 <Trash2 className="w-4 h-4 text-red-400" />
                               </button>
+                            </div>
+                          ) : employee && vehicle.driver_id === employee.id && (
+                            <div className="flex items-center gap-2">
+                              {!vehicle.pickup_timestamp ? (
+                                <button
+                                  onClick={() => handlePickupVehicle(vehicle)}
+                                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                  Odbierz auto
+                                </button>
+                              ) : !vehicle.return_timestamp ? (
+                                <button
+                                  onClick={() => handleReturnVehicle(vehicle)}
+                                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                  Zdaj auto
+                                </button>
+                              ) : (
+                                <span className="text-sm text-green-400 flex items-center gap-2">
+                                  <CheckCircle className="w-4 h-4" />
+                                  Pojazd zdany
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -762,8 +850,15 @@ export default function EventLogisticsPanel({
           eventDate={eventDate}
           eventLocation={eventLocation}
           existingVehicleIds={vehicles.map(v => v.vehicle_id).filter(Boolean) as string[]}
-          onClose={() => setShowVehicleModal(false)}
-          onSuccess={fetchLogisticsData}
+          editingVehicleId={editingVehicleId || undefined}
+          onClose={() => {
+            setShowVehicleModal(false);
+            setEditingVehicleId(null);
+          }}
+          onSuccess={() => {
+            fetchLogisticsData();
+            setEditingVehicleId(null);
+          }}
         />
       )}
     </div>

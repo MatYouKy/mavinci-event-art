@@ -20,6 +20,7 @@ interface AddEventVehicleModalProps {
   eventDate: string;
   eventLocation: string;
   existingVehicleIds: string[];
+  editingVehicleId?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -54,6 +55,7 @@ export default function AddEventVehicleModal({
   eventDate,
   eventLocation,
   existingVehicleIds,
+  editingVehicleId,
   onClose,
   onSuccess,
 }: AddEventVehicleModalProps) {
@@ -96,6 +98,9 @@ export default function AddEventVehicleModal({
   useEffect(() => {
     fetchVehicles();
     fetchTrailers();
+    if (editingVehicleId) {
+      loadVehicleData();
+    }
   }, []);
 
   useEffect(() => {
@@ -148,8 +153,62 @@ export default function AddEventVehicleModal({
     }
   };
 
+  const loadVehicleData = async () => {
+    if (!editingVehicleId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('event_vehicles')
+        .select('*')
+        .eq('id', editingVehicleId)
+        .single();
+
+      if (error) throw error;
+      if (!data) return;
+
+      setIsExternal(data.is_external);
+      setFormData({
+        vehicle_id: data.vehicle_id || '',
+        external_company_name: data.external_company_name || '',
+        external_vehicle_name: data.external_vehicle_name || '',
+        external_rental_cost: data.external_rental_cost?.toString() || '',
+        role: data.role || 'transport_equipment',
+        driver_id: data.driver_id || '',
+        departure_location: data.departure_location || '',
+        loading_time_minutes: data.loading_time_minutes || 60,
+        preparation_time_minutes: data.preparation_time_minutes || 30,
+        travel_time_minutes: data.travel_time_minutes || 60,
+        estimated_distance_km: data.estimated_distance_km?.toString() || '',
+        fuel_cost_estimate: data.fuel_cost_estimate?.toString() || '',
+        toll_cost_estimate: data.toll_cost_estimate?.toString() || '',
+        notes: data.notes || '',
+        has_trailer: data.has_trailer || false,
+        trailer_vehicle_id: data.trailer_vehicle_id || '',
+        is_trailer_external: data.is_trailer_external || false,
+        external_trailer_name: data.external_trailer_name || '',
+        external_trailer_company: data.external_trailer_company || '',
+        external_trailer_rental_cost: data.external_trailer_rental_cost?.toString() || '',
+        external_trailer_return_date: data.external_trailer_return_date || '',
+        external_trailer_return_location: data.external_trailer_return_location || '',
+        external_trailer_notes: data.external_trailer_notes || '',
+      });
+    } catch (error) {
+      console.error('Error loading vehicle data:', error);
+      showSnackbar('Błąd podczas ładowania danych pojazdu', 'error');
+    }
+  };
+
   const fetchEmployees = async () => {
     try {
+      // Pobierz kierowców już przypisanych do pojazdów w tym wydarzeniu
+      const { data: assignedDrivers } = await supabase
+        .from('event_vehicles')
+        .select('driver_id')
+        .eq('event_id', eventId)
+        .not('driver_id', 'is', null);
+
+      const assignedDriverIds = assignedDrivers?.map(v => v.driver_id) || [];
+
       if (!formData.vehicle_id || isExternal) {
         const { data, error } = await supabase
           .from('employees')
@@ -158,7 +217,10 @@ export default function AddEventVehicleModal({
           .order('name');
 
         if (error) throw error;
-        setEmployees(data || []);
+
+        // Filtruj już przypisanych kierowców
+        const availableEmployees = (data || []).filter(e => !assignedDriverIds.includes(e.id));
+        setEmployees(availableEmployees);
         return;
       }
 
@@ -213,9 +275,12 @@ export default function AddEventVehicleModal({
         employeeMap.get(item.employee_id)!.categories.add(item.license_category_id);
       });
 
-      // Filtruj tylko tych, którzy mają wszystkie wymagane kategorie
+      // Filtruj tylko tych, którzy mają wszystkie wymagane kategorie i nie są już przypisani
       const fullyQualifiedEmployees = Array.from(employeeMap.values())
-        .filter(emp => categoryIds.every(catId => emp.categories.has(catId)))
+        .filter(emp =>
+          categoryIds.every(catId => emp.categories.has(catId)) &&
+          !assignedDriverIds.includes(emp.id)
+        )
         .map(({ id, name, surname }) => ({ id, name, surname }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -329,11 +394,23 @@ export default function AddEventVehicleModal({
         }
       }
 
-      const { error } = await supabase.from('event_vehicles').insert([insertData]);
+      if (editingVehicleId) {
+        // Tryb edycji - UPDATE
+        const { error } = await supabase
+          .from('event_vehicles')
+          .update(insertData)
+          .eq('id', editingVehicleId);
 
-      if (error) throw error;
+        if (error) throw error;
+        showSnackbar('Pojazd został zaktualizowany', 'success');
+      } else {
+        // Tryb dodawania - INSERT
+        const { error } = await supabase.from('event_vehicles').insert([insertData]);
 
-      showSnackbar('Pojazd został dodany do wydarzenia', 'success');
+        if (error) throw error;
+        showSnackbar('Pojazd został dodany do wydarzenia', 'success');
+      }
+
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -352,7 +429,9 @@ export default function AddEventVehicleModal({
         <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/10 p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Truck className="w-6 h-6 text-[#d3bb73]" />
-            <h2 className="text-xl font-bold text-[#e5e4e2]">Dodaj pojazd do wydarzenia</h2>
+            <h2 className="text-xl font-bold text-[#e5e4e2]">
+              {editingVehicleId ? 'Edytuj pojazd' : 'Dodaj pojazd do wydarzenia'}
+            </h2>
           </div>
           <button
             onClick={onClose}
