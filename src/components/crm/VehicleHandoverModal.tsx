@@ -42,34 +42,26 @@ export default function VehicleHandoverModal({
   }, [vehicle.vehicle_id]);
 
   const fetchLastOdometer = async () => {
-    console.log('🔍 Fetching last odometer for vehicle:', vehicle);
-
     if (!vehicle.vehicle_id) {
-      console.log('⚠️ No vehicle_id, skipping');
       setLoadingLastOdometer(false);
       return;
     }
 
     try {
-      // Pobierz wszystkie handovery dla wszystkich event_vehicles tego vehicle_id
       const { data: eventVehicles, error: evError } = await supabase
         .from('event_vehicles')
         .select('id')
         .eq('vehicle_id', vehicle.vehicle_id);
-
-      console.log('📦 Event vehicles found:', eventVehicles);
 
       if (evError) throw evError;
 
       const eventVehicleIds = eventVehicles?.map(ev => ev.id) || [];
 
       if (eventVehicleIds.length === 0) {
-        console.log('⚠️ No event vehicles found');
         setLoadingLastOdometer(false);
         return;
       }
 
-      // Pobierz ostatni odczyt licznika ze wszystkich handoverów tego pojazdu
       const { data, error } = await supabase
         .from('vehicle_handovers')
         .select('odometer_reading, timestamp, handover_type')
@@ -78,19 +70,14 @@ export default function VehicleHandoverModal({
         .limit(1)
         .maybeSingle();
 
-      console.log('📊 Last handover:', data);
-
       if (error) throw error;
 
       if (data) {
         setLastOdometer(data.odometer_reading);
         setOdometerReading(data.odometer_reading.toString());
-        console.log('✅ Set last odometer to:', data.odometer_reading);
-      } else {
-        console.log('ℹ️ No previous handover found');
       }
     } catch (error: any) {
-      console.error('❌ Error fetching last odometer:', error);
+      console.error('Error fetching last odometer:', error);
     } finally {
       setLoadingLastOdometer(false);
     }
@@ -110,26 +97,16 @@ export default function VehicleHandoverModal({
     setLoading(true);
 
     try {
-      console.log('💾 Saving handover:', {
-        event_vehicle_id: vehicle.id,
-        driver_id: employee.id,
-        handover_type: handoverType,
-        odometer_reading: parseInt(odometerReading),
-        notes: notes || null,
-      });
-
-      const { data, error } = await supabase.from('vehicle_handovers').insert({
+      const { error } = await supabase.from('vehicle_handovers').insert({
         event_vehicle_id: vehicle.id,
         driver_id: employee.id,
         handover_type: handoverType,
         odometer_reading: parseInt(odometerReading),
         timestamp: new Date().toISOString(),
         notes: notes || null,
-      }).select();
+      });
 
       if (error) throw error;
-
-      console.log('✅ Handover saved:', data);
 
       showSnackbar(
         handoverType === 'pickup' ? 'Pojazd odebrany' : 'Pojazd zdany',
@@ -137,7 +114,7 @@ export default function VehicleHandoverModal({
       );
       onSuccess();
     } catch (error: any) {
-      console.error('❌ Error saving handover:', error);
+      console.error('Error saving handover:', error);
       showSnackbar(error.message || 'Błąd podczas zapisywania', 'error');
     } finally {
       setLoading(false);
