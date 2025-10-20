@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useAppSelector } from '../store/hooks';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from './crm/NotificationCenter';
+import { canEditWebsite, isAdmin } from '@/lib/permissions';
 
 interface NavbarProps {
   onAdminClick?: () => void;
@@ -38,7 +39,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
         setCrmUser(session.user);
         const { data: employeeData } = await supabase
           .from('employees')
-          .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, access_level')
+          .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, access_level, permissions, role')
           .eq('email', session.user.email)
           .maybeSingle();
         if (employeeData) {
@@ -337,7 +338,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                           </div>
                         </button>
                       )}
-                      {(crmUser || authUser) && (
+                      {(authUser || canEditWebsite(employee)) && (
                         <>
                           <div className="h-px bg-[#d3bb73]/20 my-2" />
                           <button
@@ -499,7 +500,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                     Panel Admina
                   </button>
                 )}
-                {(crmUser || authUser) && (
+                {(authUser || canEditWebsite(employee)) && (
                   <button
                     onClick={() => {
                       toggleEditMode();
