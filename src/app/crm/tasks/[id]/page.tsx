@@ -8,6 +8,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 import LinkEventFileModal from '@/components/crm/LinkEventFileModal';
 
 interface Task {
@@ -286,7 +287,6 @@ export default function TaskDetailPage() {
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-      showSnackbar('Komentarz dodany', 'success');
     } catch (error) {
       console.error('Error adding comment:', error);
       showSnackbar('Błąd podczas dodawania komentarza', 'error');
@@ -306,13 +306,13 @@ export default function TaskDetailPage() {
         const filePath = `task-attachments/${taskId}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('task-files')
+          .from('event-files')
           .upload(filePath, file);
 
         if (uploadError) throw uploadError;
 
         const { data: { publicUrl } } = supabase.storage
-          .from('task-files')
+          .from('event-files')
           .getPublicUrl(filePath);
 
         const { error: dbError } = await supabase
@@ -351,9 +351,9 @@ export default function TaskDetailPage() {
 
     try {
       if (!isLinked && fileUrl) {
-        const filePath = fileUrl.split('/task-files/')[1];
+        const filePath = fileUrl.split('/event-files/')[1];
         if (filePath) {
-          await supabase.storage.from('task-files').remove([filePath]);
+          await supabase.storage.from('event-files').remove([filePath]);
         }
       }
 
@@ -481,46 +481,14 @@ export default function TaskDetailPage() {
           {task.task_assignees.length > 0 && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-[#e5e4e2]/60">Przypisane osoby:</span>
-              <div className="flex -space-x-2">
-                {task.task_assignees.map((assignee) => (
-                  <div
-                    key={assignee.employee_id}
-                    className="relative group"
-                    title={`${assignee.employees.name} ${assignee.employees.surname}`}
-                  >
-                    <EmployeeAvatar
-                      employee={{
-                        avatar_url: assignee.employees.avatar_url,
-                        avatar_metadata: assignee.employees.avatar_metadata,
-                        name: assignee.employees.name,
-                        surname: assignee.employees.surname,
-                      }}
-                      size={40}
-                      className="ring-2 ring-[#0f1119]"
-                    />
-                  </div>
-                ))}
-              </div>
+              <TaskAssigneeAvatars assignees={task.task_assignees} maxVisible={10} />
             </div>
           )}
         </div>
       </div>
 
       {/* Chat Area */}
-      <div
-        className="flex-1 overflow-y-auto p-6 space-y-4"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {isDragging && (
-          <div className="fixed inset-0 bg-[#d3bb73]/10 border-2 border-dashed border-[#d3bb73] rounded-lg flex items-center justify-center z-50 m-6">
-            <div className="text-center">
-              <Paperclip className="w-12 h-12 text-[#d3bb73] mx-auto mb-2" />
-              <p className="text-[#d3bb73] font-medium">Upuść pliki tutaj</p>
-            </div>
-          </div>
-        )}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
 
         {chatItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[#e5e4e2]/40">
@@ -611,7 +579,20 @@ export default function TaskDetailPage() {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-[#0f1119] border-t border-[#d3bb73]/10">
+      <div
+        className="p-4 bg-[#0f1119] border-t border-[#d3bb73]/10 relative"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDragging && (
+          <div className="absolute inset-0 bg-[#d3bb73]/10 border-2 border-dashed border-[#d3bb73] rounded-lg flex items-center justify-center z-50">
+            <div className="text-center">
+              <Paperclip className="w-12 h-12 text-[#d3bb73] mx-auto mb-2" />
+              <p className="text-[#d3bb73] font-medium">Upuść pliki tutaj</p>
+            </div>
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             ref={fileInputRef}
