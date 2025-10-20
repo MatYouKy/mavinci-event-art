@@ -19,6 +19,7 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -559,9 +560,9 @@ export default function EventLogisticsPanel({
                             <Trash2 className="w-4 h-4 text-red-400" />
                           </button>
                         </div>
-                      ) : employee && vehicle.driver_id === employee.id ? (
-                        <div className="flex items-center gap-2">
-                          {console.log('DEBUG VEHICLE:', {
+                      ) : (() => {
+                        if (employee && vehicle.driver_id === employee.id) {
+                          console.log('DEBUG VEHICLE:', {
                             vehicleId: vehicle.id,
                             driverId: vehicle.driver_id,
                             employeeId: employee.id,
@@ -570,8 +571,10 @@ export default function EventLogisticsPanel({
                             returnTimestamp: vehicle.return_timestamp,
                             canManage,
                             match: vehicle.driver_id === employee.id
-                          })}
-                          {vehicle.invitation_status === 'pending' ? (
+                          });
+                          return (
+                            <div className="flex items-center gap-2">
+                              {vehicle.invitation_status === 'pending' ? (
                             <>
                               <button
                                 onClick={() => handleAcceptInvitation(vehicle.id)}
@@ -615,8 +618,11 @@ export default function EventLogisticsPanel({
                               Pojazd zdany
                             </span>
                           )}
-                        </div>
-                      ) : null}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
 
                     {/* Szczegóły pojazdu */}
