@@ -1,15 +1,19 @@
 /*
-  # Napraw dostęp do własnego profilu pracownika
+  # Napraw dostęp do profili pracowników z uwzględnieniem adminów
 
   1. Problem
-    - Użytkownik bez uprawnień employees_view nie widzi własnego profilu
+    - Administrator stracił dostęp do przeglądania listy pracowników
+    - Poprzednia migracja nie uwzględniała funkcji is_admin()
 
   2. Rozwiązanie
-    - Dodaj logikę: każdy może zobaczyć swój profil LUB musisz mieć uprawnienie employees_view
+    - Dodaj logikę admina: is_admin(auth.uid())
+    - Każdy admin widzi wszystkich pracowników
+    - Każdy pracownik widzi swój profil
+    - Pracownicy z employees_view widzą wszystkich
 */
 
 -- Usuń starą politykę SELECT
-DROP POLICY IF EXISTS "Authenticated users can view employees" ON employees;
+DROP POLICY IF EXISTS "Users can view own profile or with permission" ON employees;
 
 -- Nowa polityka: możesz zobaczyć swój profil, mieć uprawnienie employees_view, lub być adminem
 CREATE POLICY "Users can view own profile or with permission"
