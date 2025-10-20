@@ -77,6 +77,8 @@ export default function CRMLayout({ children }: { children: React.ReactNode }) {
             userNav = allNavigation;
           } else {
             userNav = allNavigation.filter(item => {
+              // Kalendarz i zadania są dostępne dla wszystkich
+              if (item.key === 'calendar' || item.key === 'tasks') return true;
               if (!item.module) return true;
               return canView(employeeData, item.module);
             });

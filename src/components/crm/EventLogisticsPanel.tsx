@@ -67,6 +67,9 @@ interface EventVehicle {
   return_odometer: number | null;
   return_timestamp: string | null;
   return_notes: string | null;
+  invitation_status: string;
+  invited_at: string | null;
+  responded_at: string | null;
   external_trailer_return_date: string | null;
   external_trailer_return_location: string | null;
   external_trailer_notes: string | null;
@@ -297,6 +300,46 @@ export default function EventLogisticsPanel({
     }
   };
 
+  const handleAcceptInvitation = async (vehicleId: string) => {
+    try {
+      const { error } = await supabase
+        .from('event_vehicles')
+        .update({
+          invitation_status: 'accepted',
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', vehicleId);
+
+      if (error) throw error;
+
+      showSnackbar('Zaproszenie zostało zaakceptowane', 'success');
+      fetchLogisticsData();
+    } catch (error: any) {
+      console.error('Error accepting invitation:', error);
+      showSnackbar(error.message || 'Błąd podczas akceptowania zaproszenia', 'error');
+    }
+  };
+
+  const handleDeclineInvitation = async (vehicleId: string) => {
+    try {
+      const { error } = await supabase
+        .from('event_vehicles')
+        .update({
+          invitation_status: 'declined',
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', vehicleId);
+
+      if (error) throw error;
+
+      showSnackbar('Zaproszenie zostało odrzucone', 'info');
+      fetchLogisticsData();
+    } catch (error: any) {
+      console.error('Error declining invitation:', error);
+      showSnackbar(error.message || 'Błąd podczas odrzucania zaproszenia', 'error');
+    }
+  };
+
   const getActivityTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       loading: 'Załadunek',
@@ -497,7 +540,29 @@ export default function EventLogisticsPanel({
                         </div>
                       ) : employee && vehicle.driver_id === employee.id ? (
                         <div className="flex items-center gap-2">
-                          {!vehicle.pickup_timestamp ? (
+                          {vehicle.invitation_status === 'pending' ? (
+                            <>
+                              <button
+                                onClick={() => handleAcceptInvitation(vehicle.id)}
+                                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                                Akceptuj
+                              </button>
+                              <button
+                                onClick={() => handleDeclineInvitation(vehicle.id)}
+                                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                                Odrzuć
+                              </button>
+                            </>
+                          ) : vehicle.invitation_status === 'declined' ? (
+                            <span className="text-sm text-red-400 flex items-center gap-2">
+                              <X className="w-4 h-4" />
+                              Zaproszenie odrzucone
+                            </span>
+                          ) : !vehicle.pickup_timestamp ? (
                             <button
                               onClick={() => handlePickupVehicle(vehicle)}
                               className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"

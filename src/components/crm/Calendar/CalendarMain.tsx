@@ -85,6 +85,10 @@ export default function CalendarMain() {
             employee_id,
             role,
             status
+          ),
+          vehicles:event_vehicles(
+            id,
+            driver_id
           )
         `)
         .order('event_date', { ascending: true });
@@ -157,9 +161,13 @@ export default function CalendarMain() {
     }
 
     if (filters.assignedToMe && currentEmployee) {
-      filtered = filtered.filter(e =>
-        e.employees?.some((emp: any) => emp.employee_id === currentEmployee.id)
-      );
+      filtered = filtered.filter(e => {
+        // Sprawdź czy jest przypisany jako członek zespołu
+        const isAssignedEmployee = e.employees?.some((emp: any) => emp.employee_id === currentEmployee.id);
+        // Sprawdź czy jest przypisany jako kierowca
+        const isDriver = e.vehicles?.some((v: any) => v.driver_id === currentEmployee.id);
+        return isAssignedEmployee || isDriver;
+      });
     }
 
     if (filters.employees.length > 0) {

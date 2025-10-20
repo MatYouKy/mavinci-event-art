@@ -202,19 +202,14 @@ export default function AddEventVehicleModal({
 
   const fetchEmployees = async () => {
     try {
-      // Pobierz kierowców już przypisanych do pojazdów w tym wydarzeniu
-      // (z wyjątkiem edytowanego pojazdu)
-      let query = supabase
+      // Pobierz kierowców już przypisanych do INNYCH pojazdów w tym wydarzeniu
+      const { data: assignedDrivers } = await supabase
         .from('event_vehicles')
         .select('driver_id')
         .eq('event_id', eventId)
-        .not('driver_id', 'is', null);
+        .not('driver_id', 'is', null)
+        .neq('id', editingVehicleId || 'never-match');
 
-      if (editingVehicleId) {
-        query = query.neq('id', editingVehicleId);
-      }
-
-      const { data: assignedDrivers } = await query;
       const assignedDriverIds = assignedDrivers?.map(v => v.driver_id) || [];
 
       // Jeśli nie wybrano pojazdu lub jest zewnętrzny, nie pokazuj żadnych kierowców
