@@ -77,6 +77,7 @@ interface ChatItem {
   id: string;
   type: 'comment' | 'attachment';
   created_at: string;
+  employee_id: string;
   employee: {
     name: string;
     surname: string;
@@ -247,6 +248,7 @@ export default function TaskDetailPage() {
         id: c.id,
         type: 'comment' as const,
         created_at: c.created_at,
+        employee_id: c.employee_id,
         employee: c.employees,
         content: c.content,
       }));
@@ -255,6 +257,7 @@ export default function TaskDetailPage() {
         id: a.id,
         type: 'attachment' as const,
         created_at: a.created_at,
+        employee_id: a.uploaded_by,
         employee: a.employees,
         attachment: a,
       }));
@@ -341,6 +344,29 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleDeleteComment = async (commentId: string) => {
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć ten komentarz?',
+      'Usuń komentarz'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('task_comments')
+        .delete()
+        .eq('id', commentId);
+
+      if (error) throw error;
+
+      showSnackbar('Komentarz został usunięty', 'success');
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      showSnackbar('Błąd podczas usuwania komentarza', 'error');
+    }
+  };
+
   const handleDeleteAttachment = async (attachmentId: string, fileUrl: string | null, isLinked: boolean) => {
     const confirmed = await showConfirm(
       isLinked ? 'Czy na pewno chcesz odlinkować ten plik?' : 'Czy na pewno chcesz usunąć ten plik?',
@@ -411,6 +437,17 @@ export default function TaskDetailPage() {
 
   const isImage = (fileType: string) => {
     return fileType.startsWith('image/');
+  };
+
+  const canDeleteComment = (commentEmployeeId: string) => {
+    if (!currentEmployee) return false;
+
+    return (
+      currentEmployee.id === commentEmployeeId ||
+      currentEmployee.role === 'admin' ||
+      currentEmployee.permissions?.includes('tasks_manage') ||
+      task?.created_by === currentEmployee.id
+    );
   };
 
   if (loading) {
@@ -518,8 +555,19 @@ export default function TaskDetailPage() {
                 </div>
 
                 {item.type === 'comment' && (
-                  <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3">
-                    <p className="text-sm text-[#e5e4e2] whitespace-pre-wrap">{item.content}</p>
+                  <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 group">
+                    <div className="flex items-start gap-2">
+                      <p className="text-sm text-[#e5e4e2] whitespace-pre-wrap flex-1">{item.content}</p>
+                      {canDeleteComment(item.employee_id) && (
+                        <button
+                          onClick={() => handleDeleteComment(item.id)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-500/10 rounded-lg flex-shrink-0"
+                          title="Usuń komentarz"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
