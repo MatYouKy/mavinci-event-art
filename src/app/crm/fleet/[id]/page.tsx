@@ -99,7 +99,7 @@ interface MaintenanceRecord {
   notes?: string;
   valid_until?: string;
   performed_by?: { name: string; surname: string } | null;
-  source: 'maintenance_records' | 'periodic_inspections' | 'oil_changes' | 'timing_belt_changes' | 'maintenance_repairs';
+  source: 'maintenance_records' | 'periodic_inspections' | 'oil_changes' | 'timing_belt_changes';
 }
 
 interface InsurancePolicy {
@@ -172,6 +172,66 @@ export default function VehicleDetailPage() {
             event: '*',
             schema: 'public',
             table: 'vehicle_handovers',
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'periodic_inspections',
+            filter: `vehicle_id=eq.${vehicleId}`,
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'oil_changes',
+            filter: `vehicle_id=eq.${vehicleId}`,
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'timing_belt_changes',
+            filter: `vehicle_id=eq.${vehicleId}`,
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'maintenance_records',
+            filter: `vehicle_id=eq.${vehicleId}`,
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'insurance_policies',
+            filter: `vehicle_id=eq.${vehicleId}`,
           },
           () => {
             fetchVehicleData();
@@ -374,6 +434,30 @@ export default function VehicleDetailPage() {
     } catch (error) {
       console.error('Error deleting maintenance record:', error);
       showSnackbar('Błąd podczas usuwania wpisu', 'error');
+    }
+  };
+
+  const handleDeleteInsurance = async (policy: InsurancePolicy) => {
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć to ubezpieczenie?',
+      'Tej operacji nie można cofnąć.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('insurance_policies')
+        .delete()
+        .eq('id', policy.id);
+
+      if (error) throw error;
+
+      showSnackbar('Ubezpieczenie zostało usunięte', 'success');
+      fetchVehicleData();
+    } catch (error) {
+      console.error('Error deleting insurance:', error);
+      showSnackbar('Błąd podczas usuwania ubezpieczenia', 'error');
     }
   };
 
@@ -976,11 +1060,22 @@ export default function VehicleDetailPage() {
                             Polisa: {policy.policy_number}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-[#d3bb73] font-medium text-lg">
-                            {formatCurrency(policy.premium_amount)}
+                        <div className="flex items-start gap-3">
+                          <div className="text-right">
+                            <div className="text-[#d3bb73] font-medium text-lg">
+                              {formatCurrency(policy.premium_amount)}
+                            </div>
+                            <div className="text-xs text-[#e5e4e2]/60">składka roczna</div>
                           </div>
-                          <div className="text-xs text-[#e5e4e2]/60">składka roczna</div>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteInsurance(policy)}
+                              className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                              title="Usuń ubezpieczenie"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-6 text-sm">

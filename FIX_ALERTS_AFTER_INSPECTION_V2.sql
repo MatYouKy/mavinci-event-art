@@ -99,4 +99,77 @@ WHERE id IN (
   SELECT id FROM ranked_alerts WHERE rn > 1
 );
 
+-- ============================================
+-- ALERTY DLA UBEZPIECZEŃ
+-- ============================================
+
+-- Funkcja tworząca alert dla ubezpieczeń
+CREATE OR REPLACE FUNCTION create_insurance_alert()
+RETURNS TRIGGER AS $$
+DECLARE
+  latest_insurance_id uuid;
+  latest_end_date date;
+  latest_type text;
+BEGIN
+  -- Znajdź NAJNOWSZE ubezpieczenie dla tego pojazdu
+  SELECT id, end_date, type
+  INTO latest_insurance_id, latest_end_date, latest_type
+  FROM insurance_policies
+  WHERE vehicle_id = NEW.vehicle_id
+  ORDER BY end_date DESC, created_at DESC
+  LIMIT 1;
+
+  -- Usuń WSZYSTKIE alerty o ubezpieczeniu dla tego pojazdu
+  DELETE FROM vehicle_alerts
+  WHERE vehicle_id = NEW.vehicle_id
+  AND alert_type = 'insurance';
+
+  -- Utwórz alert TYLKO jeśli to ubezpieczenie jest najnowsze I wygasa w ciągu 60 dni
+  IF latest_insurance_id = NEW.id AND latest_end_date <= CURRENT_DATE + INTERVAL '60 days' THEN
+    INSERT INTO vehicle_alerts (
+      vehicle_id,
+      alert_type,
+      priority,
+      title,
+      message,
+      icon,
+      is_blocking,
+      due_date,
+      related_id,
+      is_active
+    )
+    VALUES (
+      NEW.vehicle_id,
+      'insurance',
+      CASE
+        WHEN latest_end_date < CURRENT_DATE THEN 'critical'
+        WHEN latest_end_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'high'
+        WHEN latest_end_date <= CURRENT_DATE + INTERVAL '30 days' THEN 'medium'
+        ELSE 'low'
+      END,
+      CASE
+        WHEN latest_end_date < CURRENT_DATE THEN 'Ubezpieczenie przeterminowane!'
+        ELSE 'Ubezpieczenie wygasa wkrótce'
+      END,
+      UPPER(latest_type) || ' - wygasa za ' || (latest_end_date - CURRENT_DATE) || ' dni (' || to_char(latest_end_date, 'DD.MM.YYYY') || ')',
+      'Shield',
+      latest_end_date < CURRENT_DATE,
+      latest_end_date,
+      latest_insurance_id,
+      true
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger dla ubezpieczeń
+DROP TRIGGER IF EXISTS trigger_create_insurance_alert ON insurance_policies;
+CREATE TRIGGER trigger_create_insurance_alert
+  AFTER INSERT ON insurance_policies
+  FOR EACH ROW
+  EXECUTE FUNCTION create_insurance_alert();
+
 COMMENT ON FUNCTION create_inspection_alert IS 'Tworzy alert tylko dla najnowszej kontroli, zapobiega duplikatom';
+COMMENT ON FUNCTION create_insurance_alert IS 'Tworzy alert tylko dla najnowszego ubezpieczenia, zapobiega duplikatom';
