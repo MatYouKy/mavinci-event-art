@@ -684,9 +684,9 @@ export default function TaskDetailPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0d1a]">
+    <div className="bg-[#0a0d1a] min-h-screen">
       {/* Header - Sticky */}
-      <div className="flex-shrink-0 bg-[#0f1119] border-b border-[#d3bb73]/10">
+      <div className="sticky top-0 z-10 bg-[#0f1119] border-b border-[#d3bb73]/10">
         <div className="flex items-center gap-4 p-4">
           <button
             onClick={() => router.back()}
@@ -870,17 +870,8 @@ export default function TaskDetailPage() {
 
                 {/* Assignees - Only Avatars */}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-medium text-[#e5e4e2]/60">Przypisane osoby</h3>
-                    <button
-                      onClick={() => setShowAssignModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      Dodaj osobę
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+                  <h3 className="text-sm font-medium text-[#e5e4e2]/60 mb-3">Przypisane osoby</h3>
+                  <div className="flex items-center -space-x-2">
                     {task.task_assignees.map((assignee) => (
                       <div
                         key={assignee.employee_id}
@@ -899,7 +890,7 @@ export default function TaskDetailPage() {
                         {(task.created_by === currentEmployee?.id || currentEmployee?.id === assignee.employee_id) && (
                           <button
                             onClick={() => handleRemoveAssignee(assignee.employee_id)}
-                            className="absolute -top-1 -right-1 p-1 bg-red-500 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            className="absolute -top-1 -right-1 p-1 bg-red-500 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
                             title="Usuń"
                           >
                             <X className="w-3 h-3 text-white" />
@@ -907,6 +898,13 @@ export default function TaskDetailPage() {
                         )}
                       </div>
                     ))}
+                    <button
+                      onClick={() => setShowAssignModal(true)}
+                      className="w-10 h-10 rounded-full bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 border-2 border-[#d3bb73]/40 flex items-center justify-center transition-colors ml-2"
+                      title="Dodaj osobę"
+                    >
+                      <UserPlus className="w-5 h-5 text-[#d3bb73]" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -916,13 +914,14 @@ export default function TaskDetailPage() {
       </div>
 
       {/* Chat Area */}
-      <div
-        className="overflow-y-auto p-6 space-y-4"
-        style={{
-          minHeight: chatItems.length === 0 ? '200px' : '200px',
-          maxHeight: '500px'
-        }}
-      >
+      <div className="bg-[#0f1119] border-b-4 border-[#d3bb73]/20">
+        <div
+          className="overflow-y-auto p-6 space-y-4"
+          style={{
+            minHeight: chatItems.length === 0 ? '200px' : '200px',
+            maxHeight: '500px'
+          }}
+        >
 
         {chatItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[#e5e4e2]/40">
@@ -1080,9 +1079,10 @@ export default function TaskDetailPage() {
             <Send className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-xs text-[#e5e4e2]/40 mt-2">
+        <p className="text-xs text-[#e5e4e2]/40 mt-2 px-6 pb-4">
           Przeciągnij i upuść pliki lub zdjęcia aby je dodać
         </p>
+        </div>
       </div>
 
       {/* Link Event File Modal */}
