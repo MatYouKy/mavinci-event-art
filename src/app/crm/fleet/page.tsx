@@ -843,58 +843,11 @@ export default function FleetPage() {
                       {vehicle.current_mileage?.toLocaleString() || 0} km
                     </td>
                     <td className="p-4 text-[#e5e4e2]/80">
-                      {vehicle.assigned_employee_name ? (
-                        <Popover
-                          content={
-                            <div className="p-3 min-w-[200px]">
-                              <div className="flex items-center gap-3">
-                                <div onClick={() => router.push(`/crm/employees/${vehicle.assigned_to}`)}>
-                                  {renderAvatar(
-                                    vehicle.assigned_employee_name,
-                                    vehicle.assigned_employee_surname,
-                                    vehicle.assigned_employee_avatar_url,
-                                    vehicle.assigned_employee_avatar_metadata,
-                                    48
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <button
-                                    onClick={() => router.push(`/crm/employees/${vehicle.assigned_to}`)}
-                                    className="text-[#e5e4e2] hover:text-[#d3bb73] font-medium text-sm transition-colors truncate block w-full text-left"
-                                  >
-                                    {vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}
-                                  </button>
-                                  <div className="text-xs text-[#e5e4e2]/60 mt-1">
-                                    Kliknij aby przejść do profilu
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          }
-                        >
-                          <div className="flex items-center gap-2">
-                            {renderAvatar(
-                              vehicle.assigned_employee_name,
-                              vehicle.assigned_employee_surname,
-                              vehicle.assigned_employee_avatar_url,
-                              vehicle.assigned_employee_avatar_metadata,
-                              28
-                            )}
-                            <span>{vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}</span>
-                          </div>
-                        </Popover>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        {getStatusBadge(vehicle.status, vehicle.in_use)}
-                        {vehicle.in_use && vehicle.in_use_driver_id && (
+                       {vehicle.in_use && vehicle.in_use_driver_id && (
                           <Popover
                             content={
-                              <div className="p-3 min-w-[200px]">
-                                <div className="flex items-center gap-3">
+                              <div className="p-3 min-w-[200px] items-center justify-center">
+                                <div className="flex items-center justify-center">
                                   <div onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}>
                                     {renderAvatar(
                                       vehicle.in_use_driver_name,
@@ -926,8 +879,14 @@ export default function FleetPage() {
                               vehicle.in_use_driver_avatar_metadata,
                               28
                             )}
+                            <p className="ml-4 text-xs text-[#e5e4e2]/60 mt-1">{`${vehicle.in_use_driver_name} ${vehicle.in_use_driver_surname}`} </p>
                           </Popover>
                         )}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        {getStatusBadge(vehicle.status, vehicle.in_use)}
+                       
                       </div>
                     </td>
                     <td className="p-4">
@@ -993,7 +952,6 @@ export default function FleetPage() {
           onClose={() => setQuickFuelVehicle(null)}
           onSuccess={() => {
             fetchVehicles();
-            fetchStats();
           }}
         />
       )}
