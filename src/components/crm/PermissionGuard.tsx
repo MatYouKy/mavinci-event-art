@@ -8,11 +8,12 @@ import { RefreshCw, ShieldAlert } from 'lucide-react';
 
 interface Props {
   children: React.ReactNode;
-  module: string;
+  module?: string;
+  permission?: string;
   fallbackPath?: string;
 }
 
-export default function PermissionGuard({ children, module, fallbackPath = '/crm' }: Props) {
+export default function PermissionGuard({ children, module, permission, fallbackPath = '/crm' }: Props) {
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
   const router = useRouter();
@@ -38,9 +39,17 @@ export default function PermissionGuard({ children, module, fallbackPath = '/crm
           return;
         }
 
-        const hasPermission = isAdmin(employee) || canView(employee, module);
+        let hasPermissionCheck = false;
 
-        if (!hasPermission) {
+        if (permission) {
+          // Sprawdź konkretny permission (np. event_categories_manage)
+          hasPermissionCheck = isAdmin(employee) || employee.permissions?.includes(permission) || false;
+        } else if (module) {
+          // Sprawdź moduł (np. events_view lub events_manage)
+          hasPermissionCheck = isAdmin(employee) || canView(employee, module);
+        }
+
+        if (!hasPermissionCheck) {
           setHasAccess(false);
           setLoading(false);
           setTimeout(() => {
@@ -58,7 +67,7 @@ export default function PermissionGuard({ children, module, fallbackPath = '/crm
     };
 
     checkPermission();
-  }, [module, router, fallbackPath]);
+  }, [module, permission, router, fallbackPath]);
 
   if (loading) {
     return (
