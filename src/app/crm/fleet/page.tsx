@@ -212,16 +212,20 @@ export default function FleetPage() {
             .order('sort_order', { ascending: true });
 
           // Check if vehicle is currently in use
-          const { data: inUseData } = await supabase
+          const { data: inUseData, error: inUseError } = await supabase
             .from('event_vehicles')
             .select(`
               id,
               driver:employees!event_vehicles_driver_id_fkey(id, name, surname),
-              event:events(title)
+              event:events(name)
             `)
             .eq('vehicle_id', vehicle.id)
             .eq('is_in_use', true)
-            .single();
+            .maybeSingle();
+
+          if (inUseError) {
+            console.error('Error fetching in_use data for vehicle', vehicle.name, inUseError);
+          }
 
           return {
             ...vehicle,
@@ -237,7 +241,7 @@ export default function FleetPage() {
             all_images: allImages || [],
             in_use: !!inUseData,
             in_use_by: inUseData?.driver ? `${inUseData.driver.name} ${inUseData.driver.surname}` : null,
-            in_use_event: inUseData?.event?.title || null,
+            in_use_event: inUseData?.event?.name || null,
           };
         })
       );
