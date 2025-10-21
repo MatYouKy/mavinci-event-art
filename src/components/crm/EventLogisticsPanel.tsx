@@ -442,55 +442,51 @@ export default function EventLogisticsPanel({
                       </div>
 
                       {/* Przyciski akcji */}
-                      {canManage ? (
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        {/* Przycisk odbioru tylko dla kierowcy */}
+                        {employee && vehicle.driver_id === employee.id && (
                           <button
                             onClick={() => {
                               setSelectedVehicleForHandover(vehicle);
                               setShowHandoverModal(true);
                             }}
-                            className="p-1.5 hover:bg-green-500/20 rounded transition-colors"
-                            title="Odbierz/Zdaj pojazd"
+                            className={`
+                              flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors
+                              ${vehicle.pickup_timestamp && !vehicle.return_timestamp
+                                ? 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400'
+                                : 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
+                              }
+                            `}
+                            title={vehicle.pickup_timestamp && !vehicle.return_timestamp ? "Zdaj pojazd" : "Odbierz pojazd"}
                           >
-                            <Gauge className="w-4 h-4 text-green-400" />
+                            <Gauge className="w-5 h-5" />
+                            {vehicle.pickup_timestamp && !vehicle.return_timestamp ? 'Zdaj pojazd' : 'Odbierz pojazd'}
                           </button>
-                          <button
-                            onClick={() => {
-                              setEditingVehicleId(vehicle.id);
-                              setShowVehicleModal(true);
-                            }}
-                            className="p-1.5 hover:bg-blue-500/20 rounded transition-colors"
-                            title="Edytuj pojazd"
-                          >
-                            <Edit className="w-4 h-4 text-blue-400" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteVehicle(vehicle.id)}
-                            className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
-                            title="Usuń pojazd"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-400" />
-                          </button>
-                        </div>
-                      ) : employee && vehicle.driver_id === employee.id ? (
-                        <button
-                          onClick={() => {
-                            setSelectedVehicleForHandover(vehicle);
-                            setShowHandoverModal(true);
-                          }}
-                          className={`
-                            flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors
-                            ${vehicle.pickup_timestamp && !vehicle.return_timestamp
-                              ? 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400'
-                              : 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
-                            }
-                          `}
-                          title={vehicle.pickup_timestamp && !vehicle.return_timestamp ? "Zdaj pojazd" : "Odbierz pojazd"}
-                        >
-                          <Gauge className="w-5 h-5" />
-                          {vehicle.pickup_timestamp && !vehicle.return_timestamp ? 'Zdaj pojazd' : 'Odbierz pojazd'}
-                        </button>
-                      ) : null}
+                        )}
+
+                        {/* Przyciski zarządzania tylko dla managerów */}
+                        {canManage && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setEditingVehicleId(vehicle.id);
+                                setShowVehicleModal(true);
+                              }}
+                              className="p-1.5 hover:bg-blue-500/20 rounded transition-colors"
+                              title="Edytuj pojazd"
+                            >
+                              <Edit className="w-4 h-4 text-blue-400" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteVehicle(vehicle.id)}
+                              className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                              title="Usuń pojazd"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-400" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* Szczegóły pojazdu */}
