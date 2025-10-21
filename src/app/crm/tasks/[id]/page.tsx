@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus, Edit3, Save, X, UserPlus, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -23,6 +23,7 @@ interface Task {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  thumbnail_url: string | null;
   task_assignees: {
     employee_id: string;
     employees: {
@@ -38,6 +39,14 @@ interface Task {
     avatar_url: string | null;
     avatar_metadata?: any;
   };
+}
+
+interface Employee {
+  id: string;
+  name: string;
+  surname: string;
+  avatar_url: string | null;
+  avatar_metadata?: any;
 }
 
 interface Comment {
@@ -117,6 +126,11 @@ export default function TaskDetailPage() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showLinkFileModal, setShowLinkFileModal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTask, setEditedTask] = useState<Partial<Task>>({});
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [availableEmployees, setAvailableEmployees] = useState<Employee[]>([]);
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -126,6 +140,7 @@ export default function TaskDetailPage() {
     if (taskId) {
       fetchTask();
       fetchChatItems();
+      fetchAvailableEmployees();
 
       const commentsChannel = supabase
         .channel('task_comments_changes')
@@ -424,6 +439,181 @@ export default function TaskDetailPage() {
     }
   };
 
+  const fetchAvailableEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name, surname, avatar_url, avatar_metadata')
+        .order('name');
+
+      if (error) throw error;
+      setAvailableEmployees(data || []);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+    }
+  };
+
+  const handleStartEdit = () => {
+    if (!task) return;
+    setEditedTask({
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      due_date: task.due_date,
+    });
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditedTask({});
+  };
+
+  const handleSaveEdit = async () => {
+    if (!task || !editedTask.title?.trim()) {
+      showSnackbar('Tytuł zadania jest wymagany', 'warning');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          title: editedTask.title,
+          description: editedTask.description || null,
+          priority: editedTask.priority,
+          due_date: editedTask.due_date || null,
+        })
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      showSnackbar('Zadanie zaktualizowane', 'success');
+      setIsEditing(false);
+      fetchTask();
+    } catch (error) {
+      console.error('Error updating task:', error);
+      showSnackbar('Błąd podczas aktualizacji zadania', 'error');
+    }
+  };
+
+  const handleAddAssignee = async (employeeId: string) => {
+    try {
+      const { error } = await supabase
+        .from('task_assignees')
+        .insert({
+          task_id: taskId,
+          employee_id: employeeId,
+        });
+
+      if (error) throw error;
+
+      showSnackbar('Dodano osobę do zadania', 'success');
+      fetchTask();
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        showSnackbar('Ta osoba jest już przypisana do zadania', 'info');
+      } else {
+        console.error('Error adding assignee:', error);
+        showSnackbar('Błąd podczas dodawania osoby', 'error');
+      }
+    }
+  };
+
+  const handleRemoveAssignee = async (employeeId: string) => {
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć tę osobę z zadania?',
+      'Usuń przypisanie'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('task_assignees')
+        .delete()
+        .eq('task_id', taskId)
+        .eq('employee_id', employeeId);
+
+      if (error) throw error;
+
+      showSnackbar('Usunięto osobę z zadania', 'success');
+      fetchTask();
+    } catch (error) {
+      console.error('Error removing assignee:', error);
+      showSnackbar('Błąd podczas usuwania osoby', 'error');
+    }
+  };
+
+  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentEmployee) return;
+
+    try {
+      setUploadingThumbnail(true);
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `task-thumbnails/${taskId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('event-files')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('event-files')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ thumbnail_url: publicUrl })
+        .eq('id', taskId);
+
+      if (updateError) throw updateError;
+
+      showSnackbar('Zdjęcie zostało dodane', 'success');
+      fetchTask();
+    } catch (error) {
+      console.error('Error uploading thumbnail:', error);
+      showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
+    } finally {
+      setUploadingThumbnail(false);
+    }
+  };
+
+  const handleRemoveThumbnail = async () => {
+    if (!task?.thumbnail_url) return;
+
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć zdjęcie?',
+      'Usuń zdjęcie'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const filePath = task.thumbnail_url.split('/event-files/')[1];
+      if (filePath) {
+        await supabase.storage.from('event-files').remove([filePath]);
+      }
+
+      const { error } = await supabase
+        .from('tasks')
+        .update({ thumbnail_url: null })
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      showSnackbar('Zdjęcie zostało usunięte', 'success');
+      fetchTask();
+    } catch (error) {
+      console.error('Error removing thumbnail:', error);
+      showSnackbar('Błąd podczas usuwania zdjęcia', 'error');
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -494,69 +684,221 @@ export default function TaskDetailPage() {
   }
 
   return (
-    <div className="flex flex-col bg-[#0a0d1a]">
-      {/* Header */}
-      <div className="flex items-center gap-4 p-6 bg-[#0f1119] border-b border-[#d3bb73]/10">
-        <button
-          onClick={() => router.back()}
-          className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[#e5e4e2]">{task.title}</h1>
+    <div className="flex flex-col h-screen bg-[#0a0d1a]">
+      {/* Header - Sticky */}
+      <div className="flex-shrink-0 bg-[#0f1119] border-b border-[#d3bb73]/10">
+        <div className="flex items-center gap-4 p-4">
+          <button
+            onClick={() => router.back()}
+            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-[#e5e4e2]">Szczegóły zadania</h1>
+          </div>
+          {!isEditing && (
+            <button
+              onClick={handleStartEdit}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors"
+            >
+              <Edit3 className="w-4 h-4" />
+              Edytuj
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Task Meta Info */}
-      <div className="bg-[#0f1119] border-b border-[#d3bb73]/10">
-        <div className="p-6 space-y-4">
-          {/* Creator & Priority Row */}
-          <div className="flex items-center gap-4 flex-wrap">
-            {task.creator && (
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-[#e5e4e2]/60" />
-                <span className="text-sm text-[#e5e4e2]/60">Utworzono przez:</span>
-                <span className="text-sm text-[#e5e4e2]">
-                  {task.creator.name} {task.creator.surname}
+      {/* Task Details Section - Scrollable */}
+      <div className="flex-shrink-0 bg-[#0f1119] border-b-4 border-[#d3bb73]/20 max-h-[60vh] overflow-y-auto">
+        <div className="p-6 space-y-6">
+          {/* Thumbnail */}
+          <div className="flex items-start gap-4">
+            {task.thumbnail_url ? (
+              <div className="relative group">
+                <img
+                  src={task.thumbnail_url}
+                  alt="Task thumbnail"
+                  className="w-48 h-32 object-cover rounded-lg border-2 border-[#d3bb73]/20"
+                />
+                <button
+                  onClick={handleRemoveThumbnail}
+                  className="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Trash2 className="w-4 h-4 text-white" />
+                </button>
+              </div>
+            ) : (
+              <label className="w-48 h-32 border-2 border-dashed border-[#d3bb73]/30 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-[#d3bb73]/5 transition-colors">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleThumbnailUpload}
+                  className="hidden"
+                  disabled={uploadingThumbnail}
+                />
+                <ImageIcon className="w-8 h-8 text-[#d3bb73]/50 mb-2" />
+                <span className="text-xs text-[#e5e4e2]/50">
+                  {uploadingThumbnail ? 'Przesyłanie...' : 'Dodaj zdjęcie'}
                 </span>
-              </div>
-            )}
-            <span className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
-              {priorityLabels[task.priority]}
-            </span>
-            <span className="text-xs px-3 py-1 rounded-full bg-[#d3bb73]/10 text-[#d3bb73]">
-              {task.status}
-            </span>
-            {task.due_date && (
-              <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                <Calendar className="w-4 h-4" />
-                {new Date(task.due_date).toLocaleDateString('pl-PL')}
-              </div>
+              </label>
             )}
           </div>
 
-          {/* Description */}
-          {task.description && (
-            <p className="text-sm text-[#e5e4e2]/80">{task.description}</p>
-          )}
+          {isEditing ? (
+            <>
+              {/* Edit Mode */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                    Tytuł zadania *
+                  </label>
+                  <input
+                    type="text"
+                    value={editedTask.title || ''}
+                    onChange={(e) => setEditedTask({ ...editedTask, title: e.target.value })}
+                    className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                  />
+                </div>
 
-          {/* Assignees */}
-          {task.task_assignees.length > 0 && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-[#e5e4e2]/60">Przypisane osoby:</span>
-              <TaskAssigneeAvatars assignees={task.task_assignees} maxVisible={10} />
-              {currentEmployee && task.task_assignees.some(a => a.employee_id === currentEmployee.id) && (
-                <button
-                  onClick={handleUnassignSelf}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
-                  title="Wypisz się z zadania"
-                >
-                  <UserMinus className="w-3.5 h-3.5" />
-                  Wypisz się
-                </button>
-              )}
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                    Opis
+                  </label>
+                  <textarea
+                    value={editedTask.description || ''}
+                    onChange={(e) => setEditedTask({ ...editedTask, description: e.target.value })}
+                    rows={4}
+                    className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50 resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                      Priorytet
+                    </label>
+                    <select
+                      value={editedTask.priority || 'medium'}
+                      onChange={(e) => setEditedTask({ ...editedTask, priority: e.target.value as any })}
+                      className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    >
+                      <option value="low">Niski</option>
+                      <option value="medium">Średni</option>
+                      <option value="high">Wysoki</option>
+                      <option value="urgent">Pilne</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                      Termin
+                    </label>
+                    <input
+                      type="date"
+                      value={editedTask.due_date ? editedTask.due_date.split('T')[0] : ''}
+                      onChange={(e) => setEditedTask({ ...editedTask, due_date: e.target.value })}
+                      className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t border-[#d3bb73]/10">
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] hover:bg-[#c4ac64] text-[#0a0d1a] rounded-lg transition-colors font-medium"
+                  >
+                    <Save className="w-4 h-4" />
+                    Zapisz
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#e5e4e2]/10 hover:bg-[#e5e4e2]/20 text-[#e5e4e2] rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    Anuluj
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* View Mode */}
+              <div className="space-y-4">
+                <h2 className="text-2xl font-bold text-[#e5e4e2]">{task.title}</h2>
+
+                {task.description && (
+                  <div>
+                    <h3 className="text-sm font-medium text-[#e5e4e2]/60 mb-2">Opis</h3>
+                    <p className="text-sm text-[#e5e4e2]/80 whitespace-pre-wrap">{task.description}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-4 flex-wrap">
+                  {task.creator && (
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-[#e5e4e2]/60" />
+                      <span className="text-sm text-[#e5e4e2]/60">Autor:</span>
+                      <span className="text-sm text-[#e5e4e2]">
+                        {task.creator.name} {task.creator.surname}
+                      </span>
+                    </div>
+                  )}
+                  <span className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
+                    {priorityLabels[task.priority]}
+                  </span>
+                  {task.due_date && (
+                    <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(task.due_date).toLocaleDateString('pl-PL')}
+                    </div>
+                  )}
+                </div>
+
+                {/* Assignees */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-[#e5e4e2]/60">Przypisane osoby</h3>
+                    <button
+                      onClick={() => setShowAssignModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Dodaj osobę
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {task.task_assignees.map((assignee) => (
+                      <div
+                        key={assignee.employee_id}
+                        className="flex items-center gap-2 px-3 py-2 bg-[#1a1d2e] border border-[#d3bb73]/10 rounded-lg group"
+                      >
+                        <EmployeeAvatar
+                          employee={{
+                            avatar_url: assignee.employees.avatar_url,
+                            avatar_metadata: assignee.employees.avatar_metadata,
+                            name: assignee.employees.name,
+                            surname: assignee.employees.surname,
+                          }}
+                          size={24}
+                        />
+                        <span className="text-sm text-[#e5e4e2]">
+                          {assignee.employees.name} {assignee.employees.surname}
+                        </span>
+                        {(task.created_by === currentEmployee?.id || currentEmployee?.id === assignee.employee_id) && (
+                          <button
+                            onClick={() => handleRemoveAssignee(assignee.employee_id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                          >
+                            <X className="w-3.5 h-3.5 text-red-400 hover:text-red-300" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -740,6 +1082,50 @@ export default function TaskDetailPage() {
           eventId={task.event_id}
           onFileLinked={fetchChatItems}
         />
+      )}
+
+      {/* Assign Employee Modal */}
+      {showAssignModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f1119] rounded-lg max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-[#d3bb73]/10 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[#e5e4e2]">Przypisz osobę</h3>
+              <button
+                onClick={() => setShowAssignModal(false)}
+                className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-[#e5e4e2]" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {availableEmployees
+                .filter((emp) => !task.task_assignees.some((a) => a.employee_id === emp.id))
+                .map((employee) => (
+                  <button
+                    key={employee.id}
+                    onClick={() => {
+                      handleAddAssignee(employee.id);
+                      setShowAssignModal(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 bg-[#1a1d2e] hover:bg-[#1a1d2e]/80 rounded-lg transition-colors"
+                  >
+                    <EmployeeAvatar
+                      employee={employee}
+                      size={32}
+                    />
+                    <span className="text-sm text-[#e5e4e2]">
+                      {employee.name} {employee.surname}
+                    </span>
+                  </button>
+                ))}
+              {availableEmployees.filter((emp) => !task.task_assignees.some((a) => a.employee_id === emp.id)).length === 0 && (
+                <p className="text-sm text-[#e5e4e2]/60 text-center py-8">
+                  Wszyscy dostępni pracownicy są już przypisani do tego zadania
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
