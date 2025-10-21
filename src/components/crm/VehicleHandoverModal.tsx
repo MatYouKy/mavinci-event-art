@@ -9,6 +9,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 interface Vehicle {
   id: string;
   vehicle_id: string | null;
+  is_in_use: boolean;
   pickup_timestamp: string | null;
   return_timestamp: string | null;
   vehicles?: {
@@ -32,8 +33,8 @@ export default function VehicleHandoverModal({
   const { showSnackbar } = useSnackbar();
   const { employee } = useCurrentEmployee();
 
-  // Automatycznie określ typ operacji na podstawie pickup_timestamp
-  const handoverType: 'pickup' | 'return' = vehicle.pickup_timestamp && !vehicle.return_timestamp ? 'return' : 'pickup';
+  // Automatycznie określ typ operacji na podstawie flagi is_in_use
+  const handoverType: 'pickup' | 'return' = vehicle.is_in_use ? 'return' : 'pickup';
 
   const [odometerReading, setOdometerReading] = useState('');
   const [notes, setNotes] = useState('');

@@ -186,7 +186,7 @@ export default function EventLogisticsPanel({
             *,
             vehicles!event_vehicles_vehicle_id_fkey(name, registration_number, fuel_type),
             trailer:vehicles!event_vehicles_trailer_vehicle_id_fkey(name, registration_number, fuel_type),
-            driver:employees!event_vehicles_driver_id_fkey(name, surname)
+            driver:employees!event_vehicles_driver_id_fkey(id, name, surname)
           `)
           .eq('event_id', eventId)
           .order('created_at', { ascending: true }),
@@ -447,7 +447,7 @@ export default function EventLogisticsPanel({
                             Zewnętrzny
                           </span>
                         )}
-                        {vehicle.pickup_timestamp && !vehicle.return_timestamp && (
+                        {vehicle.is_in_use && (
                           <span className="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400 flex items-center gap-1">
                             <CheckCircle className="w-3 h-3" />
                             W użytkowaniu
@@ -473,15 +473,15 @@ export default function EventLogisticsPanel({
                             }}
                             className={`
                               flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors
-                              ${vehicle.pickup_timestamp && !vehicle.return_timestamp
+                              ${vehicle.is_in_use
                                 ? 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400'
                                 : 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
                               }
                             `}
-                            title={vehicle.pickup_timestamp && !vehicle.return_timestamp ? "Zdaj pojazd" : "Odbierz pojazd"}
+                            title={vehicle.is_in_use ? "Zdaj pojazd" : "Odbierz pojazd"}
                           >
                             <Gauge className="w-5 h-5" />
-                            {vehicle.pickup_timestamp && !vehicle.return_timestamp ? 'Zdaj pojazd' : 'Odbierz pojazd'}
+                            {vehicle.is_in_use ? 'Zdaj pojazd' : 'Odbierz pojazd'}
                           </button>
                         )}
 

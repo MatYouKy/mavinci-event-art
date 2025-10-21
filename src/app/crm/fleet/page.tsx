@@ -215,12 +215,11 @@ export default function FleetPage() {
             .from('event_vehicles')
             .select(`
               id,
-              driver:employees!event_vehicles_driver_id_fkey(name, surname),
+              driver:employees!event_vehicles_driver_id_fkey(id, name, surname),
               event:events(title)
             `)
             .eq('vehicle_id', vehicle.id)
-            .not('pickup_timestamp', 'is', null)
-            .is('return_timestamp', null)
+            .eq('is_in_use', true)
             .single();
 
           return {
