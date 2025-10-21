@@ -494,7 +494,7 @@ export default function TaskDetailPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0d1a]">
+    <div className="flex flex-col bg-[#0a0d1a]">
       {/* Header */}
       <div className="flex items-center gap-4 p-6 bg-[#0f1119] border-b border-[#d3bb73]/10">
         <button
@@ -634,7 +634,7 @@ export default function TaskDetailPage() {
                             {item.attachment.file_name}
                           </p>
                           {item.attachment.is_linked && (
-                            <ExternalLink className="w-3 h-3 text-blue-400 flex-shrink-0" title="Plik z wydarzenia" />
+                            <ExternalLink className="w-3 h-3 text-blue-400 flex-shrink-0"  />
                           )}
                         </div>
                         <p className="text-xs text-[#e5e4e2]/60">{formatFileSize(item.attachment.file_size)}</p>
