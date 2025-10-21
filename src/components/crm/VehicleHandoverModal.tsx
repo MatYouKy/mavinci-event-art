@@ -58,33 +58,43 @@ export default function VehicleHandoverModal({
     }
 
     try {
-      const { data: eventVehicles, error: evError } = await supabase
-        .from('event_vehicles')
-        .select('id')
-        .eq('vehicle_id', vehicle.vehicle_id);
-
-      if (evError) throw evError;
-
-      const eventVehicleIds = eventVehicles?.map(ev => ev.id) || [];
-
-      if (eventVehicleIds.length === 0) {
-        setLoadingLastOdometer(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('vehicle_handovers')
-        .select('odometer_reading, timestamp, handover_type')
-        .in('event_vehicle_id', eventVehicleIds)
-        .order('timestamp', { ascending: false })
-        .limit(1)
+      // Najpierw pobierz aktualny przebieg z tabeli vehicles
+      const { data: vehicleData, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('current_mileage')
+        .eq('id', vehicle.vehicle_id)
         .maybeSingle();
 
-      if (error) throw error;
+      if (vehicleError) throw vehicleError;
 
-      if (data) {
-        setLastOdometer(data.odometer_reading);
-        setOdometerReading(data.odometer_reading.toString());
+      if (vehicleData?.current_mileage) {
+        setLastOdometer(vehicleData.current_mileage);
+        setOdometerReading(vehicleData.current_mileage.toString());
+      } else {
+        // Jeśli nie ma przebiegu w vehicles, sprawdź ostatni handover
+        const { data: eventVehicles } = await supabase
+          .from('event_vehicles')
+          .select('id')
+          .eq('vehicle_id', vehicle.vehicle_id);
+
+        const eventVehicleIds = eventVehicles?.map(ev => ev.id) || [];
+
+        if (eventVehicleIds.length > 0) {
+          const { data, error } = await supabase
+            .from('vehicle_handovers')
+            .select('odometer_reading, timestamp, handover_type')
+            .in('event_vehicle_id', eventVehicleIds)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (error) throw error;
+
+          if (data) {
+            setLastOdometer(data.odometer_reading);
+            setOdometerReading(data.odometer_reading.toString());
+          }
+        }
       }
     } catch (error: any) {
       console.error('Error fetching last odometer:', error);
