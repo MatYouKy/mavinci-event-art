@@ -684,7 +684,7 @@ export default function TaskDetailPage() {
   }
 
   return (
-    <div className="bg-[#0a0d1a] min-h-screen">
+    <div className="bg-[#0a0d1a]">
       {/* Header - Sticky */}
       <div className="sticky top-0 z-10 bg-[#0f1119] border-b border-[#d3bb73]/10">
         <div className="flex items-center gap-4 p-4">
