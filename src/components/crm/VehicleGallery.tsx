@@ -29,6 +29,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<VehicleImage | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     fetchImages();
@@ -53,8 +54,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
     }
   };
 
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
+  const uploadFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
@@ -103,7 +103,48 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
       showSnackbar(error.message || 'Błąd podczas uploadu zdjęć', 'error');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      await uploadFiles(files);
       event.target.value = '';
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (canManage) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!canManage) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      await uploadFiles(files);
     }
   };
 
@@ -209,73 +250,102 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
         </div>
       )}
 
-      {/* Gallery grid */}
-      {images.length === 0 ? (
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-          <ImageIcon className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60">Brak zdjęć</p>
-          {canManage && (
-            <p className="text-sm text-[#e5e4e2]/40 mt-2">
-              Kliknij "Dodaj zdjęcia" aby rozpocząć
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {images.map((image) => (
-            <div
-              key={image.id}
-              className="relative group bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden cursor-pointer hover:border-[#d3bb73]/30 transition-colors"
-              onClick={() => setSelectedImage(image)}
-            >
-              <div className="aspect-square relative">
-                <img
-                  src={image.image_url}
-                  alt={image.title || 'Vehicle image'}
-                  className="w-full h-full object-cover"
-                />
-                {image.is_primary && (
-                  <div className="absolute top-2 left-2 bg-[#d3bb73] text-[#1c1f33] px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-current" />
-                    Główne
-                  </div>
-                )}
-                {canManage && (
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    {!image.is_primary && (
+      {/* Gallery grid with drag & drop */}
+      <div
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={`relative transition-all ${
+          isDragging ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119]' : ''
+        }`}
+      >
+        {/* Drag overlay */}
+        {isDragging && canManage && (
+          <div className="absolute inset-0 bg-[#d3bb73]/10 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]">
+            <div className="text-center">
+              <Upload className="w-16 h-16 text-[#d3bb73] mx-auto mb-4" />
+              <p className="text-xl font-semibold text-[#d3bb73]">Upuść zdjęcia tutaj</p>
+              <p className="text-sm text-[#e5e4e2]/60 mt-2">
+                Maksymalnie 10MB na zdjęcie
+              </p>
+            </div>
+          </div>
+        )}
+
+        {images.length === 0 ? (
+          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
+            <ImageIcon className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <p className="text-[#e5e4e2]/60">Brak zdjęć</p>
+            {canManage && (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm text-[#e5e4e2]/40">
+                  Kliknij "Dodaj zdjęcia" lub przeciągnij pliki tutaj
+                </p>
+                <div className="flex items-center justify-center gap-2 text-xs text-[#e5e4e2]/30">
+                  <Upload className="w-4 h-4" />
+                  <span>Obsługuje przeciąganie i upuszczanie</span>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {images.map((image) => (
+              <div
+                key={image.id}
+                className="relative group bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden cursor-pointer hover:border-[#d3bb73]/30 transition-colors"
+                onClick={() => setSelectedImage(image)}
+              >
+                <div className="aspect-square relative">
+                  <img
+                    src={image.image_url}
+                    alt={image.title || 'Vehicle image'}
+                    className="w-full h-full object-cover"
+                  />
+                  {image.is_primary && (
+                    <div className="absolute top-2 left-2 bg-[#d3bb73] text-[#1c1f33] px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
+                      <Star className="w-3 h-3 fill-current" />
+                      Główne
+                    </div>
+                  )}
+                  {canManage && (
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                      {!image.is_primary && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSetPrimary(image.id);
+                          }}
+                          className="bg-[#1c1f33]/90 hover:bg-[#d3bb73] text-[#e5e4e2] hover:text-[#1c1f33] p-2 rounded transition-colors"
+                          title="Ustaw jako główne"
+                        >
+                          <StarOff className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleSetPrimary(image.id);
+                          handleDelete(image);
                         }}
-                        className="bg-[#1c1f33]/90 hover:bg-[#d3bb73] text-[#e5e4e2] hover:text-[#1c1f33] p-2 rounded transition-colors"
-                        title="Ustaw jako główne"
+                        className="bg-[#1c1f33]/90 hover:bg-red-500 text-[#e5e4e2] p-2 rounded transition-colors"
+                        title="Usuń"
                       >
-                        <StarOff className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(image);
-                      }}
-                      className="bg-[#1c1f33]/90 hover:bg-red-500 text-[#e5e4e2] p-2 rounded transition-colors"
-                      title="Usuń"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    </div>
+                  )}
+                </div>
+                {image.title && (
+                  <div className="p-2 bg-[#1c1f33]">
+                    <p className="text-sm text-[#e5e4e2] truncate">{image.title}</p>
                   </div>
                 )}
               </div>
-              {image.title && (
-                <div className="p-2 bg-[#1c1f33]">
-                  <p className="text-sm text-[#e5e4e2] truncate">{image.title}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Lightbox modal */}
       {selectedImage && (
