@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Trash2, CreditCard as Edit, Calendar, User, GripVertical, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import TaskCard from './TaskCard';
 
 interface Task {
@@ -48,6 +49,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { showSnackbar } = useSnackbar();
+  const { currentEmployee } = useCurrentEmployee();
 
   const [formData, setFormData] = useState({
     title: '',
@@ -233,6 +235,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         event_id: eventId,
         is_private: false,
         owner_id: null,
+        created_by: currentEmployee?.id,
       };
 
       if (editingTask) {

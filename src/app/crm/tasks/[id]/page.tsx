@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -397,6 +397,33 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleUnassignSelf = async () => {
+    if (!currentEmployee) return;
+
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz wypisać się z tego zadania?',
+      'Wypisz się'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('task_assignees')
+        .delete()
+        .eq('task_id', taskId)
+        .eq('employee_id', currentEmployee.id);
+
+      if (error) throw error;
+
+      showSnackbar('Wypisano z zadania', 'success');
+      fetchTask();
+    } catch (error) {
+      console.error('Error unassigning:', error);
+      showSnackbar('Błąd podczas wypisywania się', 'error');
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -519,13 +546,29 @@ export default function TaskDetailPage() {
             <div className="flex items-center gap-3">
               <span className="text-sm text-[#e5e4e2]/60">Przypisane osoby:</span>
               <TaskAssigneeAvatars assignees={task.task_assignees} maxVisible={10} />
+              {currentEmployee && task.task_assignees.some(a => a.employee_id === currentEmployee.id) && (
+                <button
+                  onClick={handleUnassignSelf}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                  title="Wypisz się z zadania"
+                >
+                  <UserMinus className="w-3.5 h-3.5" />
+                  Wypisz się
+                </button>
+              )}
             </div>
           )}
         </div>
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+      <div
+        className="overflow-y-auto p-6 space-y-4"
+        style={{
+          minHeight: chatItems.length === 0 ? '200px' : '200px',
+          maxHeight: '500px'
+        }}
+      >
 
         {chatItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[#e5e4e2]/40">
