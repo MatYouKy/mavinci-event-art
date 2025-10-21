@@ -260,17 +260,18 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
           isDragging ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119]' : ''
         }`}
       >
-        {/* Drag overlay */}
+        {/* Drag overlay - minimalna warstwa wizualna */}
         {isDragging && canManage && (
-          <div className="absolute inset-0 bg-[#d3bb73]/10 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]">
-            <div className="text-center">
-              <Upload className="w-16 h-16 text-[#d3bb73] mx-auto mb-4" />
-              <p className="text-xl font-semibold text-[#d3bb73]">Upuść zdjęcia tutaj</p>
-              <p className="text-sm text-[#e5e4e2]/60 mt-2">
-                Maksymalnie 10MB na zdjęcie
-              </p>
+          <>
+            {/* Subtelna ramka i hint na górze */}
+            <div className="absolute inset-0 border-2 border-dashed border-[#d3bb73] rounded-lg pointer-events-none z-10" />
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg shadow-lg z-20 pointer-events-none">
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                <span className="font-semibold">Upuść zdjęcia tutaj</span>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
         {images.length === 0 ? (
