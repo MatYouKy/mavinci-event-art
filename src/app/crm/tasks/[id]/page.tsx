@@ -712,39 +712,6 @@ export default function TaskDetailPage() {
       {/* Task Details Section - Scrollable */}
       <div className="flex-shrink-0 bg-[#0f1119] border-b-4 border-[#d3bb73]/20 max-h-[60vh] overflow-y-auto">
         <div className="p-6 space-y-6">
-          {/* Thumbnail */}
-          <div className="flex items-start gap-4">
-            {task.thumbnail_url ? (
-              <div className="relative group">
-                <img
-                  src={task.thumbnail_url}
-                  alt="Task thumbnail"
-                  className="w-48 h-32 object-cover rounded-lg border-2 border-[#d3bb73]/20"
-                />
-                <button
-                  onClick={handleRemoveThumbnail}
-                  className="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <Trash2 className="w-4 h-4 text-white" />
-                </button>
-              </div>
-            ) : (
-              <label className="w-48 h-32 border-2 border-dashed border-[#d3bb73]/30 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-[#d3bb73]/5 transition-colors">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleThumbnailUpload}
-                  className="hidden"
-                  disabled={uploadingThumbnail}
-                />
-                <ImageIcon className="w-8 h-8 text-[#d3bb73]/50 mb-2" />
-                <span className="text-xs text-[#e5e4e2]/50">
-                  {uploadingThumbnail ? 'Przesyłanie...' : 'Dodaj zdjęcie'}
-                </span>
-              </label>
-            )}
-          </div>
-
           {isEditing ? (
             <>
               {/* Edit Mode */}
@@ -771,6 +738,42 @@ export default function TaskDetailPage() {
                     rows={4}
                     className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50 resize-none"
                   />
+                </div>
+
+                {/* Thumbnail in Edit Mode */}
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                    Zdjęcie
+                  </label>
+                  {task.thumbnail_url ? (
+                    <div className="relative group inline-block">
+                      <img
+                        src={task.thumbnail_url}
+                        alt="Task thumbnail"
+                        className="w-48 h-32 object-cover rounded-lg border-2 border-[#d3bb73]/20"
+                      />
+                      <button
+                        onClick={handleRemoveThumbnail}
+                        className="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-4 h-4 text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="w-48 h-32 border-2 border-dashed border-[#d3bb73]/30 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-[#d3bb73]/5 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleThumbnailUpload}
+                        className="hidden"
+                        disabled={uploadingThumbnail}
+                      />
+                      <ImageIcon className="w-8 h-8 text-[#d3bb73]/50 mb-2" />
+                      <span className="text-xs text-[#e5e4e2]/50">
+                        {uploadingThumbnail ? 'Przesyłanie...' : 'Dodaj zdjęcie'}
+                      </span>
+                    </label>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -834,6 +837,16 @@ export default function TaskDetailPage() {
                   </div>
                 )}
 
+                {task.thumbnail_url && (
+                  <div>
+                    <img
+                      src={task.thumbnail_url}
+                      alt="Task thumbnail"
+                      className="w-48 h-32 object-cover rounded-lg border-2 border-[#d3bb73]/20"
+                    />
+                  </div>
+                )}
+
                 <div className="flex items-center gap-4 flex-wrap">
                   {task.creator && (
                     <div className="flex items-center gap-2">
@@ -855,7 +868,7 @@ export default function TaskDetailPage() {
                   )}
                 </div>
 
-                {/* Assignees */}
+                {/* Assignees - Only Avatars */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-[#e5e4e2]/60">Przypisane osoby</h3>
@@ -871,7 +884,8 @@ export default function TaskDetailPage() {
                     {task.task_assignees.map((assignee) => (
                       <div
                         key={assignee.employee_id}
-                        className="flex items-center gap-2 px-3 py-2 bg-[#1a1d2e] border border-[#d3bb73]/10 rounded-lg group"
+                        className="relative group"
+                        title={`${assignee.employees.name} ${assignee.employees.surname}`}
                       >
                         <EmployeeAvatar
                           employee={{
@@ -880,17 +894,15 @@ export default function TaskDetailPage() {
                             name: assignee.employees.name,
                             surname: assignee.employees.surname,
                           }}
-                          size={24}
+                          size={40}
                         />
-                        <span className="text-sm text-[#e5e4e2]">
-                          {assignee.employees.name} {assignee.employees.surname}
-                        </span>
                         {(task.created_by === currentEmployee?.id || currentEmployee?.id === assignee.employee_id) && (
                           <button
                             onClick={() => handleRemoveAssignee(assignee.employee_id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                            className="absolute -top-1 -right-1 p-1 bg-red-500 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            title="Usuń"
                           >
-                            <X className="w-3.5 h-3.5 text-red-400 hover:text-red-300" />
+                            <X className="w-3 h-3 text-white" />
                           </button>
                         )}
                       </div>
