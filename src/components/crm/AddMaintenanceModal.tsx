@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Wrench, Loader2, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -38,12 +38,31 @@ export default function AddMaintenanceModal({
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [serviceType, setServiceType] = useState<string>('inspection');
+  const [employees, setEmployees] = useState<Array<{ id: string; full_name: string }>>([]);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, full_name')
+        .order('full_name');
+
+      if (error) throw error;
+      setEmployees(data || []);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+    }
+  };
 
   // Kontrola techniczna
   const [inspectionData, setInspectionData] = useState({
     inspection_date: new Date().toISOString().split('T')[0],
     certificate_number: '',
-    inspector_name: '',
+    performed_by: '',
     service_provider: '',
     cost: '',
     odometer_reading: currentMileage,
@@ -133,7 +152,7 @@ export default function AddMaintenanceModal({
           inspection_date: inspectionData.inspection_date,
           valid_until: validUntil.toISOString().split('T')[0],
           certificate_number: inspectionData.certificate_number || null,
-          inspector_name: inspectionData.inspector_name || null,
+          performed_by: inspectionData.performed_by || null,
           service_provider: inspectionData.service_provider || null,
           cost: inspectionData.cost ? parseFloat(inspectionData.cost) : 0,
           odometer_reading: parseInt(inspectionData.odometer_reading.toString()),
@@ -329,13 +348,19 @@ export default function AddMaintenanceModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Diagnostyk</label>
-                  <input
-                    type="text"
-                    value={inspectionData.inspector_name}
-                    onChange={(e) => setInspectionData({ ...inspectionData, inspector_name: e.target.value })}
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Wykonane przez</label>
+                  <select
+                    value={inspectionData.performed_by}
+                    onChange={(e) => setInspectionData({ ...inspectionData, performed_by: e.target.value })}
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                  />
+                  >
+                    <option value="">-- Wybierz pracownika --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.full_name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS periodic_inspections (
   inspection_date date NOT NULL,
   valid_until date NOT NULL,
   certificate_number text,
-  inspector_name text,
+  performed_by uuid REFERENCES employees(id) ON DELETE SET NULL,
   service_provider text,
   passed boolean DEFAULT true,
   defects_noted text,
@@ -130,14 +130,36 @@ CREATE POLICY "Fleet managers can view inspections"
     )
   );
 
-CREATE POLICY "Fleet managers can manage inspections"
-  ON periodic_inspections FOR ALL
+CREATE POLICY "Fleet managers can insert inspections"
+  ON periodic_inspections FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Fleet managers can update inspections"
+  ON periodic_inspections FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
       AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Only admins can delete inspections"
+  ON periodic_inspections FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND employees.is_admin = true
     )
   );
 
@@ -153,14 +175,36 @@ CREATE POLICY "Fleet managers can view oil changes"
     )
   );
 
-CREATE POLICY "Fleet managers can manage oil changes"
-  ON oil_changes FOR ALL
+CREATE POLICY "Fleet managers can insert oil changes"
+  ON oil_changes FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Fleet managers can update oil changes"
+  ON oil_changes FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
       AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Only admins can delete oil changes"
+  ON oil_changes FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND employees.is_admin = true
     )
   );
 
@@ -177,8 +221,20 @@ CREATE POLICY "Fleet managers can view parts"
     )
   );
 
-CREATE POLICY "Fleet managers can manage parts"
-  ON oil_change_parts FOR ALL
+CREATE POLICY "Fleet managers can insert parts"
+  ON oil_change_parts FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM employees e
+      JOIN oil_changes oc ON oc.id = oil_change_parts.oil_change_id
+      WHERE e.id = auth.uid()
+      AND 'fleet_manage' = ANY(e.permissions)
+    )
+  );
+
+CREATE POLICY "Fleet managers can update parts"
+  ON oil_change_parts FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
@@ -186,6 +242,17 @@ CREATE POLICY "Fleet managers can manage parts"
       JOIN oil_changes oc ON oc.id = oil_change_parts.oil_change_id
       WHERE e.id = auth.uid()
       AND 'fleet_manage' = ANY(e.permissions)
+    )
+  );
+
+CREATE POLICY "Only admins can delete parts"
+  ON oil_change_parts FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND employees.is_admin = true
     )
   );
 
@@ -201,14 +268,36 @@ CREATE POLICY "Fleet managers can view timing belt changes"
     )
   );
 
-CREATE POLICY "Fleet managers can manage timing belt changes"
-  ON timing_belt_changes FOR ALL
+CREATE POLICY "Fleet managers can insert timing belt changes"
+  ON timing_belt_changes FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Fleet managers can update timing belt changes"
+  ON timing_belt_changes FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
       AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Only admins can delete timing belt changes"
+  ON timing_belt_changes FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND employees.is_admin = true
     )
   );
 
@@ -224,14 +313,36 @@ CREATE POLICY "Fleet managers can view issues"
     )
   );
 
-CREATE POLICY "Fleet managers can manage issues"
-  ON vehicle_issues FOR ALL
+CREATE POLICY "Fleet managers can insert issues"
+  ON vehicle_issues FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Fleet managers can update issues"
+  ON vehicle_issues FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
       AND 'fleet_manage' = ANY(employees.permissions)
+    )
+  );
+
+CREATE POLICY "Only admins can delete issues"
+  ON vehicle_issues FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND employees.is_admin = true
     )
   );
 
