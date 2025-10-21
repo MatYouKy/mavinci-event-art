@@ -22,9 +22,11 @@ import {
   TrendingDown,
   Activity,
   Image as ImageIcon,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddMaintenanceModal from '@/components/crm/AddMaintenanceModal';
 import AddInsuranceModal from '@/components/crm/AddInsuranceModal';
@@ -125,6 +127,7 @@ export default function VehicleDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const { canManageModule } = useCurrentEmployee();
   const canManage = canManageModule('fleet');
 
@@ -252,6 +255,36 @@ export default function VehicleDetailPage() {
     return `${amount.toFixed(2)} zł`;
   };
 
+  const handleEndUsage = async () => {
+    if (!vehicle?.in_use_event_id) return;
+
+    const confirmed = await showConfirm(
+      'Zakończ użytkowanie pojazdu',
+      'Czy na pewno chcesz zakończyć użytkowanie tego pojazdu? Pojazd zostanie zwolniony z wydarzenia.',
+      'Zakończ',
+      'Anuluj'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('event_vehicles')
+        .update({ is_in_use: false })
+        .eq('vehicle_id', vehicleId)
+        .eq('event_id', vehicle.in_use_event_id)
+        .eq('is_in_use', true);
+
+      if (error) throw error;
+
+      showSnackbar('Użytkowanie pojazdu zostało zakończone', 'success');
+      fetchVehicle();
+    } catch (error) {
+      console.error('Error ending vehicle usage:', error);
+      showSnackbar('Błąd podczas kończenia użytkowania pojazdu', 'error');
+    }
+  };
+
   const getStatusBadge = (status: string, inUse: boolean = false) => {
     if (inUse) {
       return (
@@ -337,21 +370,41 @@ export default function VehicleDetailPage() {
             {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
           </p>
           {vehicle.in_use && vehicle.in_use_by && (
-            <p className="text-[#d3bb73] text-sm mt-1 flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Użytkowany przez: {vehicle.in_use_by}
-              {vehicle.in_use_event && (
-                <span className="text-[#e5e4e2]/60">
-                  {' • '}
-                  <button
-                    onClick={() => router.push(`/crm/events/${vehicle.in_use_event_id}`)}
-                    className="hover:underline"
-                  >
-                    {vehicle.in_use_event}
-                  </button>
-                </span>
+            <div className="flex items-center gap-3 mt-2 p-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg">
+              <div className="flex-1">
+                <p className="text-[#d3bb73] text-sm flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Użytkowany przez: {vehicle.in_use_by}
+                  {vehicle.in_use_event && (
+                    <span className="text-[#e5e4e2]/60">
+                      {' • '}
+                      <button
+                        onClick={() => router.push(`/crm/events/${vehicle.in_use_event_id}`)}
+                        className="hover:underline"
+                      >
+                        {vehicle.in_use_event}
+                      </button>
+                    </span>
+                  )}
+                </p>
+                {vehicle.pickup_timestamp && (
+                  <p className="text-xs text-[#e5e4e2]/60 mt-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Odbiór: {new Date(vehicle.pickup_timestamp).toLocaleString('pl-PL')}
+                  </p>
+                )}
+              </div>
+              {canManage && (
+                <button
+                  onClick={handleEndUsage}
+                  className="flex items-center gap-2 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors text-sm font-medium"
+                  title="Zakończ użytkowanie pojazdu"
+                >
+                  <X className="w-4 h-4" />
+                  Zakończ użytkowanie
+                </button>
               )}
-            </p>
+            </div>
           )}
         </div>
         {canManage && (
