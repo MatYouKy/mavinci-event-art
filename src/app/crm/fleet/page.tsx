@@ -53,6 +53,8 @@ interface Vehicle {
   assigned_to: string | null;
   assigned_employee_name: string | null;
   assigned_employee_surname: string | null;
+  assigned_employee_avatar_url: string | null;
+  assigned_employee_avatar_metadata: any;
   upcoming_services: number;
   expiring_insurance: number;
   yearly_maintenance_cost: number;
@@ -64,6 +66,8 @@ interface Vehicle {
   in_use_driver_id: string | null;
   in_use_driver_name: string | null;
   in_use_driver_surname: string | null;
+  in_use_driver_avatar_url: string | null;
+  in_use_driver_avatar_metadata: any;
 }
 
 export default function FleetPage() {
@@ -137,12 +141,15 @@ export default function FleetPage() {
             employee_id,
             status,
             employees (
+              id,
               name,
-              surname
+              surname,
+              avatar_url,
+              avatar_metadata
             )
           )
         `)
-        .order('name', { ascending: true });
+        .order('name', { ascending: true});
 
       if (vehiclesError) throw vehiclesError;
 
@@ -220,7 +227,7 @@ export default function FleetPage() {
             .from('event_vehicles')
             .select(`
               id,
-              driver:employees!event_vehicles_driver_id_fkey(id, name, surname),
+              driver:employees!event_vehicles_driver_id_fkey(id, name, surname, avatar_url, avatar_metadata),
               event:events(name)
             `)
             .eq('vehicle_id', vehicle.id)
@@ -236,6 +243,8 @@ export default function FleetPage() {
             assigned_to: activeAssignment?.employee_id || null,
             assigned_employee_name: activeAssignment?.employees?.name || null,
             assigned_employee_surname: activeAssignment?.employees?.surname || null,
+            assigned_employee_avatar_url: activeAssignment?.employees?.avatar_url || null,
+            assigned_employee_avatar_metadata: activeAssignment?.employees?.avatar_metadata || null,
             upcoming_services: upcomingServices || 0,
             expiring_insurance: expiringInsurance || 0,
             yearly_maintenance_cost: yearlyMaintenanceCost,
@@ -249,6 +258,8 @@ export default function FleetPage() {
             in_use_driver_id: inUseData?.driver?.id || null,
             in_use_driver_name: inUseData?.driver?.name || null,
             in_use_driver_surname: inUseData?.driver?.surname || null,
+            in_use_driver_avatar_url: inUseData?.driver?.avatar_url || null,
+            in_use_driver_avatar_metadata: inUseData?.driver?.avatar_metadata || null,
           };
         })
       );
@@ -365,6 +376,41 @@ export default function FleetPage() {
       trailer: <Car className="w-5 h-5" />,
     };
     return icons[category as keyof typeof icons] || <Car className="w-5 h-5" />;
+  };
+
+  const renderAvatar = (
+    name: string | null,
+    surname: string | null,
+    avatarUrl: string | null,
+    avatarMetadata: any,
+    size: number = 28
+  ) => {
+    const position = avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
+    const objectFit = avatarMetadata?.desktop?.objectFit || 'cover';
+    const initials = name && surname ? `${name[0]}${surname[0]}`.toUpperCase() : '?';
+
+    return (
+      <div
+        className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer hover:border-[#d3bb73]/40 transition-colors"
+        style={{ width: `${size}px`, height: `${size}px` }}
+      >
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={`${name} ${surname}`}
+            className="w-full h-full"
+            style={{
+              objectFit: objectFit as any,
+              transform: `translate(${position.posX}%, ${position.posY}%) scale(${position.scale})`,
+            }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-xs font-medium">
+            {initials}
+          </div>
+        )}
+      </div>
+    );
   };
 
   if (loading) {
@@ -797,9 +843,49 @@ export default function FleetPage() {
                       {vehicle.current_mileage?.toLocaleString() || 0} km
                     </td>
                     <td className="p-4 text-[#e5e4e2]/80">
-                      {vehicle.assigned_employee_name
-                        ? `${vehicle.assigned_employee_name} ${vehicle.assigned_employee_surname}`
-                        : '-'}
+                      {vehicle.assigned_employee_name ? (
+                        <Popover
+                          content={
+                            <div className="p-3 min-w-[200px]">
+                              <div className="flex items-center gap-3">
+                                <div onClick={() => router.push(`/crm/employees/${vehicle.assigned_to}`)}>
+                                  {renderAvatar(
+                                    vehicle.assigned_employee_name,
+                                    vehicle.assigned_employee_surname,
+                                    vehicle.assigned_employee_avatar_url,
+                                    vehicle.assigned_employee_avatar_metadata,
+                                    48
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <button
+                                    onClick={() => router.push(`/crm/employees/${vehicle.assigned_to}`)}
+                                    className="text-[#e5e4e2] hover:text-[#d3bb73] font-medium text-sm transition-colors truncate block w-full text-left"
+                                  >
+                                    {vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}
+                                  </button>
+                                  <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                                    Kliknij aby przejść do profilu
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          }
+                        >
+                          <div className="flex items-center gap-2">
+                            {renderAvatar(
+                              vehicle.assigned_employee_name,
+                              vehicle.assigned_employee_surname,
+                              vehicle.assigned_employee_avatar_url,
+                              vehicle.assigned_employee_avatar_metadata,
+                              28
+                            )}
+                            <span>{vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}</span>
+                          </div>
+                        </Popover>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
@@ -809,16 +895,15 @@ export default function FleetPage() {
                             content={
                               <div className="p-3 min-w-[200px]">
                                 <div className="flex items-center gap-3">
-                                  <button
-                                    onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}
-                                    className="relative rounded-full border-2 border-[#d3bb73]/20 bg-[#0f1119] overflow-hidden flex-shrink-0 hover:border-[#d3bb73]/40 transition-colors"
-                                    style={{ width: '48px', height: '48px' }}
-                                    title="Zobacz profil"
-                                  >
-                                    <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-sm font-medium">
-                                      {vehicle.in_use_driver_name?.[0]}{vehicle.in_use_driver_surname?.[0]}
-                                    </div>
-                                  </button>
+                                  <div onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}>
+                                    {renderAvatar(
+                                      vehicle.in_use_driver_name,
+                                      vehicle.in_use_driver_surname,
+                                      vehicle.in_use_driver_avatar_url,
+                                      vehicle.in_use_driver_avatar_metadata,
+                                      48
+                                    )}
+                                  </div>
                                   <div className="flex-1 min-w-0">
                                     <button
                                       onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}
@@ -834,14 +919,13 @@ export default function FleetPage() {
                               </div>
                             }
                           >
-                            <div
-                              className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer hover:border-[#d3bb73]/40 transition-colors"
-                              style={{ width: '28px', height: '28px' }}
-                            >
-                              <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-xs font-medium">
-                                {vehicle.in_use_driver_name?.[0]}{vehicle.in_use_driver_surname?.[0]}
-                              </div>
-                            </div>
+                            {renderAvatar(
+                              vehicle.in_use_driver_name,
+                              vehicle.in_use_driver_surname,
+                              vehicle.in_use_driver_avatar_url,
+                              vehicle.in_use_driver_avatar_metadata,
+                              28
+                            )}
                           </Popover>
                         )}
                       </div>
