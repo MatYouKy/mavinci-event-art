@@ -221,10 +221,10 @@ export default function VehicleDetailPage() {
           .order('change_date', { ascending: false })
           .limit(10),
         supabase
-          .from('maintenance_repairs')
+          .from('maintenance_records')
           .select('*')
           .eq('vehicle_id', vehicleId)
-          .order('reported_date', { ascending: false })
+          .order('date', { ascending: false })
           .limit(10),
         supabase
           .from('insurance_policies')
@@ -311,8 +311,8 @@ export default function VehicleDetailPage() {
         })),
         ...(repairsRes.data || []).map((r: any) => ({
           id: r.id,
-          type: r.repair_type,
-          date: r.reported_date,
+          type: r.type || 'Naprawa',
+          date: r.date,
           odometer_reading: r.odometer_reading,
           title: r.title,
           description: r.description,
@@ -322,7 +322,9 @@ export default function VehicleDetailPage() {
           total_cost: r.total_cost || 0,
           status: r.status,
           notes: r.notes,
-          source: 'maintenance_repairs' as const,
+          next_service_date: r.next_service_date,
+          next_service_mileage: r.next_service_mileage,
+          source: 'maintenance_records' as const,
         })),
       ];
 

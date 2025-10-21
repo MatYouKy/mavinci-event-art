@@ -163,6 +163,13 @@ export default function AddMaintenanceModal({
 
         if (error) throw error;
 
+        // Usuń stare alerty o przeglądzie dla tego pojazdu
+        await supabase
+          .from('vehicle_alerts')
+          .delete()
+          .eq('vehicle_id', vehicleId)
+          .eq('alert_type', 'inspection');
+
         showSnackbar('Kontrola techniczna została dodana', 'success');
 
       } else if (serviceType === 'oil_change') {

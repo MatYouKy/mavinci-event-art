@@ -27,21 +27,61 @@ const VehicleAlertsWidget = ({ vehicleId, onAlertClick }: VehicleAlertsWidgetPro
 
   useEffect(() => {
     fetchAlerts();
+
+    // Subscribe to realtime changes
+    const setupSubscription = async () => {
+      const { createClient } = await import('@/lib/supabase');
+      const supabase = createClient();
+
+      const channel = supabase
+        .channel(`vehicle_alerts_${vehicleId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'vehicle_alerts',
+            filter: `vehicle_id=eq.${vehicleId}`,
+          },
+          () => {
+            fetchAlerts();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    setupSubscription();
   }, [vehicleId]);
 
   const fetchAlerts = async () => {
-    // TODO: Replace with actual API call
-    // const { data } = await supabase
-    //   .from('vehicle_alerts')
-    //   .select('*')
-    //   .eq('vehicle_id', vehicleId)
-    //   .eq('is_active', true)
-    //   .order('priority', { ascending: false })
-    //   .order('created_at', { ascending: false });
+    try {
+      const { createClient } = await import('@/lib/supabase');
+      const supabase = createClient();
 
-    // Przykładowe dane - usuń po podłączeniu do API
-    setAlerts([]);
-    setLoading(false);
+      const { data, error } = await supabase
+        .from('vehicle_alerts')
+        .select('*')
+        .eq('vehicle_id', vehicleId)
+        .eq('is_active', true)
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching alerts:', error);
+        setAlerts([]);
+      } else {
+        setAlerts(data || []);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getIcon = (iconName: string) => {
