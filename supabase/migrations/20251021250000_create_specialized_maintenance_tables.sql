@@ -159,7 +159,7 @@ CREATE POLICY "Only admins can delete inspections"
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
-      AND employees.is_admin = true
+      AND 'admin' = ANY(employees.permissions)
     )
   );
 
@@ -204,7 +204,7 @@ CREATE POLICY "Only admins can delete oil changes"
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
-      AND employees.is_admin = true
+      AND 'admin' = ANY(employees.permissions)
     )
   );
 
@@ -252,7 +252,7 @@ CREATE POLICY "Only admins can delete parts"
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
-      AND employees.is_admin = true
+      AND 'admin' = ANY(employees.permissions)
     )
   );
 
@@ -297,7 +297,7 @@ CREATE POLICY "Only admins can delete timing belt changes"
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
-      AND employees.is_admin = true
+      AND 'admin' = ANY(employees.permissions)
     )
   );
 
@@ -342,7 +342,7 @@ CREATE POLICY "Only admins can delete issues"
     EXISTS (
       SELECT 1 FROM employees
       WHERE employees.id = auth.uid()
-      AND employees.is_admin = true
+      AND 'admin' = ANY(employees.permissions)
     )
   );
 

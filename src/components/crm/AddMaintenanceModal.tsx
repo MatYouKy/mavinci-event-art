@@ -98,7 +98,9 @@ export default function AddMaintenanceModal({
     description: '',
     repair_type: 'repair',
     severity: 'medium',
+    status: 'completed',
     reported_date: new Date().toISOString().split('T')[0],
+    estimated_completion_date: '',
     odometer_reading: currentMileage,
     service_provider: '',
     labor_cost: '',
@@ -241,15 +243,16 @@ export default function AddMaintenanceModal({
           repair_type: repairData.repair_type,
           severity: repairData.severity,
           title: repairData.title,
-          description: repairData.description + '\n\nNaprawione elementy:\n' +
-            repairItems.map((item, i) => `${i + 1}. ${item.description} (${item.part_number}) - ${item.part_cost} zł`).join('\n'),
+          description: repairData.description + (repairData.status === 'completed' ? '\n\nNaprawione elementy:\n' +
+            repairItems.map((item, i) => `${i + 1}. ${item.description} (${item.part_number}) - ${item.part_cost} zł`).join('\n') : ''),
           reported_date: repairData.reported_date,
-          completed_date: repairData.reported_date,
+          completed_date: repairData.status === 'completed' ? repairData.reported_date : null,
+          estimated_completion_date: repairData.estimated_completion_date || null,
           odometer_reading: parseInt(repairData.odometer_reading.toString()),
           service_provider: repairData.service_provider || null,
           labor_cost: repairData.labor_cost ? parseFloat(repairData.labor_cost) : 0,
           parts_cost: totalPartsCost,
-          status: 'completed',
+          status: repairData.status,
           notes: repairData.notes || null,
         }]);
 
@@ -636,7 +639,7 @@ export default function AddMaintenanceModal({
           {/* INNE NAPRAWY */}
           {serviceType === 'repair' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
                     Tytuł naprawy <span className="text-red-400">*</span>
@@ -649,6 +652,19 @@ export default function AddMaintenanceModal({
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
                     required
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Status</label>
+                  <select
+                    value={repairData.status}
+                    onChange={(e) => setRepairData({ ...repairData, status: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  >
+                    <option value="scheduled">Zaplanowana</option>
+                    <option value="in_progress">W trakcie</option>
+                    <option value="completed">Zakończona</option>
+                    <option value="cancelled">Anulowana</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Poziom wagi</label>
@@ -674,7 +690,24 @@ export default function AddMaintenanceModal({
                 />
               </div>
 
-              <div>
+              {repairData.status === 'scheduled' && (
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    Szacowana data naprawy
+                  </label>
+                  <input
+                    type="date"
+                    value={repairData.estimated_completion_date}
+                    onChange={(e) => setRepairData({ ...repairData, estimated_completion_date: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  />
+                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                    Data do której planowana jest naprawa
+                  </p>
+                </div>
+              )}
+
+              {repairData.status === 'completed' && <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-[#e5e4e2]">Naprawione elementy</label>
                   <button
@@ -732,7 +765,7 @@ export default function AddMaintenanceModal({
                     </div>
                   ))}
                 </div>
-              </div>
+              </div>}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
