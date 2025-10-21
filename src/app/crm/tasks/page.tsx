@@ -438,7 +438,7 @@ export default function TasksPage() {
 
   const handleDeleteTask = async (taskId: string) => {
     const confirmed = await showConfirm(
-      'Czy na pewno chcesz usunąć to zadanie? Ta operacja jest nieodwracalna.',
+      'Czy na pewno chcesz usunąć to zadanie? Usunięte zostaną również wszystkie powiązane wpisy czasu pracy. Ta operacja jest nieodwracalna.',
       'Usuń zadanie'
     );
 
@@ -454,9 +454,9 @@ export default function TasksPage() {
 
       showSnackbar('Zadanie zostało usunięte', 'success');
       fetchTasks();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting task:', error);
-      showSnackbar('Błąd podczas usuwania zadania', 'error');
+      showSnackbar(error.message || 'Błąd podczas usuwania zadania', 'error');
     }
   };
 

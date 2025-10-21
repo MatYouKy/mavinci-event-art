@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar, Play, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 
 interface Task {
@@ -36,6 +37,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [taskToStart, setTaskToStart] = useState<Task | null>(null);
   const [activeTimer, setActiveTimer] = useState<any>(null);
@@ -434,7 +436,12 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć to zadanie?')) return;
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć to zadanie? Usunięte zostaną również wszystkie powiązane wpisy czasu pracy. Ta operacja jest nieodwracalna.',
+      'Usuń zadanie'
+    );
+
+    if (!confirmed) return;
 
     try {
       const { error } = await supabase
@@ -446,9 +453,9 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
       fetchTasks();
       showSnackbar('Zadanie zostało usunięte', 'success');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting task:', error);
-      showSnackbar('Błąd podczas usuwania zadania', 'error');
+      showSnackbar(error.message || 'Błąd podczas usuwania zadania', 'error');
     }
   };
 
