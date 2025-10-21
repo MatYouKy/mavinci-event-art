@@ -87,15 +87,18 @@ interface MaintenanceRecord {
   date: string;
   odometer_reading: number;
   title: string;
-  description: string;
-  service_provider: string;
-  labor_cost: number;
-  parts_cost: number;
-  total_cost: number;
-  next_service_date: string;
-  next_service_mileage: number;
-  status: string;
-  notes: string;
+  description?: string;
+  service_provider?: string;
+  labor_cost?: number;
+  parts_cost?: number;
+  total_cost?: number;
+  next_service_date?: string;
+  next_service_mileage?: number;
+  status?: string;
+  notes?: string;
+  valid_until?: string;
+  performed_by?: { name: string; surname: string } | null;
+  source: 'maintenance_records' | 'periodic_inspections' | 'oil_changes' | 'timing_belt_changes' | 'maintenance_repairs';
 }
 
 interface InsurancePolicy {
@@ -185,7 +188,7 @@ export default function VehicleDetailPage() {
     try {
       setLoading(true);
 
-      const [vehicleRes, fuelRes, maintenanceRes, insuranceRes, handoverRes, inUseRes] = await Promise.all([
+      const [vehicleRes, fuelRes, maintenanceRes, inspectionsRes, oilRes, timingBeltRes, repairsRes, insuranceRes, handoverRes, inUseRes] = await Promise.all([
         supabase.from('vehicles').select('*').eq('id', vehicleId).single(),
         supabase
           .from('fuel_entries')
@@ -198,6 +201,30 @@ export default function VehicleDetailPage() {
           .select('*')
           .eq('vehicle_id', vehicleId)
           .order('date', { ascending: false })
+          .limit(10),
+        supabase
+          .from('periodic_inspections')
+          .select('*, performed_by:employees!periodic_inspections_performed_by_fkey(name, surname)')
+          .eq('vehicle_id', vehicleId)
+          .order('inspection_date', { ascending: false })
+          .limit(10),
+        supabase
+          .from('oil_changes')
+          .select('*')
+          .eq('vehicle_id', vehicleId)
+          .order('change_date', { ascending: false })
+          .limit(10),
+        supabase
+          .from('timing_belt_changes')
+          .select('*')
+          .eq('vehicle_id', vehicleId)
+          .order('change_date', { ascending: false })
+          .limit(10),
+        supabase
+          .from('maintenance_repairs')
+          .select('*')
+          .eq('vehicle_id', vehicleId)
+          .order('reported_date', { ascending: false })
           .limit(10),
         supabase
           .from('insurance_policies')
@@ -234,7 +261,75 @@ export default function VehicleDetailPage() {
         pickup_timestamp: inUseRes.data?.pickup_timestamp || null,
       });
       setFuelEntries(fuelRes.data || []);
-      setMaintenanceRecords(maintenanceRes.data || []);
+
+      // Połącz wszystkie wpisy serwisowe
+      const allMaintenance: MaintenanceRecord[] = [
+        ...(maintenanceRes.data || []).map((r: any) => ({ ...r, source: 'maintenance_records' as const })),
+        ...(inspectionsRes.data || []).map((r: any) => ({
+          id: r.id,
+          type: r.inspection_type === 'technical_inspection' ? 'Przegląd techniczny' : 'Przegląd okresowy',
+          date: r.inspection_date,
+          odometer_reading: r.odometer_reading,
+          title: `${r.inspection_type === 'technical_inspection' ? 'Przegląd techniczny' : 'Przegląd okresowy'} - ${r.passed ? 'Pozytywny' : 'Negatywny'}`,
+          description: r.defects_noted || 'Brak uwag',
+          service_provider: r.service_provider,
+          labor_cost: 0,
+          parts_cost: 0,
+          total_cost: r.cost || 0,
+          notes: r.notes,
+          valid_until: r.valid_until,
+          performed_by: r.performed_by,
+          source: 'periodic_inspections' as const,
+        })),
+        ...(oilRes.data || []).map((r: any) => ({
+          id: r.id,
+          type: 'Wymiana oleju',
+          date: r.change_date,
+          odometer_reading: r.odometer_reading,
+          title: 'Wymiana oleju i filtrów',
+          description: `Następna wymiana: ${r.next_change_due_mileage} km lub ${r.next_change_due_date}`,
+          service_provider: r.service_provider,
+          labor_cost: r.labor_cost || 0,
+          parts_cost: r.parts_cost || 0,
+          total_cost: r.total_cost || 0,
+          notes: r.notes,
+          source: 'oil_changes' as const,
+        })),
+        ...(timingBeltRes.data || []).map((r: any) => ({
+          id: r.id,
+          type: 'Wymiana rozrządu',
+          date: r.change_date,
+          odometer_reading: r.odometer_reading,
+          title: 'Wymiana rozrządu',
+          description: `Następna wymiana: ${r.next_change_due_mileage} km`,
+          service_provider: r.service_provider,
+          labor_cost: r.labor_cost || 0,
+          parts_cost: r.parts_cost || 0,
+          total_cost: r.total_cost || 0,
+          notes: r.notes,
+          source: 'timing_belt_changes' as const,
+        })),
+        ...(repairsRes.data || []).map((r: any) => ({
+          id: r.id,
+          type: r.repair_type,
+          date: r.reported_date,
+          odometer_reading: r.odometer_reading,
+          title: r.title,
+          description: r.description,
+          service_provider: r.service_provider,
+          labor_cost: r.labor_cost || 0,
+          parts_cost: r.parts_cost || 0,
+          total_cost: r.total_cost || 0,
+          status: r.status,
+          notes: r.notes,
+          source: 'maintenance_repairs' as const,
+        })),
+      ];
+
+      // Sortuj wszystkie wpisy po dacie
+      allMaintenance.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setMaintenanceRecords(allMaintenance);
       setInsurancePolicies(insuranceRes.data || []);
       setHandoverHistory(handoverRes.data || []);
     } catch (error) {

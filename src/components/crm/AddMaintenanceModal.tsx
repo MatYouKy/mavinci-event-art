@@ -163,10 +163,6 @@ export default function AddMaintenanceModal({
 
         if (error) throw error;
 
-        // Regeneruj alerty
-        await supabase.rpc('generate_vehicle_alerts');
-        await supabase.rpc('update_vehicle_status_from_alerts');
-
         showSnackbar('Kontrola techniczna została dodana', 'success');
 
       } else if (serviceType === 'oil_change') {
@@ -213,9 +209,6 @@ export default function AddMaintenanceModal({
         const { error: partsError } = await supabase.from('oil_change_parts').insert(partsToInsert);
         if (partsError) throw partsError;
 
-        await supabase.rpc('generate_vehicle_alerts');
-        await supabase.rpc('update_vehicle_status_from_alerts');
-
         showSnackbar('Wymiana oleju została dodana', 'success');
 
       } else if (serviceType === 'timing_belt') {
@@ -257,8 +250,6 @@ export default function AddMaintenanceModal({
         }]);
 
         if (error) throw error;
-
-        await supabase.rpc('generate_vehicle_alerts');
         await supabase.rpc('update_vehicle_status_from_alerts');
 
         showSnackbar('Naprawa została dodana', 'success');
