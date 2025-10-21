@@ -321,9 +321,18 @@ export default function FleetPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, inUse: boolean = false) => {
+    if (inUse) {
+      return (
+        <span className="px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 flex items-center gap-1">
+          <Activity className="w-3 h-3" />
+          W użytkowaniu
+        </span>
+      );
+    }
+
     const statusConfig = {
-      active: { label: 'Aktywny', class: 'bg-green-500/20 text-green-400' },
+      active: { label: 'Dostępny', class: 'bg-green-500/20 text-green-400' },
       inactive: { label: 'Nieaktywny', class: 'bg-gray-500/20 text-gray-400' },
       in_service: { label: 'W serwisie', class: 'bg-orange-500/20 text-orange-400' },
       sold: { label: 'Sprzedany', class: 'bg-blue-500/20 text-blue-400' },
@@ -449,7 +458,7 @@ export default function FleetPage() {
             className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
           >
             <option value="all">Wszystkie statusy</option>
-            <option value="active">Aktywny</option>
+            <option value="active">Dostępny</option>
             <option value="inactive">Nieaktywny</option>
             <option value="in_service">W serwisie</option>
             <option value="sold">Sprzedany</option>
@@ -580,7 +589,7 @@ export default function FleetPage() {
                 ) : (
                   <Car className="w-24 h-24 text-[#e5e4e2]/20" />
                 )}
-                <div className="absolute top-2 right-2">{getStatusBadge(vehicle.status)}</div>
+                <div className="absolute top-2 right-2">{getStatusBadge(vehicle.status, vehicle.in_use)}</div>
               </div>
 
               {/* Content */}
@@ -621,14 +630,8 @@ export default function FleetPage() {
                 </div>
 
                 {/* Alerts and Status */}
-                {(vehicle.upcoming_services > 0 || vehicle.expiring_insurance > 0 || vehicle.in_use) && (
+                {(vehicle.upcoming_services > 0 || vehicle.expiring_insurance > 0) && (
                   <div className="flex gap-2 mb-4 flex-wrap">
-                    {vehicle.in_use && (
-                      <div className="flex items-center gap-1 text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded" title={`W użytkowaniu przez ${vehicle.in_use_by} (${vehicle.in_use_event})`}>
-                        <Activity className="w-3 h-3" />
-                        W użytkowaniu
-                      </div>
-                    )}
                     {vehicle.upcoming_services > 0 && (
                       <div className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 px-2 py-1 rounded">
                         <Wrench className="w-3 h-3" />
@@ -750,7 +753,7 @@ export default function FleetPage() {
                         ? `${vehicle.assigned_employee_name} ${vehicle.assigned_employee_surname}`
                         : '-'}
                     </td>
-                    <td className="p-4">{getStatusBadge(vehicle.status)}</td>
+                    <td className="p-4">{getStatusBadge(vehicle.status, vehicle.in_use)}</td>
                     <td className="p-4">
                       <div className="flex gap-2">
                         {vehicle.upcoming_services > 0 && (

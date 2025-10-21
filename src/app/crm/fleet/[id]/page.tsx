@@ -252,9 +252,18 @@ export default function VehicleDetailPage() {
     return `${amount.toFixed(2)} zł`;
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, inUse: boolean = false) => {
+    if (inUse) {
+      return (
+        <span className="px-3 py-1 rounded text-sm bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 flex items-center gap-2">
+          <Activity className="w-4 h-4" />
+          W użytkowaniu
+        </span>
+      );
+    }
+
     const config: Record<string, { label: string; class: string }> = {
-      active: { label: 'Aktywny', class: 'bg-green-500/20 text-green-400' },
+      active: { label: 'Dostępny', class: 'bg-green-500/20 text-green-400' },
       inactive: { label: 'Nieaktywny', class: 'bg-gray-500/20 text-gray-400' },
       in_service: { label: 'W serwisie', class: 'bg-orange-500/20 text-orange-400' },
       completed: { label: 'Zakończony', class: 'bg-green-500/20 text-green-400' },
@@ -322,13 +331,7 @@ export default function VehicleDetailPage() {
           </button>
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-[#e5e4e2]">{vehicle.name}</h1>
-            {getStatusBadge(vehicle.status)}
-            {vehicle.in_use && (
-              <span className="px-3 py-1 rounded-full text-sm bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                W użytkowaniu
-              </span>
-            )}
+            {getStatusBadge(vehicle.status, vehicle.in_use || false)}
           </div>
           <p className="text-[#e5e4e2]/60 mt-1">
             {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
