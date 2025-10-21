@@ -32,6 +32,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRouter } from 'next/navigation';
 import QuickFuelModal from '@/components/crm/QuickFuelModal';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
+import Popover from '@/components/UI/Tooltip';
 import { ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
 
 interface Vehicle {
@@ -60,6 +61,9 @@ interface Vehicle {
   in_use: boolean;
   in_use_by: string | null;
   in_use_event: string | null;
+  in_use_driver_id: string | null;
+  in_use_driver_name: string | null;
+  in_use_driver_surname: string | null;
 }
 
 export default function FleetPage() {
@@ -242,6 +246,9 @@ export default function FleetPage() {
             in_use: !!inUseData,
             in_use_by: inUseData?.driver ? `${inUseData.driver.name} ${inUseData.driver.surname}` : null,
             in_use_event: inUseData?.event?.name || null,
+            in_use_driver_id: inUseData?.driver?.id || null,
+            in_use_driver_name: inUseData?.driver?.name || null,
+            in_use_driver_surname: inUseData?.driver?.surname || null,
           };
         })
       );
@@ -329,7 +336,7 @@ export default function FleetPage() {
   const getStatusBadge = (status: string, inUse: boolean = false) => {
     if (inUse) {
       return (
-        <span className="px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 flex items-center gap-1">
+        <span className="px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 inline-flex items-center gap-1 w-auto whitespace-nowrap">
           <Activity className="w-3 h-3" />
           W użytkowaniu
         </span>
@@ -345,7 +352,7 @@ export default function FleetPage() {
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
-    return <span className={`px-2 py-1 rounded text-xs ${config.class}`}>{config.label}</span>;
+    return <span className={`px-2 py-1 rounded text-xs inline-block w-auto whitespace-nowrap ${config.class}`}>{config.label}</span>;
   };
 
   const getCategoryIcon = (category: string) => {
@@ -795,12 +802,47 @@ export default function FleetPage() {
                         : '-'}
                     </td>
                     <td className="p-4">
-                      <div className="space-y-1">
+                      <div className="flex items-center gap-2">
                         {getStatusBadge(vehicle.status, vehicle.in_use)}
-                        {vehicle.in_use && vehicle.in_use_by && (
-                          <div className="text-xs text-[#e5e4e2]/60">
-                            {vehicle.in_use_by}
-                          </div>
+                        {vehicle.in_use && vehicle.in_use_driver_id && (
+                          <Popover
+                            content={
+                              <div className="p-3 min-w-[200px]">
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}
+                                    className="relative rounded-full border-2 border-[#d3bb73]/20 bg-[#0f1119] overflow-hidden flex-shrink-0 hover:border-[#d3bb73]/40 transition-colors"
+                                    style={{ width: '48px', height: '48px' }}
+                                    title="Zobacz profil"
+                                  >
+                                    <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-sm font-medium">
+                                      {vehicle.in_use_driver_name?.[0]}{vehicle.in_use_driver_surname?.[0]}
+                                    </div>
+                                  </button>
+                                  <div className="flex-1 min-w-0">
+                                    <button
+                                      onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}
+                                      className="text-[#e5e4e2] hover:text-[#d3bb73] font-medium text-sm transition-colors truncate block w-full text-left"
+                                    >
+                                      {vehicle.in_use_driver_name} {vehicle.in_use_driver_surname}
+                                    </button>
+                                    <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                                      Kliknij aby przejść do profilu
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            }
+                          >
+                            <div
+                              className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer hover:border-[#d3bb73]/40 transition-colors"
+                              style={{ width: '28px', height: '28px' }}
+                            >
+                              <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-xs font-medium">
+                                {vehicle.in_use_driver_name?.[0]}{vehicle.in_use_driver_surname?.[0]}
+                              </div>
+                            </div>
+                          </Popover>
                         )}
                       </div>
                     </td>
