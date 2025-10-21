@@ -70,6 +70,7 @@ interface EventVehicle {
   return_odometer: number | null;
   return_timestamp: string | null;
   return_notes: string | null;
+  is_in_use: boolean;
   invitation_status: string;
   invited_at: string | null;
   responded_at: string | null;
@@ -87,6 +88,7 @@ interface EventVehicle {
     fuel_type: string;
   } | null;
   driver: {
+    id: string;
     name: string;
     surname: string;
   } | null;
