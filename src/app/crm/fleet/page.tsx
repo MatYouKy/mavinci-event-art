@@ -24,6 +24,7 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -71,6 +72,8 @@ export default function FleetPage() {
 
   const [quickFuelVehicle, setQuickFuelVehicle] = useState<Vehicle | null>(null);
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({});
+  const [imagePreviewVehicle, setImagePreviewVehicle] = useState<Vehicle | null>(null);
+  const [previewImageIndex, setPreviewImageIndex] = useState(0);
 
   const canManage = canManageModule('fleet');
   const canCreate = canCreateInModule('fleet');
@@ -545,32 +548,34 @@ export default function FleetPage() {
                     />
                     {vehicle.all_images.length > 1 && (
                       <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setImageIndexes(prev => ({
-                              ...prev,
-                              [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1)
-                            }));
-                          }}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          disabled={(imageIndexes[vehicle.id] || 0) === 0}
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setImageIndexes(prev => ({
-                              ...prev,
-                              [vehicle.id]: Math.min(vehicle.all_images.length - 1, (prev[vehicle.id] || 0) + 1)
-                            }));
-                          }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          disabled={(imageIndexes[vehicle.id] || 0) === vehicle.all_images.length - 1}
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
+                        {(imageIndexes[vehicle.id] || 0) > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setImageIndexes(prev => ({
+                                ...prev,
+                                [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1)
+                              }));
+                            }}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                        )}
+                        {(imageIndexes[vehicle.id] || 0) < vehicle.all_images.length - 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setImageIndexes(prev => ({
+                                ...prev,
+                                [vehicle.id]: Math.min(vehicle.all_images.length - 1, (prev[vehicle.id] || 0) + 1)
+                              }));
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        )}
                         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
                           {vehicle.all_images.map((_, idx) => (
                             <div
@@ -625,6 +630,19 @@ export default function FleetPage() {
                       <span className="text-[#e5e4e2]/80">
                         {vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}
                       </span>
+                    </div>
+                  )}
+                  {vehicle.in_use && vehicle.in_use_by && (
+                    <div className="flex items-center gap-2 text-sm bg-[#d3bb73]/10 px-2 py-1 rounded">
+                      <Activity className="w-4 h-4 text-[#d3bb73]" />
+                      <span className="text-[#d3bb73] font-medium">
+                        {vehicle.in_use_by}
+                      </span>
+                      {vehicle.in_use_event && (
+                        <span className="text-[#e5e4e2]/60 text-xs">
+                          • {vehicle.in_use_event}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -722,7 +740,15 @@ export default function FleetPage() {
                       <div className="flex items-center gap-3">
                         <div
                           className="w-16 h-16 rounded-lg overflow-hidden bg-[#0f1119] flex items-center justify-center flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-[#d3bb73]/50 transition-all"
-                          onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (vehicle.all_images.length > 0) {
+                              setImagePreviewVehicle(vehicle);
+                              setPreviewImageIndex(0);
+                            } else {
+                              router.push(`/crm/fleet/${vehicle.id}`);
+                            }
+                          }}
                         >
                           {vehicle.all_images.length > 0 ? (
                             <img
@@ -809,6 +835,113 @@ export default function FleetPage() {
       )}
 
       {/* Quick Fuel Modal */}
+      {/* Image Preview Modal */}
+      {imagePreviewVehicle && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          onClick={() => setImagePreviewVehicle(null)}
+        >
+          <div
+            className="relative max-w-6xl w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setImagePreviewVehicle(null)}
+              className="absolute -top-12 right-0 text-white hover:text-[#d3bb73] transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+
+            {/* Vehicle Name */}
+            <div className="absolute -top-12 left-0 text-white">
+              <h3 className="text-xl font-semibold">{imagePreviewVehicle.name}</h3>
+              <p className="text-sm text-white/60">
+                {imagePreviewVehicle.brand} {imagePreviewVehicle.model}
+              </p>
+            </div>
+
+            {/* Image Container */}
+            <div className="relative bg-[#0f1119] rounded-lg overflow-hidden">
+              <div className="aspect-video flex items-center justify-center">
+                {imagePreviewVehicle.all_images.length > 0 ? (
+                  <img
+                    src={imagePreviewVehicle.all_images[previewImageIndex]?.image_url}
+                    alt={imagePreviewVehicle.all_images[previewImageIndex]?.title || imagePreviewVehicle.name}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <Car className="w-32 h-32 text-[#e5e4e2]/20" />
+                )}
+              </div>
+
+              {/* Navigation Arrows */}
+              {imagePreviewVehicle.all_images.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setPreviewImageIndex((prev) =>
+                      prev === 0 ? imagePreviewVehicle.all_images.length - 1 : prev - 1
+                    )}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                  <button
+                    onClick={() => setPreviewImageIndex((prev) =>
+                      prev === imagePreviewVehicle.all_images.length - 1 ? 0 : prev + 1
+                    )}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors"
+                  >
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                </>
+              )}
+
+              {/* Image Counter */}
+              {imagePreviewVehicle.all_images.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full text-sm">
+                  {previewImageIndex + 1} / {imagePreviewVehicle.all_images.length}
+                </div>
+              )}
+            </div>
+
+            {/* Thumbnails */}
+            {imagePreviewVehicle.all_images.length > 1 && (
+              <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
+                {imagePreviewVehicle.all_images.map((img, idx) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setPreviewImageIndex(idx)}
+                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
+                      idx === previewImageIndex
+                        ? 'border-[#d3bb73] ring-2 ring-[#d3bb73]/50'
+                        : 'border-transparent hover:border-[#d3bb73]/50'
+                    }`}
+                  >
+                    <img
+                      src={img.image_url}
+                      alt={img.title || `${imagePreviewVehicle.name} ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* View Details Button */}
+            <button
+              onClick={() => {
+                setImagePreviewVehicle(null);
+                router.push(`/crm/fleet/${imagePreviewVehicle.id}`);
+              }}
+              className="w-full mt-4 bg-[#d3bb73] text-[#1c1f33] py-3 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            >
+              Zobacz szczegóły pojazdu
+            </button>
+          </div>
+        </div>
+      )}
+
       {quickFuelVehicle && (
         <QuickFuelModal
           vehicleId={quickFuelVehicle.id}
