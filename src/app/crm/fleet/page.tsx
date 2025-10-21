@@ -57,6 +57,9 @@ interface Vehicle {
   yearly_maintenance_cost: number;
   yearly_fuel_cost: number;
   avg_fuel_consumption_3months: number;
+  in_use: boolean;
+  in_use_by: string | null;
+  in_use_event: string | null;
 }
 
 export default function FleetPage() {
@@ -187,6 +190,19 @@ export default function FleetPage() {
             .eq('vehicle_id', vehicle.id)
             .order('sort_order', { ascending: true });
 
+          // Check if vehicle is currently in use
+          const { data: inUseData } = await supabase
+            .from('event_vehicles')
+            .select(`
+              id,
+              driver:employees!event_vehicles_driver_id_fkey(name, surname),
+              event:events(title)
+            `)
+            .eq('vehicle_id', vehicle.id)
+            .not('pickup_timestamp', 'is', null)
+            .is('return_timestamp', null)
+            .single();
+
           return {
             ...vehicle,
             assigned_to: activeAssignment?.employee_id || null,
@@ -199,6 +215,9 @@ export default function FleetPage() {
             avg_fuel_consumption_3months: avgFuelConsumption,
             primary_image_url: primaryImage?.image_url || null,
             all_images: allImages || [],
+            in_use: !!inUseData,
+            in_use_by: inUseData?.driver ? `${inUseData.driver.name} ${inUseData.driver.surname}` : null,
+            in_use_event: inUseData?.event?.title || null,
           };
         })
       );
@@ -582,9 +601,15 @@ export default function FleetPage() {
                   )}
                 </div>
 
-                {/* Alerts */}
-                {(vehicle.upcoming_services > 0 || vehicle.expiring_insurance > 0) && (
-                  <div className="flex gap-2 mb-4">
+                {/* Alerts and Status */}
+                {(vehicle.upcoming_services > 0 || vehicle.expiring_insurance > 0 || vehicle.in_use) && (
+                  <div className="flex gap-2 mb-4 flex-wrap">
+                    {vehicle.in_use && (
+                      <div className="flex items-center gap-1 text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded" title={`W użytkowaniu przez ${vehicle.in_use_by} (${vehicle.in_use_event})`}>
+                        <Activity className="w-3 h-3" />
+                        W użytkowaniu
+                      </div>
+                    )}
                     {vehicle.upcoming_services > 0 && (
                       <div className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 px-2 py-1 rounded">
                         <Wrench className="w-3 h-3" />
