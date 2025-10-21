@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Plus, Edit, Archive, ChevronDown, ChevronUp, Calendar, DollarSign } from 'lucide-react';
+import { Shield, Plus, Edit, Archive, ChevronDown, ChevronUp, Calendar, DollarSign, RotateCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Modal from '@/components/UI/Modal';
@@ -56,6 +56,7 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
   const [showModal, setShowModal] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<InsurancePolicy | null>(null);
   const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
+  const [renewingPolicy, setRenewingPolicy] = useState<InsurancePolicy | null>(null);
 
   useEffect(() => {
     fetchPolicies();
@@ -86,6 +87,18 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
     }
   };
 
+  const regenerateAlerts = async () => {
+    try {
+      const { error } = await supabase.rpc('generate_vehicle_alerts');
+      if (error) throw error;
+
+      const { error: statusError } = await supabase.rpc('update_vehicle_status_from_alerts');
+      if (statusError) throw statusError;
+    } catch (error: any) {
+      console.error('Error regenerating alerts:', error);
+    }
+  };
+
   const handleSubmit = async (values: any, { setSubmitting }: any) => {
     try {
       const policyData = {
@@ -113,8 +126,10 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
         showSnackbar('Ubezpieczenie dodane', 'success');
       }
 
+      await regenerateAlerts();
       setShowModal(false);
       setEditingPolicy(null);
+      setRenewingPolicy(null);
       fetchPolicies();
     } catch (error: any) {
       console.error('Error saving policy:', error);
@@ -122,6 +137,11 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleRenew = (policy: InsurancePolicy) => {
+    setRenewingPolicy(policy);
+    setShowModal(true);
   };
 
   const handleArchive = async (policyId: string) => {
@@ -225,8 +245,16 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => handleRenew(policy)}
+                    className="p-2 hover:bg-green-500/10 rounded transition-colors"
+                    title="Przedłuż ubezpieczenie"
+                  >
+                    <RotateCw className="w-4 h-4 text-green-400" />
+                  </button>
+                  <button
                     onClick={() => {
                       setEditingPolicy(policy);
+                      setRenewingPolicy(null);
                       setShowModal(true);
                     }}
                     className="p-2 hover:bg-[#d3bb73]/10 rounded transition-colors"
@@ -327,19 +355,30 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
           onClose={() => {
             setShowModal(false);
             setEditingPolicy(null);
+            setRenewingPolicy(null);
           }}
-          title={editingPolicy ? 'Edytuj ubezpieczenie' : 'Dodaj ubezpieczenie'}
+          title={
+            renewingPolicy
+              ? `Przedłuż ubezpieczenie ${insuranceTypeLabels[renewingPolicy.type]}`
+              : editingPolicy
+              ? 'Edytuj ubezpieczenie'
+              : 'Dodaj ubezpieczenie'
+          }
         >
           <Formik
             initialValues={{
-              type: editingPolicy?.type || 'oc',
-              insurance_company: editingPolicy?.insurance_company || '',
-              policy_number: editingPolicy?.policy_number || '',
-              start_date: editingPolicy?.start_date || new Date().toISOString().split('T')[0],
+              type: renewingPolicy?.type || editingPolicy?.type || 'oc',
+              insurance_company: renewingPolicy?.insurance_company || editingPolicy?.insurance_company || '',
+              policy_number: renewingPolicy ? '' : editingPolicy?.policy_number || '',
+              start_date: renewingPolicy
+                ? new Date(renewingPolicy.end_date).toISOString().split('T')[0]
+                : editingPolicy?.start_date || new Date().toISOString().split('T')[0],
               end_date: editingPolicy?.end_date || '',
-              premium_amount: editingPolicy?.premium_amount || 0,
-              notes: editingPolicy?.notes || '',
-              detailed_coverage: editingPolicy?.detailed_coverage || {
+              premium_amount: renewingPolicy?.premium_amount || editingPolicy?.premium_amount || 0,
+              notes: renewingPolicy
+                ? `Kontynuacja polisy ${renewingPolicy.policy_number} (${new Date(renewingPolicy.start_date).toLocaleDateString('pl-PL')} - ${new Date(renewingPolicy.end_date).toLocaleDateString('pl-PL')})`
+                : editingPolicy?.notes || '',
+              detailed_coverage: renewingPolicy?.detailed_coverage || editingPolicy?.detailed_coverage || {
                 theft: false,
                 fire: false,
                 vandalism: false,

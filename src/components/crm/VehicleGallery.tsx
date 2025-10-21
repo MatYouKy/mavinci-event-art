@@ -30,6 +30,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const [uploading, setUploading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<VehicleImage | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
 
   useEffect(() => {
     fetchImages();
@@ -118,6 +119,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
     e.preventDefault();
     e.stopPropagation();
     if (canManage) {
+      setDragCounter(prev => prev + 1);
       setIsDragging(true);
     }
   };
@@ -125,8 +127,14 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
+    if (canManage) {
+      setDragCounter(prev => {
+        const newCount = prev - 1;
+        if (newCount === 0) {
+          setIsDragging(false);
+        }
+        return newCount;
+      });
     }
   };
 
@@ -138,6 +146,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setDragCounter(0);
     setIsDragging(false);
 
     if (!canManage) return;
@@ -256,16 +265,17 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        className={`relative transition-all ${
-          isDragging ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119]' : ''
+        className={`relative transition-all rounded-lg ${
+          isDragging ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119] shadow-[0_0_20px_rgba(211,187,115,0.3)]' : ''
         }`}
       >
         {/* Drag overlay - minimalna warstwa wizualna */}
         {isDragging && canManage && (
           <>
-            {/* Subtelna ramka i hint na górze */}
-            <div className="absolute inset-0 border-2 border-dashed border-[#d3bb73] rounded-lg pointer-events-none z-10" />
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg shadow-lg z-20 pointer-events-none">
+            {/* Subtelna ramka */}
+            <div className="absolute inset-0 border-2 border-dashed border-[#d3bb73] rounded-lg pointer-events-none z-10 bg-[#d3bb73]/5" />
+            {/* Hint badge na górze */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg shadow-xl z-20 pointer-events-none animate-pulse">
               <div className="flex items-center gap-2">
                 <Upload className="w-5 h-5" />
                 <span className="font-semibold">Upuść zdjęcia tutaj</span>
