@@ -55,6 +55,11 @@ interface Vehicle {
   description: string;
   notes: string;
   created_at: string;
+  in_use?: boolean;
+  in_use_by?: string | null;
+  in_use_event?: string | null;
+  in_use_event_id?: string | null;
+  pickup_timestamp?: string | null;
 }
 
 interface FuelEntry {
@@ -139,6 +144,37 @@ export default function VehicleDetailPage() {
   useEffect(() => {
     if (vehicleId) {
       fetchVehicleData();
+
+      const channel = supabase
+        .channel('vehicle_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'event_vehicles',
+            filter: `vehicle_id=eq.${vehicleId}`,
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'vehicle_handovers',
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [vehicleId]);
 
@@ -146,7 +182,7 @@ export default function VehicleDetailPage() {
     try {
       setLoading(true);
 
-      const [vehicleRes, fuelRes, maintenanceRes, insuranceRes, handoverRes] = await Promise.all([
+      const [vehicleRes, fuelRes, maintenanceRes, insuranceRes, handoverRes, inUseRes] = await Promise.all([
         supabase.from('vehicles').select('*').eq('id', vehicleId).single(),
         supabase
           .from('fuel_entries')
@@ -170,11 +206,30 @@ export default function VehicleDetailPage() {
           .select('*')
           .eq('vehicle_id', vehicleId)
           .order('timestamp', { ascending: false }),
+        supabase
+          .from('event_vehicles')
+          .select(`
+            id,
+            is_in_use,
+            pickup_timestamp,
+            driver:employees!event_vehicles_driver_id_fkey(id, name, surname),
+            event:events(id, name)
+          `)
+          .eq('vehicle_id', vehicleId)
+          .eq('is_in_use', true)
+          .maybeSingle(),
       ]);
 
       if (vehicleRes.error) throw vehicleRes.error;
 
-      setVehicle(vehicleRes.data);
+      setVehicle({
+        ...vehicleRes.data,
+        in_use: !!inUseRes.data,
+        in_use_by: inUseRes.data?.driver ? `${inUseRes.data.driver.name} ${inUseRes.data.driver.surname}` : null,
+        in_use_event: inUseRes.data?.event?.name || null,
+        in_use_event_id: inUseRes.data?.event?.id || null,
+        pickup_timestamp: inUseRes.data?.pickup_timestamp || null,
+      });
       setFuelEntries(fuelRes.data || []);
       setMaintenanceRecords(maintenanceRes.data || []);
       setInsurancePolicies(insuranceRes.data || []);
@@ -268,10 +323,33 @@ export default function VehicleDetailPage() {
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-[#e5e4e2]">{vehicle.name}</h1>
             {getStatusBadge(vehicle.status)}
+            {vehicle.in_use && (
+              <span className="px-3 py-1 rounded-full text-sm bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                W użytkowaniu
+              </span>
+            )}
           </div>
           <p className="text-[#e5e4e2]/60 mt-1">
             {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
           </p>
+          {vehicle.in_use && vehicle.in_use_by && (
+            <p className="text-[#d3bb73] text-sm mt-1 flex items-center gap-2">
+              <User className="w-4 h-4" />
+              Użytkowany przez: {vehicle.in_use_by}
+              {vehicle.in_use_event && (
+                <span className="text-[#e5e4e2]/60">
+                  {' • '}
+                  <button
+                    onClick={() => router.push(`/crm/events/${vehicle.in_use_event_id}`)}
+                    className="hover:underline"
+                  >
+                    {vehicle.in_use_event}
+                  </button>
+                </span>
+              )}
+            </p>
+          )}
         </div>
         {canManage && (
           <button
