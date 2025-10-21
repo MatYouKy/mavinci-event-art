@@ -38,7 +38,7 @@ export default function AddMaintenanceModal({
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [serviceType, setServiceType] = useState<string>('inspection');
-  const [employees, setEmployees] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string; surname: string }>>([]);
 
   useEffect(() => {
     fetchEmployees();
@@ -48,8 +48,8 @@ export default function AddMaintenanceModal({
     try {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, full_name')
-        .order('full_name');
+        .select('id, name, surname')
+        .order('surname');
 
       if (error) throw error;
       setEmployees(data || []);
@@ -360,7 +360,7 @@ export default function AddMaintenanceModal({
                     <option value="">-- Wybierz pracownika --</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.full_name}
+                        {emp.name} {emp.surname}
                       </option>
                     ))}
                   </select>
