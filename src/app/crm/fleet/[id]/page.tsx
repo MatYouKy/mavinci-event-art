@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Clock,
   User,
+  Trash2,
   TrendingUp,
   TrendingDown,
   Activity,
@@ -131,7 +132,7 @@ export default function VehicleDetailPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canManageModule } = useCurrentEmployee();
+  const { canManageModule, isAdmin } = useCurrentEmployee();
   const canManage = canManageModule('fleet');
 
   const vehicleId = params.id as string;
@@ -350,6 +351,30 @@ export default function VehicleDetailPage() {
   const formatCurrency = (amount: number) => {
     if (!amount) return '-';
     return `${amount.toFixed(2)} zł`;
+  };
+
+  const handleDeleteMaintenanceRecord = async (record: MaintenanceRecord) => {
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć ten wpis serwisowy?',
+      'Tej operacji nie można cofnąć.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from(record.source)
+        .delete()
+        .eq('id', record.id);
+
+      if (error) throw error;
+
+      showSnackbar('Wpis serwisowy został usunięty', 'success');
+      fetchVehicleData();
+    } catch (error) {
+      console.error('Error deleting maintenance record:', error);
+      showSnackbar('Błąd podczas usuwania wpisu', 'error');
+    }
   };
 
   const handleEndUsage = async () => {
@@ -843,16 +868,27 @@ export default function VehicleDetailPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-[#d3bb73] font-medium text-lg">
-                          {formatCurrency(record.total_cost)}
+                      <div className="flex items-start gap-3">
+                        <div className="text-right">
+                          <div className="text-[#d3bb73] font-medium text-lg">
+                            {formatCurrency(record.total_cost)}
+                          </div>
+                          <div className="text-xs text-[#e5e4e2]/60">
+                            Robocizna: {formatCurrency(record.labor_cost)}
+                          </div>
+                          <div className="text-xs text-[#e5e4e2]/60">
+                            Części: {formatCurrency(record.parts_cost)}
+                          </div>
                         </div>
-                        <div className="text-xs text-[#e5e4e2]/60">
-                          Robocizna: {formatCurrency(record.labor_cost)}
-                        </div>
-                        <div className="text-xs text-[#e5e4e2]/60">
-                          Części: {formatCurrency(record.parts_cost)}
-                        </div>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteMaintenanceRecord(record)}
+                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                            title="Usuń wpis"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                     {record.description && (
