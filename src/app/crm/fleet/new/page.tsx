@@ -14,6 +14,7 @@ export default function NewVehiclePage() {
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
+    vehicle_type: 'car',
     name: '',
     brand: '',
     model: '',
@@ -30,6 +31,10 @@ export default function NewVehiclePage() {
     drive_type: '',
     number_of_seats: '',
     max_load_kg: '',
+    length_cm: '',
+    width_cm: '',
+    height_cm: '',
+    weight_kg: '',
     status: 'active',
     ownership_type: 'owned',
     category: 'van',
@@ -66,12 +71,17 @@ export default function NewVehiclePage() {
     try {
       const vehicleData = {
         ...formData,
+        vehicle_type: formData.vehicle_type,
         year: formData.year ? parseInt(formData.year.toString()) : null,
         engine_capacity: formData.engine_capacity ? parseInt(formData.engine_capacity.toString()) : null,
         power_hp: formData.power_hp ? parseInt(formData.power_hp.toString()) : null,
         power_kw: formData.power_kw ? parseInt(formData.power_kw.toString()) : null,
         number_of_seats: formData.number_of_seats ? parseInt(formData.number_of_seats.toString()) : null,
         max_load_kg: formData.max_load_kg ? parseInt(formData.max_load_kg.toString()) : null,
+        length_cm: formData.length_cm ? parseInt(formData.length_cm.toString()) : null,
+        width_cm: formData.width_cm ? parseInt(formData.width_cm.toString()) : null,
+        height_cm: formData.height_cm ? parseInt(formData.height_cm.toString()) : null,
+        weight_kg: formData.weight_kg ? parseInt(formData.weight_kg.toString()) : null,
         purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price.toString()) : null,
         current_value: formData.current_value ? parseFloat(formData.current_value.toString()) : null,
         leasing_monthly_cost: formData.leasing_monthly_cost ? parseFloat(formData.leasing_monthly_cost.toString()) : null,
@@ -112,7 +122,7 @@ export default function NewVehiclePage() {
         </button>
         <h1 className="text-3xl font-bold text-[#e5e4e2] flex items-center gap-3">
           <Car className="w-8 h-8 text-[#d3bb73]" />
-          Dodaj nowy pojazd
+          Dodaj nowy {formData.vehicle_type === 'trailer' ? 'przyczepę' : 'pojazd'}
         </h1>
       </div>
 
@@ -121,9 +131,24 @@ export default function NewVehiclePage() {
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
           <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane podstawowe</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                Typ <span className="text-red-400">*</span>
+              </label>
+              <select
+                name="vehicle_type"
+                value={formData.vehicle_type}
+                onChange={handleChange}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              >
+                <option value="car">Samochód</option>
+                <option value="trailer">Przyczepa</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Nazwa pojazdu <span className="text-red-400">*</span>
+                Nazwa {formData.vehicle_type === 'trailer' ? 'przyczepy' : 'pojazdu'} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -270,120 +295,190 @@ export default function NewVehiclePage() {
           </div>
         </div>
 
-        {/* Dane techniczne */}
+        {/* Dane techniczne - tylko dla samochodów */}
+        {formData.vehicle_type === 'car' && (
+          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
+            <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane techniczne</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Typ silnika
+                </label>
+                <input
+                  type="text"
+                  name="engine_type"
+                  value={formData.engine_type}
+                  onChange={handleChange}
+                  placeholder="np. diesel"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Pojemność (cm³)
+                </label>
+                <input
+                  type="number"
+                  name="engine_capacity"
+                  value={formData.engine_capacity}
+                  onChange={handleChange}
+                  placeholder="np. 2143"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Moc (KM)</label>
+                <input
+                  type="number"
+                  name="power_hp"
+                  value={formData.power_hp}
+                  onChange={handleChange}
+                  placeholder="np. 190"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Moc (kW)</label>
+                <input
+                  type="number"
+                  name="power_kw"
+                  value={formData.power_kw}
+                  onChange={handleChange}
+                  placeholder="np. 140"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Typ paliwa
+                </label>
+                <select
+                  name="fuel_type"
+                  value={formData.fuel_type}
+                  onChange={handleChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                >
+                  <option value="benzyna95">Benzyna 95</option>
+                  <option value="benzyna98">Benzyna 98</option>
+                  <option value="diesel">Diesel</option>
+                  <option value="LPG">LPG</option>
+                  <option value="elektryczny">Elektryczny</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Skrzynia biegów
+                </label>
+                <select
+                  name="transmission"
+                  value={formData.transmission}
+                  onChange={handleChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                >
+                  <option value="manualna">Manualna</option>
+                  <option value="automatyczna">Automatyczna</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Napęd</label>
+                <input
+                  type="text"
+                  name="drive_type"
+                  value={formData.drive_type}
+                  onChange={handleChange}
+                  placeholder="np. przedni, tylny, 4x4"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Liczba miejsc
+                </label>
+                <input
+                  type="number"
+                  name="number_of_seats"
+                  value={formData.number_of_seats}
+                  onChange={handleChange}
+                  placeholder="np. 9"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Wymiary i ładowność */}
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane techniczne</h2>
+          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">
+            {formData.vehicle_type === 'trailer' ? 'Wymiary i ładowność' : 'Ładowność'}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Typ silnika
-              </label>
-              <input
-                type="text"
-                name="engine_type"
-                value={formData.engine_type}
-                onChange={handleChange}
-                placeholder="np. diesel"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+            {formData.vehicle_type === 'trailer' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    Długość (cm)
+                  </label>
+                  <input
+                    type="number"
+                    name="length_cm"
+                    value={formData.length_cm}
+                    onChange={handleChange}
+                    placeholder="np. 600"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Pojemność (cm³)
-              </label>
-              <input
-                type="number"
-                name="engine_capacity"
-                value={formData.engine_capacity}
-                onChange={handleChange}
-                placeholder="np. 2143"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    Szerokość (cm)
+                  </label>
+                  <input
+                    type="number"
+                    name="width_cm"
+                    value={formData.width_cm}
+                    onChange={handleChange}
+                    placeholder="np. 240"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Moc (KM)</label>
-              <input
-                type="number"
-                name="power_hp"
-                value={formData.power_hp}
-                onChange={handleChange}
-                placeholder="np. 190"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    Wysokość (cm)
+                  </label>
+                  <input
+                    type="number"
+                    name="height_cm"
+                    value={formData.height_cm}
+                    onChange={handleChange}
+                    placeholder="np. 280"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Moc (kW)</label>
-              <input
-                type="number"
-                name="power_kw"
-                value={formData.power_kw}
-                onChange={handleChange}
-                placeholder="np. 140"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Typ paliwa
-              </label>
-              <select
-                name="fuel_type"
-                value={formData.fuel_type}
-                onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="benzyna95">Benzyna 95</option>
-                <option value="benzyna98">Benzyna 98</option>
-                <option value="diesel">Diesel</option>
-                <option value="LPG">LPG</option>
-                <option value="elektryczny">Elektryczny</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Skrzynia biegów
-              </label>
-              <select
-                name="transmission"
-                value={formData.transmission}
-                onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="manualna">Manualna</option>
-                <option value="automatyczna">Automatyczna</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Napęd</label>
-              <input
-                type="text"
-                name="drive_type"
-                value={formData.drive_type}
-                onChange={handleChange}
-                placeholder="np. przedni, tylny, 4x4"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Liczba miejsc
-              </label>
-              <input
-                type="number"
-                name="number_of_seats"
-                value={formData.number_of_seats}
-                onChange={handleChange}
-                placeholder="np. 9"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    Waga własna (kg)
+                  </label>
+                  <input
+                    type="number"
+                    name="weight_kg"
+                    value={formData.weight_kg}
+                    onChange={handleChange}
+                    placeholder="np. 750"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  />
+                </div>
+              </>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
