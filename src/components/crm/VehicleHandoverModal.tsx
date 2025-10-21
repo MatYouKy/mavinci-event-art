@@ -9,6 +9,8 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 interface Vehicle {
   id: string;
   vehicle_id: string | null;
+  pickup_timestamp: string | null;
+  return_timestamp: string | null;
   vehicles?: {
     name: string;
     registration_number: string | null;
@@ -30,7 +32,9 @@ export default function VehicleHandoverModal({
   const { showSnackbar } = useSnackbar();
   const { employee } = useCurrentEmployee();
 
-  const [handoverType, setHandoverType] = useState<'pickup' | 'return'>('pickup');
+  // Automatycznie określ typ operacji na podstawie pickup_timestamp
+  const handoverType: 'pickup' | 'return' = vehicle.pickup_timestamp && !vehicle.return_timestamp ? 'return' : 'pickup';
+
   const [odometerReading, setOdometerReading] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -178,7 +182,7 @@ export default function VehicleHandoverModal({
       <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 max-w-md w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-semibold text-[#e5e4e2]">
-            Odbierz/Zdaj pojazd
+            {handoverType === 'pickup' ? 'Odbierz pojazd' : 'Zdaj pojazd'}
           </h3>
           <button
             onClick={onClose}
@@ -196,20 +200,6 @@ export default function VehicleHandoverModal({
         </p>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Typ operacji
-            </label>
-            <select
-              value={handoverType}
-              onChange={(e) => setHandoverType(e.target.value as 'pickup' | 'return')}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]"
-            >
-              <option value="pickup">Odbiór pojazdu</option>
-              <option value="return">Zdanie pojazdu</option>
-            </select>
-          </div>
-
           <div>
             <label className="block text-sm text-[#e5e4e2]/60 mb-2">
               Stan licznika (km)

@@ -152,6 +152,27 @@ export default function EventLogisticsPanel({
 
   useEffect(() => {
     fetchLogisticsData();
+
+    // Subscribe to realtime updates for event_vehicles
+    const channel = supabase
+      .channel('event_vehicles_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_vehicles',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => {
+          fetchLogisticsData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [eventId]);
 
   const fetchLogisticsData = async () => {

@@ -94,6 +94,26 @@ export default function FleetPage() {
 
   useEffect(() => {
     fetchVehicles();
+
+    // Subscribe to realtime updates for event_vehicles to update "in use" status
+    const channel = supabase
+      .channel('fleet_event_vehicles_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_vehicles',
+        },
+        () => {
+          fetchVehicles();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
