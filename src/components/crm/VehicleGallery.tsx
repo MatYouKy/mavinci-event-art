@@ -159,6 +159,11 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
 
   const handleSetPrimary = async (imageId: string) => {
     try {
+      await supabase
+        .from('vehicle_images')
+        .update({ is_primary: false })
+        .eq('vehicle_id', vehicleId);
+
       const { error } = await supabase
         .from('vehicle_images')
         .update({ is_primary: true })
