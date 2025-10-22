@@ -183,7 +183,110 @@ export default function KitsPage() {
   };
 
   const handlePrintChecklist = () => {
-    window.print();
+    if (!viewingKit) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const items = viewingKit.equipment_kit_items.map((item, index) => {
+      const eq = equipment.find(e => e.id === item.equipment_id);
+      return `
+        <tr>
+          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5;">
+            <input type="checkbox" style="width: 18px; height: 18px; margin: 0;">
+          </td>
+          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5;">${index + 1}</td>
+          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5; font-weight: 500;">
+            ${eq?.name || 'Nieznany sprzęt'}
+            ${eq?.brand ? `<br><span style="font-size: 14px; color: #666;">${eq.brand} ${eq.model || ''}</span>` : ''}
+            ${item.notes ? `<br><span style="font-size: 13px; color: #888; font-style: italic;">${item.notes}</span>` : ''}
+          </td>
+          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5; text-align: center; font-weight: 600;">
+            ${item.quantity}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Checklista - ${viewingKit.name}</title>
+          <style>
+            @media print {
+              @page { margin: 2cm; }
+            }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              padding: 20px;
+              line-height: 1.6;
+            }
+            h1 {
+              font-size: 24px;
+              font-weight: 600;
+              margin-bottom: 8px;
+              color: #1a1a1a;
+            }
+            .subtitle {
+              font-size: 14px;
+              color: #666;
+              margin-bottom: 24px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 16px;
+            }
+            th {
+              background-color: #f5f5f5;
+              padding: 12px 8px;
+              text-align: left;
+              font-weight: 600;
+              font-size: 14px;
+              color: #333;
+              border-bottom: 2px solid #ddd;
+            }
+            td {
+              font-size: 15px;
+              color: #333;
+            }
+            .checkbox-col { width: 50px; }
+            .number-col { width: 50px; }
+            .qty-col { width: 80px; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <h1>${viewingKit.name}</h1>
+          <div class="subtitle">
+            Data wydruku: ${new Date().toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th class="checkbox-col"></th>
+                <th class="number-col">Lp.</th>
+                <th>Nazwa sprzętu</th>
+                <th class="qty-col">Ilość</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
 
   const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -349,7 +452,7 @@ export default function KitsPage() {
     }
   };
 
-  const mainCategories = categories.filter(c => c.level === 0);
+  const mainCategories = categories.filter(c => c.level === 0 || c.parent_id === null);
 
   const filtered = kits.filter(kit =>
     kit.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -358,8 +461,8 @@ export default function KitsPage() {
   if (viewingKit && !isEditMode) {
     const category = categories.find(c => c.id === viewingKit.warehouse_category_id);
     return (
-      <div className="space-y-6 print:space-y-4">
-        <div className="flex justify-between items-center print:hidden">
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <button
               onClick={() => {
@@ -391,7 +494,7 @@ export default function KitsPage() {
           </div>
         </div>
 
-        <div className="bg-[#0f1119] rounded-lg border border-[#d3bb73]/10 p-6 print:border-0 print:shadow-none">
+        <div className="bg-[#0f1119] rounded-lg border border-[#d3bb73]/10 p-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             {viewingKit.thumbnail_url && (
               <div className="md:col-span-1">
@@ -426,7 +529,7 @@ export default function KitsPage() {
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center gap-4 bg-[#1c1f33] p-4 rounded-lg print:border print:border-gray-300"
+                    className="flex items-center gap-4 bg-[#1c1f33] p-4 rounded-lg"
                   >
                     <div className="w-8 text-center text-[#e5e4e2]/40 font-mono">
                       {index + 1}.
@@ -435,7 +538,7 @@ export default function KitsPage() {
                       <img
                         src={eq.thumbnail_url}
                         alt={eq.name}
-                        className="w-16 h-16 rounded object-cover print:w-12 print:h-12"
+                        className="w-16 h-16 rounded object-cover"
                       />
                     )}
                     <div className="flex-1">
@@ -452,9 +555,6 @@ export default function KitsPage() {
                       <div className="text-xs text-[#e5e4e2]/40">
                         {eq?.equipment_units?.filter(u => u.status === 'available').length || 0} dostępnych
                       </div>
-                    </div>
-                    <div className="w-6 print:block hidden">
-                      <input type="checkbox" className="w-5 h-5" />
                     </div>
                   </div>
                 );
