@@ -112,9 +112,9 @@ export default function EmployeeView({
                               </div>
                             )}
 
-                            {event.client && (
+                            {(event.organization || event.contact_person) && (
                               <div className="text-sm text-[#e5e4e2]/60">
-                                Klient: {event.client.company_name || `${event.client.first_name} ${event.client.last_name}`}
+                                Klient: {event.organization ? (event.organization.alias || event.organization.name) : event.contact_person?.full_name}
                               </div>
                             )}
                           </div>

@@ -24,12 +24,21 @@ interface Event {
   final_cost: number;
   notes: string;
   attachments: any[];
-  client_id: string;
+  organization_id: string | null;
+  contact_person_id: string | null;
   category_id: string;
   created_by: string;
-  client?: {
-    company_name: string;
-  };
+  organization?: {
+    id: string;
+    name: string;
+    alias: string | null;
+  } | null;
+  contact_person?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    full_name: string;
+  } | null;
   category?: {
     id: string;
     name: string;
@@ -266,7 +275,8 @@ export default function EventDetailPage() {
         .from('events')
         .select(`
           *,
-          client:clients(company_name),
+          organization:organizations(id, name, alias),
+          contact_person:contacts(id, first_name, last_name, full_name),
           category:event_categories(
             id,
             name,
@@ -1044,7 +1054,7 @@ export default function EventDetailPage() {
             <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
-                {event.client?.company_name || 'Brak klienta'}
+                {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
               </div>
               {event.creator && (
                 <div className="flex items-center gap-2">
@@ -1241,7 +1251,7 @@ export default function EventDetailPage() {
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Klient</p>
                       <p className="text-[#e5e4e2]">
-                        {event.client?.company_name || 'Brak klienta'}
+                        {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
                       </p>
                     </div>
                   </div>
@@ -1995,7 +2005,7 @@ export default function EventDetailPage() {
           isOpen={showCreateOfferModal}
           onClose={() => setShowCreateOfferModal(false)}
           eventId={eventId}
-          clientId={event.client_id}
+          organizationId={event.organization_id}
           onSuccess={() => {
             setShowCreateOfferModal(false);
             fetchOffers();
@@ -3202,7 +3212,7 @@ function EditEventModal({
   const [categories, setCategories] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     name: event.name,
-    client_id: event.client_id || '',
+    organization_id: event.organization_id || '',
     category_id: event.category_id || '',
     event_date: event.event_date,
     event_end_date: event.event_end_date || '',

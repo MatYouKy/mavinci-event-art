@@ -125,8 +125,8 @@ export default function DayView({
             <div className="space-y-3">
               {dayEvents.map((event) => {
                 const clientName =
-                  event.client?.company_name ||
-                  `${event.client?.first_name || ''} ${event.client?.last_name || ''}`.trim() ||
+                  event.organization ? (event.organization.alias || event.organization.name) :
+                  event.contact_person?.full_name ||
                   'Brak klienta';
 
                 return (

@@ -1,12 +1,31 @@
 export interface CalendarEvent {
   id: string;
   name: string;
-  client_id: string | null;
-  client?: {
-    company_name?: string;
-    first_name?: string;
-    last_name?: string;
+  organization_id: string | null;
+  contact_person_id: string | null;
+  organization?: {
+    id: string;
+    name: string;
+    alias?: string | null;
   };
+  contact_person?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    full_name: string;
+  };
+  category_id?: string | null;
+  category?: {
+    id: string;
+    name: string;
+    color: string;
+    custom_icon?: {
+      id: string;
+      name: string;
+      svg_code: string;
+    };
+  };
+  created_by?: string;
   event_date: string;
   event_end_date?: string | null;
   location: string;
@@ -17,6 +36,7 @@ export interface CalendarEvent {
   notes?: string;
   equipment?: EquipmentBooking[];
   employees?: EmployeeAssignment[];
+  vehicles?: any[];
   tasks?: EventTask[];
   attachments?: string[];
 }

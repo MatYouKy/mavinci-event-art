@@ -69,7 +69,8 @@ export default function CalendarMain() {
         .from('events')
         .select(`
           *,
-          client:clients(company_name, first_name, last_name),
+          organization:organizations(id, name, alias),
+          contact_person:contacts(id, first_name, last_name, full_name),
           category:event_categories(
             id,
             name,
@@ -129,7 +130,7 @@ export default function CalendarMain() {
     try {
       const [categoriesRes, clientsRes, employeesRes] = await Promise.all([
         supabase.from('event_categories').select('id, name, color').eq('is_active', true),
-        supabase.from('clients').select('id, company_name, first_name, last_name').order('company_name'),
+        supabase.from('organizations').select('id, name, alias').order('name'),
         supabase.from('employees').select('id, name, surname, nickname').order('name'),
       ]);
 
@@ -153,7 +154,7 @@ export default function CalendarMain() {
     }
 
     if (filters.clients.length > 0) {
-      filtered = filtered.filter(e => e.client_id && filters.clients.includes(e.client_id));
+      filtered = filtered.filter(e => e.organization_id && filters.clients.includes(e.organization_id));
     }
 
     if (filters.myEvents && currentEmployee) {
@@ -695,8 +696,8 @@ export default function CalendarMain() {
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
                             <Building2 className="w-3 h-3" />
                             <span>
-                              {event.client?.company_name ||
-                                `${event.client?.first_name || ''} ${event.client?.last_name || ''}`.trim() ||
+                              {event.organization ? (event.organization.alias || event.organization.name) :
+                                event.contact_person?.full_name ||
                                 'Brak klienta'}
                             </span>
                           </div>
