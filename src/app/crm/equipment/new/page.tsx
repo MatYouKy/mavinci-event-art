@@ -198,8 +198,7 @@ export default function NewEquipmentPage() {
         .from('equipment_items')
         .insert({
           name: formData.name,
-          category_id: formData.category_id,
-          subcategory_id: formData.subcategory_id || null,
+          warehouse_category_id: formData.subcategory_id || formData.category_id,
           brand: formData.brand || null,
           model: formData.model || null,
           description: formData.description || null,

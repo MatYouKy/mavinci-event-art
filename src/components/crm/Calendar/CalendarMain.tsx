@@ -63,11 +63,20 @@ export default function CalendarMain() {
 
   // Załaduj wydarzenia z RTK Query
   useEffect(() => {
+    console.log('RTK Query state:', {
+      isLoading: eventsLoading,
+      hasError: !!eventsError,
+      error: eventsError,
+      dataLength: eventsData?.length
+    });
+
     if (eventsData) {
-      console.log('Events loaded from RTK:', eventsData.length);
+      console.log('Events loaded from RTK:', eventsData.length, eventsData);
       setAllEvents(eventsData);
+    } else if (eventsError) {
+      console.error('Error loading events from RTK:', eventsError);
     }
-  }, [eventsData]);
+  }, [eventsData, eventsLoading, eventsError]);
 
   useEffect(() => {
     applyFilters();
