@@ -54,64 +54,34 @@ export default function EquipmentPage() {
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
 
   useEffect(() => {
-    fetchCategories();
     fetchEquipment();
   }, []);
-
-  const fetchCategories = async () => {
-    const { data } = await supabase
-      .from('warehouse_categories')
-      .select('*')
-      .eq('is_active', true)
-      .order('level')
-      .order('order_index');
-    if (data) setCategories(data);
-  };
 
   const fetchEquipment = async () => {
     try {
       setLoading(true);
 
-      const [equipmentData, kitsData] = await Promise.all([
-        supabase
-          .from('equipment_items')
-          .select(`
-            *,
-            warehouse_categories(*),
-            equipment_units(id, status)
-          `)
-          .eq('is_active', true)
-          .order('name'),
-        supabase
-          .from('equipment_kits')
-          .select(`
-            id,
-            name,
-            description,
-            thumbnail_url,
-            warehouse_category_id,
-            warehouse_categories(*)
-          `)
-          .eq('is_active', true)
-          .order('name')
-      ]);
+      // JEDNO zapytanie RPC dla wszystkiego!
+      const { data: fullData, error } = await supabase.rpc('get_equipment_list');
 
-      const equipment = (equipmentData.data || []).map((item: any) => ({
-        ...item,
-        is_kit: false,
-      }));
+      if (error) throw error;
 
-      const kits = (kitsData.data || []).map((kit: any) => ({
-        ...kit,
-        is_kit: true,
-        brand: null,
-        model: null,
-        equipment_units: [],
-      }));
+      if (!fullData) {
+        console.error('No data returned');
+        return;
+      }
 
-      setEquipment([...equipment, ...kits]);
+      // Połącz equipment_items i equipment_kits
+      const allEquipment = [
+        ...(fullData.equipment_items || []),
+        ...(fullData.equipment_kits || [])
+      ];
+
+      setEquipment(allEquipment);
+      setCategories(fullData.warehouse_categories || []);
     } catch (error) {
       console.error('Error:', error);
+      showSnackbar('Błąd podczas ładowania danych', 'error');
     } finally {
       setLoading(false);
     }

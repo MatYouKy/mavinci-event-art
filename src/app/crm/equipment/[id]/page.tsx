@@ -146,76 +146,78 @@ export default function EquipmentDetailPage() {
 
   useEffect(() => {
     fetchEquipment();
-    fetchWarehouseCategories();
-    fetchConnectorTypes();
   }, [equipmentId]);
 
   useEffect(() => {
-    if (activeTab === 'history') {
-      fetchStockHistory();
-    } else if (activeTab === 'units') {
-      fetchUnits();
+    if (activeTab === 'history' || activeTab === 'units') {
+      // Dane już są w cache jeśli wywołaliśmy z include_units=true
+      if (units.length === 0 && activeTab === 'units') {
+        fetchEquipmentWithUnits();
+      }
     }
   }, [activeTab]);
 
-  const fetchWarehouseCategories = async () => {
-    const { data } = await supabase
-      .from('warehouse_categories')
-      .select('*')
-      .eq('is_active', true)
-      .order('level', { ascending: true })
-      .order('order_index', { ascending: true });
+  const fetchEquipmentWithUnits = async () => {
+    try {
+      const { data: fullData, error } = await supabase.rpc('get_equipment_details', {
+        item_id: equipmentId,
+        include_units: true
+      });
 
-    if (data) setWarehouseCategories(data);
-  };
+      if (error) throw error;
+      if (!fullData || fullData.error) {
+        showSnackbar('Nie znaleziono sprzętu', 'error');
+        router.push('/crm/equipment');
+        return;
+      }
 
-  const fetchConnectorTypes = async () => {
-    const { data } = await supabase
-      .from('connector_types')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
-
-    if (data) setConnectorTypes(data);
+      setUnits(fullData.equipment_units || []);
+      setStockHistory(fullData.unit_events || []);
+    } catch (error) {
+      console.error('Error:', error);
+    }
   };
 
   const fetchEquipment = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('equipment_items')
-        .select(`
-          *,
-          warehouse_categories(id, name, parent_id, level),
-          equipment_stock(*),
-          equipment_components(*),
-          equipment_images(*)
-        `)
-        .eq('id', equipmentId)
-        .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching equipment:', error);
-        throw error;
-      }
+      // JEDNO zapytanie RPC dla wszystkiego!
+      const { data: fullData, error } = await supabase.rpc('get_equipment_details', {
+        item_id: equipmentId,
+        include_units: false
+      });
 
-      if (!data) {
-        console.error('Equipment not found');
+      if (error) throw error;
+
+      if (!fullData || fullData.error) {
+        showSnackbar('Nie znaleziono sprzętu', 'error');
+        router.push('/crm/equipment');
         return;
       }
 
-      const formData = {
-        ...data,
-        dimensions_length: data.dimensions_cm?.length || '',
-        dimensions_width: data.dimensions_cm?.width || '',
-        dimensions_height: data.dimensions_cm?.height || '',
-        cable_length_meters: data.cable_specs?.length_meters || '',
-        cable_connector_in: data.cable_specs?.connector_in || '',
-        cable_connector_out: data.cable_specs?.connector_out || '',
+      const equipmentData = {
+        ...fullData.equipment,
+        warehouse_categories: fullData.warehouse_category,
+        equipment_stock: fullData.equipment_stock || [],
+        equipment_components: fullData.equipment_components || [],
+        equipment_images: fullData.equipment_images || []
       };
 
-      setEquipment(data);
+      const formData = {
+        ...equipmentData,
+        dimensions_length: equipmentData.dimensions_cm?.length || '',
+        dimensions_width: equipmentData.dimensions_cm?.width || '',
+        dimensions_height: equipmentData.dimensions_cm?.height || '',
+        cable_length_meters: equipmentData.cable_specs?.length_meters || '',
+        cable_connector_in: equipmentData.cable_specs?.connector_in || '',
+        cable_connector_out: equipmentData.cable_specs?.connector_out || '',
+      };
+
+      setEquipment(equipmentData);
       setEditForm(formData);
+      setWarehouseCategories(fullData.warehouse_categories || []);
+      setConnectorTypes(fullData.connector_types || []);
     } catch (error) {
       console.error('Error fetching equipment:', error);
       showSnackbar('Błąd podczas pobierania danych sprzętu', 'error');
@@ -224,30 +226,6 @@ export default function EquipmentDetailPage() {
     }
   };
 
-  const fetchStockHistory = async () => {
-    const { data, error } = await supabase
-      .from('equipment_unit_events')
-      .select(`
-        *,
-        equipment_units(unit_serial_number, internal_id),
-        employees(name, surname)
-      `)
-      .eq('equipment_units.equipment_id', equipmentId)
-      .order('event_date', { ascending: false })
-      .limit(50);
-
-    if (data) setStockHistory(data);
-  };
-
-  const fetchUnits = async () => {
-    const { data, error } = await supabase
-      .from('equipment_units')
-      .select('*, storage_locations(name)')
-      .eq('equipment_id', equipmentId)
-      .order('created_at', { ascending: false });
-
-    if (data) setUnits(data);
-  };
 
   const logEquipmentChange = async (fieldName: string, oldValue: any, newValue: any) => {
     if (!currentEmployee) return;
