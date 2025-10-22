@@ -70,6 +70,7 @@ interface ContactPerson {
   phone: string | null;
   mobile: string | null;
   is_primary: boolean;
+  relation_id?: string;
 }
 
 interface OrganizationNote {
@@ -186,12 +187,29 @@ export default function OrganizationDetailPage() {
       setOrganization(orgData);
 
       const { data: contactsData } = await supabase
-        .from('contact_persons')
-        .select('*')
+        .from('contact_organizations')
+        .select(`
+          *,
+          contact:contacts(*)
+        `)
         .eq('organization_id', organizationId)
+        .eq('is_current', true)
         .order('is_primary', { ascending: false });
 
-      setContactPersons(contactsData || []);
+      const mappedContacts = contactsData?.map((co: any) => ({
+        id: co.contact.id,
+        first_name: co.contact.first_name,
+        last_name: co.contact.last_name,
+        full_name: co.contact.full_name,
+        position: co.position,
+        email: co.contact.email,
+        phone: co.contact.phone,
+        mobile: co.contact.mobile,
+        is_primary: co.is_primary,
+        relation_id: co.id,
+      })) || [];
+
+      setContactPersons(mappedContacts);
 
       await fetchNotes();
 
@@ -287,12 +305,32 @@ export default function OrganizationDetailPage() {
     }
 
     try {
-      const { error } = await supabase.from('contact_persons').insert({
-        organization_id: organizationId,
-        ...newContact,
-      });
+      const { data: newContactData, error: contactError } = await supabase
+        .from('contacts')
+        .insert({
+          first_name: newContact.first_name,
+          last_name: newContact.last_name,
+          email: newContact.email || null,
+          phone: newContact.phone || null,
+          mobile: newContact.mobile || null,
+          created_by: currentEmployee?.id || null,
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (contactError) throw contactError;
+
+      const { error: relationError } = await supabase
+        .from('contact_organizations')
+        .insert({
+          contact_id: newContactData.id,
+          organization_id: organizationId,
+          position: newContact.position || null,
+          is_primary: newContact.is_primary,
+          is_current: true,
+        });
+
+      if (relationError) throw relationError;
 
       showSnackbar('Osoba kontaktowa dodana', 'success');
       setShowAddContactModal(false);
@@ -351,15 +389,18 @@ export default function OrganizationDetailPage() {
     }
   };
 
-  const handleDeleteContact = async (contactId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tę osobę kontaktową?')) return;
+  const handleDeleteContact = async (relationId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć powiązanie tej osoby z organizacją?')) return;
 
     try {
-      const { error } = await supabase.from('contact_persons').delete().eq('id', contactId);
+      const { error } = await supabase
+        .from('contact_organizations')
+        .delete()
+        .eq('id', relationId);
 
       if (error) throw error;
 
-      showSnackbar('Osoba usunięta', 'success');
+      showSnackbar('Powiązanie usunięte', 'success');
       fetchData();
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd podczas usuwania', 'error');
@@ -886,8 +927,9 @@ export default function OrganizationDetailPage() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleDeleteContact(contact.id)}
+                      onClick={() => handleDeleteContact(contact.relation_id!)}
                       className="text-red-400 hover:text-red-300 p-1"
+                      title="Usuń powiązanie z organizacją"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
