@@ -171,16 +171,36 @@ export default function OrganizationDetailPage() {
     try {
       setLoading(true);
 
+      // Najpierw sprawdź w tabeli organizations
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .select('*')
         .eq('id', organizationId)
         .maybeSingle();
 
-      if (orgError) throw orgError;
+      if (orgError && orgError.code !== 'PGRST116') throw orgError;
+
+      // Jeśli nie znaleziono w organizations, sprawdź w contacts
       if (!orgData) {
-        showSnackbar('Nie znaleziono organizacji', 'error');
-        router.push('/crm/contacts');
+        const { data: contactData, error: contactError } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('id', organizationId)
+          .maybeSingle();
+
+        if (contactError) throw contactError;
+        if (!contactData) {
+          showSnackbar('Nie znaleziono kontaktu', 'error');
+          router.push('/crm/contacts');
+          return;
+        }
+
+        // Kontakt/osoba prywatna znaleziona - przekieruj na dedykowaną stronę lub pokaż szczegóły
+        // TODO: Stworzyć dedykowaną stronę dla kontaktów
+        showSnackbar(`Wyświetlanie szczegółów kontaktu: ${contactData.full_name}`, 'info');
+        // Tymczasowo wyświetl organizację jako null i pokaż info
+        setOrganization(null);
+        setLoading(false);
         return;
       }
 

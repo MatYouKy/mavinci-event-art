@@ -42,6 +42,13 @@ interface NewContactForm {
   email: string;
   phone: string;
   mobile: string;
+  businessPhone: string;
+  nip: string;
+  position: string;
+  pesel: string;
+  idNumber: string;
+  eventType: string;
+  eventDetails: string;
 }
 
 export default function NewContactPage() {
@@ -84,6 +91,13 @@ export default function NewContactPage() {
     email: '',
     phone: '',
     mobile: '',
+    businessPhone: '',
+    nip: '',
+    position: '',
+    pesel: '',
+    idNumber: '',
+    eventType: '',
+    eventDetails: '',
   });
 
   const [specializationInput, setSpecializationInput] = useState('');
@@ -237,7 +251,7 @@ export default function NewContactPage() {
       setLoading(true);
 
       if (contactType === 'contact' || contactType === 'individual') {
-        const contactData = {
+        const contactData: any = {
           contact_type: contactType,
           first_name: newContact.firstName,
           last_name: newContact.lastName,
@@ -250,6 +264,21 @@ export default function NewContactPage() {
           notes: formData.notes || null,
           status: 'active' as const,
         };
+
+        // Dodatkowe pola dla kontaktu
+        if (contactType === 'contact') {
+          contactData.nip = newContact.nip || null;
+          contactData.position = newContact.position || null;
+          contactData.business_phone = newContact.businessPhone || null;
+        }
+
+        // Dodatkowe pola dla osoby prywatnej
+        if (contactType === 'individual') {
+          contactData.pesel = newContact.pesel || null;
+          contactData.id_number = newContact.idNumber || null;
+          contactData.event_type = newContact.eventType || null;
+          contactData.event_details = newContact.eventDetails || null;
+        }
 
         const { data: contact, error: contactError } = await supabase
           .from('contacts')
@@ -735,38 +764,140 @@ export default function NewContactPage() {
               {(contactType === 'contact' || contactType === 'individual') && (
                 <div className="border-t border-gray-700 pt-6">
                   <h3 className="text-lg font-semibold text-white mb-4">Dane osobowe</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">
-                        Imię <span className="text-red-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={newContact.firstName}
-                        onChange={(e) => setNewContact({ ...newContact, firstName: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
-                      />
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">
+                          Imię <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newContact.firstName}
+                          onChange={(e) => setNewContact({ ...newContact, firstName: e.target.value })}
+                          className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">
+                          Nazwisko <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newContact.lastName}
+                          onChange={(e) => setNewContact({ ...newContact, lastName: e.target.value })}
+                          className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">
-                        Nazwisko <span className="text-red-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={newContact.lastName}
-                        onChange={(e) => setNewContact({ ...newContact, lastName: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
-                      />
-                    </div>
+
+                    {contactType === 'contact' && (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm text-gray-400 mb-1">
+                              Stanowisko <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.position}
+                              onChange={(e) => setNewContact({ ...newContact, position: e.target.value })}
+                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              placeholder="np. Kierownik sprzedaży"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-400 mb-1">
+                              NIP <span className="text-gray-500 text-xs">(dla JDG)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.nip}
+                              onChange={(e) => setNewContact({ ...newContact, nip: e.target.value })}
+                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              placeholder="0000000000"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {contactType === 'individual' && (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm text-gray-400 mb-1">
+                              PESEL <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.pesel}
+                              onChange={(e) => setNewContact({ ...newContact, pesel: e.target.value })}
+                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              placeholder="00000000000"
+                              maxLength={11}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-400 mb-1">
+                              Numer dowodu <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.idNumber}
+                              onChange={(e) => setNewContact({ ...newContact, idNumber: e.target.value })}
+                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              placeholder="ABC123456"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-2">
+                            Rodzaj uroczystości <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                          </label>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {['wesele', 'urodziny', 'dodatki', 'inne'].map((type) => (
+                              <button
+                                key={type}
+                                type="button"
+                                onClick={() => setNewContact({ ...newContact, eventType: type })}
+                                className={`px-4 py-2 rounded-lg border-2 transition-all capitalize ${
+                                  newContact.eventType === type
+                                    ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                                    : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                                }`}
+                              >
+                                {type}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {newContact.eventType && (
+                          <div>
+                            <label className="block text-sm text-gray-400 mb-1">
+                              Szczegóły uroczystości <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            </label>
+                            <textarea
+                              value={newContact.eventDetails}
+                              onChange={(e) => setNewContact({ ...newContact, eventDetails: e.target.value })}
+                              rows={3}
+                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              placeholder="Dodatkowe informacje o uroczystości..."
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               )}
 
               <div className="border-t border-gray-700 pt-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Dane kontaktowe</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
                     <input
@@ -779,18 +910,62 @@ export default function NewContactPage() {
                       className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Telefon</label>
-                    <input
-                      type="tel"
-                      value={(contactType === 'contact' || contactType === 'individual') ? newContact.phone : formData.phone}
-                      onChange={(e) => (contactType === 'contact' || contactType === 'individual')
-                        ? setNewContact({ ...newContact, phone: e.target.value })
-                        : setFormData({ ...formData, phone: e.target.value })
-                      }
-                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                    />
-                  </div>
+
+                  {(contactType === 'contact' || contactType === 'individual') ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Telefon prywatny {contactType === 'individual' && <span className="text-gray-500 text-xs">(opcjonalne)</span>}
+                        </label>
+                        <input
+                          type="tel"
+                          value={newContact.phone}
+                          onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          placeholder="600 123 456"
+                        />
+                      </div>
+                      {contactType === 'contact' && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Telefon firmowy <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                          </label>
+                          <input
+                            type="tel"
+                            value={newContact.businessPhone}
+                            onChange={(e) => setNewContact({ ...newContact, businessPhone: e.target.value })}
+                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            placeholder="22 123 4567"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Telefon</label>
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    </div>
+                  )}
+
+                  {(contactType === 'contact' || contactType === 'individual') && formData.address && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Adres <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                        placeholder="ul. Przykładowa 123"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
