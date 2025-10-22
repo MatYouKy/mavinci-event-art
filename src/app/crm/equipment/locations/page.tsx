@@ -39,7 +39,6 @@ export default function StorageLocationsPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null);
-  const [loadingMap, setLoadingMap] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -109,24 +108,21 @@ export default function StorageLocationsPage() {
     });
   };
 
-  const handleParseGoogleMaps = async () => {
+  const handleParseGoogleMaps = () => {
     if (!formData.google_maps_url) {
       showSnackbar('Wprowadź URL Google Maps', 'error');
       return;
     }
 
     try {
-      setLoadingMap(true);
-      const coords = await parseGoogleMapsUrl(formData.google_maps_url);
+      const coords = parseGoogleMapsUrl(formData.google_maps_url);
       if (coords) {
         showSnackbar(`Współrzędne: ${coords.latitude}, ${coords.longitude}`, 'success');
       } else {
-        showSnackbar('Nie udało się odczytać współrzędnych', 'error');
+        showSnackbar('Nie udało się odczytać współrzędnych. Sprawdź format linku.', 'error');
       }
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd parsowania URL', 'error');
-    } finally {
-      setLoadingMap(false);
     }
   };
 
@@ -375,19 +371,14 @@ export default function StorageLocationsPage() {
                   <button
                     type="button"
                     onClick={handleParseGoogleMaps}
-                    disabled={loadingMap}
-                    className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50"
+                    className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2"
                   >
-                    {loadingMap ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <MapPin className="w-5 h-5" />
-                    )}
+                    <MapPin className="w-5 h-5" />
                     <span>Test</span>
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Skopiuj link z Google Maps (obsługuje skrócone linki)
+                  Otwórz miejsce w Google Maps, skopiuj PEŁNY URL z paska adresu (nie skrócony link!)
                 </p>
               </div>
 

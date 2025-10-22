@@ -48,21 +48,10 @@ export async function fetchCompanyDataFromGUS(nip: string): Promise<GUSCompanyDa
   }
 }
 
-export async function parseGoogleMapsUrl(url: string): Promise<{ latitude: number; longitude: number } | null> {
+export function parseGoogleMapsUrl(url: string): { latitude: number; longitude: number } | null {
   try {
-    let urlToParse = url;
-
     if (url.includes('goo.gl') || url.includes('maps.app.goo.gl')) {
-      try {
-        const response = await fetch(url, {
-          method: 'HEAD',
-          redirect: 'follow'
-        });
-        urlToParse = response.url;
-      } catch (error) {
-        console.error('Error expanding shortened URL:', error);
-        throw new Error('Nie udało się rozwinąć skróconego linku. Użyj pełnego linku z Google Maps.');
-      }
+      throw new Error('Skrócone linki nie są obsługiwane. Otwórz link w przeglądarce, skopiuj pełny URL z paska adresu i wklej tutaj.');
     }
 
     const patterns = [
@@ -74,7 +63,7 @@ export async function parseGoogleMapsUrl(url: string): Promise<{ latitude: numbe
     ];
 
     for (const pattern of patterns) {
-      const match = urlToParse.match(pattern);
+      const match = url.match(pattern);
       if (match) {
         const latitude = parseFloat(match[1]);
         const longitude = parseFloat(match[2]);
