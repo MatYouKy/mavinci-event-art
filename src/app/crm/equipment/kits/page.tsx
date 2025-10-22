@@ -64,7 +64,8 @@ export default function KitsPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [categories, setCategories] = useState<WarehouseCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [viewingKit, setViewingKit] = useState<Kit | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [editingKit, setEditingKit] = useState<Kit | null>(null);
   const [kitForm, setKitForm] = useState({
     name: '',
@@ -86,9 +87,10 @@ export default function KitsPage() {
   useEffect(() => {
     const editId = searchParams.get('edit');
     if (editId && kits.length > 0) {
-      const kitToEdit = kits.find(k => k.id === editId);
-      if (kitToEdit) {
-        handleOpenForm(kitToEdit);
+      const kitToView = kits.find(k => k.id === editId);
+      if (kitToView) {
+        setViewingKit(kitToView);
+        setIsEditMode(false);
       }
     }
   }, [searchParams, kits]);
@@ -167,7 +169,21 @@ export default function KitsPage() {
       });
       setKitItems([]);
     }
-    setShowAddForm(true);
+    setIsEditMode(true);
+  };
+
+  const handleViewKit = (kit: Kit) => {
+    setViewingKit(kit);
+    setIsEditMode(false);
+  };
+
+  const handleEditKit = (kit: Kit) => {
+    setViewingKit(null);
+    handleOpenForm(kit);
+  };
+
+  const handlePrintChecklist = () => {
+    window.print();
   };
 
   const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,8 +315,13 @@ export default function KitsPage() {
       if (itemsError) throw itemsError;
 
       showSnackbar(editingKit ? 'Zestaw zaktualizowany' : 'Zestaw utworzony', 'success');
-      setShowAddForm(false);
-      fetchKits();
+      setIsEditMode(false);
+      await fetchKits();
+
+      const updatedKit = kits.find(k => k.id === kitId);
+      if (updatedKit) {
+        setViewingKit(updatedKit);
+      }
     } catch (error) {
       console.error('Error saving kit:', error);
       showSnackbar('Błąd podczas zapisywania zestawu', 'error');
@@ -334,13 +355,131 @@ export default function KitsPage() {
     kit.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (showAddForm) {
+  if (viewingKit && !isEditMode) {
+    const category = categories.find(c => c.id === viewingKit.warehouse_category_id);
+    return (
+      <div className="space-y-6 print:space-y-4">
+        <div className="flex justify-between items-center print:hidden">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => {
+                setViewingKit(null);
+                router.push('/crm/equipment/kits');
+              }}
+              className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+            </button>
+            <h2 className="text-2xl font-light text-[#e5e4e2]">{viewingKit.name}</h2>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handlePrintChecklist}
+              className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
+            >
+              Wydrukuj checklistę
+            </button>
+            {canManage && (
+              <button
+                onClick={() => handleEditKit(viewingKit)}
+                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
+              >
+                <Edit className="w-4 h-4" />
+                Edytuj
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-[#0f1119] rounded-lg border border-[#d3bb73]/10 p-6 print:border-0 print:shadow-none">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            {viewingKit.thumbnail_url && (
+              <div className="md:col-span-1">
+                <img
+                  src={viewingKit.thumbnail_url}
+                  alt={viewingKit.name}
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+              </div>
+            )}
+            <div className={viewingKit.thumbnail_url ? 'md:col-span-2' : 'md:col-span-3'}>
+              <h3 className="text-xl font-medium text-[#e5e4e2] mb-2">{viewingKit.name}</h3>
+              {category && (
+                <div className="text-sm text-[#d3bb73] mb-3">{category.name}</div>
+              )}
+              {viewingKit.description && (
+                <p className="text-[#e5e4e2]/60 mb-4">{viewingKit.description}</p>
+              )}
+              <div className="text-sm text-[#e5e4e2]/40">
+                Utworzono: {new Date(viewingKit.created_at).toLocaleDateString('pl-PL')}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-[#d3bb73]/10 pt-6">
+            <h4 className="text-lg font-medium text-[#e5e4e2] mb-4">
+              Pozycje w zestawie ({viewingKit.equipment_kit_items.length})
+            </h4>
+            <div className="space-y-3">
+              {viewingKit.equipment_kit_items.map((item, index) => {
+                const eq = equipment.find(e => e.id === item.equipment_id);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-4 bg-[#1c1f33] p-4 rounded-lg print:border print:border-gray-300"
+                  >
+                    <div className="w-8 text-center text-[#e5e4e2]/40 font-mono">
+                      {index + 1}.
+                    </div>
+                    {eq?.thumbnail_url && (
+                      <img
+                        src={eq.thumbnail_url}
+                        alt={eq.name}
+                        className="w-16 h-16 rounded object-cover print:w-12 print:h-12"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <div className="text-[#e5e4e2] font-medium">{eq?.name || 'Nieznany sprzęt'}</div>
+                      {eq?.brand && (
+                        <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
+                      )}
+                      {item.notes && (
+                        <div className="text-xs text-[#e5e4e2]/40 mt-1 italic">{item.notes}</div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[#d3bb73] font-medium">x{item.quantity}</div>
+                      <div className="text-xs text-[#e5e4e2]/40">
+                        {eq?.equipment_units?.filter(u => u.status === 'available').length || 0} dostępnych
+                      </div>
+                    </div>
+                    <div className="w-6 print:block hidden">
+                      <input type="checkbox" className="w-5 h-5" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isEditMode) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setShowAddForm(false)}
+              onClick={() => {
+                setIsEditMode(false);
+                if (editingKit) {
+                  setViewingKit(editingKit);
+                } else {
+                  router.push('/crm/equipment/kits');
+                }
+              }}
               className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
@@ -364,7 +503,7 @@ export default function KitsPage() {
               <div>
                 <label className="block text-sm text-[#e5e4e2]/60 mb-2">Miniaturka</label>
                 {kitForm.thumbnail_url ? (
-                  <div className="relative w-full h-48 rounded-lg overflow-hidden bg-[#1c1f33]">
+                  <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-[#1c1f33]">
                     <img
                       src={kitForm.thumbnail_url}
                       alt="Miniaturka"
@@ -379,7 +518,7 @@ export default function KitsPage() {
                   </div>
                 ) : (
                   <label
-                    className="flex items-center justify-center w-full h-48 border-2 border-dashed border-[#d3bb73]/20 rounded-lg hover:border-[#d3bb73]/40 cursor-pointer bg-[#1c1f33] transition-colors"
+                    className="flex items-center justify-center w-full aspect-square border-2 border-dashed border-[#d3bb73]/20 rounded-lg hover:border-[#d3bb73]/40 cursor-pointer bg-[#1c1f33] transition-colors"
                     onDrop={handleDrop}
                     onDragOver={handleDragOver}
                   >

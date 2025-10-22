@@ -167,11 +167,17 @@ export default function EquipmentPage() {
     const search = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.brand?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    if (activeTab === 'all') return search;
+    if (!search) return false;
+
+    // Filtr typu: wszystko / tylko sprzęt / tylko zestawy
+    if (itemTypeFilter === 'equipment' && item.is_kit) return false;
+    if (itemTypeFilter === 'kits' && !item.is_kit) return false;
+
+    if (activeTab === 'all') return true;
     if (activeTab === 'cables') return false;
 
     const parentCategoryId = getParentCategoryId(item.warehouse_category_id);
-    return search && parentCategoryId === activeTab;
+    return parentCategoryId === activeTab;
   });
 
   const getStock = (item: Equipment) => {
