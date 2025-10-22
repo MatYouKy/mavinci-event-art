@@ -108,9 +108,9 @@ export default function NewEventModal({
   const fetchContacts = async () => {
     try {
       const { data, error } = await supabase
-        .from('contacts')
-        .select('id, full_name, organization_id, contact_type')
-        .order('full_name', { ascending: true });
+        .from('contact_persons')
+        .select('id, first_name, last_name, organization_id')
+        .order('last_name', { ascending: true });
 
       if (error) {
         console.error('Error fetching contacts:', error);
@@ -118,8 +118,14 @@ export default function NewEventModal({
       }
 
       if (data) {
-        setContacts(data);
-        setFilteredContacts(data);
+        const formattedContacts = data.map(cp => ({
+          id: cp.id,
+          full_name: `${cp.first_name || ''} ${cp.last_name || ''}`.trim() || 'Brak nazwy',
+          organization_id: cp.organization_id,
+          contact_type: cp.organization_id ? 'organization_contact' as const : 'individual' as const
+        }));
+        setContacts(formattedContacts);
+        setFilteredContacts(formattedContacts);
       }
     } catch (err) {
       console.error('Error:', err);

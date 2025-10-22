@@ -37,7 +37,7 @@ interface Event {
     id: string;
     first_name: string;
     last_name: string;
-    full_name: string;
+    
   } | null;
   category?: {
     id: string;
@@ -276,7 +276,7 @@ export default function EventDetailPage() {
         .select(`
           *,
           organization:organizations(id, name, alias),
-          contact_person:contacts(id, first_name, last_name, full_name),
+          contact_person:contact_persons(id, first_name, last_name),
           category:event_categories(
             id,
             name,
