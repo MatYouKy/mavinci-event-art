@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Layers } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ConnectorsView from '@/components/crm/ConnectorsView';
-import KitsManagementModal from '@/components/crm/KitsManagementModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -36,6 +35,8 @@ interface Equipment {
   thumbnail_url: string | null;
   warehouse_categories: WarehouseCategory | null;
   equipment_units: EquipmentUnit[];
+  is_kit?: boolean;
+  description?: string | null;
 }
 
 export default function EquipmentPage() {
@@ -51,7 +52,6 @@ export default function EquipmentPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
-  const [showKitsModal, setShowKitsModal] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -71,16 +71,45 @@ export default function EquipmentPage() {
   const fetchEquipment = async () => {
     try {
       setLoading(true);
-      const { data } = await supabase
-        .from('equipment_items')
-        .select(`
-          *,
-          warehouse_categories(*),
-          equipment_units(id, status)
-        `)
-        .eq('is_active', true)
-        .order('name');
-      setEquipment(data || []);
+
+      const [equipmentData, kitsData] = await Promise.all([
+        supabase
+          .from('equipment_items')
+          .select(`
+            *,
+            warehouse_categories(*),
+            equipment_units(id, status)
+          `)
+          .eq('is_active', true)
+          .order('name'),
+        supabase
+          .from('equipment_kits')
+          .select(`
+            id,
+            name,
+            description,
+            thumbnail_url,
+            warehouse_category_id,
+            warehouse_categories(*)
+          `)
+          .eq('is_active', true)
+          .order('name')
+      ]);
+
+      const equipment = (equipmentData.data || []).map((item: any) => ({
+        ...item,
+        is_kit: false,
+      }));
+
+      const kits = (kitsData.data || []).map((kit: any) => ({
+        ...kit,
+        is_kit: true,
+        brand: null,
+        model: null,
+        equipment_units: [],
+      }));
+
+      setEquipment([...equipment, ...kits]);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -176,7 +205,7 @@ export default function EquipmentPage() {
                 Kategorie
               </button>
               <button
-                onClick={() => setShowKitsModal(true)}
+                onClick={() => router.push('/crm/equipment/kits')}
                 className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
               >
                 <Layers className="w-4 h-4" />
@@ -320,14 +349,24 @@ export default function EquipmentPage() {
                         />
                       </div>
                     )}
-                    {item.thumbnail_url ? (
-                      <img src={item.thumbnail_url} alt={item.name} className="w-full h-32 object-cover rounded-lg mb-4" />
-                    ) : (
-                      <div className="w-full h-32 bg-[#0f1119] rounded-lg mb-4 flex items-center justify-center">
-                        <Package className="w-12 h-12 text-[#e5e4e2]/40" />
-                      </div>
-                    )}
-                    <h3 className="text-[#e5e4e2] font-medium mb-2">{item.name}</h3>
+                    <div className="relative">
+                      {item.thumbnail_url ? (
+                        <img src={item.thumbnail_url} alt={item.name} className="w-full h-32 object-cover rounded-lg mb-4" />
+                      ) : (
+                        <div className="w-full h-32 bg-[#0f1119] rounded-lg mb-4 flex items-center justify-center">
+                          <Package className="w-12 h-12 text-[#e5e4e2]/40" />
+                        </div>
+                      )}
+                      {item.is_kit && (
+                        <div className="absolute top-2 left-2 bg-[#d3bb73] text-[#1c1f33] text-xs font-medium px-2 py-1 rounded">
+                          ZESTAW
+                        </div>
+                      )}
+                    </div>
+                    <h3 className="text-[#e5e4e2] font-medium mb-2">
+                      {item.name}
+                      {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
+                    </h3>
                     {item.warehouse_category_id && (
                       <p className="text-xs text-[#e5e4e2]/40 mb-2 flex items-center gap-1">
                         <ChevronRight className="w-3 h-3" />
@@ -335,7 +374,11 @@ export default function EquipmentPage() {
                       </p>
                     )}
                     <div className="flex justify-between text-sm">
-                      <span className={stock.color}>{stock.available}/{stock.total}</span>
+                      {item.is_kit ? (
+                        <span className="text-[#e5e4e2]/60 italic">Zestaw</span>
+                      ) : (
+                        <span className={stock.color}>{stock.available}/{stock.total}</span>
+                      )}
                       {item.brand && <span className="text-[#e5e4e2]/60">{item.brand}</span>}
                     </div>
                   </div>
@@ -352,15 +395,25 @@ export default function EquipmentPage() {
                     onClick={() => router.push(`/crm/equipment/${item.id}`)}
                     className="flex items-center gap-4 p-4 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 last:border-0"
                   >
-                    {item.thumbnail_url ? (
-                      <img src={item.thumbnail_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover" />
-                    ) : (
-                      <div className="w-12 h-12 bg-[#0f1119] rounded-lg flex items-center justify-center">
-                        <Package className="w-6 h-6 text-[#e5e4e2]/40" />
-                      </div>
-                    )}
+                    <div className="relative">
+                      {item.thumbnail_url ? (
+                        <img src={item.thumbnail_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 bg-[#0f1119] rounded-lg flex items-center justify-center">
+                          <Package className="w-6 h-6 text-[#e5e4e2]/40" />
+                        </div>
+                      )}
+                      {item.is_kit && (
+                        <div className="absolute -top-1 -left-1 bg-[#d3bb73] text-[#1c1f33] text-[10px] font-medium px-1 rounded">
+                          KIT
+                        </div>
+                      )}
+                    </div>
                     <div className="flex-1">
-                      <h3 className="text-[#e5e4e2] font-medium">{item.name}</h3>
+                      <h3 className="text-[#e5e4e2] font-medium">
+                        {item.name}
+                        {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
+                      </h3>
                       <div className="flex gap-2 text-sm text-[#e5e4e2]/60">
                         {item.brand && <span>{item.brand}</span>}
                         {item.warehouse_category_id && (
@@ -375,7 +428,11 @@ export default function EquipmentPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className={`text-sm ${stock.color}`}>{stock.available}/{stock.total}</span>
+                      {item.is_kit ? (
+                        <span className="text-sm text-[#e5e4e2]/60 italic">Zestaw</span>
+                      ) : (
+                        <span className={`text-sm ${stock.color}`}>{stock.available}/{stock.total}</span>
+                      )}
                       {canManageModule('equipment') && (
                         <div onClick={(e) => e.stopPropagation()}>
                           <ResponsiveActionBar
@@ -397,16 +454,6 @@ export default function EquipmentPage() {
             </div>
           )}
         </>
-      )}
-
-      {showKitsModal && (
-        <KitsManagementModal
-          onClose={() => {
-            setShowKitsModal(false);
-            fetchEquipment(); // Odśwież listę po zamknięciu modala
-          }}
-          equipment={equipment.filter(e => !e.is_kit)} // Przekaż tylko normalny sprzęt (bez zestawów)
-        />
       )}
     </div>
   );
