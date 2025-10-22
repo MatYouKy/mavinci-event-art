@@ -379,14 +379,15 @@ export default function EditVehiclePage() {
           </div>
         </div>
 
-        {/* Dane techniczne */}
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane techniczne</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Typ silnika
-              </label>
+        {/* Dane techniczne - tylko dla samochodów */}
+        {formData.vehicle_type !== 'trailer' && (
+          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
+            <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane techniczne</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Typ silnika
+                </label>
               <input
                 type="text"
                 name="engine_type"
@@ -509,8 +510,128 @@ export default function EditVehiclePage() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* Przebieg */}
+        {/* Wymiary i ładowność - dla przyczep */}
+        {formData.vehicle_type === 'trailer' && (
+          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
+            <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Wymiary i ładowność</h2>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-md font-medium mb-3 text-[#d3bb73]">Wymiary części załadunkowej</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Długość (cm)
+                    </label>
+                    <input
+                      type="number"
+                      name="cargo_length_cm"
+                      value={formData.cargo_length_cm}
+                      onChange={handleChange}
+                      placeholder="np. 600"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Szerokość (cm)
+                    </label>
+                    <input
+                      type="number"
+                      name="cargo_width_cm"
+                      value={formData.cargo_width_cm}
+                      onChange={handleChange}
+                      placeholder="np. 240"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Wysokość (cm)
+                    </label>
+                    <input
+                      type="number"
+                      name="cargo_height_cm"
+                      value={formData.cargo_height_cm}
+                      onChange={handleChange}
+                      placeholder="np. 280"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-md font-medium mb-3 text-[#d3bb73]">Wymiary całkowite (bezwzględne)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Długość całkowita (cm)
+                    </label>
+                    <input
+                      type="number"
+                      name="total_length_cm"
+                      value={formData.total_length_cm}
+                      onChange={handleChange}
+                      placeholder="np. 720"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Szerokość całkowita (cm)
+                    </label>
+                    <input
+                      type="number"
+                      name="total_width_cm"
+                      value={formData.total_width_cm}
+                      onChange={handleChange}
+                      placeholder="np. 255"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Wysokość całkowita (cm)
+                    </label>
+                    <input
+                      type="number"
+                      name="total_height_cm"
+                      value={formData.total_height_cm}
+                      onChange={handleChange}
+                      placeholder="np. 300"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    Maks. ładowność (kg)
+                  </label>
+                  <input
+                    type="number"
+                    name="max_load_kg"
+                    value={formData.max_load_kg}
+                    onChange={handleChange}
+                    placeholder="np. 1500"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Przebieg - tylko dla samochodów */}
+        {formData.vehicle_type !== 'trailer' && (
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
           <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Przebieg</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -543,6 +664,7 @@ export default function EditVehiclePage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Koszty */}
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
