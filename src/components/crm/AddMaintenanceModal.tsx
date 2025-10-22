@@ -456,6 +456,7 @@ export default function AddMaintenanceModal({
                           <option value="oil_filter">Filtr oleju</option>
                           <option value="air_filter">Filtr powietrza</option>
                           <option value="cabin_filter">Filtr kabiny</option>
+                          <option value="fuel_filter">Filtr paliwa</option>
                           <option value="other">Inne</option>
                         </select>
                       </div>
