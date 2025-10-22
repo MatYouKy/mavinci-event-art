@@ -10,6 +10,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import EquipmentSkillRequirementsPanel from '@/components/crm/EquipmentSkillRequirementsPanel';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import EquipmentGallery from '@/components/crm/EquipmentGallery';
 
 interface EquipmentStock {
   id: string;
@@ -32,11 +33,14 @@ interface Component {
   is_included: boolean;
 }
 
-interface GalleryImage {
+interface EquipmentImage {
   id: string;
+  equipment_id: string;
   image_url: string;
-  caption: string | null;
-  order_index: number;
+  title: string | null;
+  is_primary: boolean;
+  sort_order: number;
+  created_at: string;
 }
 
 interface StockHistory {
@@ -109,7 +113,7 @@ interface Equipment {
   warehouse_categories: WarehouseCategory | null;
   equipment_stock: EquipmentStock[];
   equipment_components: Component[];
-  equipment_gallery: GalleryImage[];
+  equipment_images: EquipmentImage[];
 }
 
 export default function EquipmentDetailPage() {
@@ -185,7 +189,7 @@ export default function EquipmentDetailPage() {
           warehouse_categories(id, name, parent_id, level),
           equipment_stock(*),
           equipment_components(*),
-          equipment_gallery(*)
+          equipment_images(*)
         `)
         .eq('id', equipmentId)
         .maybeSingle();
@@ -519,6 +523,7 @@ export default function EquipmentDetailPage() {
           setConnectorTooltipPosition={setConnectorTooltipPosition}
           setShowAddConnectorModal={setShowAddConnectorModal}
           setConnectorField={setConnectorField}
+          warehouseCategories={warehouseCategories}
           onConnectorClick={(connectorName: string) => {
             const connector = connectorTypes.find((c: any) => c.name === connectorName);
             if (connector) {
@@ -556,9 +561,9 @@ export default function EquipmentDetailPage() {
       )}
 
       {activeTab === 'gallery' && (
-        <GalleryTab
-          equipment={equipment}
-          onUpdate={fetchEquipment}
+        <EquipmentGallery
+          equipmentId={equipment.id}
+          canManage={canEdit}
         />
       )}
 
@@ -643,7 +648,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
     { id: 'purchase', label: 'Informacje zakupowe' },
     { id: 'components', label: `Skład zestawu (${equipment.equipment_components?.length || 0})` },
     { id: 'units', label: `Jednostki (${units?.length || 0})` },
-    { id: 'gallery', label: `Galeria (${equipment.equipment_gallery?.length || 0})` },
+    { id: 'gallery', label: `Galeria (${equipment.equipment_images?.length || 0})` },
     { id: 'history', label: 'Historia' },
   ];
 
@@ -942,8 +947,13 @@ function DetailsTab({
   );
 }
 
-function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes, setConnectorTooltip, setConnectorTooltipPosition, setShowAddConnectorModal, setConnectorField, onConnectorClick }: any) {
-  const isCable = equipment.warehouse_categories?.name?.toLowerCase().includes('przewod');
+function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes, setConnectorTooltip, setConnectorTooltipPosition, setShowAddConnectorModal, setConnectorField, onConnectorClick, warehouseCategories }: any) {
+  const currentCategoryId = isEditing && editForm.warehouse_category_id
+    ? editForm.warehouse_category_id
+    : equipment.warehouse_categories?.id;
+
+  const currentCategory = warehouseCategories?.find((c: any) => c.id === currentCategoryId);
+  const isCable = currentCategory?.name?.toLowerCase().includes('przewod');
 
   return (
     <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
@@ -1511,101 +1521,6 @@ function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
   );
 }
 
-function GalleryTab({ equipment, onUpdate }: any) {
-  const [uploading, setUploading] = useState(false);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const url = await uploadImage(file, 'equipment-gallery');
-
-        const maxOrder = equipment.equipment_gallery.length > 0
-          ? Math.max(...equipment.equipment_gallery.map((img: any) => img.order_index))
-          : -1;
-
-        await supabase.from('equipment_gallery').insert({
-          equipment_id: equipment.id,
-          image_url: url,
-          order_index: maxOrder + 1,
-        });
-      }
-
-      onUpdate();
-    } catch (error) {
-      console.error('Error uploading images:', error);
-      alert('Błąd podczas przesyłania zdjęć');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDeleteImage = async (imageId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć to zdjęcie?')) return;
-
-    try {
-      await supabase.from('equipment_gallery').delete().eq('id', imageId);
-      onUpdate();
-    } catch (error) {
-      console.error('Error deleting image:', error);
-      alert('Błąd podczas usuwania zdjęcia');
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium text-[#e5e4e2]">Galeria zdjęć</h3>
-        <div>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleImageUpload}
-            className="hidden"
-            id="gallery-upload"
-            disabled={uploading}
-          />
-          <label
-            htmlFor="gallery-upload"
-            className={`flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg cursor-pointer hover:bg-[#d3bb73]/90 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <Upload className="w-4 h-4" />
-            {uploading ? 'Przesyłanie...' : 'Dodaj zdjęcia'}
-          </label>
-        </div>
-      </div>
-
-      {equipment.equipment_gallery.length === 0 ? (
-        <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-          <ImageIcon className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60">Brak zdjęć w galerii</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {equipment.equipment_gallery.map((image: GalleryImage) => (
-            <div key={image.id} className="relative group">
-              <img
-                src={image.image_url}
-                alt={image.caption || ''}
-                className="w-full aspect-square object-cover rounded-lg"
-              />
-              <button
-                onClick={() => handleDeleteImage(image.id)}
-                className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function StockTab({ equipment, stock, onUpdate }: any) {
   const [showModal, setShowModal] = useState(false);
