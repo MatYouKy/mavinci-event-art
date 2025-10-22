@@ -23,6 +23,7 @@ import WeekView from './WeekView';
 import DayView from './DayView';
 import EmployeeView from './EmployeeView';
 import NewEventModal from '../NewEventModal';
+import { useGetEventsListQuery } from '@/store/api/eventsApi';
 
 export default function CalendarMain() {
   const router = useRouter();
@@ -52,63 +53,28 @@ export default function CalendarMain() {
     assignedToMe: false,
   });
 
+  // RTK Query - pobierz wydarzenia
+  const { data: eventsData, isLoading: eventsLoading, error: eventsError, refetch: refetchEvents } = useGetEventsListQuery();
+
   useEffect(() => {
     fetchCurrentEmployee();
-    fetchEvents();
     fetchFilterOptions();
   }, []);
+
+  // Załaduj wydarzenia z RTK Query
+  useEffect(() => {
+    if (eventsData) {
+      console.log('Events loaded from RTK:', eventsData.length);
+      setAllEvents(eventsData);
+    }
+  }, [eventsData]);
 
   useEffect(() => {
     applyFilters();
   }, [filters, allEvents]);
 
-  const fetchEvents = async () => {
-    try {
-      console.log('Fetching events...');
-      const { data, error } = await supabase
-        .from('events')
-        .select(`
-          *,
-          organization:organizations(id, name, alias),
-          contact_person:contacts(id, first_name, last_name, full_name),
-          category:event_categories(
-            id,
-            name,
-            color,
-            custom_icon:custom_icons(
-              id,
-              name,
-              svg_code
-            )
-          ),
-          employees:employee_assignments(
-            id,
-            employee_id,
-            role,
-            status
-          ),
-          vehicles:event_vehicles(
-            id,
-            driver_id
-          )
-        `)
-        .order('event_date', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching events:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
-        return;
-      }
-
-      console.log('Events fetched successfully:', data?.length || 0);
-      if (data) {
-        setAllEvents(data as CalendarEvent[]);
-        setEvents(data as CalendarEvent[]);
-      }
-    } catch (err) {
-      console.error('Error in fetchEvents:', err);
-    }
-  };
+  // Funkcja fetchEvents zastąpiona przez RTK Query (useGetEventsListQuery)
+  // Używaj refetchEvents() jeśli potrzebujesz odświeżyć dane
 
   const fetchCurrentEmployee = async () => {
     try {
@@ -288,7 +254,7 @@ export default function CalendarMain() {
       }
 
       console.log('Event saved successfully:', data);
-      fetchEvents();
+      refetchEvents();
       setIsModalOpen(false);
     } catch (err) {
       console.error('Error:', err);
