@@ -1,6 +1,28 @@
 -- ============================================
--- NAPRAWA V2: Poprawione duplikowanie alertów
+-- NAPRAWA V4: System alertów z ciągłością ochrony
 -- ============================================
+-- WYMAGANIA: Musisz mieć zastosowane te migracje:
+--   - 20251021240000_create_vehicle_alerts.sql (tabela vehicle_alerts)
+--   - 20251021220000_create_periodic_inspections.sql (tabela periodic_inspections)
+--   - 20251021210000_add_insurance_details.sql (tabela insurance_policies)
+
+-- Sprawdź czy wymagane tabele istnieją
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vehicle_alerts') THEN
+    RAISE EXCEPTION 'Tabela vehicle_alerts nie istnieje! Uruchom najpierw migrację 20251021240000_create_vehicle_alerts.sql';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'periodic_inspections') THEN
+    RAISE EXCEPTION 'Tabela periodic_inspections nie istnieje! Uruchom najpierw migrację floty.';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'insurance_policies') THEN
+    RAISE EXCEPTION 'Tabela insurance_policies nie istnieje! Uruchom najpierw migrację floty.';
+  END IF;
+
+  RAISE NOTICE 'Wszystkie wymagane tabele istnieją - kontynuuję...';
+END $$;
 
 -- Usuń stary trigger
 DROP TRIGGER IF EXISTS trigger_create_inspection_alert ON periodic_inspections;
@@ -77,11 +99,29 @@ CREATE TRIGGER trigger_create_inspection_alert
   EXECUTE FUNCTION create_inspection_alert();
 
 -- Włącz realtime dla vehicle_alerts (jeśli nie było)
+-- Sprawdź najpierw czy tabela istnieje
 DO $$
 BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE vehicle_alerts;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
+  -- Jeśli tabela nie istnieje, pomiń ten krok
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+    AND table_name = 'vehicle_alerts'
+  ) THEN
+    RAISE NOTICE 'Tabela vehicle_alerts nie istnieje - uruchom najpierw migrację 20251021240000_create_vehicle_alerts.sql';
+    RETURN;
+  END IF;
+
+  -- Dodaj do realtime jeśli nie jest już dodana
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE vehicle_alerts;
+    RAISE NOTICE 'Dodano vehicle_alerts do realtime';
+  EXCEPTION
+    WHEN duplicate_object THEN
+      RAISE NOTICE 'vehicle_alerts już jest w realtime';
+    WHEN undefined_table THEN
+      RAISE NOTICE 'Tabela vehicle_alerts nie istnieje';
+  END;
 END $$;
 
 -- Wyczyść duplikaty alertów
