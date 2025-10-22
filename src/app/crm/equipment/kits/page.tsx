@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Package, Search, Edit, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
@@ -54,6 +54,7 @@ interface WarehouseCategory {
 
 export default function KitsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { canManageModule } = useCurrentEmployee();
@@ -81,6 +82,16 @@ export default function KitsPage() {
     fetchEquipment();
     fetchKits();
   }, []);
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && kits.length > 0) {
+      const kitToEdit = kits.find(k => k.id === editId);
+      if (kitToEdit) {
+        handleOpenForm(kitToEdit);
+      }
+    }
+  }, [searchParams, kits]);
 
   const fetchCategories = async () => {
     const { data } = await supabase
@@ -173,6 +184,33 @@ export default function KitsPage() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const file = e.dataTransfer.files[0];
+    if (!file || !file.type.startsWith('image/')) {
+      showSnackbar('Proszę upuścić plik obrazu', 'warning');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const url = await uploadImage(file, 'equipment-kits');
+      setKitForm(prev => ({ ...prev, thumbnail_url: url }));
+      showSnackbar('Zdjęcie zostało przesłane', 'success');
+    } catch (error) {
+      showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const handleAddKitItem = (equipmentId: string) => {
@@ -340,7 +378,11 @@ export default function KitsPage() {
                     </button>
                   </div>
                 ) : (
-                  <label className="flex items-center justify-center w-full h-48 border-2 border-dashed border-[#d3bb73]/20 rounded-lg hover:border-[#d3bb73]/40 cursor-pointer bg-[#1c1f33]">
+                  <label
+                    className="flex items-center justify-center w-full h-48 border-2 border-dashed border-[#d3bb73]/20 rounded-lg hover:border-[#d3bb73]/40 cursor-pointer bg-[#1c1f33] transition-colors"
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                  >
                     <input
                       type="file"
                       accept="image/*"
@@ -350,8 +392,11 @@ export default function KitsPage() {
                     />
                     <div className="text-center">
                       <Package className="w-12 h-12 mx-auto text-[#e5e4e2]/40 mb-2" />
-                      <span className="text-sm text-[#e5e4e2]/40">
-                        {uploading ? 'Przesyłanie...' : 'Kliknij aby dodać zdjęcie'}
+                      <span className="text-sm text-[#e5e4e2]/40 block">
+                        {uploading ? 'Przesyłanie...' : 'Kliknij lub przeciągnij zdjęcie'}
+                      </span>
+                      <span className="text-xs text-[#e5e4e2]/20 mt-1 block">
+                        Obsługiwane formaty: JPG, PNG, WEBP
                       </span>
                     </div>
                   </label>
@@ -459,25 +504,56 @@ export default function KitsPage() {
               )}
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Dodaj sprzęt do zestawu</label>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      handleAddKitItem(e.target.value);
-                      e.target.value = '';
-                    }
-                  }}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                >
-                  <option value="">Wybierz sprzęt...</option>
-                  {equipment
-                    .filter(eq => !kitItems.some(item => item.equipment_id === eq.id))
-                    .map(eq => (
-                      <option key={eq.id} value={eq.id}>
-                        {eq.name} {eq.brand ? `(${eq.brand})` : ''}
-                      </option>
-                    ))}
-                </select>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-4">Dodaj sprzęt do zestawu</label>
+                <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg max-h-96 overflow-y-auto">
+                  {equipment.length === 0 ? (
+                    <div className="p-4 text-center text-[#e5e4e2]/40">Brak dostępnego sprzętu</div>
+                  ) : (
+                    equipment.map(eq => {
+                      const isInKit = kitItems.some(item => item.equipment_id === eq.id);
+                      const availableUnits = eq.equipment_units?.filter(u => u.status === 'available').length || 0;
+                      return (
+                        <label
+                          key={eq.id}
+                          className={`flex items-center gap-3 p-3 border-b border-[#d3bb73]/5 last:border-0 cursor-pointer hover:bg-[#0f1119] transition-colors ${isInKit ? 'bg-[#d3bb73]/5' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isInKit}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                handleAddKitItem(eq.id);
+                              } else {
+                                const index = kitItems.findIndex(item => item.equipment_id === eq.id);
+                                if (index !== -1) handleRemoveKitItem(index);
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0 bg-[#0f1119]"
+                          />
+                          {eq.thumbnail_url ? (
+                            <img
+                              src={eq.thumbnail_url}
+                              alt={eq.name}
+                              className="w-12 h-12 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded bg-[#0f1119] flex items-center justify-center">
+                              <Package className="w-6 h-6 text-[#e5e4e2]/40" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[#e5e4e2] font-medium truncate">{eq.name}</div>
+                            <div className="text-xs text-[#e5e4e2]/60">
+                              {eq.brand && <span>{eq.brand} {eq.model}</span>}
+                              {eq.brand && availableUnits > 0 && <span className="mx-1">•</span>}
+                              {availableUnits > 0 && <span className="text-[#d3bb73]">{availableUnits} dostępnych</span>}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
           </div>

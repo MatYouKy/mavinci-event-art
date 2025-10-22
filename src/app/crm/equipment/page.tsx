@@ -332,7 +332,7 @@ export default function EquipmentPage() {
                 return (
                   <div
                     key={item.id}
-                    onClick={() => router.push(`/crm/equipment/${item.id}`)}
+                    onClick={() => router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)}
                     className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 cursor-pointer relative"
                   >
                     {canManageModule('equipment') && (
@@ -392,7 +392,7 @@ export default function EquipmentPage() {
                 return (
                   <div
                     key={item.id}
-                    onClick={() => router.push(`/crm/equipment/${item.id}`)}
+                    onClick={() => router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)}
                     className="flex items-center gap-4 p-4 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 last:border-0"
                   >
                     <div className="relative">
