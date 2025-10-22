@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Upload, Trash2, Star, StarOff, Loader2, Image as ImageIcon } from 'lucide-react';
+import { X, Upload, Trash2, Star, StarOff, Loader2, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -17,6 +17,13 @@ interface VehicleImage {
   created_at: string;
 }
 
+interface UploadingFile {
+  id: string;
+  file: File;
+  preview: string;
+  progress: number;
+}
+
 interface VehicleGalleryProps {
   vehicleId: string;
   canManage: boolean;
@@ -27,7 +34,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const { employee } = useCurrentEmployee();
   const [images, setImages] = useState<VehicleImage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [selectedImage, setSelectedImage] = useState<VehicleImage | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
@@ -58,22 +65,39 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const uploadFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
-    setUploading(true);
+    const filesArray = Array.from(files);
+    const uploadingItems: UploadingFile[] = filesArray.map((file) => ({
+      id: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      file,
+      preview: URL.createObjectURL(file),
+      progress: 0,
+    }));
+
+    setUploadingFiles(uploadingItems);
 
     try {
-      for (const file of Array.from(files)) {
+      for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i];
+        const uploadingItem = uploadingItems[i];
+
         if (!file.type.startsWith('image/')) {
           showSnackbar(`${file.name} nie jest obrazem`, 'error');
+          setUploadingFiles((prev) => prev.filter((item) => item.id !== uploadingItem.id));
           continue;
         }
 
         if (file.size > 10 * 1024 * 1024) {
           showSnackbar(`${file.name} przekracza 10MB`, 'error');
+          setUploadingFiles((prev) => prev.filter((item) => item.id !== uploadingItem.id));
           continue;
         }
 
         const fileExt = file.name.split('.').pop();
         const fileName = `${vehicleId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+        setUploadingFiles((prev) =>
+          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 50 } : item))
+        );
 
         const { error: uploadError } = await supabase.storage
           .from('vehicle-images')
@@ -89,37 +113,42 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
           vehicle_id: vehicleId,
           image_url: publicUrl,
           title: file.name,
-          is_primary: images.length === 0,
-          sort_order: images.length,
+          is_primary: images.length === 0 && i === 0,
+          sort_order: images.length + i,
           uploaded_by: employee?.id,
         });
 
         if (dbError) throw dbError;
+
+        setUploadingFiles((prev) =>
+          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 100 } : item))
+        );
+
+        setTimeout(() => {
+          setUploadingFiles((prev) => prev.filter((item) => item.id !== uploadingItem.id));
+        }, 500);
       }
 
       showSnackbar('Zdjęcia zostały dodane', 'success');
       fetchImages();
     } catch (error: any) {
       console.error('Error uploading images:', error);
-      showSnackbar(error.message || 'Błąd podczas uploadu zdjęć', 'error');
-    } finally {
-      setUploading(false);
+      showSnackbar('Błąd podczas dodawania zdjęć', 'error');
+      setUploadingFiles([]);
     }
   };
 
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files) {
-      await uploadFiles(files);
-      event.target.value = '';
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      uploadFiles(e.target.files);
     }
   };
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (canManage) {
-      setDragCounter(prev => prev + 1);
+    setDragCounter((prev) => prev + 1);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       setIsDragging(true);
     }
   };
@@ -127,15 +156,13 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (canManage) {
-      setDragCounter(prev => {
-        const newCount = prev - 1;
-        if (newCount === 0) {
-          setIsDragging(false);
-        }
-        return newCount;
-      });
-    }
+    setDragCounter((prev) => {
+      const newCount = prev - 1;
+      if (newCount === 0) {
+        setIsDragging(false);
+      }
+      return newCount;
+    });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -146,8 +173,8 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragCounter(0);
     setIsDragging(false);
+    setDragCounter(0);
 
     if (!canManage) return;
 
@@ -183,16 +210,13 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
     if (!confirm('Czy na pewno chcesz usunąć to zdjęcie?')) return;
 
     try {
-      const pathParts = image.image_url.split('/vehicle-images/');
-      if (pathParts.length > 1) {
-        const filePath = pathParts[1];
+      const urlParts = image.image_url.split('/vehicle-images/');
+      if (urlParts.length > 1) {
+        const filePath = urlParts[1];
         await supabase.storage.from('vehicle-images').remove([filePath]);
       }
 
-      const { error } = await supabase
-        .from('vehicle_images')
-        .delete()
-        .eq('id', image.id);
+      const { error } = await supabase.from('vehicle_images').delete().eq('id', image.id);
 
       if (error) throw error;
 
@@ -226,6 +250,17 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
     }
   };
 
+  const navigateImage = (direction: 'prev' | 'next') => {
+    if (!selectedImage) return;
+    const currentIndex = images.findIndex((img) => img.id === selectedImage.id);
+    let newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
+
+    if (newIndex < 0) newIndex = images.length - 1;
+    if (newIndex >= images.length) newIndex = 0;
+
+    setSelectedImage(images[newIndex]);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -246,13 +281,13 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
               accept="image/*"
               multiple
               onChange={handleUpload}
-              disabled={uploading}
+              disabled={uploadingFiles.length > 0}
               className="hidden"
             />
-            {uploading ? (
+            {uploadingFiles.length > 0 ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading...
+                Przesyłanie...
               </>
             ) : (
               <>
@@ -274,12 +309,10 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
           isDragging ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119] shadow-[0_0_20px_rgba(211,187,115,0.3)]' : ''
         }`}
       >
-        {/* Drag overlay - minimalna warstwa wizualna */}
+        {/* Drag overlay */}
         {isDragging && canManage && (
           <>
-            {/* Subtelna ramka */}
             <div className="absolute inset-0 border-2 border-dashed border-[#d3bb73] rounded-lg pointer-events-none z-10 bg-[#d3bb73]/5" />
-            {/* Hint badge na górze */}
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg shadow-xl z-20 pointer-events-none animate-pulse">
               <div className="flex items-center gap-2">
                 <Upload className="w-5 h-5" />
@@ -289,7 +322,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
           </>
         )}
 
-        {images.length === 0 ? (
+        {images.length === 0 && uploadingFiles.length === 0 ? (
           <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
             <ImageIcon className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
             <p className="text-[#e5e4e2]/60">Brak zdjęć</p>
@@ -307,6 +340,29 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {/* Uploading files with preview */}
+            {uploadingFiles.map((uploadingFile) => (
+              <div
+                key={uploadingFile.id}
+                className="relative bg-[#1c1f33] rounded-lg border border-[#d3bb73]/30 overflow-hidden"
+              >
+                <div className="aspect-square relative">
+                  <img
+                    src={uploadingFile.preview}
+                    alt="Uploading..."
+                    className="w-full h-full object-cover opacity-50"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <div className="text-center">
+                      <Loader2 className="w-8 h-8 text-[#d3bb73] animate-spin mx-auto mb-2" />
+                      <p className="text-xs text-[#e5e4e2]">{uploadingFile.progress}%</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Existing images */}
             {images.map((image) => (
               <div
                 key={image.id}
@@ -352,85 +408,82 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
                     </div>
                   )}
                 </div>
-                {image.title && (
-                  <div className="p-2 bg-[#1c1f33]">
-                    <p className="text-sm text-[#e5e4e2] truncate">{image.title}</p>
-                  </div>
-                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Lightbox modal */}
+      {/* Enhanced Lightbox modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
           onClick={() => setSelectedImage(null)}
         >
           <div
-            className="relative max-w-6xl max-h-[90vh] w-full"
+            className="relative max-w-6xl max-h-[90vh] w-full flex items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Close button */}
             <button
               onClick={() => setSelectedImage(null)}
-              className="absolute -top-12 right-0 text-white hover:text-[#d3bb73] transition-colors"
+              className="absolute top-4 right-4 text-white hover:text-[#d3bb73] transition-colors z-10 bg-black/50 rounded-full p-2"
+              title="Zamknij"
             >
-              <X className="w-8 h-8" />
+              <X className="w-6 h-6" />
             </button>
 
-            <div className="bg-[#1c1f33] rounded-lg overflow-hidden">
-              <div className="relative">
-                <img
-                  src={selectedImage.image_url}
-                  alt={selectedImage.title || 'Vehicle image'}
-                  className="w-full h-auto max-h-[70vh] object-contain"
-                />
-              </div>
+            {/* Navigation arrows */}
+            {images.length > 1 && (
+              <>
+                <button
+                  onClick={() => navigateImage('prev')}
+                  className="absolute left-4 text-white hover:text-[#d3bb73] transition-colors z-10 bg-black/50 rounded-full p-3"
+                  title="Poprzednie"
+                >
+                  <ChevronLeft className="w-8 h-8" />
+                </button>
+                <button
+                  onClick={() => navigateImage('next')}
+                  className="absolute right-4 text-white hover:text-[#d3bb73] transition-colors z-10 bg-black/50 rounded-full p-3"
+                  title="Następne"
+                >
+                  <ChevronRight className="w-8 h-8" />
+                </button>
+              </>
+            )}
 
-              <div className="p-6 space-y-4">
-                {canManage ? (
-                  <input
-                    type="text"
-                    value={selectedImage.title || ''}
-                    onChange={(e) =>
-                      setSelectedImage({ ...selectedImage, title: e.target.value })
-                    }
-                    onBlur={(e) => handleUpdateTitle(selectedImage.id, e.target.value)}
-                    placeholder="Tytuł zdjęcia..."
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                  />
-                ) : (
-                  selectedImage.title && (
-                    <h3 className="text-xl font-semibold text-[#e5e4e2]">
-                      {selectedImage.title}
-                    </h3>
-                  )
-                )}
-
-                {canManage && (
-                  <div className="flex gap-2">
-                    {!selectedImage.is_primary && (
-                      <button
-                        onClick={() => handleSetPrimary(selectedImage.id)}
-                        className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                      >
-                        <Star className="w-4 h-4" />
-                        Ustaw jako główne
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDelete(selectedImage)}
-                      className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Usuń
-                    </button>
-                  </div>
-                )}
-              </div>
+            {/* Image */}
+            <div className="relative max-w-full max-h-[80vh]">
+              <img
+                src={selectedImage.image_url}
+                alt={selectedImage.title || 'Vehicle image'}
+                className="max-w-full max-h-[80vh] object-contain rounded-lg"
+              />
             </div>
+
+            {/* Action buttons */}
+            {canManage && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/70 backdrop-blur-sm rounded-full p-2">
+                {!selectedImage.is_primary && (
+                  <button
+                    onClick={() => handleSetPrimary(selectedImage.id)}
+                    className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-full hover:bg-[#d3bb73]/90 transition-colors"
+                    title="Ustaw jako główne"
+                  >
+                    <Star className="w-4 h-4" />
+                    <span className="hidden sm:inline">Ustaw jako główne</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(selectedImage)}
+                  className="flex items-center gap-2 bg-red-500/90 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
+                  title="Usuń"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
