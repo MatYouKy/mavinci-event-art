@@ -38,6 +38,7 @@ import VehicleLicenseRequirementsPanel from '@/components/crm/VehicleLicenseRequ
 
 interface Vehicle {
   id: string;
+  vehicle_type: string;
   name: string;
   brand: string;
   model: string;
@@ -692,35 +693,41 @@ export default function VehicleDetailPage() {
 
       {/* Statystyki */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-[#e5e4e2]/60">Przebieg</span>
-            <Gauge className="w-5 h-5 text-[#d3bb73]" />
-          </div>
-          <div className="text-2xl font-bold text-[#e5e4e2]">
-            {vehicle.current_mileage?.toLocaleString()} km
-          </div>
-        </div>
+        {vehicle?.vehicle_type !== 'trailer' && (
+          <>
+            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-[#e5e4e2]/60">Przebieg</span>
+                <Gauge className="w-5 h-5 text-[#d3bb73]" />
+              </div>
+              <div className="text-2xl font-bold text-[#e5e4e2]">
+                {vehicle.current_mileage?.toLocaleString()} km
+              </div>
+            </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-[#e5e4e2]/60">Śr. zużycie</span>
-            <Activity className="w-5 h-5 text-[#d3bb73]" />
-          </div>
-          <div className="text-2xl font-bold text-[#e5e4e2]">
-            {avgConsumption > 0 ? `${avgConsumption.toFixed(1)} l/100km` : '-'}
-          </div>
-        </div>
+            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-[#e5e4e2]/60">Śr. zużycie</span>
+                <Activity className="w-5 h-5 text-[#d3bb73]" />
+              </div>
+              <div className="text-2xl font-bold text-[#e5e4e2]">
+                {avgConsumption > 0 ? `${avgConsumption.toFixed(1)} l/100km` : '-'}
+              </div>
+            </div>
+          </>
+        )}
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-[#e5e4e2]/60">Koszt paliwa</span>
-            <Fuel className="w-5 h-5 text-[#d3bb73]" />
+        {vehicle?.vehicle_type !== 'trailer' && (
+          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-[#e5e4e2]/60">Koszt paliwa</span>
+              <Fuel className="w-5 h-5 text-[#d3bb73]" />
+            </div>
+            <div className="text-2xl font-bold text-[#e5e4e2]">
+              {(totalFuelCost / 1000).toFixed(1)}k zł
+            </div>
           </div>
-          <div className="text-2xl font-bold text-[#e5e4e2]">
-            {(totalFuelCost / 1000).toFixed(1)}k zł
-          </div>
-        </div>
+        )}
 
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
           <div className="flex items-center justify-between mb-2">
@@ -738,7 +745,7 @@ export default function VehicleDetailPage() {
         <div className="flex gap-4">
           {[
             { id: 'overview', label: 'Informacje', icon: Car },
-            { id: 'fuel', label: 'Tankowania', icon: Fuel },
+            ...(vehicle?.vehicle_type !== 'trailer' ? [{ id: 'fuel', label: 'Tankowania', icon: Fuel }] : []),
             { id: 'maintenance', label: 'Serwis i naprawy', icon: Wrench },
             { id: 'insurance', label: 'Ubezpieczenia', icon: Shield },
             { id: 'history', label: 'Historia użytkowania', icon: Clock },
@@ -794,26 +801,30 @@ export default function VehicleDetailPage() {
                   <span className="text-sm text-[#e5e4e2]/60">Kategoria</span>
                   <p className="text-[#e5e4e2] font-medium">{vehicle.category || '-'}</p>
                 </div>
-                <div>
-                  <span className="text-sm text-[#e5e4e2]/60">Typ paliwa</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.fuel_type || '-'}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-[#e5e4e2]/60">Skrzynia biegów</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.transmission || '-'}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-[#e5e4e2]/60">Moc</span>
-                  <p className="text-[#e5e4e2] font-medium">
-                    {vehicle.power_hp ? `${vehicle.power_hp} KM` : '-'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-sm text-[#e5e4e2]/60">Pojemność silnika</span>
-                  <p className="text-[#e5e4e2] font-medium">
-                    {vehicle.engine_capacity ? `${vehicle.engine_capacity} cm³` : '-'}
-                  </p>
-                </div>
+                {vehicle.vehicle_type !== 'trailer' && (
+                  <>
+                    <div>
+                      <span className="text-sm text-[#e5e4e2]/60">Typ paliwa</span>
+                      <p className="text-[#e5e4e2] font-medium">{vehicle.fuel_type || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-[#e5e4e2]/60">Skrzynia biegów</span>
+                      <p className="text-[#e5e4e2] font-medium">{vehicle.transmission || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-[#e5e4e2]/60">Moc</span>
+                      <p className="text-[#e5e4e2] font-medium">
+                        {vehicle.power_hp ? `${vehicle.power_hp} KM` : '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-[#e5e4e2]/60">Pojemność silnika</span>
+                      <p className="text-[#e5e4e2] font-medium">
+                        {vehicle.engine_capacity ? `${vehicle.engine_capacity} cm³` : '-'}
+                      </p>
+                    </div>
+                  </>
+                )}
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Typ własności</span>
                   <p className="text-[#e5e4e2] font-medium">{vehicle.ownership_type || '-'}</p>

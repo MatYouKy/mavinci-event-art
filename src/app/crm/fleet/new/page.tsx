@@ -34,6 +34,12 @@ export default function NewVehiclePage() {
     length_cm: '',
     width_cm: '',
     height_cm: '',
+    cargo_length_cm: '',
+    cargo_width_cm: '',
+    cargo_height_cm: '',
+    total_length_cm: '',
+    total_width_cm: '',
+    total_height_cm: '',
     weight_kg: '',
     status: 'active',
     ownership_type: 'owned',
@@ -90,6 +96,12 @@ export default function NewVehiclePage() {
         length_cm: formData.length_cm ? parseInt(formData.length_cm.toString()) : null,
         width_cm: formData.width_cm ? parseInt(formData.width_cm.toString()) : null,
         height_cm: formData.height_cm ? parseInt(formData.height_cm.toString()) : null,
+        cargo_length_cm: formData.cargo_length_cm ? parseInt(formData.cargo_length_cm.toString()) : null,
+        cargo_width_cm: formData.cargo_width_cm ? parseInt(formData.cargo_width_cm.toString()) : null,
+        cargo_height_cm: formData.cargo_height_cm ? parseInt(formData.cargo_height_cm.toString()) : null,
+        total_length_cm: formData.total_length_cm ? parseInt(formData.total_length_cm.toString()) : null,
+        total_width_cm: formData.total_width_cm ? parseInt(formData.total_width_cm.toString()) : null,
+        total_height_cm: formData.total_height_cm ? parseInt(formData.total_height_cm.toString()) : null,
         weight_kg: formData.weight_kg ? parseInt(formData.weight_kg.toString()) : null,
         purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price.toString()) : null,
         current_value: formData.current_value ? parseFloat(formData.current_value.toString()) : null,
@@ -440,63 +452,117 @@ export default function NewVehiclePage() {
           <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">
             {formData.vehicle_type === 'trailer' ? 'Wymiary i ładowność' : 'Ładowność'}
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-6">
             {formData.vehicle_type === 'trailer' && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Długość (cm)
-                  </label>
-                  <input
-                    type="number"
-                    name="length_cm"
-                    value={formData.length_cm}
-                    onChange={handleChange}
-                    placeholder="np. 600"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                  />
+                  <h3 className="text-md font-medium text-[#e5e4e2] mb-3 text-[#d3bb73]">Wymiary części załadunkowej</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        Długość (cm)
+                      </label>
+                      <input
+                        type="number"
+                        name="cargo_length_cm"
+                        value={formData.cargo_length_cm}
+                        onChange={handleChange}
+                        placeholder="np. 600"
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        Szerokość (cm)
+                      </label>
+                      <input
+                        type="number"
+                        name="cargo_width_cm"
+                        value={formData.cargo_width_cm}
+                        onChange={handleChange}
+                        placeholder="np. 240"
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        Wysokość (cm)
+                      </label>
+                      <input
+                        type="number"
+                        name="cargo_height_cm"
+                        value={formData.cargo_height_cm}
+                        onChange={handleChange}
+                        placeholder="np. 280"
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Szerokość (cm)
-                  </label>
-                  <input
-                    type="number"
-                    name="width_cm"
-                    value={formData.width_cm}
-                    onChange={handleChange}
-                    placeholder="np. 240"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                  />
+                  <h3 className="text-md font-medium text-[#e5e4e2] mb-3 text-[#d3bb73]">Wymiary całkowite (bezwzględne)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        Długość całkowita (cm)
+                      </label>
+                      <input
+                        type="number"
+                        name="total_length_cm"
+                        value={formData.total_length_cm}
+                        onChange={handleChange}
+                        placeholder="np. 720"
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        Szerokość całkowita (cm)
+                      </label>
+                      <input
+                        type="number"
+                        name="total_width_cm"
+                        value={formData.total_width_cm}
+                        onChange={handleChange}
+                        placeholder="np. 255"
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        Wysokość całkowita (cm)
+                      </label>
+                      <input
+                        type="number"
+                        name="total_height_cm"
+                        value={formData.total_height_cm}
+                        onChange={handleChange}
+                        placeholder="np. 300"
+                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Wysokość (cm)
-                  </label>
-                  <input
-                    type="number"
-                    name="height_cm"
-                    value={formData.height_cm}
-                    onChange={handleChange}
-                    placeholder="np. 280"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Waga własna (kg)
-                  </label>
-                  <input
-                    type="number"
-                    name="weight_kg"
-                    value={formData.weight_kg}
-                    onChange={handleChange}
-                    placeholder="np. 750"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Waga własna (kg)
+                    </label>
+                    <input
+                      type="number"
+                      name="weight_kg"
+                      value={formData.weight_kg}
+                      onChange={handleChange}
+                      placeholder="np. 750"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    />
+                  </div>
                 </div>
               </>
             )}
@@ -517,39 +583,41 @@ export default function NewVehiclePage() {
           </div>
         </div>
 
-        {/* Przebieg */}
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Przebieg</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Przebieg początkowy (km)
-              </label>
-              <input
-                type="number"
-                name="initial_mileage"
-                value={formData.initial_mileage}
-                onChange={handleChange}
-                placeholder="0"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+        {/* Przebieg - tylko dla samochodów */}
+        {formData.vehicle_type === 'car' && (
+          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
+            <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Przebieg</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Przebieg początkowy (km)
+                </label>
+                <input
+                  type="number"
+                  name="initial_mileage"
+                  value={formData.initial_mileage}
+                  onChange={handleChange}
+                  placeholder="0"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Przebieg aktualny (km)
-              </label>
-              <input
-                type="number"
-                name="current_mileage"
-                value={formData.current_mileage}
-                onChange={handleChange}
-                placeholder="0"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Przebieg aktualny (km)
+                </label>
+                <input
+                  type="number"
+                  name="current_mileage"
+                  value={formData.current_mileage}
+                  onChange={handleChange}
+                  placeholder="0"
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Koszty */}
         <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
