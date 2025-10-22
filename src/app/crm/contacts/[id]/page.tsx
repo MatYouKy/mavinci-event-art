@@ -114,9 +114,11 @@ interface ContactHistory {
   id: string;
   contact_type: string;
   subject: string;
-  notes: string | null;
-  contacted_at: string;
+  description: string | null;
+  contact_date: string;
   contacted_by: string | null;
+  outcome: string | null;
+  next_action: string | null;
 }
 
 type TabType = 'details' | 'contacts' | 'notes' | 'history';
@@ -202,91 +204,66 @@ export default function OrganizationDetailPage() {
     try {
       setLoading(true);
 
-      // Najpierw sprawdź w tabeli organizations
-      const { data: orgData, error: orgError } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', organizationId)
-        .maybeSingle();
+      // JEDNO zapytanie RPC dla wszystkiego!
+      const { data: fullData, error: rpcError } = await supabase
+        .rpc('get_contact_full_details', { entity_id: organizationId });
 
-      if (orgError && orgError.code !== 'PGRST116') throw orgError;
+      if (rpcError) throw rpcError;
 
-      // Jeśli nie znaleziono w organizations, sprawdź w contacts
-      if (!orgData) {
-        const { data: contactData, error: contactError } = await supabase
-          .from('contacts')
-          .select('*')
-          .eq('id', organizationId)
-          .maybeSingle();
-
-        if (contactError) throw contactError;
-        if (!contactData) {
-          showSnackbar('Nie znaleziono kontaktu', 'error');
-          router.push('/crm/contacts');
-          return;
-        }
-
-        // Znaleziono kontakt/osobę prywatną
-        setEntityType('contact');
-        setContact(contactData);
-
-        // Pobierz organizacje przypisane do tego kontaktu
-        const { data: orgAssignments } = await supabase
-          .from('contact_organizations')
-          .select(`
-            *,
-            organization:organizations(*)
-          `)
-          .eq('contact_id', organizationId)
-          .eq('is_current', true);
-
-        // Tutaj można dodać więcej logiki dla kontaktów
-        setLoading(false);
+      if (!fullData || fullData.error) {
+        showSnackbar('Nie znaleziono kontaktu', 'error');
+        router.push('/crm/contacts');
         return;
       }
 
-      setEntityType('organization');
-      setOrganization(orgData);
+      const entityType = fullData.entity_type;
+      const entityData = fullData.entity_data;
 
-      const { data: contactsData } = await supabase
-        .from('contact_organizations')
-        .select(`
-          *,
-          contact:contacts(*)
-        `)
-        .eq('organization_id', organizationId)
-        .eq('is_current', true)
-        .order('is_primary', { ascending: false });
+      if (entityType === 'contact') {
+        // To jest kontakt/osoba prywatna
+        setEntityType('contact');
+        setContact(entityData);
+        setLoading(false);
+      } else if (entityType === 'organization') {
+        // To jest organizacja
+        setEntityType('organization');
+        setOrganization(entityData);
 
-      const mappedContacts = contactsData?.map((co: any) => ({
-        id: co.contact.id,
-        first_name: co.contact.first_name,
-        last_name: co.contact.last_name,
-        full_name: co.contact.full_name,
-        position: co.position,
-        email: co.contact.email,
-        phone: co.contact.phone,
-        mobile: co.contact.mobile,
-        is_primary: co.is_primary,
-        relation_id: co.id,
-      })) || [];
+        // Mapuj kontakty
+        const mappedContacts = (fullData.contacts || []).map((c: any) => ({
+          id: c.contact_id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          full_name: c.full_name,
+          position: c.position,
+          email: c.email,
+          phone: c.phone,
+          mobile: c.mobile,
+          is_primary: c.is_primary,
+          relation_id: c.id,
+        }));
 
-      setContactPersons(mappedContacts);
+        setContactPersons(mappedContacts);
 
-      await fetchNotes();
+        // Mapuj notatki
+        const mappedNotes = (fullData.notes || []).map((n: any) => ({
+          id: n.id,
+          note: n.note,
+          created_at: n.created_at,
+          created_by: n.created_by,
+          employees: n.employee_name ? { name: n.employee_name.split(' ')[0], surname: n.employee_name.split(' ')[1] } : null,
+        }));
 
-      const { data: historyData } = await supabase
-        .from('contact_history')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('contacted_at', { ascending: false })
-        .limit(50);
+        setOrganizationNotes(mappedNotes);
 
-      setHistory(historyData || []);
+        // Mapuj historię
+        setHistory(fullData.history || []);
+
+        setLoading(false);
+      }
     } catch (error: any) {
       console.error('Error fetching data:', error);
       showSnackbar('Błąd podczas ładowania danych', 'error');
-    } finally {
       setLoading(false);
     }
   };
@@ -1233,7 +1210,7 @@ export default function OrganizationDetailPage() {
                         <p className="text-sm text-gray-400">{item.contact_type}</p>
                       </div>
                       <p className="text-xs text-gray-500">
-                        {new Date(item.contacted_at).toLocaleDateString('pl-PL')}
+                        {new Date(item.contact_date).toLocaleDateString('pl-PL')}
                       </p>
                     </div>
                     {item.notes && <p className="text-sm text-gray-300 mt-2">{item.notes}</p>}
