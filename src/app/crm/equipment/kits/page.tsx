@@ -182,26 +182,43 @@ export default function KitsPage() {
     handleOpenForm(kit);
   };
 
-  const handlePrintChecklist = () => {
+  const handlePrintChecklist = async () => {
     if (!viewingKit) return;
+
+    // Pobierz dane zalogowanego pracownika
+    const { data: { user } } = await supabase.auth.getUser();
+    let printerName = 'Nieznany użytkownik';
+
+    if (user) {
+      const { data: employeeData } = await supabase
+        .from('employees')
+        .select('name, surname')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (employeeData) {
+        printerName = `${employeeData.name} ${employeeData.surname}`;
+      }
+    }
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
     const items = viewingKit.equipment_kit_items.map((item, index) => {
       const eq = item.equipment_items;
+      const brandModel = eq?.brand ? `${eq.brand}${eq.model ? ' ' + eq.model : ''}` : '';
+      const notes = item.notes ? ` • ${item.notes}` : '';
+
       return `
         <tr>
-          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5;">
-            <input type="checkbox" style="width: 18px; height: 18px; margin: 0;">
+          <td style="padding: 8px; border-bottom: 1px solid #e5e5e5; text-align: center;">
+            <input type="checkbox" style="width: 16px; height: 16px; margin: 0;">
           </td>
-          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5;">${index + 1}</td>
-          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5; font-weight: 500;">
-            ${eq?.name || 'Nieznany sprzęt'}
-            ${eq?.brand ? `<br><span style="font-size: 14px; color: #666;">${eq.brand}${eq.model ? ' ' + eq.model : ''}</span>` : ''}
-            ${item.notes ? `<br><span style="font-size: 13px; color: #888; font-style: italic;">${item.notes}</span>` : ''}
+          <td style="padding: 8px; border-bottom: 1px solid #e5e5e5; text-align: center; color: #999;">${index + 1}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #e5e5e5;">
+            <strong>${eq?.name || 'Nieznany sprzęt'}</strong>${brandModel ? ` <span style="color: #666;">${brandModel}</span>` : ''}${notes ? `<span style="color: #888; font-style: italic;">${notes}</span>` : ''}
           </td>
-          <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5; text-align: center; font-weight: 600;">
+          <td style="padding: 8px; border-bottom: 1px solid #e5e5e5; text-align: center; font-weight: 600;">
             ${item.quantity}
           </td>
         </tr>
@@ -216,52 +233,62 @@ export default function KitsPage() {
           <title>Checklista - ${viewingKit.name}</title>
           <style>
             @media print {
-              @page { margin: 2cm; }
+              @page { margin: 1.5cm; }
             }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              padding: 20px;
-              line-height: 1.6;
+              padding: 15px;
+              line-height: 1.3;
+              font-size: 13px;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 15px;
+              padding-bottom: 10px;
+              border-bottom: 2px solid #333;
             }
             h1 {
-              font-size: 24px;
+              font-size: 20px;
               font-weight: 600;
-              margin-bottom: 8px;
               color: #1a1a1a;
             }
-            .subtitle {
-              font-size: 14px;
+            .info {
+              text-align: right;
+              font-size: 11px;
               color: #666;
-              margin-bottom: 24px;
             }
             table {
               width: 100%;
               border-collapse: collapse;
-              margin-top: 16px;
             }
             th {
               background-color: #f5f5f5;
-              padding: 12px 8px;
+              padding: 6px 8px;
               text-align: left;
               font-weight: 600;
-              font-size: 14px;
+              font-size: 12px;
               color: #333;
               border-bottom: 2px solid #ddd;
             }
             td {
-              font-size: 15px;
+              font-size: 13px;
               color: #333;
             }
-            .checkbox-col { width: 50px; }
-            .number-col { width: 50px; }
-            .qty-col { width: 80px; text-align: center; }
+            .checkbox-col { width: 40px; text-align: center; }
+            .number-col { width: 40px; text-align: center; }
+            .qty-col { width: 60px; text-align: center; }
           </style>
         </head>
         <body>
-          <h1>${viewingKit.name}</h1>
-          <div class="subtitle">
-            Data wydruku: ${new Date().toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          <div class="header">
+            <h1>${viewingKit.name}</h1>
+            <div class="info">
+              <div>${new Date().toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+              <div>Drukował: <strong>${printerName}</strong></div>
+            </div>
           </div>
 
           <table>
