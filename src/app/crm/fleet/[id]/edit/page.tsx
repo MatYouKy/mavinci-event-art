@@ -15,6 +15,7 @@ export default function EditVehiclePage() {
   const [fetching, setFetching] = useState(true);
 
   const [formData, setFormData] = useState({
+    vehicle_type: 'car',
     name: '',
     brand: '',
     model: '',
@@ -68,6 +69,7 @@ export default function EditVehiclePage() {
 
       if (data) {
         setFormData({
+          vehicle_type: data.vehicle_type || 'car',
           name: data.name || '',
           brand: data.brand || '',
           model: data.model || '',
@@ -112,7 +114,16 @@ export default function EditVehiclePage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    if (name === 'vehicle_type') {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+        category: value === 'trailer' ? 'plandeka' : 'van'
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -295,12 +306,24 @@ export default function EditVehiclePage() {
                 onChange={handleChange}
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
               >
-                <option value="personal_car">Samochód osobowy</option>
-                <option value="van">Bus/Van</option>
-                <option value="truck">Ciężarówka</option>
-                <option value="bus">Autobus</option>
-                <option value="motorcycle">Motocykl</option>
-                <option value="trailer">Przyczepa</option>
+                {formData.vehicle_type === 'trailer' ? (
+                  <>
+                    <option value="plandeka">Plandeka</option>
+                    <option value="mobile_stage">Scena mobilna</option>
+                    <option value="semi_trailer">Naczepa</option>
+                    <option value="box_trailer">Przyczepa zamknięta</option>
+                    <option value="flatbed_trailer">Przyczepa platformowa</option>
+                    <option value="other_trailer">Inna przyczepa</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="personal_car">Samochód osobowy</option>
+                    <option value="van">Bus/Van</option>
+                    <option value="truck">Ciężarówka</option>
+                    <option value="bus">Autobus</option>
+                    <option value="motorcycle">Motocykl</option>
+                  </>
+                )}
               </select>
             </div>
 
