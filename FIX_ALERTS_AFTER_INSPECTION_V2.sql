@@ -152,65 +152,79 @@ DROP TRIGGER IF EXISTS trigger_create_insurance_alert ON insurance_policies;
 CREATE OR REPLACE FUNCTION manage_insurance_alerts()
 RETURNS TRIGGER AS $$
 DECLARE
-  expiring_policy RECORD;
-  next_policy RECORD;
+  v_vehicle_id uuid;
+  v_type text;
+  current_coverage_end date;
+  gap_found boolean;
+  alert_policy RECORD;
   days_until_expiry integer;
-  has_coverage boolean;
 BEGIN
-  -- Usuń stary alert dla tego TYPU ubezpieczenia dla tego pojazdu
-  DELETE FROM vehicle_alerts
-  WHERE vehicle_id = COALESCE(NEW.vehicle_id, OLD.vehicle_id)
-  AND alert_type = 'insurance'
-  AND message LIKE UPPER(COALESCE(NEW.type, OLD.type)) || '%';
+  -- Określ vehicle_id i type z triggera
+  v_vehicle_id := COALESCE(NEW.vehicle_id, OLD.vehicle_id);
+  v_type := COALESCE(NEW.type, OLD.type);
 
-  -- Jeśli operacja to DELETE, zakończ tutaj
+  -- Usuń wszystkie alerty tego typu dla tego pojazdu
+  DELETE FROM vehicle_alerts
+  WHERE vehicle_id = v_vehicle_id
+  AND alert_type = 'insurance'
+  AND message LIKE UPPER(v_type) || '%';
+
+  -- Jeśli operacja to DELETE, zakończ tutaj (alert już usunięty)
   IF TG_OP = 'DELETE' THEN
     RETURN OLD;
   END IF;
 
-  -- Znajdź polisę która kończy się najwcześniej w przyszłości lub już wygasła
-  -- To jest potencjalna polisa do alertu
-  SELECT id, end_date, start_date, type, status
-  INTO expiring_policy
-  FROM insurance_policies
-  WHERE vehicle_id = NEW.vehicle_id
-  AND type = NEW.type
-  AND status IN ('active', 'expired')
-  AND end_date >= CURRENT_DATE - INTERVAL '30 days'
-  ORDER BY end_date ASC, created_at ASC
-  LIMIT 1;
+  -- KLUCZOWA LOGIKA: Sprawdź ciągłość pokrycia
+  -- 1. Weź wszystkie aktywne polisy tego typu, posortowane po end_date
+  -- 2. Sprawdź czy jest luka w pokryciu
+  -- 3. Jeśli TAK - stwórz alert dla polisy przed luką
 
-  -- Jeśli nie ma żadnej polisy, zakończ
-  IF expiring_policy.id IS NULL THEN
-    RETURN NEW;
-  END IF;
+  current_coverage_end := NULL;
+  gap_found := false;
+  alert_policy := NULL;
 
-  -- Sprawdź czy istnieje polisa która PRZEJMUJE ochronę
-  -- (rozpoczyna się przed lub w dniu końca poprzedniej)
-  SELECT id, start_date, end_date
-  INTO next_policy
-  FROM insurance_policies
-  WHERE vehicle_id = NEW.vehicle_id
-  AND type = NEW.type
-  AND status = 'active'
-  AND id != expiring_policy.id
-  AND start_date <= expiring_policy.end_date + INTERVAL '1 day'
-  AND end_date > expiring_policy.end_date
-  ORDER BY start_date ASC, end_date DESC
-  LIMIT 1;
+  -- Iteruj przez wszystkie polisy w kolejności chronologicznej (po end_date)
+  FOR alert_policy IN
+    SELECT id, start_date, end_date, type, status, policy_number
+    FROM insurance_policies
+    WHERE vehicle_id = v_vehicle_id
+    AND type = v_type
+    AND status IN ('active', 'expired')
+    ORDER BY end_date ASC
+  LOOP
+    -- Pierwsza polisa - ustaw koniec pokrycia
+    IF current_coverage_end IS NULL THEN
+      current_coverage_end := alert_policy.end_date;
 
-  -- Jeśli jest polisa przejmująca, nie twórz alertu
-  IF next_policy.id IS NOT NULL THEN
-    RETURN NEW;
-  END IF;
+      -- Sprawdź czy ta pierwsza polisa wygasa w ciągu 21 dni
+      days_until_expiry := alert_policy.end_date - CURRENT_DATE;
 
-  -- Oblicz dni do wygaśnięcia
-  days_until_expiry := expiring_policy.end_date - CURRENT_DATE;
+      -- Sprawdź czy jest następna polisa która przejmuje
+      IF EXISTS (
+        SELECT 1 FROM insurance_policies
+        WHERE vehicle_id = v_vehicle_id
+        AND type = v_type
+        AND status = 'active'
+        AND id != alert_policy.id
+        AND start_date <= alert_policy.end_date + INTERVAL '1 day'
+        AND end_date > alert_policy.end_date
+      ) THEN
+        -- Jest kontynuacja - nie twórz alertu, kontynuuj sprawdzanie
+        CONTINUE;
+      ELSE
+        -- Brak kontynuacji - potencjalny alert
+        IF days_until_expiry <= 21 AND alert_policy.status != 'cancelled' THEN
+          gap_found := true;
+          EXIT; -- Znaleźliśmy polisę do alertu
+        END IF;
+      END IF;
+    END IF;
+  END LOOP;
 
-  -- Utwórz alert TYLKO jeśli:
-  -- 1. Polisa wygasa w ciągu 21 dni LUB już wygasła
-  -- 2. NIE MA polisy przejmującej
-  IF days_until_expiry <= 21 AND expiring_policy.status != 'cancelled' THEN
+  -- Jeśli znaleziono lukę lub kończącą się polisę bez kontynuacji, stwórz alert
+  IF gap_found AND alert_policy.id IS NOT NULL THEN
+    days_until_expiry := alert_policy.end_date - CURRENT_DATE;
+
     INSERT INTO vehicle_alerts (
       vehicle_id,
       alert_type,
@@ -224,7 +238,7 @@ BEGIN
       is_active
     )
     VALUES (
-      NEW.vehicle_id,
+      v_vehicle_id,
       'insurance',
       CASE
         WHEN days_until_expiry < 0 THEN 'critical'
@@ -236,15 +250,15 @@ BEGIN
         WHEN days_until_expiry < 0 THEN 'Brak ubezpieczenia!'
         ELSE 'Ubezpieczenie wygasa wkrótce'
       END,
-      UPPER(expiring_policy.type) || ' - ' ||
+      UPPER(alert_policy.type) || ' - ' ||
       CASE
         WHEN days_until_expiry < 0 THEN 'brak ochrony od ' || ABS(days_until_expiry) || ' dni'
         ELSE 'wygasa za ' || days_until_expiry || ' dni'
-      END || ' (' || to_char(expiring_policy.end_date, 'DD.MM.YYYY') || ')',
+      END || ' (' || to_char(alert_policy.end_date, 'DD.MM.YYYY') || ')',
       'Shield',
       days_until_expiry < 0,
-      expiring_policy.end_date,
-      expiring_policy.id,
+      alert_policy.end_date,
+      alert_policy.id,
       true
     );
   END IF;
