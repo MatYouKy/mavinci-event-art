@@ -232,7 +232,8 @@ export default function CalendarMain() {
         .insert([
           {
             name: eventData.name,
-            client_id: eventData.client_id || null,
+            organization_id: eventData.organization_id || null,
+            contact_person_id: eventData.contact_person_id || null,
             category_id: eventData.category_id || null,
             event_date: eventData.event_date,
             event_end_date: eventData.event_end_date || null,
