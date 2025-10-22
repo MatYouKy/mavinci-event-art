@@ -35,9 +35,17 @@ interface Kit {
   name: string;
   description: string | null;
   thumbnail_url: string | null;
+  warehouse_category_id: string | null;
   is_active: boolean;
   created_at: string;
   equipment_kit_items: KitItem[];
+}
+
+interface WarehouseCategory {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
 }
 
 export default function KitsManagementModal({
@@ -56,6 +64,7 @@ export default function KitsManagementModal({
   const canManage = canManageModule('equipment');
 
   const [kits, setKits] = useState<Kit[]>([]);
+  const [categories, setCategories] = useState<WarehouseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [viewingKit, setViewingKit] = useState<Kit | null>(null);
@@ -64,6 +73,7 @@ export default function KitsManagementModal({
     name: '',
     description: '',
     thumbnail_url: '',
+    warehouse_category_id: '',
   });
   const [kitItems, setKitItems] = useState<{equipment_id: string; quantity: number; notes: string}[]>([]);
   const [saving, setSaving] = useState(false);
@@ -71,8 +81,18 @@ export default function KitsManagementModal({
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
+    fetchCategories();
     fetchKits();
   }, []);
+
+  const fetchCategories = async () => {
+    const { data } = await supabase
+      .from('warehouse_categories')
+      .select('id, name, color, icon')
+      .eq('is_active', true)
+      .order('name');
+    if (data) setCategories(data);
+  };
 
   useEffect(() => {
     if (initialKitId && kits.length > 0) {
@@ -114,6 +134,7 @@ export default function KitsManagementModal({
         name: kit.name,
         description: kit.description || '',
         thumbnail_url: kit.thumbnail_url || '',
+        warehouse_category_id: kit.warehouse_category_id || '',
       });
       setKitItems(kit.equipment_kit_items.map(item => ({
         equipment_id: item.equipment_id,
@@ -126,6 +147,7 @@ export default function KitsManagementModal({
         name: '',
         description: '',
         thumbnail_url: '',
+        warehouse_category_id: '',
       });
       setKitItems([]);
     }
@@ -203,6 +225,7 @@ export default function KitsManagementModal({
             name: kitForm.name,
             description: kitForm.description || null,
             thumbnail_url: kitForm.thumbnail_url || null,
+            warehouse_category_id: kitForm.warehouse_category_id || null,
           })
           .eq('id', editingKit.id);
 
@@ -223,6 +246,7 @@ export default function KitsManagementModal({
             name: kitForm.name,
             description: kitForm.description || null,
             thumbnail_url: kitForm.thumbnail_url || null,
+            warehouse_category_id: kitForm.warehouse_category_id || null,
             created_by: user?.id || null,
           })
           .select()
@@ -512,6 +536,22 @@ export default function KitsManagementModal({
                       placeholder="Krótki opis zestawu..."
                       className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kategoria</label>
+                    <select
+                      value={kitForm.warehouse_category_id}
+                      onChange={(e) => setKitForm(prev => ({ ...prev, warehouse_category_id: e.target.value }))}
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    >
+                      <option value="">Brak kategorii</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
