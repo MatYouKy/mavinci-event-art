@@ -74,61 +74,39 @@ export default function ContactsPage() {
     try {
       setLoading(true);
 
-      if (activeTab === 'clients') {
-        const { data, error } = await supabase
-          .from('clients')
-          .select('*')
-          .order('created_at', { ascending: false });
+      const orgType = activeTab === 'clients' ? 'client' : 'subcontractor';
 
-        if (error) throw error;
+      const { data, error } = await supabase
+        .from('organizations')
+        .select(`
+          *,
+          contact_persons(count),
+          events:events(count)
+        `)
+        .eq('organization_type', orgType)
+        .order('created_at', { ascending: false });
 
-        const orgs: Organization[] = (data || []).map((client: any) => ({
-          id: client.id,
-          name: client.company_name || `${client.first_name || ''} ${client.last_name || ''}`.trim() || 'Bez nazwy',
-          type: 'client' as const,
-          businessType: client.company_name ? 'company' as const : 'other' as const,
-          email: client.email,
-          phone: client.phone_number,
-          city: client.address_city,
-          status: client.status || 'active',
-          rating: null,
-          contactPersonsCount: client.first_name ? 1 : 0,
-          eventsCount: client.total_events || 0,
-          tags: client.tags,
-          specialization: null,
-          hourlyRate: null,
-          created_at: client.created_at,
-        }));
+      if (error) throw error;
 
-        setOrganizations(orgs);
-      } else {
-        const { data, error } = await supabase
-          .from('subcontractors')
-          .select('*')
-          .order('created_at', { ascending: false });
+      const orgs: Organization[] = (data || []).map((org: any) => ({
+        id: org.id,
+        name: org.name,
+        type: org.organization_type as 'client' | 'subcontractor',
+        businessType: org.business_type as any,
+        email: org.email,
+        phone: org.phone,
+        city: org.city,
+        status: org.status,
+        rating: org.rating,
+        contactPersonsCount: org.contact_persons?.[0]?.count || 0,
+        eventsCount: org.events?.[0]?.count || 0,
+        tags: org.tags,
+        specialization: org.specialization,
+        hourlyRate: org.hourly_rate,
+        created_at: org.created_at,
+      }));
 
-        if (error) throw error;
-
-        const orgs: Organization[] = (data || []).map((sub: any) => ({
-          id: sub.id,
-          name: sub.company_name,
-          type: 'subcontractor' as const,
-          businessType: sub.company_name?.toLowerCase().includes('freelanc') ? 'freelancer' as const : 'company' as const,
-          email: sub.email,
-          phone: sub.phone,
-          city: null,
-          status: sub.status || 'active',
-          rating: sub.rating,
-          contactPersonsCount: sub.contact_person ? 1 : 0,
-          eventsCount: 0,
-          tags: null,
-          specialization: sub.specialization,
-          hourlyRate: sub.hourly_rate,
-          created_at: sub.created_at,
-        }));
-
-        setOrganizations(orgs);
-      }
+      setOrganizations(orgs);
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd pobierania danych', 'error');
     } finally {
@@ -290,11 +268,11 @@ export default function ContactsPage() {
           </select>
 
           <button
-            onClick={() => router.push(activeTab === 'clients' ? '/crm/clients/new' : '/crm/subcontractors/new')}
+            onClick={() => router.push('/crm/contacts/new')}
             className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 whitespace-nowrap font-medium"
           >
             <Plus className="w-5 h-5" />
-            <span>Nowa organizacja</span>
+            <span>Dodaj kontakt</span>
           </button>
         </div>
 
@@ -343,7 +321,7 @@ function OrganizationsList({
       {organizations.map((org) => (
         <div
           key={org.id}
-          onClick={() => router.push(activeTab === 'clients' ? `/crm/clients/${org.id}` : `/crm/subcontractors/${org.id}`)}
+          onClick={() => router.push(`/crm/contacts/${org.id}`)}
           className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-5 hover:border-[#d3bb73] transition-all cursor-pointer group"
         >
           <div className="flex items-start justify-between mb-3">
