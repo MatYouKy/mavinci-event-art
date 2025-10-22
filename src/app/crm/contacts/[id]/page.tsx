@@ -62,10 +62,13 @@ interface Organization {
 
 interface ContactPerson {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
+  full_name?: string;
   position: string | null;
   email: string | null;
   phone: string | null;
+  mobile: string | null;
   is_primary: boolean;
 }
 
@@ -123,10 +126,12 @@ export default function OrganizationDetailPage() {
 
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [newContact, setNewContact] = useState({
-    name: '',
+    first_name: '',
+    last_name: '',
     position: '',
     email: '',
     phone: '',
+    mobile: '',
     is_primary: false,
   });
 
@@ -276,7 +281,7 @@ export default function OrganizationDetailPage() {
   };
 
   const handleAddContact = async () => {
-    if (!newContact.name.trim()) {
+    if (!newContact.first_name.trim() || !newContact.last_name.trim()) {
       showSnackbar('Wprowadź imię i nazwisko', 'error');
       return;
     }
@@ -292,10 +297,12 @@ export default function OrganizationDetailPage() {
       showSnackbar('Osoba kontaktowa dodana', 'success');
       setShowAddContactModal(false);
       setNewContact({
-        name: '',
+        first_name: '',
+        last_name: '',
         position: '',
         email: '',
         phone: '',
+        mobile: '',
         is_primary: false,
       });
       fetchData();
@@ -844,7 +851,9 @@ export default function OrganizationDetailPage() {
                       <User className="w-5 h-5 text-[#d3bb73] mt-1" />
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h3 className="text-white font-medium">{contact.name}</h3>
+                          <h3 className="text-white font-medium">
+                            {contact.full_name || `${contact.first_name} ${contact.last_name}`}
+                          </h3>
                           {contact.is_primary && (
                             <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] text-xs rounded-full">
                               Główny kontakt
@@ -865,6 +874,12 @@ export default function OrganizationDetailPage() {
                             <p className="text-sm text-gray-300 flex items-center space-x-2">
                               <Phone className="w-4 h-4" />
                               <span>{contact.phone}</span>
+                            </p>
+                          )}
+                          {contact.mobile && (
+                            <p className="text-sm text-gray-300 flex items-center space-x-2">
+                              <Phone className="w-4 h-4" />
+                              <span>{contact.mobile} (mobile)</span>
                             </p>
                           )}
                         </div>
@@ -989,16 +1004,31 @@ export default function OrganizationDetailPage() {
           <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6 max-w-md w-full">
             <h2 className="text-xl font-bold text-white mb-4">Dodaj osobę kontaktową</h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Imię i nazwisko *
-                </label>
-                <input
-                  type="text"
-                  value={newContact.name}
-                  onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Imię *
+                  </label>
+                  <input
+                    type="text"
+                    value={newContact.first_name}
+                    onChange={(e) => setNewContact({ ...newContact, first_name: e.target.value })}
+                    className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="Jan"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Nazwisko *
+                  </label>
+                  <input
+                    type="text"
+                    value={newContact.last_name}
+                    onChange={(e) => setNewContact({ ...newContact, last_name: e.target.value })}
+                    className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="Kowalski"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Stanowisko</label>
@@ -1007,6 +1037,7 @@ export default function OrganizationDetailPage() {
                   value={newContact.position}
                   onChange={(e) => setNewContact({ ...newContact, position: e.target.value })}
                   className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                  placeholder="Menedżer"
                 />
               </div>
               <div>
@@ -1016,16 +1047,30 @@ export default function OrganizationDetailPage() {
                   value={newContact.email}
                   onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
                   className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                  placeholder="jan.kowalski@example.com"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Telefon</label>
-                <input
-                  type="tel"
-                  value={newContact.phone}
-                  onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Telefon stacjonarny</label>
+                  <input
+                    type="tel"
+                    value={newContact.phone}
+                    onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                    className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="22 123 45 67"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Telefon komórkowy</label>
+                  <input
+                    type="tel"
+                    value={newContact.mobile}
+                    onChange={(e) => setNewContact({ ...newContact, mobile: e.target.value })}
+                    className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="500 123 456"
+                  />
+                </div>
               </div>
               <div className="flex items-center space-x-2">
                 <input
