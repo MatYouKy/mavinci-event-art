@@ -961,6 +961,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {isCable ? (
           <>
+            {/* Przewody: tylko długość + wtyki */}
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Długość (m)</label>
               {isEditing ? (
@@ -1105,122 +1106,123 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
             </div>
           </>
         ) : (
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
-            {isEditing ? (
-              <input
-                type="number"
-                step="0.01"
-                name="weight_kg"
-                value={editForm.weight_kg || ''}
-                onChange={onInputChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-              />
-            ) : (
-              <div className="text-[#e5e4e2]">
-                {equipment.weight_kg ? `${equipment.weight_kg} kg` : '-'}
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isCable && (
-        <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
-          {isEditing ? (
-            <div className="grid grid-cols-3 gap-2">
-              <input
-                type="number"
-                step="0.1"
-                name="dimensions_length"
-                value={editForm.dimensions_length || ''}
-                onChange={onInputChange}
-                placeholder="Długość"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
-              />
-              <input
-                type="number"
-                step="0.1"
-                name="dimensions_width"
-                value={editForm.dimensions_width || ''}
-                onChange={onInputChange}
-                placeholder="Szerokość"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
-              />
-              <input
-                type="number"
-                step="0.1"
-                name="dimensions_height"
-                value={editForm.dimensions_height || ''}
-                onChange={onInputChange}
-                placeholder="Wysokość"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
-              />
+          <>
+            {/* Normalny sprzęt: waga + wymiary + nr seryjny + kod kreskowy + instrukcja */}
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
+              {isEditing ? (
+                <input
+                  type="number"
+                  step="0.01"
+                  name="weight_kg"
+                  value={editForm.weight_kg || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                />
+              ) : (
+                <div className="text-[#e5e4e2]">
+                  {equipment.weight_kg ? `${equipment.weight_kg} kg` : '-'}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="text-[#e5e4e2]">
-              {equipment.dimensions_cm
-                ? `${equipment.dimensions_cm.length || '-'} × ${equipment.dimensions_cm.width || '-'} × ${equipment.dimensions_cm.height || '-'} cm`
-                : '-'}
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
+              {isEditing ? (
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    name="dimensions_length"
+                    value={editForm.dimensions_length || ''}
+                    onChange={onInputChange}
+                    placeholder="Długość"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    name="dimensions_width"
+                    value={editForm.dimensions_width || ''}
+                    onChange={onInputChange}
+                    placeholder="Szerokość"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    name="dimensions_height"
+                    value={editForm.dimensions_height || ''}
+                    onChange={onInputChange}
+                    placeholder="Wysokość"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+                </div>
+              ) : (
+                <div className="text-[#e5e4e2]">
+                  {equipment.dimensions_cm
+                    ? `${equipment.dimensions_cm.length || '-'} × ${equipment.dimensions_cm.width || '-'} × ${equipment.dimensions_cm.height || '-'} cm`
+                    : '-'}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Numer seryjny</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  name="serial_number"
+                  value={editForm.serial_number || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                />
+              ) : (
+                <div className="text-[#e5e4e2]">{equipment.serial_number || '-'}</div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kod kreskowy</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  name="barcode"
+                  value={editForm.barcode || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                />
+              ) : (
+                <div className="text-[#e5e4e2] font-mono">{equipment.barcode || '-'}</div>
+              )}
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Instrukcja obsługi (URL)</label>
+              {isEditing ? (
+                <input
+                  type="url"
+                  name="user_manual_url"
+                  value={editForm.user_manual_url || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                />
+              ) : equipment.user_manual_url ? (
+                <a
+                  href={equipment.user_manual_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#d3bb73] hover:underline flex items-center gap-2"
+                >
+                  <FileText className="w-4 h-4" />
+                  Otwórz instrukcję
+                </a>
+              ) : (
+                <div className="text-[#e5e4e2]/60">-</div>
+              )}
+            </div>
+          </>
         )}
-
-        <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Numer seryjny</label>
-          {isEditing ? (
-            <input
-              type="text"
-              name="serial_number"
-              value={editForm.serial_number || ''}
-              onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-            />
-          ) : (
-            <div className="text-[#e5e4e2]">{equipment.serial_number || '-'}</div>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kod kreskowy</label>
-          {isEditing ? (
-            <input
-              type="text"
-              name="barcode"
-              value={editForm.barcode || ''}
-              onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-            />
-          ) : (
-            <div className="text-[#e5e4e2] font-mono">{equipment.barcode || '-'}</div>
-          )}
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Instrukcja obsługi (URL)</label>
-          {isEditing ? (
-            <input
-              type="url"
-              name="user_manual_url"
-              value={editForm.user_manual_url || ''}
-              onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-            />
-          ) : equipment.user_manual_url ? (
-            <a
-              href={equipment.user_manual_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#d3bb73] hover:underline flex items-center gap-2"
-            >
-              <FileText className="w-4 h-4" />
-              Otwórz instrukcję
-            </a>
-          ) : (
-            <div className="text-[#e5e4e2]/60">-</div>
-          )}
-        </div>
       </div>
     </div>
   );
