@@ -3244,10 +3244,23 @@ function EditEventModal({
   const fetchContacts = async () => {
     const { data } = await supabase
       .from('contacts')
-      .select('id, full_name, first_name, last_name, contact_type')
+      .select(`
+        id,
+        full_name,
+        first_name,
+        last_name,
+        contact_type,
+        contact_organizations(organization_id)
+      `)
       .in('contact_type', ['contact', 'individual'])
       .order('full_name');
-    if (data) setContacts(data);
+    if (data) {
+      const formattedContacts = data.map(c => ({
+        ...c,
+        organization_id: c.contact_organizations?.[0]?.organization_id || null
+      }));
+      setContacts(formattedContacts);
+    }
   };
 
   const fetchCategories = async () => {
@@ -3261,6 +3274,21 @@ function EditEventModal({
   };
 
   if (!isOpen) return null;
+
+  const handleContactChange = (contactId: string) => {
+    setFormData(prev => ({ ...prev, contact_person_id: contactId }));
+
+    if (contactId) {
+      const selectedContact = contacts.find(c => c.id === contactId);
+      if (selectedContact?.organization_id && !formData.organization_id) {
+        setFormData(prev => ({
+          ...prev,
+          contact_person_id: contactId,
+          organization_id: selectedContact.organization_id
+        }));
+      }
+    }
+  };
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
@@ -3343,7 +3371,7 @@ function EditEventModal({
               </label>
               <select
                 value={formData.contact_person_id}
-                onChange={(e) => setFormData({ ...formData, contact_person_id: e.target.value })}
+                onChange={(e) => handleContactChange(e.target.value)}
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               >
                 <option value="">Wybierz osobę</option>

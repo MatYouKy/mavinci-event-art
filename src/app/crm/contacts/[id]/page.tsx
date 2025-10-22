@@ -159,6 +159,9 @@ export default function OrganizationDetailPage() {
   const [saving, setSaving] = useState(false);
 
   const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [addContactMode, setAddContactMode] = useState<'select' | 'create'>('select');
+  const [availableContacts, setAvailableContacts] = useState<any[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState('');
   const [newContact, setNewContact] = useState({
     first_name: '',
     last_name: '',
@@ -337,6 +340,51 @@ export default function OrganizationDetailPage() {
     }
   };
 
+  const fetchAvailableContacts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, first_name, last_name, email, phone, contact_type')
+        .in('contact_type', ['contact', 'individual']);
+
+      if (error) throw error;
+
+      const alreadyLinkedIds = contactPersons.map(cp => cp.id);
+      const available = (data || []).filter(c => !alreadyLinkedIds.includes(c.id));
+
+      setAvailableContacts(available);
+    } catch (error: any) {
+      console.error('Error fetching contacts:', error);
+    }
+  };
+
+  const handleLinkExistingContact = async () => {
+    if (!selectedContactId) {
+      showSnackbar('Wybierz osobę kontaktową', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('contact_organizations')
+        .insert({
+          contact_id: selectedContactId,
+          organization_id: organizationId,
+          is_current: true,
+        });
+
+      if (error) throw error;
+
+      showSnackbar('Osoba kontaktowa przypisana do organizacji', 'success');
+      setShowAddContactModal(false);
+      setSelectedContactId('');
+      setAddContactMode('select');
+      fetchData();
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas przypisywania', 'error');
+    }
+  };
+
   const handleAddContact = async () => {
     if (!newContact.first_name.trim() || !newContact.last_name.trim()) {
       showSnackbar('Wprowadź imię i nazwisko', 'error');
@@ -344,14 +392,19 @@ export default function OrganizationDetailPage() {
     }
 
     try {
+      const fullName = `${newContact.first_name} ${newContact.last_name}`.trim();
+
       const { data: newContactData, error: contactError } = await supabase
         .from('contacts')
         .insert({
           first_name: newContact.first_name,
           last_name: newContact.last_name,
+          full_name: fullName,
           email: newContact.email || null,
           phone: newContact.phone || null,
           mobile: newContact.mobile || null,
+          contact_type: 'contact',
+          status: 'active',
           created_by: currentEmployee?.id || null,
         })
         .select()
@@ -1052,7 +1105,11 @@ export default function OrganizationDetailPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-white">Osoby kontaktowe</h2>
               <button
-                onClick={() => setShowAddContactModal(true)}
+                onClick={() => {
+                  setAddContactMode('select');
+                  fetchAvailableContacts();
+                  setShowAddContactModal(true);
+                }}
                 className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2"
               >
                 <Plus className="w-5 h-5" />
@@ -1225,7 +1282,68 @@ export default function OrganizationDetailPage() {
       {showAddContactModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold text-white mb-4">Dodaj osobę kontaktową</h2>
+            <h2 className="text-xl font-bold text-white mb-4">
+              {addContactMode === 'select' ? 'Wybierz osobę kontaktową' : 'Utwórz nową osobę kontaktową'}
+            </h2>
+
+            {addContactMode === 'select' ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Wybierz z listy kontaktów
+                  </label>
+                  <select
+                    value={selectedContactId}
+                    onChange={(e) => setSelectedContactId(e.target.value)}
+                    className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                  >
+                    <option value="">-- Wybierz kontakt --</option>
+                    {availableContacts.map((contact) => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.full_name || `${contact.first_name} ${contact.last_name}`}
+                        {contact.email && ` (${contact.email})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-4 border-t border-gray-700">
+                  <button
+                    onClick={() => setAddContactMode('create')}
+                    className="w-full px-4 py-2 border border-[#d3bb73] text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Lub utwórz nowy kontakt</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center space-x-2 mt-6">
+                  <button
+                    onClick={() => {
+                      setShowAddContactModal(false);
+                      setSelectedContactId('');
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-700 text-gray-300 rounded-lg hover:bg-[#0f1119] transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                  <button
+                    onClick={handleLinkExistingContact}
+                    disabled={!selectedContactId}
+                    className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Dodaj
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <button
+                  onClick={() => setAddContactMode('select')}
+                  className="mb-4 text-sm text-[#d3bb73] hover:underline flex items-center space-x-1"
+                >
+                  <span>← Wróć do wyboru z listy</span>
+                </button>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1316,9 +1434,11 @@ export default function OrganizationDetailPage() {
                 onClick={handleAddContact}
                 className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors font-medium"
               >
-                Dodaj
+                Utwórz
               </button>
             </div>
+              </div>
+            )}
           </div>
         </div>
       )}
