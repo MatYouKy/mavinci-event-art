@@ -17,16 +17,16 @@ import {
   List,
   Star,
   Tag,
+  UserCheck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
-interface Contact {
+interface UnifiedContact {
   id: string;
-  contact_type: 'organization' | 'contact' | 'subcontractor' | 'individual';
-  first_name: string;
-  last_name: string;
-  full_name: string;
+  type: 'organization' | 'contact' | 'individual';
+  source: 'organizations' | 'contacts';
+  name: string;
   email: string | null;
   phone: string | null;
   mobile: string | null;
@@ -34,27 +34,24 @@ interface Contact {
   status: string;
   rating: number | null;
   avatar_url: string | null;
-  bio: string | null;
   tags: string[] | null;
   created_at: string;
-  organizations_count?: number;
   contacts_count?: number;
+  organizations_count?: number;
 }
 
 type ViewMode = 'grid' | 'list';
-type ContactTypeFilter = 'all' | 'organization' | 'contact' | 'subcontractor' | 'individual';
+type TabFilter = 'all' | 'subcontractors';
 
 const contactTypeLabels = {
   organization: 'Organizacja',
   contact: 'Kontakt',
-  subcontractor: 'Podwykonawca',
   individual: 'Osoba prywatna',
 };
 
 const contactTypeIcons = {
   organization: Building2,
   contact: User,
-  subcontractor: Briefcase,
   individual: UserCircle,
 };
 
@@ -63,56 +60,128 @@ export default function ContactsPage() {
   const { showSnackbar } = useSnackbar();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contacts, setContacts] = useState<UnifiedContact[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState<ContactTypeFilter>('all');
+  const [activeTab, setActiveTab] = useState<TabFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   useEffect(() => {
-    fetchContacts();
-  }, [filterType]);
+    fetchAllContacts();
+  }, [activeTab]);
 
-  const fetchContacts = async () => {
+  const fetchAllContacts = async () => {
     try {
       setLoading(true);
+      const unified: UnifiedContact[] = [];
 
-      let query = supabase
-        .from('contacts')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (activeTab === 'all') {
+        // Pobierz organizacje (NIE podwykonawców)
+        const { data: orgs, error: orgsError } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('organization_type', 'client')
+          .order('created_at', { ascending: false });
 
-      if (filterType !== 'all') {
-        query = query.eq('contact_type', filterType);
+        if (orgsError) throw orgsError;
+
+        // Mapuj organizacje
+        for (const org of orgs || []) {
+          const { count: contactsCount } = await supabase
+            .from('contact_organizations')
+            .select('*', { count: 'exact', head: true })
+            .eq('organization_id', org.id)
+            .eq('is_current', true);
+
+          unified.push({
+            id: org.id,
+            type: 'organization',
+            source: 'organizations',
+            name: org.alias || org.name,
+            email: org.email,
+            phone: org.phone,
+            mobile: null,
+            city: org.city,
+            status: org.status,
+            rating: null,
+            avatar_url: null,
+            tags: null,
+            created_at: org.created_at,
+            contacts_count: contactsCount || 0,
+          });
+        }
+
+        // Pobierz kontakty (typ 'contact' i 'individual')
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contacts')
+          .select('*')
+          .in('contact_type', ['contact', 'individual'])
+          .order('created_at', { ascending: false });
+
+        if (contactsError) throw contactsError;
+
+        // Mapuj kontakty
+        for (const contact of contactsData || []) {
+          const { count: orgsCount } = await supabase
+            .from('contact_organizations')
+            .select('*', { count: 'exact', head: true })
+            .eq('contact_id', contact.id)
+            .eq('is_current', true);
+
+          unified.push({
+            id: contact.id,
+            type: contact.contact_type === 'individual' ? 'individual' : 'contact',
+            source: 'contacts',
+            name: contact.full_name,
+            email: contact.email,
+            phone: contact.phone,
+            mobile: contact.mobile,
+            city: contact.city,
+            status: contact.status,
+            rating: contact.rating,
+            avatar_url: contact.avatar_url,
+            tags: contact.tags,
+            created_at: contact.created_at,
+            organizations_count: orgsCount || 0,
+          });
+        }
+      } else if (activeTab === 'subcontractors') {
+        // Pobierz tylko podwykonawców
+        const { data: subs, error: subsError } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('organization_type', 'subcontractor')
+          .order('created_at', { ascending: false });
+
+        if (subsError) throw subsError;
+
+        // Mapuj podwykonawców
+        for (const sub of subs || []) {
+          const { count: contactsCount } = await supabase
+            .from('contact_organizations')
+            .select('*', { count: 'exact', head: true })
+            .eq('organization_id', sub.id)
+            .eq('is_current', true);
+
+          unified.push({
+            id: sub.id,
+            type: 'organization',
+            source: 'organizations',
+            name: sub.alias || sub.name,
+            email: sub.email,
+            phone: sub.phone,
+            mobile: null,
+            city: sub.city,
+            status: sub.status,
+            rating: null,
+            avatar_url: null,
+            tags: sub.specialization,
+            created_at: sub.created_at,
+            contacts_count: contactsCount || 0,
+          });
+        }
       }
 
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      const contactsWithCounts = await Promise.all(
-        (data || []).map(async (contact) => {
-          if (contact.contact_type === 'organization' || contact.contact_type === 'subcontractor') {
-            const { count: contactsCount } = await supabase
-              .from('contact_organizations')
-              .select('*', { count: 'exact', head: true })
-              .eq('organization_id', contact.id)
-              .eq('is_current', true);
-
-            return { ...contact, contacts_count: contactsCount || 0 };
-          } else if (contact.contact_type === 'contact') {
-            const { count: orgsCount } = await supabase
-              .from('contact_organizations')
-              .select('*', { count: 'exact', head: true })
-              .eq('contact_id', contact.id)
-              .eq('is_current', true);
-
-            return { ...contact, organizations_count: orgsCount || 0 };
-          }
-          return contact;
-        })
-      );
-
-      setContacts(contactsWithCounts);
+      setContacts(unified);
     } catch (error: any) {
       console.error('Error fetching contacts:', error);
       showSnackbar('Błąd podczas ładowania kontaktów', 'error');
@@ -122,9 +191,10 @@ export default function ContactsPage() {
   };
 
   const filteredContacts = contacts.filter((contact) =>
-    contact.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.phone?.includes(searchTerm)
+    contact.phone?.includes(searchTerm) ||
+    contact.mobile?.includes(searchTerm)
   );
 
   const getContactTypeColor = (type: string) => {
@@ -133,8 +203,6 @@ export default function ContactsPage() {
         return 'bg-blue-900/30 text-blue-400';
       case 'contact':
         return 'bg-green-900/30 text-green-400';
-      case 'subcontractor':
-        return 'bg-purple-900/30 text-purple-400';
       case 'individual':
         return 'bg-gray-700/30 text-gray-400';
       default:
@@ -146,21 +214,25 @@ export default function ContactsPage() {
     router.push('/crm/contacts/new');
   };
 
+  const handleContactClick = (contact: UnifiedContact) => {
+    router.push(`/crm/contacts/${contact.id}`);
+  };
+
   const renderGridView = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {filteredContacts.map((contact) => {
-        const Icon = contactTypeIcons[contact.contact_type];
+        const Icon = contactTypeIcons[contact.type];
         return (
           <div
-            key={contact.id}
-            onClick={() => router.push(`/crm/contacts/${contact.id}`)}
+            key={`${contact.source}-${contact.id}`}
+            onClick={() => handleContactClick(contact)}
             className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-4 hover:border-[#d3bb73] transition-colors cursor-pointer"
           >
             <div className="flex flex-col items-center text-center mb-3">
               {contact.avatar_url ? (
                 <img
                   src={contact.avatar_url}
-                  alt={contact.full_name}
+                  alt={contact.name}
                   className="w-20 h-20 rounded-full object-cover mb-3"
                 />
               ) : (
@@ -168,13 +240,13 @@ export default function ContactsPage() {
                   <Icon className="w-10 h-10 text-[#d3bb73]" />
                 </div>
               )}
-              <h3 className="text-white font-semibold mb-1">{contact.full_name}</h3>
+              <h3 className="text-white font-semibold mb-1">{contact.name}</h3>
               <span
                 className={`text-xs px-2 py-1 rounded-full ${getContactTypeColor(
-                  contact.contact_type
+                  contact.type
                 )}`}
               >
-                {contactTypeLabels[contact.contact_type]}
+                {contactTypeLabels[contact.type]}
               </span>
             </div>
 
@@ -209,18 +281,23 @@ export default function ContactsPage() {
                   ))}
                 </div>
               )}
+              {contact.tags && contact.tags.length > 0 && (
+                <div className="flex items-center space-x-1 text-gray-400">
+                  <Tag className="w-3 h-3 flex-shrink-0" />
+                  <span className="text-xs truncate">{contact.tags.join(', ')}</span>
+                </div>
+              )}
             </div>
 
             <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between text-xs text-gray-500">
               <span>{new Date(contact.created_at).toLocaleDateString('pl-PL')}</span>
-              {(contact.contact_type === 'organization' ||
-                contact.contact_type === 'subcontractor') && (
+              {contact.type === 'organization' && (
                 <div className="flex items-center space-x-1">
                   <Users className="w-3 h-3" />
                   <span>{contact.contacts_count || 0}</span>
                 </div>
               )}
-              {contact.contact_type === 'contact' && contact.organizations_count! > 0 && (
+              {contact.type === 'contact' && contact.organizations_count! > 0 && (
                 <div className="flex items-center space-x-1">
                   <Building2 className="w-3 h-3" />
                   <span>{contact.organizations_count}</span>
@@ -236,18 +313,18 @@ export default function ContactsPage() {
   const renderListView = () => (
     <div className="space-y-2">
       {filteredContacts.map((contact) => {
-        const Icon = contactTypeIcons[contact.contact_type];
+        const Icon = contactTypeIcons[contact.type];
         return (
           <div
-            key={contact.id}
-            onClick={() => router.push(`/crm/contacts/${contact.id}`)}
+            key={`${contact.source}-${contact.id}`}
+            onClick={() => handleContactClick(contact)}
             className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-3 hover:border-[#d3bb73] transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-4">
               {contact.avatar_url ? (
                 <img
                   src={contact.avatar_url}
-                  alt={contact.full_name}
+                  alt={contact.name}
                   className="w-12 h-12 rounded-full object-cover flex-shrink-0"
                 />
               ) : (
@@ -258,13 +335,13 @@ export default function ContactsPage() {
 
               <div className="flex-1 min-w-0 grid grid-cols-5 gap-4 items-center">
                 <div className="col-span-1">
-                  <h3 className="text-white font-semibold truncate">{contact.full_name}</h3>
+                  <h3 className="text-white font-semibold truncate">{contact.name}</h3>
                   <span
                     className={`text-xs px-2 py-0.5 rounded-full inline-block ${getContactTypeColor(
-                      contact.contact_type
+                      contact.type
                     )}`}
                   >
-                    {contactTypeLabels[contact.contact_type]}
+                    {contactTypeLabels[contact.type]}
                   </span>
                 </div>
 
@@ -317,14 +394,13 @@ export default function ContactsPage() {
                       ))}
                     </div>
                   )}
-                  {(contact.contact_type === 'organization' ||
-                    contact.contact_type === 'subcontractor') && (
+                  {contact.type === 'organization' && (
                     <div className="flex items-center space-x-1 text-gray-500">
                       <Users className="w-4 h-4" />
                       <span>{contact.contacts_count || 0}</span>
                     </div>
                   )}
-                  {contact.contact_type === 'contact' && contact.organizations_count! > 0 && (
+                  {contact.type === 'contact' && contact.organizations_count! > 0 && (
                     <div className="flex items-center space-x-1 text-gray-500">
                       <Building2 className="w-4 h-4" />
                       <span>{contact.organizations_count}</span>
@@ -346,7 +422,7 @@ export default function ContactsPage() {
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Kontakty</h1>
             <p className="text-gray-400">
-              Zarządzaj organizacjami, kontaktami, podwykonawcami i osobami prywatnymi
+              Zarządzaj organizacjami, kontaktami i osobami prywatnymi
             </p>
           </div>
           <button
@@ -355,6 +431,30 @@ export default function ContactsPage() {
           >
             <Plus className="w-5 h-5" />
             <span>Nowy kontakt</span>
+          </button>
+        </div>
+
+        <div className="mb-6 flex gap-2">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`px-6 py-3 rounded-lg transition-colors font-medium ${
+              activeTab === 'all'
+                ? 'bg-[#d3bb73] text-[#0f1119]'
+                : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+            }`}
+          >
+            Wszystkie kontakty
+          </button>
+          <button
+            onClick={() => setActiveTab('subcontractors')}
+            className={`px-6 py-3 rounded-lg transition-colors font-medium flex items-center space-x-2 ${
+              activeTab === 'subcontractors'
+                ? 'bg-[#d3bb73] text-[#0f1119]'
+                : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+            }`}
+          >
+            <UserCheck className="w-5 h-5" />
+            <span>Podwykonawcy</span>
           </button>
         </div>
 
@@ -396,26 +496,6 @@ export default function ContactsPage() {
           </div>
         </div>
 
-        <div className="mb-6 flex gap-2 flex-wrap">
-          {(['all', 'organization', 'contact', 'subcontractor', 'individual'] as const).map((type) => (
-            <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                filterType === type
-                  ? 'bg-[#d3bb73] text-[#0f1119]'
-                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-              }`}
-            >
-              {type !== 'all' && (() => {
-                const Icon = contactTypeIcons[type];
-                return <Icon className="w-4 h-4" />;
-              })()}
-              <span>{type === 'all' ? 'Wszystkie' : contactTypeLabels[type]}</span>
-            </button>
-          ))}
-        </div>
-
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#d3bb73]"></div>
@@ -437,7 +517,7 @@ export default function ContactsPage() {
           <>
             {viewMode === 'grid' ? renderGridView() : renderListView()}
             <div className="mt-6 text-center text-sm text-gray-500">
-              Wyświetlono {filteredContacts.length} kontaktów
+              Wyświetlono {filteredContacts.length} {activeTab === 'all' ? 'kontaktów' : 'podwykonawców'}
             </div>
           </>
         )}
