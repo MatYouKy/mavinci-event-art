@@ -105,22 +105,29 @@ export default function NewContactPage() {
     }
   };
 
-  const handleParseGoogleMaps = () => {
+  const handleParseGoogleMaps = async () => {
     if (!formData.googleMapsUrl) {
       showSnackbar('Wprowadź URL Google Maps', 'error');
       return;
     }
 
-    const coords = parseGoogleMapsUrl(formData.googleMapsUrl);
-    if (coords) {
-      setFormData({
-        ...formData,
-        latitude: coords.latitude.toString(),
-        longitude: coords.longitude.toString(),
-      });
-      showSnackbar('Współrzędne pobrane z URL', 'success');
-    } else {
-      showSnackbar('Nie udało się odczytać współrzędnych z URL', 'error');
+    try {
+      setLoadingGUS(true);
+      const coords = await parseGoogleMapsUrl(formData.googleMapsUrl);
+      if (coords) {
+        setFormData({
+          ...formData,
+          latitude: coords.latitude.toString(),
+          longitude: coords.longitude.toString(),
+        });
+        showSnackbar('Współrzędne pobrane z URL', 'success');
+      } else {
+        showSnackbar('Nie udało się odczytać współrzędnych z URL', 'error');
+      }
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas parsowania URL', 'error');
+    } finally {
+      setLoadingGUS(false);
     }
   };
 
@@ -637,9 +644,10 @@ export default function NewContactPage() {
                           <button
                             type="button"
                             onClick={handleParseGoogleMaps}
-                            className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2"
+                            disabled={loadingGUS}
+                            className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50"
                           >
-                            <MapPin className="w-5 h-5" />
+                            {loadingGUS ? <Loader2 className="w-5 h-5 animate-spin" /> : <MapPin className="w-5 h-5" />}
                             <span>Pobierz</span>
                           </button>
                         </div>
