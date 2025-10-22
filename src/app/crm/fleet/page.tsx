@@ -104,15 +104,37 @@ export default function FleetPage() {
   useEffect(() => {
     fetchVehicles();
 
-    // Subscribe to realtime updates for event_vehicles to update "in use" status
+    // Subscribe to realtime updates for event_vehicles and vehicle_alerts
     const channel = supabase
-      .channel('fleet_event_vehicles_changes')
+      .channel('fleet_changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'event_vehicles',
+        },
+        () => {
+          fetchVehicles();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'vehicle_alerts',
+        },
+        () => {
+          fetchVehicles();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'insurance_policies',
         },
         () => {
           fetchVehicles();
@@ -166,13 +188,13 @@ export default function FleetPage() {
             .gte('next_service_date', new Date().toISOString())
             .lte('next_service_date', new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
 
+          // Pobierz alerty ubezpieczeniowe z vehicle_alerts (trigger już obliczył czy są potrzebne)
           const { count: expiringInsurance } = await supabase
-            .from('insurance_policies')
+            .from('vehicle_alerts')
             .select('*', { count: 'exact', head: true })
             .eq('vehicle_id', vehicle.id)
-            .eq('status', 'active')
-            .gte('end_date', new Date().toISOString())
-            .lte('end_date', new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString());
+            .eq('alert_type', 'insurance')
+            .eq('is_active', true);
 
           const { data: maintenanceCosts } = await supabase
             .from('maintenance_records')

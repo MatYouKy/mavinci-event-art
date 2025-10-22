@@ -140,6 +140,7 @@ export default function VehicleDetailPage() {
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
   const [insurancePolicies, setInsurancePolicies] = useState<InsurancePolicy[]>([]);
+  const [vehicleAlerts, setVehicleAlerts] = useState<any[]>([]);
   const [handoverHistory, setHandoverHistory] = useState<VehicleHandover[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery' | 'history'>('overview');
@@ -237,6 +238,18 @@ export default function VehicleDetailPage() {
             fetchVehicleData();
           }
         )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'vehicle_alerts',
+            filter: `vehicle_id=eq.${vehicleId}`,
+          },
+          () => {
+            fetchVehicleData();
+          }
+        )
         .subscribe();
 
       return () => {
@@ -249,7 +262,7 @@ export default function VehicleDetailPage() {
     try {
       setLoading(true);
 
-      const [vehicleRes, fuelRes, maintenanceRes, inspectionsRes, oilRes, timingBeltRes, repairsRes, insuranceRes, handoverRes, inUseRes] = await Promise.all([
+      const [vehicleRes, fuelRes, maintenanceRes, inspectionsRes, oilRes, timingBeltRes, repairsRes, insuranceRes, alertsRes, handoverRes, inUseRes] = await Promise.all([
         supabase.from('vehicles').select('*').eq('id', vehicleId).single(),
         supabase
           .from('fuel_entries')
@@ -292,6 +305,13 @@ export default function VehicleDetailPage() {
           .select('*')
           .eq('vehicle_id', vehicleId)
           .order('end_date', { ascending: false }),
+        // Pobierz alerty z vehicle_alerts (trigger oblicza ciągłość)
+        supabase
+          .from('vehicle_alerts')
+          .select('*')
+          .eq('vehicle_id', vehicleId)
+          .eq('alert_type', 'insurance')
+          .eq('is_active', true),
         supabase
           .from('vehicle_handover_history')
           .select('*')
@@ -394,6 +414,7 @@ export default function VehicleDetailPage() {
 
       setMaintenanceRecords(allMaintenance);
       setInsurancePolicies(insuranceRes.data || []);
+      setVehicleAlerts(alertsRes.data || []);
       setHandoverHistory(handoverRes.data || []);
     } catch (error) {
       console.error('Error fetching vehicle data:', error);
@@ -523,9 +544,13 @@ export default function VehicleDetailPage() {
     (r) => r.next_service_date && getDaysUntil(r.next_service_date)! > 0 && getDaysUntil(r.next_service_date)! <= 30
   );
 
-  const expiringInsurance = insurancePolicies.filter(
-    (p) => p.status === 'active' && getDaysUntil(p.end_date)! > 0 && getDaysUntil(p.end_date)! <= 60
-  );
+  // Użyj alertów z vehicle_alerts zamiast samodzielnie filtrować
+  // Trigger już obliczył czy alert jest potrzebny (sprawdził ciągłość ochrony)
+  const expiringInsurance = vehicleAlerts.map(alert => {
+    // Znajdź polisę powiązaną z alertem
+    const policy = insurancePolicies.find(p => p.id === alert.related_id);
+    return policy || null;
+  }).filter(Boolean) as InsurancePolicy[];
 
   const totalFuelCost = fuelEntries.reduce((sum, f) => sum + (f.total_cost || 0), 0);
   const totalMaintenanceCost = maintenanceRecords.reduce((sum, m) => sum + (m.total_cost || 0), 0);
