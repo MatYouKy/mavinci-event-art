@@ -2,29 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import {
-  Car,
-  ArrowLeft,
-  Edit,
-  Fuel,
-  Wrench,
-  Shield,
-  FileText,
-  Calendar,
-  MapPin,
-  Gauge,
-  DollarSign,
-  Plus,
-  AlertTriangle,
-  Clock,
-  User,
-  Trash2,
-  TrendingUp,
-  TrendingDown,
-  Activity,
-  Image as ImageIcon,
-  X,
-} from 'lucide-react';
+import { Car, ArrowLeft, CreditCard as Edit, Fuel, Wrench, Shield, FileText, Calendar, MapPin, Gauge, DollarSign, Plus, AlertTriangle, Clock, User, Trash2, TrendingUp, TrendingDown, Activity, Image as ImageIcon, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
