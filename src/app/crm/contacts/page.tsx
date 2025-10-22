@@ -42,6 +42,7 @@ interface UnifiedContact {
 
 type ViewMode = 'grid' | 'list';
 type TabFilter = 'all' | 'subcontractors';
+type ContactTypeFilter = 'all' | 'organization' | 'contact' | 'individual';
 
 const contactTypeLabels = {
   organization: 'Organizacja',
@@ -63,6 +64,7 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<UnifiedContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   useEffect(() => {
@@ -190,12 +192,20 @@ export default function ContactsPage() {
     }
   };
 
-  const filteredContacts = contacts.filter((contact) =>
-    contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.phone?.includes(searchTerm) ||
-    contact.mobile?.includes(searchTerm)
-  );
+  const filteredContacts = contacts
+    .filter((contact) => {
+      // Filtrowanie według typu (tylko dla taba "Wszystkie kontakty")
+      if (activeTab === 'all' && typeFilter !== 'all') {
+        return contact.type === typeFilter;
+      }
+      return true;
+    })
+    .filter((contact) =>
+      contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contact.phone?.includes(searchTerm) ||
+      contact.mobile?.includes(searchTerm)
+    );
 
   const getContactTypeColor = (type: string) => {
     switch (type) {
@@ -434,29 +444,83 @@ export default function ContactsPage() {
           </button>
         </div>
 
-        <div className="mb-6 flex gap-2">
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`px-6 py-3 rounded-lg transition-colors font-medium ${
-              activeTab === 'all'
-                ? 'bg-[#d3bb73] text-[#0f1119]'
-                : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-            }`}
-          >
-            Wszystkie kontakty
-          </button>
-          <button
-            onClick={() => setActiveTab('subcontractors')}
-            className={`px-6 py-3 rounded-lg transition-colors font-medium flex items-center space-x-2 ${
-              activeTab === 'subcontractors'
-                ? 'bg-[#d3bb73] text-[#0f1119]'
-                : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-            }`}
-          >
-            <UserCheck className="w-5 h-5" />
-            <span>Podwykonawcy</span>
-          </button>
+        <div className="mb-6 border-b border-gray-700">
+          <div className="flex gap-0">
+            <button
+              onClick={() => {
+                setActiveTab('all');
+                setTypeFilter('all');
+              }}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                activeTab === 'all'
+                  ? 'border-[#d3bb73] text-[#d3bb73]'
+                  : 'border-transparent text-gray-400 hover:text-white'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Wszystkie kontakty
+            </button>
+            <button
+              onClick={() => setActiveTab('subcontractors')}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                activeTab === 'subcontractors'
+                  ? 'border-[#d3bb73] text-[#d3bb73]'
+                  : 'border-transparent text-gray-400 hover:text-white'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              Podwykonawcy
+            </button>
+          </div>
         </div>
+
+        {activeTab === 'all' && (
+          <div className="mb-6 flex gap-2 flex-wrap">
+            <button
+              onClick={() => setTypeFilter('all')}
+              className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                typeFilter === 'all'
+                  ? 'bg-[#d3bb73] text-[#0f1119]'
+                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+              }`}
+            >
+              Wszystkie typy
+            </button>
+            <button
+              onClick={() => setTypeFilter('organization')}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 text-sm ${
+                typeFilter === 'organization'
+                  ? 'bg-[#d3bb73] text-[#0f1119]'
+                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Organizacje</span>
+            </button>
+            <button
+              onClick={() => setTypeFilter('contact')}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 text-sm ${
+                typeFilter === 'contact'
+                  ? 'bg-[#d3bb73] text-[#0f1119]'
+                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              <span>Kontakty</span>
+            </button>
+            <button
+              onClick={() => setTypeFilter('individual')}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 text-sm ${
+                typeFilter === 'individual'
+                  ? 'bg-[#d3bb73] text-[#0f1119]'
+                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+              }`}
+            >
+              <UserCircle className="w-4 h-4" />
+              <span>Osoby prywatne</span>
+            </button>
+          </div>
+        )}
 
         <div className="mb-6 flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
