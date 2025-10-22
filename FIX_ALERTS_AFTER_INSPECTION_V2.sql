@@ -112,9 +112,10 @@ DROP TRIGGER IF EXISTS trigger_create_insurance_alert ON insurance_policies;
 CREATE OR REPLACE FUNCTION manage_insurance_alerts()
 RETURNS TRIGGER AS $$
 DECLARE
-  current_policy RECORD;
-  alert_needed boolean;
+  expiring_policy RECORD;
+  next_policy RECORD;
   days_until_expiry integer;
+  has_coverage boolean;
 BEGIN
   -- Usuń stary alert dla tego TYPU ubezpieczenia dla tego pojazdu
   DELETE FROM vehicle_alerts
@@ -127,32 +128,49 @@ BEGIN
     RETURN OLD;
   END IF;
 
-  -- Znajdź aktualną (najważniejszą) polisę dla tego TYPU
-  -- Priorytet: 1) aktywna z najdłuższą datą końcową
-  SELECT id, end_date, type, status
-  INTO current_policy
+  -- Znajdź polisę która kończy się najwcześniej w przyszłości lub już wygasła
+  -- To jest potencjalna polisa do alertu
+  SELECT id, end_date, start_date, type, status
+  INTO expiring_policy
   FROM insurance_policies
   WHERE vehicle_id = NEW.vehicle_id
   AND type = NEW.type
   AND status IN ('active', 'expired')
-  ORDER BY
-    CASE WHEN status = 'active' THEN 0 ELSE 1 END,
-    end_date DESC,
-    created_at DESC
+  AND end_date >= CURRENT_DATE - INTERVAL '30 days'
+  ORDER BY end_date ASC, created_at ASC
   LIMIT 1;
 
-  -- Jeśli nie ma polisy, zakończ
-  IF current_policy.id IS NULL THEN
+  -- Jeśli nie ma żadnej polisy, zakończ
+  IF expiring_policy.id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Sprawdź czy istnieje polisa która PRZEJMUJE ochronę
+  -- (rozpoczyna się przed lub w dniu końca poprzedniej)
+  SELECT id, start_date, end_date
+  INTO next_policy
+  FROM insurance_policies
+  WHERE vehicle_id = NEW.vehicle_id
+  AND type = NEW.type
+  AND status = 'active'
+  AND id != expiring_policy.id
+  AND start_date <= expiring_policy.end_date + INTERVAL '1 day'
+  AND end_date > expiring_policy.end_date
+  ORDER BY start_date ASC, end_date DESC
+  LIMIT 1;
+
+  -- Jeśli jest polisa przejmująca, nie twórz alertu
+  IF next_policy.id IS NOT NULL THEN
     RETURN NEW;
   END IF;
 
   -- Oblicz dni do wygaśnięcia
-  days_until_expiry := current_policy.end_date - CURRENT_DATE;
+  days_until_expiry := expiring_policy.end_date - CURRENT_DATE;
 
   -- Utwórz alert TYLKO jeśli:
   -- 1. Polisa wygasa w ciągu 21 dni LUB już wygasła
-  -- 2. Status to 'active' (nie ma sensu alertować o wygasłej jeśli już jest nowa)
-  IF (days_until_expiry <= 21 OR current_policy.status = 'expired') AND current_policy.status != 'cancelled' THEN
+  -- 2. NIE MA polisy przejmującej
+  IF days_until_expiry <= 21 AND expiring_policy.status != 'cancelled' THEN
     INSERT INTO vehicle_alerts (
       vehicle_id,
       alert_type,
@@ -175,18 +193,18 @@ BEGIN
         ELSE 'low'
       END,
       CASE
-        WHEN days_until_expiry < 0 THEN 'Ubezpieczenie przeterminowane!'
+        WHEN days_until_expiry < 0 THEN 'Brak ubezpieczenia!'
         ELSE 'Ubezpieczenie wygasa wkrótce'
       END,
-      UPPER(current_policy.type) || ' - ' ||
+      UPPER(expiring_policy.type) || ' - ' ||
       CASE
-        WHEN days_until_expiry < 0 THEN 'przeterminowane ' || ABS(days_until_expiry) || ' dni temu'
+        WHEN days_until_expiry < 0 THEN 'brak ochrony od ' || ABS(days_until_expiry) || ' dni'
         ELSE 'wygasa za ' || days_until_expiry || ' dni'
-      END || ' (' || to_char(current_policy.end_date, 'DD.MM.YYYY') || ')',
+      END || ' (' || to_char(expiring_policy.end_date, 'DD.MM.YYYY') || ')',
       'Shield',
       days_until_expiry < 0,
-      current_policy.end_date,
-      current_policy.id,
+      expiring_policy.end_date,
+      expiring_policy.id,
       true
     );
   END IF;
