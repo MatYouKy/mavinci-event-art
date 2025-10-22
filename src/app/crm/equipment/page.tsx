@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree } from 'lucide-react';
+import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Layers } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ConnectorsView from '@/components/crm/ConnectorsView';
+import KitsManagementModal from '@/components/crm/KitsManagementModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -49,6 +50,8 @@ export default function EquipmentPage() {
   const [activeTab, setActiveTab] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
+  const [showKitsModal, setShowKitsModal] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -164,13 +167,22 @@ export default function EquipmentPage() {
         <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn</h2>
         <div className="flex gap-2">
           {canManageModule('equipment') && (
-            <button
-              onClick={() => router.push('/crm/equipment/categories')}
-              className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
-            >
-              <FolderTree className="w-4 h-4" />
-              Kategorie
-            </button>
+            <>
+              <button
+                onClick={() => router.push('/crm/equipment/categories')}
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
+              >
+                <FolderTree className="w-4 h-4" />
+                Kategorie
+              </button>
+              <button
+                onClick={() => setShowKitsModal(true)}
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
+              >
+                <Layers className="w-4 h-4" />
+                Zestawy
+              </button>
+            </>
           )}
           {canCreateInModule('equipment') && (
             <button
@@ -221,6 +233,40 @@ export default function EquipmentPage() {
         <ConnectorsView viewMode={viewMode} />
       ) : (
         <>
+          {/* Filtr typu: Wszystko / Tylko sprzęt / Tylko zestawy */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setItemTypeFilter('all')}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                itemTypeFilter === 'all'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              Wszystko
+            </button>
+            <button
+              onClick={() => setItemTypeFilter('equipment')}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                itemTypeFilter === 'equipment'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              Tylko sprzęt
+            </button>
+            <button
+              onClick={() => setItemTypeFilter('kits')}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                itemTypeFilter === 'kits'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              Tylko zestawy
+            </button>
+          </div>
+
           <div className="flex gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
@@ -351,6 +397,16 @@ export default function EquipmentPage() {
             </div>
           )}
         </>
+      )}
+
+      {showKitsModal && (
+        <KitsManagementModal
+          onClose={() => {
+            setShowKitsModal(false);
+            fetchEquipment(); // Odśwież listę po zamknięciu modala
+          }}
+          equipment={equipment.filter(e => !e.is_kit)} // Przekaż tylko normalny sprzęt (bez zestawów)
+        />
       )}
     </div>
   );
