@@ -189,7 +189,7 @@ export default function KitsPage() {
     if (!printWindow) return;
 
     const items = viewingKit.equipment_kit_items.map((item, index) => {
-      const eq = equipment.find(e => e.id === item.equipment_id);
+      const eq = item.equipment_items;
       return `
         <tr>
           <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5;">
@@ -198,7 +198,7 @@ export default function KitsPage() {
           <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5;">${index + 1}</td>
           <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5; font-weight: 500;">
             ${eq?.name || 'Nieznany sprzęt'}
-            ${eq?.brand ? `<br><span style="font-size: 14px; color: #666;">${eq.brand} ${eq.model || ''}</span>` : ''}
+            ${eq?.brand ? `<br><span style="font-size: 14px; color: #666;">${eq.brand}${eq.model ? ' ' + eq.model : ''}</span>` : ''}
             ${item.notes ? `<br><span style="font-size: 13px; color: #888; font-style: italic;">${item.notes}</span>` : ''}
           </td>
           <td style="padding: 12px 8px; border-bottom: 1px solid #e5e5e5; text-align: center; font-weight: 600;">
