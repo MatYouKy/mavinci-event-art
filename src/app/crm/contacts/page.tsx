@@ -13,6 +13,10 @@ import {
   Users,
   Briefcase,
   UserCircle,
+  LayoutGrid,
+  List,
+  Star,
+  Tag,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -29,11 +33,15 @@ interface Contact {
   city: string | null;
   status: string;
   rating: number | null;
+  avatar_url: string | null;
+  bio: string | null;
+  tags: string[] | null;
   created_at: string;
   organizations_count?: number;
   contacts_count?: number;
 }
 
+type ViewMode = 'grid' | 'list';
 type ContactTypeFilter = 'all' | 'organization' | 'contact' | 'subcontractor' | 'individual';
 
 const contactTypeLabels = {
@@ -58,6 +66,7 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<ContactTypeFilter>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   useEffect(() => {
     fetchContacts();
@@ -137,6 +146,199 @@ export default function ContactsPage() {
     router.push('/crm/contacts/new');
   };
 
+  const renderGridView = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {filteredContacts.map((contact) => {
+        const Icon = contactTypeIcons[contact.contact_type];
+        return (
+          <div
+            key={contact.id}
+            onClick={() => router.push(`/crm/contacts/${contact.id}`)}
+            className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-4 hover:border-[#d3bb73] transition-colors cursor-pointer"
+          >
+            <div className="flex flex-col items-center text-center mb-3">
+              {contact.avatar_url ? (
+                <img
+                  src={contact.avatar_url}
+                  alt={contact.full_name}
+                  className="w-20 h-20 rounded-full object-cover mb-3"
+                />
+              ) : (
+                <div className="w-20 h-20 bg-[#d3bb73]/10 rounded-full flex items-center justify-center mb-3">
+                  <Icon className="w-10 h-10 text-[#d3bb73]" />
+                </div>
+              )}
+              <h3 className="text-white font-semibold mb-1">{contact.full_name}</h3>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${getContactTypeColor(
+                  contact.contact_type
+                )}`}
+              >
+                {contactTypeLabels[contact.contact_type]}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              {contact.email && (
+                <div className="flex items-center space-x-2 text-gray-400">
+                  <Mail className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">{contact.email}</span>
+                </div>
+              )}
+              {(contact.phone || contact.mobile) && (
+                <div className="flex items-center space-x-2 text-gray-400">
+                  <Phone className="w-4 h-4 flex-shrink-0" />
+                  <span>{contact.mobile || contact.phone}</span>
+                </div>
+              )}
+              {contact.city && (
+                <div className="flex items-center space-x-2 text-gray-400">
+                  <MapPin className="w-4 h-4 flex-shrink-0" />
+                  <span>{contact.city}</span>
+                </div>
+              )}
+              {contact.rating && (
+                <div className="flex items-center space-x-1 text-[#d3bb73]">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`w-3 h-3 ${
+                        i < contact.rating! ? 'fill-current' : 'stroke-current'
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between text-xs text-gray-500">
+              <span>{new Date(contact.created_at).toLocaleDateString('pl-PL')}</span>
+              {(contact.contact_type === 'organization' ||
+                contact.contact_type === 'subcontractor') && (
+                <div className="flex items-center space-x-1">
+                  <Users className="w-3 h-3" />
+                  <span>{contact.contacts_count || 0}</span>
+                </div>
+              )}
+              {contact.contact_type === 'contact' && contact.organizations_count! > 0 && (
+                <div className="flex items-center space-x-1">
+                  <Building2 className="w-3 h-3" />
+                  <span>{contact.organizations_count}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderListView = () => (
+    <div className="space-y-2">
+      {filteredContacts.map((contact) => {
+        const Icon = contactTypeIcons[contact.contact_type];
+        return (
+          <div
+            key={contact.id}
+            onClick={() => router.push(`/crm/contacts/${contact.id}`)}
+            className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-3 hover:border-[#d3bb73] transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-4">
+              {contact.avatar_url ? (
+                <img
+                  src={contact.avatar_url}
+                  alt={contact.full_name}
+                  className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-6 h-6 text-[#d3bb73]" />
+                </div>
+              )}
+
+              <div className="flex-1 min-w-0 grid grid-cols-5 gap-4 items-center">
+                <div className="col-span-1">
+                  <h3 className="text-white font-semibold truncate">{contact.full_name}</h3>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full inline-block ${getContactTypeColor(
+                      contact.contact_type
+                    )}`}
+                  >
+                    {contactTypeLabels[contact.contact_type]}
+                  </span>
+                </div>
+
+                <div className="col-span-1 text-sm text-gray-400 flex items-center space-x-2">
+                  {contact.email && (
+                    <>
+                      <Mail className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">{contact.email}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="col-span-1 text-sm text-gray-400 flex items-center space-x-2">
+                  {(contact.phone || contact.mobile) && (
+                    <>
+                      <Phone className="w-4 h-4 flex-shrink-0" />
+                      <span>{contact.mobile || contact.phone}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="col-span-1 text-sm text-gray-400 flex items-center space-x-2">
+                  {contact.city && (
+                    <>
+                      <MapPin className="w-4 h-4 flex-shrink-0" />
+                      <span>{contact.city}</span>
+                    </>
+                  )}
+                  {contact.tags && contact.tags.length > 0 && (
+                    <>
+                      <Tag className="w-4 h-4 flex-shrink-0 ml-2" />
+                      <span>{contact.tags[0]}</span>
+                      {contact.tags.length > 1 && (
+                        <span className="text-xs">+{contact.tags.length - 1}</span>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="col-span-1 flex items-center justify-end space-x-4 text-sm">
+                  {contact.rating && (
+                    <div className="flex items-center space-x-1 text-[#d3bb73]">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`w-3 h-3 ${
+                            i < contact.rating! ? 'fill-current' : 'stroke-current'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {(contact.contact_type === 'organization' ||
+                    contact.contact_type === 'subcontractor') && (
+                    <div className="flex items-center space-x-1 text-gray-500">
+                      <Users className="w-4 h-4" />
+                      <span>{contact.contacts_count || 0}</span>
+                    </div>
+                  )}
+                  {contact.contact_type === 'contact' && contact.organizations_count! > 0 && (
+                    <div className="flex items-center space-x-1 text-gray-500">
+                      <Building2 className="w-4 h-4" />
+                      <span>{contact.organizations_count}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
       <div className="max-w-7xl mx-auto">
@@ -168,25 +370,50 @@ export default function ContactsPage() {
             />
           </div>
 
-          <div className="flex gap-2 flex-wrap">
-            {(['all', 'organization', 'contact', 'subcontractor', 'individual'] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => setFilterType(type)}
-                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                  filterType === type
-                    ? 'bg-[#d3bb73] text-[#0f1119]'
-                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-                }`}
-              >
-                {type !== 'all' && (() => {
-                  const Icon = contactTypeIcons[type];
-                  return <Icon className="w-4 h-4" />;
-                })()}
-                <span>{type === 'all' ? 'Wszystkie' : contactTypeLabels[type]}</span>
-              </button>
-            ))}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-[#d3bb73] text-[#0f1119]'
+                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+              }`}
+              title="Widok kafelków"
+            >
+              <LayoutGrid className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-[#d3bb73] text-[#0f1119]'
+                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+              }`}
+              title="Widok listy"
+            >
+              <List className="w-5 h-5" />
+            </button>
           </div>
+        </div>
+
+        <div className="mb-6 flex gap-2 flex-wrap">
+          {(['all', 'organization', 'contact', 'subcontractor', 'individual'] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => setFilterType(type)}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                filterType === type
+                  ? 'bg-[#d3bb73] text-[#0f1119]'
+                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+              }`}
+            >
+              {type !== 'all' && (() => {
+                const Icon = contactTypeIcons[type];
+                return <Icon className="w-4 h-4" />;
+              })()}
+              <span>{type === 'all' ? 'Wszystkie' : contactTypeLabels[type]}</span>
+            </button>
+          ))}
         </div>
 
         {loading ? (
@@ -207,74 +434,12 @@ export default function ContactsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredContacts.map((contact) => {
-              const Icon = contactTypeIcons[contact.contact_type];
-              return (
-                <div
-                  key={contact.id}
-                  onClick={() => router.push(`/crm/contacts/${contact.id}`)}
-                  className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-4 hover:border-[#d3bb73] transition-colors cursor-pointer"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-full flex items-center justify-center">
-                        <Icon className="w-6 h-6 text-[#d3bb73]" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold">{contact.full_name}</h3>
-                        <span
-                          className={`text-xs px-2 py-1 rounded-full ${getContactTypeColor(
-                            contact.contact_type
-                          )}`}
-                        >
-                          {contactTypeLabels[contact.contact_type]}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 text-sm">
-                    {contact.email && (
-                      <div className="flex items-center space-x-2 text-gray-400">
-                        <Mail className="w-4 h-4" />
-                        <span className="truncate">{contact.email}</span>
-                      </div>
-                    )}
-                    {(contact.phone || contact.mobile) && (
-                      <div className="flex items-center space-x-2 text-gray-400">
-                        <Phone className="w-4 h-4" />
-                        <span>{contact.mobile || contact.phone}</span>
-                      </div>
-                    )}
-                    {contact.city && (
-                      <div className="flex items-center space-x-2 text-gray-400">
-                        <MapPin className="w-4 h-4" />
-                        <span>{contact.city}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between text-xs text-gray-500">
-                    <span>{new Date(contact.created_at).toLocaleDateString('pl-PL')}</span>
-                    {(contact.contact_type === 'organization' ||
-                      contact.contact_type === 'subcontractor') && (
-                      <div className="flex items-center space-x-1">
-                        <Users className="w-3 h-3" />
-                        <span>{contact.contacts_count || 0} kontaktów</span>
-                      </div>
-                    )}
-                    {contact.contact_type === 'contact' && contact.organizations_count! > 0 && (
-                      <div className="flex items-center space-x-1">
-                        <Building2 className="w-3 h-3" />
-                        <span>{contact.organizations_count} org.</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <>
+            {viewMode === 'grid' ? renderGridView() : renderListView()}
+            <div className="mt-6 text-center text-sm text-gray-500">
+              Wyświetlono {filteredContacts.length} kontaktów
+            </div>
+          </>
         )}
       </div>
     </div>
