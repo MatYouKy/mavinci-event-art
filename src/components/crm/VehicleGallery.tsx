@@ -343,28 +343,6 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {/* Uploading files with preview */}
-            {uploadingFiles.map((uploadingFile) => (
-              <div
-                key={uploadingFile.id}
-                className="relative bg-[#1c1f33] rounded-lg border border-[#d3bb73]/30 overflow-hidden"
-              >
-                <div className="aspect-square relative">
-                  <img
-                    src={uploadingFile.preview}
-                    alt="Uploading..."
-                    className="w-full h-full object-cover opacity-50"
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                    <div className="text-center">
-                      <Loader2 className="w-8 h-8 text-[#d3bb73] animate-spin mx-auto mb-2" />
-                      <p className="text-xs text-[#e5e4e2]">{uploadingFile.progress}%</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-
             {/* Existing images */}
             {images.map((image) => (
               <div
@@ -410,6 +388,28 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
                       </button>
                     </div>
                   )}
+                </div>
+              </div>
+            ))}
+
+            {/* Uploading files with preview - at the end */}
+            {uploadingFiles.map((uploadingFile) => (
+              <div
+                key={uploadingFile.id}
+                className="relative bg-[#1c1f33] rounded-lg border border-[#d3bb73]/30 overflow-hidden"
+              >
+                <div className="aspect-square relative">
+                  <img
+                    src={uploadingFile.preview}
+                    alt="Uploading..."
+                    className="w-full h-full object-cover opacity-50"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <div className="text-center">
+                      <Loader2 className="w-8 h-8 text-[#d3bb73] animate-spin mx-auto mb-2" />
+                      <p className="text-xs text-[#e5e4e2]">{uploadingFile.progress}%</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
