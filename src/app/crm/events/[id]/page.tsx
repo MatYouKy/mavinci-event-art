@@ -1057,6 +1057,12 @@ export default function EventDetailPage() {
                 <Building2 className="w-4 h-4" />
                 {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
               </div>
+              {event.contact_person && (
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  <span>Kontakt: {event.contact_person.full_name || `${event.contact_person.first_name} ${event.contact_person.last_name}`}</span>
+                </div>
+              )}
               {event.creator && (
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4" />
@@ -1247,15 +1253,28 @@ export default function EventDetailPage() {
 
                 {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
                 {!hasLimitedAccess && (
-                  <div className="flex items-start gap-3">
-                    <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
-                    <div>
-                      <p className="text-sm text-[#e5e4e2]/60">Klient</p>
-                      <p className="text-[#e5e4e2]">
-                        {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
-                      </p>
+                  <>
+                    <div className="flex items-start gap-3">
+                      <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                      <div>
+                        <p className="text-sm text-[#e5e4e2]/60">Klient</p>
+                        <p className="text-[#e5e4e2]">
+                          {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                    {event.contact_person && (
+                      <div className="flex items-start gap-3">
+                        <User className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                        <div>
+                          <p className="text-sm text-[#e5e4e2]/60">Osoba kontaktowa</p>
+                          <p className="text-[#e5e4e2]">
+                            {event.contact_person.full_name || `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
