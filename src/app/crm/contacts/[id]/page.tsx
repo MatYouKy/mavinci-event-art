@@ -10,7 +10,6 @@ import {
   MapPin,
   Star,
   DollarSign,
-  Calendar,
   FileText,
   Plus,
   Edit,
@@ -18,23 +17,25 @@ import {
   X,
   User,
   History,
-  Bell,
   Users,
-  Tag,
   Globe,
   CreditCard,
   Loader2,
   ExternalLink,
+  Trash2,
+  StickyNote,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { parseGoogleMapsUrl } from '@/lib/gus';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Organization {
   id: string;
   organization_type: 'client' | 'subcontractor';
   business_type: 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
   name: string;
+  alias: string | null;
   nip: string | null;
   address: string | null;
   city: string | null;
@@ -68,6 +69,14 @@ interface ContactPerson {
   is_primary: boolean;
 }
 
+interface OrganizationNote {
+  id: string;
+  note: string;
+  created_at: string;
+  created_by: string | null;
+  employees?: { name: string; surname: string } | null;
+}
+
 interface ContactHistory {
   id: string;
   contact_type: string;
@@ -77,7 +86,7 @@ interface ContactHistory {
   contacted_by: string | null;
 }
 
-type TabType = 'details' | 'contacts' | 'history' | 'events';
+type TabType = 'details' | 'contacts' | 'notes' | 'history';
 
 const businessTypeLabels = {
   company: 'Firma',
@@ -100,20 +109,56 @@ export default function OrganizationDetailPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const organizationId = params.id as string;
+  const { currentEmployee } = useCurrentEmployee();
 
   const [activeTab, setActiveTab] = useState<TabType>('details');
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [contactPersons, setContactPersons] = useState<ContactPerson[]>([]);
+  const [organizationNotes, setOrganizationNotes] = useState<OrganizationNote[]>([]);
   const [history, setHistory] = useState<ContactHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Organization>>({});
   const [saving, setSaving] = useState(false);
 
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [newContact, setNewContact] = useState({
+    name: '',
+    position: '',
+    email: '',
+    phone: '',
+    is_primary: false,
+  });
+
+  const [newNoteText, setNewNoteText] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+
   useEffect(() => {
     if (organizationId) {
       fetchData();
     }
+  }, [organizationId]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('organization_notes_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'organization_notes',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        () => {
+          fetchNotes();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [organizationId]);
 
   const fetchData = async () => {
@@ -143,6 +188,8 @@ export default function OrganizationDetailPage() {
 
       setContactPersons(contactsData || []);
 
+      await fetchNotes();
+
       const { data: historyData } = await supabase
         .from('contact_history')
         .select('*')
@@ -157,6 +204,16 @@ export default function OrganizationDetailPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchNotes = async () => {
+    const { data: notesData } = await supabase
+      .from('organization_notes')
+      .select('*, employees(name, surname)')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false });
+
+    setOrganizationNotes(notesData || []);
   };
 
   const handleEdit = () => {
@@ -218,6 +275,90 @@ export default function OrganizationDetailPage() {
     }
   };
 
+  const handleAddContact = async () => {
+    if (!newContact.name.trim()) {
+      showSnackbar('Wprowadź imię i nazwisko', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('contact_persons').insert({
+        organization_id: organizationId,
+        ...newContact,
+      });
+
+      if (error) throw error;
+
+      showSnackbar('Osoba kontaktowa dodana', 'success');
+      setShowAddContactModal(false);
+      setNewContact({
+        name: '',
+        position: '',
+        email: '',
+        phone: '',
+        is_primary: false,
+      });
+      fetchData();
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas dodawania', 'error');
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!newNoteText.trim()) {
+      showSnackbar('Wprowadź treść notatki', 'error');
+      return;
+    }
+
+    try {
+      setAddingNote(true);
+
+      const { error } = await supabase.from('organization_notes').insert({
+        organization_id: organizationId,
+        note: newNoteText,
+        created_by: currentEmployee?.id || null,
+      });
+
+      if (error) throw error;
+
+      showSnackbar('Notatka dodana', 'success');
+      setNewNoteText('');
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas dodawania notatki', 'error');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tę notatkę?')) return;
+
+    try {
+      const { error } = await supabase.from('organization_notes').delete().eq('id', noteId);
+
+      if (error) throw error;
+
+      showSnackbar('Notatka usunięta', 'success');
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas usuwania', 'error');
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tę osobę kontaktową?')) return;
+
+    try {
+      const { error } = await supabase.from('contact_persons').delete().eq('id', contactId);
+
+      if (error) throw error;
+
+      showSnackbar('Osoba usunięta', 'success');
+      fetchData();
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas usuwania', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
@@ -229,6 +370,8 @@ export default function OrganizationDetailPage() {
   if (!organization) {
     return null;
   }
+
+  const displayName = organization.alias || organization.name;
 
   const renderRating = (rating: number | null) => {
     if (!rating) return null;
@@ -260,7 +403,7 @@ export default function OrganizationDetailPage() {
             <div>
               <div className="flex items-center space-x-3">
                 <Building2 className="w-8 h-8 text-[#d3bb73]" />
-                <h1 className="text-3xl font-bold text-white">{organization.name}</h1>
+                <h1 className="text-3xl font-bold text-white">{displayName}</h1>
                 <span
                   className={`px-3 py-1 rounded-full text-xs font-medium ${
                     statusColors[organization.status as keyof typeof statusColors] ||
@@ -274,6 +417,9 @@ export default function OrganizationDetailPage() {
                 {businessTypeLabels[organization.business_type]} •{' '}
                 {organization.organization_type === 'client' ? 'Klient' : 'Podwykonawca'}
               </p>
+              {organization.alias && (
+                <p className="text-xs text-gray-500 mt-1">Pełna nazwa: {organization.name}</p>
+              )}
             </div>
           </div>
           {!editMode ? (
@@ -308,7 +454,8 @@ export default function OrganizationDetailPage() {
         <div className="flex space-x-2 mb-6 border-b border-gray-700">
           {[
             { key: 'details' as TabType, label: 'Szczegóły', icon: FileText },
-            { key: 'contacts' as TabType, label: 'Osoby kontaktowe', icon: Users },
+            { key: 'contacts' as TabType, label: `Kontakty (${contactPersons.length})`, icon: Users },
+            { key: 'notes' as TabType, label: `Notatki (${organizationNotes.length})`, icon: StickyNote },
             { key: 'history' as TabType, label: 'Historia', icon: History },
           ].map(({ key, label, icon: Icon }) => (
             <button
@@ -332,7 +479,7 @@ export default function OrganizationDetailPage() {
               <h2 className="text-xl font-semibold text-white mb-4">Informacje podstawowe</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Nazwa</label>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Nazwa pełna</label>
                   {editMode ? (
                     <input
                       type="text"
@@ -342,6 +489,21 @@ export default function OrganizationDetailPage() {
                     />
                   ) : (
                     <p className="text-white">{organization.name}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Alias (krótka nazwa)</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedData.alias || ''}
+                      onChange={(e) => setEditedData({ ...editedData, alias: e.target.value })}
+                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      placeholder="np. OMEGA HOTEL"
+                    />
+                  ) : (
+                    <p className="text-white">{organization.alias || '-'}</p>
                   )}
                 </div>
 
@@ -439,6 +601,24 @@ export default function OrganizationDetailPage() {
                     </select>
                   ) : (
                     <div>{renderRating(organization.rating)}</div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Status</label>
+                  {editMode ? (
+                    <select
+                      value={editedData.status || 'active'}
+                      onChange={(e) => setEditedData({ ...editedData, status: e.target.value })}
+                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                    >
+                      <option value="active">Aktywny</option>
+                      <option value="inactive">Nieaktywny</option>
+                      <option value="potential">Potencjalny</option>
+                      <option value="archived">Zarchiwizowany</option>
+                    </select>
+                  ) : (
+                    <p className="text-white">{organization.status}</p>
                   )}
                 </div>
               </div>
@@ -635,21 +815,6 @@ export default function OrganizationDetailPage() {
                 </div>
               </div>
             )}
-
-            <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Notatki</h2>
-              {editMode ? (
-                <textarea
-                  value={editedData.notes || ''}
-                  onChange={(e) => setEditedData({ ...editedData, notes: e.target.value })}
-                  rows={6}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                  placeholder="Dodaj notatki..."
-                />
-              ) : (
-                <p className="text-white whitespace-pre-wrap">{organization.notes || 'Brak notatek'}</p>
-              )}
-            </div>
           </div>
         )}
 
@@ -657,7 +822,10 @@ export default function OrganizationDetailPage() {
           <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-white">Osoby kontaktowe</h2>
-              <button className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2">
+              <button
+                onClick={() => setShowAddContactModal(true)}
+                className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2"
+              >
                 <Plus className="w-5 h-5" />
                 <span>Dodaj osobę</span>
               </button>
@@ -702,6 +870,76 @@ export default function OrganizationDetailPage() {
                         </div>
                       </div>
                     </div>
+                    <button
+                      onClick={() => handleDeleteContact(contact.id)}
+                      className="text-red-400 hover:text-red-300 p-1"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'notes' && (
+          <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-white mb-4">Szybkie notatki</h2>
+
+            <div className="mb-6">
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !addingNote) {
+                      handleAddNote();
+                    }
+                  }}
+                  placeholder="Dodaj szybką notatkę..."
+                  className="flex-1 px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                />
+                <button
+                  onClick={handleAddNote}
+                  disabled={addingNote || !newNoteText.trim()}
+                  className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50"
+                >
+                  {addingNote ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Plus className="w-5 h-5" />
+                  )}
+                  <span>Dodaj</span>
+                </button>
+              </div>
+            </div>
+
+            {organizationNotes.length === 0 ? (
+              <p className="text-gray-400 text-center py-8">Brak notatek</p>
+            ) : (
+              <div className="space-y-2">
+                {organizationNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="bg-[#0f1119] border border-gray-700 rounded-lg p-3 flex items-start justify-between"
+                  >
+                    <div className="flex-1">
+                      <p className="text-white">{note.note}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(note.created_at).toLocaleString('pl-PL')}
+                        {note.employees && (
+                          <span> • {note.employees.name} {note.employees.surname}</span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="text-red-400 hover:text-red-300 p-1 ml-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -745,6 +983,77 @@ export default function OrganizationDetailPage() {
           </div>
         )}
       </div>
+
+      {showAddContactModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-xl font-bold text-white mb-4">Dodaj osobę kontaktową</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Imię i nazwisko *
+                </label>
+                <input
+                  type="text"
+                  value={newContact.name}
+                  onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Stanowisko</label>
+                <input
+                  type="text"
+                  value={newContact.position}
+                  onChange={(e) => setNewContact({ ...newContact, position: e.target.value })}
+                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={newContact.email}
+                  onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Telefon</label>
+                <input
+                  type="tel"
+                  value={newContact.phone}
+                  onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={newContact.is_primary}
+                  onChange={(e) => setNewContact({ ...newContact, is_primary: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <label className="text-sm text-gray-300">Główny kontakt</label>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 mt-6">
+              <button
+                onClick={() => setShowAddContactModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-700 text-gray-300 rounded-lg hover:bg-[#0f1119] transition-colors"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleAddContact}
+                className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors font-medium"
+              >
+                Dodaj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

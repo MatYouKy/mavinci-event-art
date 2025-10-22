@@ -46,6 +46,7 @@ export default function NewContactPage() {
 
   const [formData, setFormData] = useState({
     name: '',
+    alias: '',
     businessType: 'company' as BusinessType,
     nip: '',
     regon: '',
@@ -196,6 +197,7 @@ export default function NewContactPage() {
         name: contactType === 'individual'
           ? `${validPersons[0].firstName} ${validPersons[0].lastName}`
           : formData.name,
+        alias: formData.alias || null,
         nip: formData.nip || null,
         address: formData.address || null,
         city: formData.city || null,
@@ -362,7 +364,7 @@ export default function NewContactPage() {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Nazwa {contactType === 'organization' ? 'organizacji' : 'firmy/freelancera'}{' '}
+                      Nazwa pełna{' '}
                       <span className="text-red-400">*</span>
                     </label>
                     <input
@@ -371,8 +373,24 @@ export default function NewContactPage() {
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                      placeholder="np. Hotel Grand, Mavinci Sp. z o.o."
+                      placeholder="np. OMEGA HOTEL SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Alias (krótka nazwa)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.alias}
+                      onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
+                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      placeholder="np. OMEGA HOTEL"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Krótka nazwa wyświetlana zamiast pełnej nazwy
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
