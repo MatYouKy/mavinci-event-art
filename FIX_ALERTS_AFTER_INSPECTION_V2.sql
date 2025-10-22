@@ -100,33 +100,59 @@ WHERE id IN (
 );
 
 -- ============================================
--- ALERTY DLA UBEZPIECZEŃ
+-- ALERTY DLA UBEZPIECZEŃ - SYSTEM INTELIGENTNY PER TYP
 -- ============================================
+-- Alert pojawia się 21 dni przed końcem każdego typu osobno (OC, AC, NNW)
+-- Dodanie nowego ubezpieczenia tego samego typu usuwa stary alert
 
--- Funkcja tworząca alert dla ubezpieczeń
-CREATE OR REPLACE FUNCTION create_insurance_alert()
+-- Usuń stare triggery
+DROP TRIGGER IF EXISTS trigger_create_insurance_alert ON insurance_policies;
+
+-- Funkcja zarządzająca alertami ubezpieczeń PER TYP
+CREATE OR REPLACE FUNCTION manage_insurance_alerts()
 RETURNS TRIGGER AS $$
 DECLARE
-  latest_insurance_id uuid;
-  latest_end_date date;
-  latest_type text;
+  current_policy RECORD;
+  alert_needed boolean;
+  days_until_expiry integer;
 BEGIN
-  -- ZAWSZE usuń WSZYSTKIE alerty o ubezpieczeniu dla tego pojazdu
+  -- Usuń stary alert dla tego TYPU ubezpieczenia dla tego pojazdu
   DELETE FROM vehicle_alerts
-  WHERE vehicle_id = NEW.vehicle_id
-  AND alert_type = 'insurance';
+  WHERE vehicle_id = COALESCE(NEW.vehicle_id, OLD.vehicle_id)
+  AND alert_type = 'insurance'
+  AND message LIKE UPPER(COALESCE(NEW.type, OLD.type)) || '%';
 
-  -- Znajdź NAJNOWSZE AKTYWNE ubezpieczenie dla tego pojazdu
-  SELECT id, end_date, type
-  INTO latest_insurance_id, latest_end_date, latest_type
+  -- Jeśli operacja to DELETE, zakończ tutaj
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  -- Znajdź aktualną (najważniejszą) polisę dla tego TYPU
+  -- Priorytet: 1) aktywna z najdłuższą datą końcową
+  SELECT id, end_date, type, status
+  INTO current_policy
   FROM insurance_policies
   WHERE vehicle_id = NEW.vehicle_id
-  AND status = 'active'
-  ORDER BY end_date DESC, created_at DESC
+  AND type = NEW.type
+  AND status IN ('active', 'expired')
+  ORDER BY
+    CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+    end_date DESC,
+    created_at DESC
   LIMIT 1;
 
-  -- Utwórz alert TYLKO jeśli najnowsze aktywne ubezpieczenie wygasa w ciągu 60 dni
-  IF latest_insurance_id IS NOT NULL AND latest_end_date <= CURRENT_DATE + INTERVAL '60 days' THEN
+  -- Jeśli nie ma polisy, zakończ
+  IF current_policy.id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Oblicz dni do wygaśnięcia
+  days_until_expiry := current_policy.end_date - CURRENT_DATE;
+
+  -- Utwórz alert TYLKO jeśli:
+  -- 1. Polisa wygasa w ciągu 21 dni LUB już wygasła
+  -- 2. Status to 'active' (nie ma sensu alertować o wygasłej jeśli już jest nowa)
+  IF (days_until_expiry <= 21 OR current_policy.status = 'expired') AND current_policy.status != 'cancelled' THEN
     INSERT INTO vehicle_alerts (
       vehicle_id,
       alert_type,
@@ -143,20 +169,24 @@ BEGIN
       NEW.vehicle_id,
       'insurance',
       CASE
-        WHEN latest_end_date < CURRENT_DATE THEN 'critical'
-        WHEN latest_end_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'high'
-        WHEN latest_end_date <= CURRENT_DATE + INTERVAL '30 days' THEN 'medium'
+        WHEN days_until_expiry < 0 THEN 'critical'
+        WHEN days_until_expiry <= 7 THEN 'high'
+        WHEN days_until_expiry <= 14 THEN 'medium'
         ELSE 'low'
       END,
       CASE
-        WHEN latest_end_date < CURRENT_DATE THEN 'Ubezpieczenie przeterminowane!'
+        WHEN days_until_expiry < 0 THEN 'Ubezpieczenie przeterminowane!'
         ELSE 'Ubezpieczenie wygasa wkrótce'
       END,
-      UPPER(latest_type) || ' - wygasa za ' || (latest_end_date - CURRENT_DATE) || ' dni (' || to_char(latest_end_date, 'DD.MM.YYYY') || ')',
+      UPPER(current_policy.type) || ' - ' ||
+      CASE
+        WHEN days_until_expiry < 0 THEN 'przeterminowane ' || ABS(days_until_expiry) || ' dni temu'
+        ELSE 'wygasa za ' || days_until_expiry || ' dni'
+      END || ' (' || to_char(current_policy.end_date, 'DD.MM.YYYY') || ')',
       'Shield',
-      latest_end_date < CURRENT_DATE,
-      latest_end_date,
-      latest_insurance_id,
+      days_until_expiry < 0,
+      current_policy.end_date,
+      current_policy.id,
       true
     );
   END IF;
@@ -165,12 +195,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger dla ubezpieczeń
-DROP TRIGGER IF EXISTS trigger_create_insurance_alert ON insurance_policies;
-CREATE TRIGGER trigger_create_insurance_alert
-  AFTER INSERT ON insurance_policies
+-- Trigger dla INSERT i UPDATE
+DROP TRIGGER IF EXISTS trigger_manage_insurance_alerts_insert_update ON insurance_policies;
+CREATE TRIGGER trigger_manage_insurance_alerts_insert_update
+  AFTER INSERT OR UPDATE ON insurance_policies
   FOR EACH ROW
-  EXECUTE FUNCTION create_insurance_alert();
+  EXECUTE FUNCTION manage_insurance_alerts();
+
+-- Trigger dla DELETE
+DROP TRIGGER IF EXISTS trigger_manage_insurance_alerts_delete ON insurance_policies;
+CREATE TRIGGER trigger_manage_insurance_alerts_delete
+  AFTER DELETE ON insurance_policies
+  FOR EACH ROW
+  EXECUTE FUNCTION manage_insurance_alerts();
 
 COMMENT ON FUNCTION create_inspection_alert IS 'Tworzy alert tylko dla najnowszej kontroli, zapobiega duplikatom';
-COMMENT ON FUNCTION create_insurance_alert IS 'Tworzy alert tylko dla najnowszego ubezpieczenia, zapobiega duplikatom';
+COMMENT ON FUNCTION manage_insurance_alerts IS 'Zarządza alertami ubezpieczeń per typ (OC/AC/NNW) - alert 21 dni przed końcem, usuwany po dodaniu nowego tego samego typu';
