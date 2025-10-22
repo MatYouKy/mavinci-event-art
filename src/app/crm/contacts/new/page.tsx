@@ -309,7 +309,7 @@ export default function NewContactPage() {
         </div>
 
         {!contactType ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <button
               onClick={() => setContactType('organization')}
               className="bg-[#1a1d2e] border-2 border-gray-700 hover:border-[#d3bb73] rounded-lg p-8 transition-all group"
@@ -317,6 +317,15 @@ export default function NewContactPage() {
               <Building2 className="w-16 h-16 text-[#d3bb73] mx-auto mb-4 group-hover:scale-110 transition-transform" />
               <h3 className="text-xl font-semibold text-white mb-2">Organizacja</h3>
               <p className="text-gray-400 text-sm">Firma, hotel, restauracja, sala eventowa</p>
+            </button>
+
+            <button
+              onClick={() => setContactType('contact')}
+              className="bg-[#1a1d2e] border-2 border-gray-700 hover:border-[#d3bb73] rounded-lg p-8 transition-all group"
+            >
+              <User className="w-16 h-16 text-[#d3bb73] mx-auto mb-4 group-hover:scale-110 transition-transform" />
+              <h3 className="text-xl font-semibold text-white mb-2">Kontakt</h3>
+              <p className="text-gray-400 text-sm">Osoba w organizacji lub niezależna</p>
             </button>
 
             <button
@@ -342,10 +351,12 @@ export default function NewContactPage() {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 {contactType === 'organization' && <Building2 className="w-8 h-8 text-[#d3bb73]" />}
+                {contactType === 'contact' && <User className="w-8 h-8 text-[#d3bb73]" />}
                 {contactType === 'subcontractor' && <UserCheck className="w-8 h-8 text-[#d3bb73]" />}
                 {contactType === 'individual' && <User className="w-8 h-8 text-[#d3bb73]" />}
                 <h2 className="text-2xl font-bold text-white">
                   {contactType === 'organization' && 'Nowa organizacja'}
+                  {contactType === 'contact' && 'Nowy kontakt'}
                   {contactType === 'subcontractor' && 'Nowy podwykonawca'}
                   {contactType === 'individual' && 'Nowa osoba prywatna'}
                 </h2>
