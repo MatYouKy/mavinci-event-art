@@ -21,6 +21,14 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import {
+  setContacts,
+  setLoading as setContactsLoading,
+  selectContacts,
+  selectContactsLoading,
+  selectShouldRefetch,
+} from '@/store/slices/contactsSlice';
 
 interface UnifiedContact {
   id: string;
@@ -59,17 +67,28 @@ const contactTypeIcons = {
 export default function ContactsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const dispatch = useAppDispatch();
+
+  const cachedContacts = useAppSelector(selectContacts);
+  const cachedLoading = useAppSelector(selectContactsLoading);
+  const shouldRefetch = useAppSelector(selectShouldRefetch);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [contacts, setContacts] = useState<UnifiedContact[]>([]);
+  const [contacts, setLocalContacts] = useState<UnifiedContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabFilter>('all');
   const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   useEffect(() => {
-    fetchAllContacts();
-  }, [activeTab]);
+    // Sprawdź czy mamy cache i czy jest aktualny
+    if (cachedContacts.length > 0 && !shouldRefetch) {
+      setLocalContacts(cachedContacts);
+      setLoading(false);
+    } else {
+      fetchAllContacts();
+    }
+  }, [activeTab, cachedContacts, shouldRefetch]);
 
   const fetchAllContacts = async () => {
     try {
@@ -183,12 +202,14 @@ export default function ContactsPage() {
         }
       }
 
-      setContacts(unified);
+      setLocalContacts(unified);
+      dispatch(setContacts(unified));
     } catch (error: any) {
       console.error('Error fetching contacts:', error);
       showSnackbar('Błąd podczas ładowania kontaktów', 'error');
     } finally {
       setLoading(false);
+      dispatch(setContactsLoading(false));
     }
   };
 

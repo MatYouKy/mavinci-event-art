@@ -16,7 +16,6 @@ import {
   Save,
   X,
   User,
-  UserCircle,
   History,
   Users,
   Globe,
@@ -57,34 +56,6 @@ interface Organization {
   latitude: number | null;
   longitude: number | null;
   location_notes: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface Contact {
-  id: string;
-  contact_type: 'contact' | 'individual';
-  first_name: string;
-  last_name: string;
-  full_name: string;
-  email: string | null;
-  phone: string | null;
-  mobile: string | null;
-  business_phone: string | null;
-  position: string | null;
-  nip: string | null;
-  pesel: string | null;
-  id_number: string | null;
-  event_type: string | null;
-  event_details: string | null;
-  address: string | null;
-  city: string | null;
-  postal_code: string | null;
-  status: string;
-  rating: number | null;
-  tags: string[] | null;
-  notes: string | null;
-  avatar_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -145,15 +116,13 @@ export default function OrganizationDetailPage() {
   const { currentEmployee } = useCurrentEmployee();
 
   const [activeTab, setActiveTab] = useState<TabType>('details');
-  const [entityType, setEntityType] = useState<'organization' | 'contact' | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [contact, setContact] = useState<Contact | null>(null);
   const [contactPersons, setContactPersons] = useState<ContactPerson[]>([]);
   const [organizationNotes, setOrganizationNotes] = useState<OrganizationNote[]>([]);
   const [history, setHistory] = useState<ContactHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
-  const [editedData, setEditedData] = useState<Partial<Organization | Contact>>({});
+  const [editedData, setEditedData] = useState<Partial<Organization>>({});
   const [saving, setSaving] = useState(false);
 
   const [showAddContactModal, setShowAddContactModal] = useState(false);
@@ -226,26 +195,15 @@ export default function OrganizationDetailPage() {
           return;
         }
 
-        // Znaleziono kontakt/osobę prywatną
-        setEntityType('contact');
-        setContact(contactData);
-
-        // Pobierz organizacje przypisane do tego kontaktu
-        const { data: orgAssignments } = await supabase
-          .from('contact_organizations')
-          .select(`
-            *,
-            organization:organizations(*)
-          `)
-          .eq('contact_id', organizationId)
-          .eq('is_current', true);
-
-        // Tutaj można dodać więcej logiki dla kontaktów
+        // Kontakt/osoba prywatna znaleziona - przekieruj na dedykowaną stronę lub pokaż szczegóły
+        // TODO: Stworzyć dedykowaną stronę dla kontaktów
+        showSnackbar(`Wyświetlanie szczegółów kontaktu: ${contactData.full_name}`, 'info');
+        // Tymczasowo wyświetl organizację jako null i pokaż info
+        setOrganization(null);
         setLoading(false);
         return;
       }
 
-      setEntityType('organization');
       setOrganization(orgData);
 
       const { data: contactsData } = await supabase
@@ -498,148 +456,6 @@ export default function OrganizationDetailPage() {
       </div>
     );
   };
-
-  // Renderowanie dla kontaktu/osoby prywatnej
-  if (entityType === 'contact' && contact) {
-    const Icon = contact.contact_type === 'individual' ? UserCircle : User;
-    return (
-      <div className="min-h-screen bg-[#0f1119] p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-6 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/crm/contacts')}
-                className="p-2 hover:bg-[#1a1d2e] rounded-lg transition-colors"
-              >
-                <ArrowLeft className="w-6 h-6 text-gray-400" />
-              </button>
-              <div>
-                <div className="flex items-center space-x-3">
-                  <Icon className="w-8 h-8 text-[#d3bb73]" />
-                  <h1 className="text-3xl font-bold text-white">{contact.full_name}</h1>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      contact.contact_type === 'individual'
-                        ? 'bg-gray-700/30 text-gray-400'
-                        : 'bg-green-900/30 text-green-400'
-                    }`}
-                  >
-                    {contact.contact_type === 'individual' ? 'Osoba prywatna' : 'Kontakt'}
-                  </span>
-                </div>
-                {contact.position && (
-                  <p className="text-gray-400 mt-1">{contact.position}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Dane kontaktu */}
-          <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">Dane kontaktowe</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {contact.email && (
-                <div className="flex items-center space-x-3">
-                  <Mail className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Email</p>
-                    <p className="text-white">{contact.email}</p>
-                  </div>
-                </div>
-              )}
-              {contact.phone && (
-                <div className="flex items-center space-x-3">
-                  <Phone className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Telefon prywatny</p>
-                    <p className="text-white">{contact.phone}</p>
-                  </div>
-                </div>
-              )}
-              {contact.business_phone && (
-                <div className="flex items-center space-x-3">
-                  <Phone className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Telefon firmowy</p>
-                    <p className="text-white">{contact.business_phone}</p>
-                  </div>
-                </div>
-              )}
-              {contact.city && (
-                <div className="flex items-center space-x-3">
-                  <MapPin className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Miasto</p>
-                    <p className="text-white">{contact.city}</p>
-                  </div>
-                </div>
-              )}
-              {contact.nip && (
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">NIP</p>
-                    <p className="text-white">{contact.nip}</p>
-                  </div>
-                </div>
-              )}
-              {contact.pesel && (
-                <div className="flex items-center space-x-3">
-                  <CreditCard className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">PESEL</p>
-                    <p className="text-white">{contact.pesel}</p>
-                  </div>
-                </div>
-              )}
-              {contact.id_number && (
-                <div className="flex items-center space-x-3">
-                  <CreditCard className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Numer dowodu</p>
-                    <p className="text-white">{contact.id_number}</p>
-                  </div>
-                </div>
-              )}
-              {contact.event_type && (
-                <div className="flex items-center space-x-3">
-                  <Star className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Rodzaj uroczystości</p>
-                    <p className="text-white capitalize">{contact.event_type}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            {contact.event_details && (
-              <div className="mt-6 pt-6 border-t border-gray-700">
-                <p className="text-sm text-gray-400 mb-2">Szczegóły uroczystości</p>
-                <p className="text-white">{contact.event_details}</p>
-              </div>
-            )}
-            {contact.notes && (
-              <div className="mt-6 pt-6 border-t border-gray-700">
-                <p className="text-sm text-gray-400 mb-2">Notatki</p>
-                <p className="text-white whitespace-pre-wrap">{contact.notes}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Renderowanie dla organizacji
-  if (!organization) {
-    return (
-      <div className="min-h-screen bg-[#0f1119] p-6 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-[#d3bb73] animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Ładowanie...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
