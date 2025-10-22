@@ -66,37 +66,34 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
     if (!files || files.length === 0) return;
 
     const filesArray = Array.from(files);
-    const uploadingItems: UploadingFile[] = filesArray.map((file) => ({
-      id: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
-      file,
-      preview: URL.createObjectURL(file),
-      progress: 0,
-    }));
 
-    setUploadingFiles(uploadingItems);
+    for (let i = 0; i < filesArray.length; i++) {
+      const file = filesArray[i];
+      const uploadingItem: UploadingFile = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(7)}-${i}`,
+        file,
+        preview: URL.createObjectURL(file),
+        progress: 0,
+      };
 
-    try {
-      for (let i = 0; i < filesArray.length; i++) {
-        const file = filesArray[i];
-        const uploadingItem = uploadingItems[i];
+      if (!file.type.startsWith('image/')) {
+        showSnackbar(`${file.name} nie jest obrazem`, 'error');
+        continue;
+      }
 
-        if (!file.type.startsWith('image/')) {
-          showSnackbar(`${file.name} nie jest obrazem`, 'error');
-          setUploadingFiles((prev) => prev.filter((item) => item.id !== uploadingItem.id));
-          continue;
-        }
+      if (file.size > 10 * 1024 * 1024) {
+        showSnackbar(`${file.name} przekracza 10MB`, 'error');
+        continue;
+      }
 
-        if (file.size > 10 * 1024 * 1024) {
-          showSnackbar(`${file.name} przekracza 10MB`, 'error');
-          setUploadingFiles((prev) => prev.filter((item) => item.id !== uploadingItem.id));
-          continue;
-        }
+      setUploadingFiles((prev) => [...prev, uploadingItem]);
 
+      try {
         const fileExt = file.name.split('.').pop();
         const fileName = `${vehicleId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
         setUploadingFiles((prev) =>
-          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 50 } : item))
+          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 30 } : item))
         );
 
         const { error: uploadError } = await supabase.storage
@@ -104,6 +101,10 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
           .upload(fileName, file);
 
         if (uploadError) throw uploadError;
+
+        setUploadingFiles((prev) =>
+          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 60 } : item))
+        );
 
         const { data: { publicUrl } } = supabase.storage
           .from('vehicle-images')
@@ -126,16 +127,18 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
 
         setTimeout(() => {
           setUploadingFiles((prev) => prev.filter((item) => item.id !== uploadingItem.id));
+          URL.revokeObjectURL(uploadingItem.preview);
         }, 500);
+      } catch (error: any) {
+        console.error('Error uploading image:', error);
+        showSnackbar(`Błąd podczas przesyłania ${file.name}`, 'error');
+        setUploadingFiles((prev) => prev.filter((item) => item.id !== uploadingItem.id));
+        URL.revokeObjectURL(uploadingItem.preview);
       }
-
-      showSnackbar('Zdjęcia zostały dodane', 'success');
-      fetchImages();
-    } catch (error: any) {
-      console.error('Error uploading images:', error);
-      showSnackbar('Błąd podczas dodawania zdjęć', 'error');
-      setUploadingFiles([]);
     }
+
+    showSnackbar('Przesyłanie zakończone', 'success');
+    fetchImages();
   };
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
