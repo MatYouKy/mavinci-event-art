@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -17,23 +17,31 @@ import {
   X,
   MapPin,
   Trash2,
+  Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { fetchCompanyDataFromGUS, parseGoogleMapsUrl } from '@/lib/gus';
 
-type ContactType = 'organization' | 'subcontractor' | 'individual';
+type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
 
-interface ContactPerson {
+interface ExistingContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+}
+
+interface NewContactForm {
   firstName: string;
   lastName: string;
-  position: string;
   email: string;
   phone: string;
   mobile: string;
-  isPrimary: boolean;
-  isDecisionMaker: boolean;
 }
 
 export default function NewContactPage() {
@@ -43,6 +51,7 @@ export default function NewContactPage() {
   const [contactType, setContactType] = useState<ContactType | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingGUS, setLoadingGUS] = useState(false);
+  const [loadingContacts, setLoadingContacts] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -65,20 +74,93 @@ export default function NewContactPage() {
     specialization: [] as string[],
   });
 
-  const [contactPersons, setContactPersons] = useState<ContactPerson[]>([
-    {
-      firstName: '',
-      lastName: '',
-      position: '',
-      email: '',
-      phone: '',
-      mobile: '',
-      isPrimary: true,
-      isDecisionMaker: false,
-    },
-  ]);
+  const [availableContacts, setAvailableContacts] = useState<ExistingContact[]>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContact, setNewContact] = useState<NewContactForm>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    mobile: '',
+  });
 
   const [specializationInput, setSpecializationInput] = useState('');
+
+  useEffect(() => {
+    if (contactType === 'organization' || contactType === 'subcontractor') {
+      fetchAvailableContacts();
+    }
+  }, [contactType]);
+
+  const fetchAvailableContacts = async () => {
+    try {
+      setLoadingContacts(true);
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('contact_type', 'contact')
+        .eq('status', 'active')
+        .order('full_name');
+
+      if (error) throw error;
+      setAvailableContacts(data || []);
+    } catch (error: any) {
+      console.error('Error fetching contacts:', error);
+      showSnackbar('Błąd podczas ładowania kontaktów', 'error');
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  const toggleContactSelection = (contactId: string) => {
+    if (selectedContactIds.includes(contactId)) {
+      setSelectedContactIds(selectedContactIds.filter((id) => id !== contactId));
+    } else {
+      setSelectedContactIds([...selectedContactIds, contactId]);
+    }
+  };
+
+  const handleAddNewContact = async () => {
+    if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
+      showSnackbar('Wprowadź imię i nazwisko kontaktu', 'error');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert([{
+          contact_type: 'contact',
+          first_name: newContact.firstName,
+          last_name: newContact.lastName,
+          email: newContact.email || null,
+          phone: newContact.phone || null,
+          mobile: newContact.mobile || null,
+          status: 'active',
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setAvailableContacts([...availableContacts, data]);
+      setSelectedContactIds([...selectedContactIds, data.id]);
+      setShowNewContactForm(false);
+      setNewContact({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        mobile: '',
+      });
+      showSnackbar('Kontakt dodany', 'success');
+    } catch (error: any) {
+      console.error('Error adding contact:', error);
+      showSnackbar('Błąd podczas dodawania kontaktu', 'error');
+    }
+  };
 
   const handleFetchFromGUS = async () => {
     if (!formData.nip) {
@@ -129,43 +211,6 @@ export default function NewContactPage() {
     }
   };
 
-  const addContactPerson = () => {
-    setContactPersons([
-      ...contactPersons,
-      {
-        firstName: '',
-        lastName: '',
-        position: '',
-        email: '',
-        phone: '',
-        mobile: '',
-        isPrimary: false,
-        isDecisionMaker: false,
-      },
-    ]);
-  };
-
-  const removeContactPerson = (index: number) => {
-    if (contactPersons.length === 1) {
-      showSnackbar('Musi pozostać przynajmniej jedna osoba kontaktowa', 'error');
-      return;
-    }
-    setContactPersons(contactPersons.filter((_, i) => i !== index));
-  };
-
-  const updateContactPerson = (index: number, field: keyof ContactPerson, value: any) => {
-    const updated = [...contactPersons];
-    updated[index] = { ...updated[index], [field]: value };
-
-    if (field === 'isPrimary' && value === true) {
-      updated.forEach((person, i) => {
-        if (i !== index) person.isPrimary = false;
-      });
-    }
-
-    setContactPersons(updated);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -174,84 +219,106 @@ export default function NewContactPage() {
       return;
     }
 
-    if (contactType !== 'individual' && !formData.name) {
-      showSnackbar('Wprowadź nazwę organizacji', 'error');
-      return;
+    if (contactType === 'organization' || contactType === 'subcontractor') {
+      if (!formData.name) {
+        showSnackbar('Wprowadź nazwę organizacji', 'error');
+        return;
+      }
     }
 
-    const validPersons = contactPersons.filter(
-      (p) => p.firstName.trim() && p.lastName.trim()
-    );
-
-    if (validPersons.length === 0) {
-      showSnackbar('Dodaj przynajmniej jedną osobę kontaktową', 'error');
-      return;
+    if (contactType === 'contact' || contactType === 'individual') {
+      if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
+        showSnackbar('Wprowadź dane osoby kontaktowej', 'error');
+        return;
+      }
     }
 
     try {
       setLoading(true);
 
-      const orgData = {
-        organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
-        business_type: formData.businessType,
-        name: contactType === 'individual'
-          ? `${validPersons[0].firstName} ${validPersons[0].lastName}`
-          : formData.name,
-        alias: formData.alias || null,
-        nip: formData.nip || null,
-        address: formData.address || null,
-        city: formData.city || null,
-        postal_code: formData.postalCode || null,
-        email: formData.email || null,
-        phone: formData.phone || null,
-        website: formData.website || null,
-        google_maps_url: formData.googleMapsUrl || null,
-        latitude: formData.latitude ? parseFloat(formData.latitude) : null,
-        longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-        location_notes: formData.locationNotes || null,
-        notes: formData.notes || null,
-        status: 'active' as const,
-        specialization: contactType === 'subcontractor' ? formData.specialization : null,
-        hourly_rate: contactType === 'subcontractor' && formData.hourlyRate
-          ? parseFloat(formData.hourlyRate)
-          : null,
-      };
+      if (contactType === 'contact' || contactType === 'individual') {
+        const contactData = {
+          contact_type: contactType,
+          first_name: newContact.firstName,
+          last_name: newContact.lastName,
+          email: newContact.email || formData.email || null,
+          phone: newContact.phone || formData.phone || null,
+          mobile: newContact.mobile || null,
+          city: formData.city || null,
+          address: formData.address || null,
+          postal_code: formData.postalCode || null,
+          notes: formData.notes || null,
+          status: 'active' as const,
+        };
 
-      const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .insert([orgData])
-        .select()
-        .single();
+        const { data: contact, error: contactError } = await supabase
+          .from('contacts')
+          .insert([contactData])
+          .select()
+          .single();
 
-      if (orgError) throw orgError;
+        if (contactError) throw contactError;
 
-      const personsData = validPersons.map((person) => ({
-        organization_id: org.id,
-        first_name: person.firstName,
-        last_name: person.lastName,
-        position: person.position || null,
-        email: person.email || null,
-        phone: person.phone || null,
-        mobile: person.mobile || null,
-        is_primary: person.isPrimary,
-        is_decision_maker: person.isDecisionMaker,
-      }));
+        showSnackbar(
+          contactType === 'contact' ? 'Kontakt dodany pomyślnie' : 'Osoba prywatna dodana pomyślnie',
+          'success'
+        );
+        router.push(`/crm/contacts/${contact.id}`);
+      } else {
+        const orgData = {
+          organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
+          business_type: formData.businessType,
+          name: formData.name,
+          alias: formData.alias || null,
+          nip: formData.nip || null,
+          address: formData.address || null,
+          city: formData.city || null,
+          postal_code: formData.postalCode || null,
+          email: formData.email || null,
+          phone: formData.phone || null,
+          website: formData.website || null,
+          google_maps_url: formData.googleMapsUrl || null,
+          latitude: formData.latitude ? parseFloat(formData.latitude) : null,
+          longitude: formData.longitude ? parseFloat(formData.longitude) : null,
+          location_notes: formData.locationNotes || null,
+          notes: formData.notes || null,
+          status: 'active' as const,
+          specialization: contactType === 'subcontractor' ? formData.specialization : null,
+          hourly_rate: contactType === 'subcontractor' && formData.hourlyRate
+            ? parseFloat(formData.hourlyRate)
+            : null,
+        };
 
-      const { error: personsError } = await supabase
-        .from('contact_persons')
-        .insert(personsData);
+        const { data: org, error: orgError } = await supabase
+          .from('organizations')
+          .insert([orgData])
+          .select()
+          .single();
 
-      if (personsError) throw personsError;
+        if (orgError) throw orgError;
 
-      showSnackbar(
-        contactType === 'organization'
-          ? 'Organizacja dodana pomyślnie'
-          : contactType === 'subcontractor'
-          ? 'Podwykonawca dodany pomyślnie'
-          : 'Kontakt dodany pomyślnie',
-        'success'
-      );
-      router.push(`/crm/contacts/${org.id}`);
+        if (selectedContactIds.length > 0) {
+          const contactOrgLinks = selectedContactIds.map((contactId) => ({
+            contact_id: contactId,
+            organization_id: org.id,
+            is_current: true,
+          }));
+
+          const { error: linkError } = await supabase
+            .from('contact_organizations')
+            .insert(contactOrgLinks);
+
+          if (linkError) throw linkError;
+        }
+
+        showSnackbar(
+          contactType === 'organization'
+            ? 'Organizacja dodana pomyślnie'
+            : 'Podwykonawca dodany pomyślnie',
+          'success'
+        );
+        router.push(`/crm/contacts/${org.id}`);
+      }
     } catch (error: any) {
       console.error('Error creating contact:', error);
       showSnackbar(error.message || 'Błąd podczas dodawania kontaktu', 'error');
@@ -291,6 +358,11 @@ export default function NewContactPage() {
         return <Briefcase className="w-5 h-5" />;
     }
   };
+
+  const filteredContacts = availableContacts.filter((contact) =>
+    contact.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    contact.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
@@ -371,12 +443,11 @@ export default function NewContactPage() {
             </div>
 
             <div className="space-y-6">
-              {contactType !== 'individual' && (
+              {(contactType === 'organization' || contactType === 'subcontractor') && (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Nazwa pełna{' '}
-                      <span className="text-red-400">*</span>
+                      Nazwa pełna <span className="text-red-400">*</span>
                     </label>
                     <input
                       type="text"
@@ -498,142 +569,213 @@ export default function NewContactPage() {
                 </>
               )}
 
-              <div className="border-t border-gray-700 pt-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                  <User className="w-5 h-5 text-[#d3bb73]" />
-                  <span>Osoby kontaktowe</span>
-                  <span className="text-sm font-normal text-gray-400">(przynajmniej jedna wymagana)</span>
-                </h3>
+              {(contactType === 'organization' || contactType === 'subcontractor') && (
+                <div className="border-t border-gray-700 pt-6">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                    <User className="w-5 h-5 text-[#d3bb73]" />
+                    <span>Osoby kontaktowe</span>
+                    <span className="text-sm font-normal text-gray-400">(opcjonalne)</span>
+                  </h3>
 
-                <div className="space-y-4">
-                  {contactPersons.map((person, index) => (
-                    <div key={index} className="bg-[#0f1119] border border-gray-700 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-medium text-white">
-                          Osoba {index + 1}
-                          {person.isPrimary && (
-                            <span className="ml-2 text-xs px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
-                              Główna
-                            </span>
-                          )}
-                        </h4>
-                        {contactPersons.length > 1 && (
+                  {loadingContacts ? (
+                    <div className="text-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-[#d3bb73] mx-auto" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                          <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Szukaj kontaktu..."
+                            className="w-full pl-10 pr-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="max-h-64 overflow-y-auto space-y-2 mb-4">
+                        {filteredContacts.map((contact) => (
+                          <button
+                            key={contact.id}
+                            type="button"
+                            onClick={() => toggleContactSelection(contact.id)}
+                            className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all ${
+                              selectedContactIds.includes(contact.id)
+                                ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                                : 'border-gray-700 hover:border-gray-600'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 bg-[#d3bb73]/10 rounded-full flex items-center justify-center">
+                                <User className="w-5 h-5 text-[#d3bb73]" />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-white font-medium">{contact.full_name}</p>
+                                {contact.email && (
+                                  <p className="text-sm text-gray-400">{contact.email}</p>
+                                )}
+                              </div>
+                            </div>
+                            {selectedContactIds.includes(contact.id) && (
+                              <Check className="w-5 h-5 text-[#d3bb73]" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+
+                      {selectedContactIds.length > 0 && (
+                        <div className="mb-4 p-3 bg-[#0f1119] rounded-lg">
+                          <p className="text-sm text-gray-400 mb-2">Wybrane kontakty:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedContactIds.map((id) => {
+                              const contact = availableContacts.find((c) => c.id === id);
+                              return (
+                                <span
+                                  key={id}
+                                  className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm flex items-center space-x-2"
+                                >
+                                  <span>{contact?.full_name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleContactSelection(id)}
+                                    className="hover:text-red-400 transition-colors"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {!showNewContactForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowNewContactForm(true)}
+                          className="w-full px-4 py-2 border-2 border-dashed border-gray-700 rounded-lg text-gray-400 hover:border-[#d3bb73] hover:text-[#d3bb73] transition-colors flex items-center justify-center space-x-2"
+                        >
+                          <Plus className="w-5 h-5" />
+                          <span>Dodaj nowy kontakt</span>
+                        </button>
+                      ) : (
+                        <div className="bg-[#0f1119] border border-gray-700 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="font-medium text-white">Nowy kontakt</h4>
+                            <button
+                              type="button"
+                              onClick={() => setShowNewContactForm(false)}
+                              className="text-gray-400 hover:text-white transition-colors"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">
+                                Imię <span className="text-red-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={newContact.firstName}
+                                onChange={(e) => setNewContact({ ...newContact, firstName: e.target.value })}
+                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">
+                                Nazwisko <span className="text-red-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={newContact.lastName}
+                                onChange={(e) => setNewContact({ ...newContact, lastName: e.target.value })}
+                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">Email</label>
+                              <input
+                                type="email"
+                                value={newContact.email}
+                                onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">Telefon</label>
+                              <input
+                                type="tel"
+                                value={newContact.phone}
+                                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                              />
+                            </div>
+                          </div>
+
                           <button
                             type="button"
-                            onClick={() => removeContactPerson(index)}
-                            className="text-red-400 hover:text-red-300 transition-colors"
+                            onClick={handleAddNewContact}
+                            className="w-full px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center justify-center space-x-2"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Save className="w-5 h-5" />
+                            <span>Zapisz kontakt</span>
                           </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1">
-                            Imię <span className="text-red-400">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={person.firstName}
-                            onChange={(e) => updateContactPerson(index, 'firstName', e.target.value)}
-                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
-                          />
                         </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1">
-                            Nazwisko <span className="text-red-400">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={person.lastName}
-                            onChange={(e) => updateContactPerson(index, 'lastName', e.target.value)}
-                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1">Stanowisko</label>
-                          <input
-                            type="text"
-                            value={person.position}
-                            onChange={(e) => updateContactPerson(index, 'position', e.target.value)}
-                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1">Email</label>
-                          <input
-                            type="email"
-                            value={person.email}
-                            onChange={(e) => updateContactPerson(index, 'email', e.target.value)}
-                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1">Telefon</label>
-                          <input
-                            type="tel"
-                            value={person.phone}
-                            onChange={(e) => updateContactPerson(index, 'phone', e.target.value)}
-                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1">Telefon komórkowy</label>
-                          <input
-                            type="tel"
-                            value={person.mobile}
-                            onChange={(e) => updateContactPerson(index, 'mobile', e.target.value)}
-                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-6">
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={person.isPrimary}
-                            onChange={(e) => updateContactPerson(index, 'isPrimary', e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-700 bg-[#1a1d2e] text-[#d3bb73] focus:ring-[#d3bb73]"
-                          />
-                          <span className="text-sm text-gray-300">Główna osoba kontaktowa</span>
-                        </label>
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={person.isDecisionMaker}
-                            onChange={(e) => updateContactPerson(index, 'isDecisionMaker', e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-700 bg-[#1a1d2e] text-[#d3bb73] focus:ring-[#d3bb73]"
-                          />
-                          <span className="text-sm text-gray-300">Osoba decyzyjna</span>
-                        </label>
-                      </div>
-                    </div>
-                  ))}
+                      )}
+                    </>
+                  )}
                 </div>
+              )}
 
-                <button
-                  type="button"
-                  onClick={addContactPerson}
-                  className="mt-4 px-4 py-2 border-2 border-dashed border-gray-700 rounded-lg text-gray-400 hover:border-[#d3bb73] hover:text-[#d3bb73] transition-colors flex items-center space-x-2 w-full justify-center"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span>Dodaj kolejną osobę</span>
-                </button>
-              </div>
+              {(contactType === 'contact' || contactType === 'individual') && (
+                <div className="border-t border-gray-700 pt-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">Dane osobowe</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">
+                        Imię <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newContact.firstName}
+                        onChange={(e) => setNewContact({ ...newContact, firstName: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">
+                        Nazwisko <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newContact.lastName}
+                        onChange={(e) => setNewContact({ ...newContact, lastName: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="border-t border-gray-700 pt-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Dane kontaktowe organizacji</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">Dane kontaktowe</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
                     <input
                       type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      value={(contactType === 'contact' || contactType === 'individual') ? newContact.email : formData.email}
+                      onChange={(e) => (contactType === 'contact' || contactType === 'individual')
+                        ? setNewContact({ ...newContact, email: e.target.value })
+                        : setFormData({ ...formData, email: e.target.value })
+                      }
                       className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
                     />
                   </div>
@@ -641,15 +783,18 @@ export default function NewContactPage() {
                     <label className="block text-sm font-medium text-gray-300 mb-2">Telefon</label>
                     <input
                       type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      value={(contactType === 'contact' || contactType === 'individual') ? newContact.phone : formData.phone}
+                      onChange={(e) => (contactType === 'contact' || contactType === 'individual')
+                        ? setNewContact({ ...newContact, phone: e.target.value })
+                        : setFormData({ ...formData, phone: e.target.value })
+                      }
                       className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
                     />
                   </div>
                 </div>
               </div>
 
-              {contactType !== 'individual' && (
+              {(contactType === 'organization' || contactType === 'subcontractor') && (
                 <>
                   <div className="border-t border-gray-700 pt-6">
                     <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
@@ -675,34 +820,6 @@ export default function NewContactPage() {
                             <MapPin className="w-5 h-5" />
                             <span>Pobierz</span>
                           </button>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Otwórz miejsce w Google Maps, skopiuj PEŁNY URL z paska adresu (nie skrócony link!)
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-2">Szerokość geograficzna</label>
-                          <input
-                            type="text"
-                            value={formData.latitude}
-                            onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                            placeholder="52.2297"
-                            readOnly
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-2">Długość geograficzna</label>
-                          <input
-                            type="text"
-                            value={formData.longitude}
-                            onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                            placeholder="21.0122"
-                            readOnly
-                          />
                         </div>
                       </div>
 
@@ -735,17 +852,6 @@ export default function NewContactPage() {
                             placeholder="00-000"
                           />
                         </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Dodatkowe informacje o lokalizacji</label>
-                        <textarea
-                          value={formData.locationNotes}
-                          onChange={(e) => setFormData({ ...formData, locationNotes: e.target.value })}
-                          rows={2}
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                          placeholder="np. wejście od podwórka, parking z tyłu budynku..."
-                        />
                       </div>
                     </div>
                   </div>
