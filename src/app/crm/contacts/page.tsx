@@ -93,7 +93,35 @@ export default function ContactsPage() {
   const fetchAllContacts = async () => {
     try {
       setLoading(true);
+      dispatch(setContactsLoading(true));
       const unified: UnifiedContact[] = [];
+
+      // Pobierz wszystkie relacje jednym zapytaniem
+      const { data: allRelations, error: relError } = await supabase
+        .from('contact_organizations')
+        .select('organization_id, contact_id')
+        .eq('is_current', true);
+
+      if (relError) throw relError;
+
+      // Stwórz mapy liczników
+      const orgContactCounts = new Map<string, number>();
+      const contactOrgCounts = new Map<string, number>();
+
+      for (const rel of allRelations || []) {
+        if (rel.organization_id) {
+          orgContactCounts.set(
+            rel.organization_id,
+            (orgContactCounts.get(rel.organization_id) || 0) + 1
+          );
+        }
+        if (rel.contact_id) {
+          contactOrgCounts.set(
+            rel.contact_id,
+            (contactOrgCounts.get(rel.contact_id) || 0) + 1
+          );
+        }
+      }
 
       if (activeTab === 'all') {
         // Pobierz organizacje (NIE podwykonawców)
@@ -105,14 +133,8 @@ export default function ContactsPage() {
 
         if (orgsError) throw orgsError;
 
-        // Mapuj organizacje
+        // Mapuj organizacje (bez dodatkowych zapytań!)
         for (const org of orgs || []) {
-          const { count: contactsCount } = await supabase
-            .from('contact_organizations')
-            .select('*', { count: 'exact', head: true })
-            .eq('organization_id', org.id)
-            .eq('is_current', true);
-
           unified.push({
             id: org.id,
             type: 'organization',
@@ -127,7 +149,7 @@ export default function ContactsPage() {
             avatar_url: null,
             tags: null,
             created_at: org.created_at,
-            contacts_count: contactsCount || 0,
+            contacts_count: orgContactCounts.get(org.id) || 0,
           });
         }
 
@@ -140,14 +162,8 @@ export default function ContactsPage() {
 
         if (contactsError) throw contactsError;
 
-        // Mapuj kontakty
+        // Mapuj kontakty (bez dodatkowych zapytań!)
         for (const contact of contactsData || []) {
-          const { count: orgsCount } = await supabase
-            .from('contact_organizations')
-            .select('*', { count: 'exact', head: true })
-            .eq('contact_id', contact.id)
-            .eq('is_current', true);
-
           unified.push({
             id: contact.id,
             type: contact.contact_type === 'individual' ? 'individual' : 'contact',
@@ -162,7 +178,7 @@ export default function ContactsPage() {
             avatar_url: contact.avatar_url,
             tags: contact.tags,
             created_at: contact.created_at,
-            organizations_count: orgsCount || 0,
+            organizations_count: contactOrgCounts.get(contact.id) || 0,
           });
         }
       } else if (activeTab === 'subcontractors') {
@@ -175,14 +191,8 @@ export default function ContactsPage() {
 
         if (subsError) throw subsError;
 
-        // Mapuj podwykonawców
+        // Mapuj podwykonawców (bez dodatkowych zapytań!)
         for (const sub of subs || []) {
-          const { count: contactsCount } = await supabase
-            .from('contact_organizations')
-            .select('*', { count: 'exact', head: true })
-            .eq('organization_id', sub.id)
-            .eq('is_current', true);
-
           unified.push({
             id: sub.id,
             type: 'organization',
@@ -197,7 +207,7 @@ export default function ContactsPage() {
             avatar_url: null,
             tags: sub.specialization,
             created_at: sub.created_at,
-            contacts_count: contactsCount || 0,
+            contacts_count: orgContactCounts.get(sub.id) || 0,
           });
         }
       }
