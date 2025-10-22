@@ -79,12 +79,7 @@ export default function AddInsuranceModal({
 
       if (error) throw error;
 
-      // Usuń stare alerty o ubezpieczeniu dla tego pojazdu i typu
-      await supabase
-        .from('vehicle_alerts')
-        .delete()
-        .eq('vehicle_id', vehicleId)
-        .eq('alert_type', 'insurance');
+      // Trigger automatycznie usuwa stare alerty i tworzy nowy jeśli potrzebny
 
       showSnackbar('Polisa ubezpieczeniowa została dodana', 'success');
       onSuccess();

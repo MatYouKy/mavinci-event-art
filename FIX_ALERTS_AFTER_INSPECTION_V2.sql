@@ -111,21 +111,22 @@ DECLARE
   latest_end_date date;
   latest_type text;
 BEGIN
-  -- Znajdź NAJNOWSZE ubezpieczenie dla tego pojazdu
-  SELECT id, end_date, type
-  INTO latest_insurance_id, latest_end_date, latest_type
-  FROM insurance_policies
-  WHERE vehicle_id = NEW.vehicle_id
-  ORDER BY end_date DESC, created_at DESC
-  LIMIT 1;
-
-  -- Usuń WSZYSTKIE alerty o ubezpieczeniu dla tego pojazdu
+  -- ZAWSZE usuń WSZYSTKIE alerty o ubezpieczeniu dla tego pojazdu
   DELETE FROM vehicle_alerts
   WHERE vehicle_id = NEW.vehicle_id
   AND alert_type = 'insurance';
 
-  -- Utwórz alert TYLKO jeśli to ubezpieczenie jest najnowsze I wygasa w ciągu 60 dni
-  IF latest_insurance_id = NEW.id AND latest_end_date <= CURRENT_DATE + INTERVAL '60 days' THEN
+  -- Znajdź NAJNOWSZE AKTYWNE ubezpieczenie dla tego pojazdu
+  SELECT id, end_date, type
+  INTO latest_insurance_id, latest_end_date, latest_type
+  FROM insurance_policies
+  WHERE vehicle_id = NEW.vehicle_id
+  AND status = 'active'
+  ORDER BY end_date DESC, created_at DESC
+  LIMIT 1;
+
+  -- Utwórz alert TYLKO jeśli najnowsze aktywne ubezpieczenie wygasa w ciągu 60 dni
+  IF latest_insurance_id IS NOT NULL AND latest_end_date <= CURRENT_DATE + INTERVAL '60 days' THEN
     INSERT INTO vehicle_alerts (
       vehicle_id,
       alert_type,
