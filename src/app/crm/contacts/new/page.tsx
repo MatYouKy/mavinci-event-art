@@ -11,12 +11,30 @@ import {
   Hotel,
   UtensilsCrossed,
   Briefcase,
+  Search,
+  Loader2,
+  Plus,
+  X,
+  MapPin,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { fetchCompanyDataFromGUS, parseGoogleMapsUrl } from '@/lib/gus';
 
 type ContactType = 'organization' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
+
+interface ContactPerson {
+  firstName: string;
+  lastName: string;
+  position: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  isPrimary: boolean;
+  isDecisionMaker: boolean;
+}
 
 export default function NewContactPage() {
   const router = useRouter();
@@ -24,27 +42,124 @@ export default function NewContactPage() {
 
   const [contactType, setContactType] = useState<ContactType | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingGUS, setLoadingGUS] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
     businessType: 'company' as BusinessType,
     nip: '',
+    regon: '',
     address: '',
     city: '',
     postalCode: '',
     email: '',
     phone: '',
     website: '',
+    googleMapsUrl: '',
+    latitude: '',
+    longitude: '',
+    locationNotes: '',
     notes: '',
-    firstName: '',
-    lastName: '',
-    position: '',
-    mobile: '',
     hourlyRate: '',
     specialization: [] as string[],
   });
 
+  const [contactPersons, setContactPersons] = useState<ContactPerson[]>([
+    {
+      firstName: '',
+      lastName: '',
+      position: '',
+      email: '',
+      phone: '',
+      mobile: '',
+      isPrimary: true,
+      isDecisionMaker: false,
+    },
+  ]);
+
   const [specializationInput, setSpecializationInput] = useState('');
+
+  const handleFetchFromGUS = async () => {
+    if (!formData.nip) {
+      showSnackbar('Wprowadź NIP', 'error');
+      return;
+    }
+
+    try {
+      setLoadingGUS(true);
+      const data = await fetchCompanyDataFromGUS(formData.nip);
+
+      if (data) {
+        setFormData({
+          ...formData,
+          name: data.name || formData.name,
+          regon: data.regon || formData.regon,
+          address: data.address || formData.address,
+        });
+        showSnackbar('Dane pobrane z GUS', 'success');
+      }
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas pobierania danych z GUS', 'error');
+    } finally {
+      setLoadingGUS(false);
+    }
+  };
+
+  const handleParseGoogleMaps = () => {
+    if (!formData.googleMapsUrl) {
+      showSnackbar('Wprowadź URL Google Maps', 'error');
+      return;
+    }
+
+    const coords = parseGoogleMapsUrl(formData.googleMapsUrl);
+    if (coords) {
+      setFormData({
+        ...formData,
+        latitude: coords.latitude.toString(),
+        longitude: coords.longitude.toString(),
+      });
+      showSnackbar('Współrzędne pobrane z URL', 'success');
+    } else {
+      showSnackbar('Nie udało się odczytać współrzędnych z URL', 'error');
+    }
+  };
+
+  const addContactPerson = () => {
+    setContactPersons([
+      ...contactPersons,
+      {
+        firstName: '',
+        lastName: '',
+        position: '',
+        email: '',
+        phone: '',
+        mobile: '',
+        isPrimary: false,
+        isDecisionMaker: false,
+      },
+    ]);
+  };
+
+  const removeContactPerson = (index: number) => {
+    if (contactPersons.length === 1) {
+      showSnackbar('Musi pozostać przynajmniej jedna osoba kontaktowa', 'error');
+      return;
+    }
+    setContactPersons(contactPersons.filter((_, i) => i !== index));
+  };
+
+  const updateContactPerson = (index: number, field: keyof ContactPerson, value: any) => {
+    const updated = [...contactPersons];
+    updated[index] = { ...updated[index], [field]: value };
+
+    if (field === 'isPrimary' && value === true) {
+      updated.forEach((person, i) => {
+        if (i !== index) person.isPrimary = false;
+      });
+    }
+
+    setContactPersons(updated);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,111 +169,83 @@ export default function NewContactPage() {
       return;
     }
 
+    if (contactType !== 'individual' && !formData.name) {
+      showSnackbar('Wprowadź nazwę organizacji', 'error');
+      return;
+    }
+
+    const validPersons = contactPersons.filter(
+      (p) => p.firstName.trim() && p.lastName.trim()
+    );
+
+    if (validPersons.length === 0) {
+      showSnackbar('Dodaj przynajmniej jedną osobę kontaktową', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
 
-      if (contactType === 'individual') {
-        if (!formData.firstName || !formData.lastName) {
-          showSnackbar('Wprowadź imię i nazwisko', 'error');
-          return;
-        }
+      const orgData = {
+        organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
+        business_type: formData.businessType,
+        name: contactType === 'individual'
+          ? `${validPersons[0].firstName} ${validPersons[0].lastName}`
+          : formData.name,
+        nip: formData.nip || null,
+        address: formData.address || null,
+        city: formData.city || null,
+        postal_code: formData.postalCode || null,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        website: formData.website || null,
+        google_maps_url: formData.googleMapsUrl || null,
+        latitude: formData.latitude ? parseFloat(formData.latitude) : null,
+        longitude: formData.longitude ? parseFloat(formData.longitude) : null,
+        location_notes: formData.locationNotes || null,
+        notes: formData.notes || null,
+        status: 'active' as const,
+        specialization: contactType === 'subcontractor' ? formData.specialization : null,
+        hourly_rate: contactType === 'subcontractor' && formData.hourlyRate
+          ? parseFloat(formData.hourlyRate)
+          : null,
+      };
 
-        const orgData = {
-          organization_type: 'client',
-          business_type: 'other' as const,
-          name: `${formData.firstName} ${formData.lastName}`,
-          email: formData.email || null,
-          phone: formData.phone || null,
-          city: formData.city || null,
-          notes: formData.notes || null,
-          status: 'active' as const,
-        };
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .insert([orgData])
+        .select()
+        .single();
 
-        const { data: org, error: orgError } = await supabase
-          .from('organizations')
-          .insert([orgData])
-          .select()
-          .single();
+      if (orgError) throw orgError;
 
-        if (orgError) throw orgError;
+      const personsData = validPersons.map((person) => ({
+        organization_id: org.id,
+        first_name: person.firstName,
+        last_name: person.lastName,
+        position: person.position || null,
+        email: person.email || null,
+        phone: person.phone || null,
+        mobile: person.mobile || null,
+        is_primary: person.isPrimary,
+        is_decision_maker: person.isDecisionMaker,
+      }));
 
-        const personData = {
-          organization_id: org.id,
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          position: formData.position || null,
-          email: formData.email || null,
-          phone: formData.phone || null,
-          mobile: formData.mobile || null,
-          is_primary: true,
-          is_decision_maker: true,
-        };
+      const { error: personsError } = await supabase
+        .from('contact_persons')
+        .insert(personsData);
 
-        const { error: personError } = await supabase
-          .from('contact_persons')
-          .insert([personData]);
+      if (personsError) throw personsError;
 
-        if (personError) throw personError;
-
-        showSnackbar('Kontakt dodany pomyślnie', 'success');
-        router.push(`/crm/contacts/${org.id}`);
-      } else {
-        if (!formData.name) {
-          showSnackbar('Wprowadź nazwę', 'error');
-          return;
-        }
-
-        const orgData = {
-          organization_type: contactType === 'organization' ? 'client' : 'subcontractor',
-          business_type: formData.businessType,
-          name: formData.name,
-          nip: formData.nip || null,
-          address: formData.address || null,
-          city: formData.city || null,
-          postal_code: formData.postalCode || null,
-          email: formData.email || null,
-          phone: formData.phone || null,
-          website: formData.website || null,
-          notes: formData.notes || null,
-          status: 'active' as const,
-          specialization: contactType === 'subcontractor' ? formData.specialization : null,
-          hourly_rate: contactType === 'subcontractor' && formData.hourlyRate ? parseFloat(formData.hourlyRate) : null,
-        };
-
-        const { data: org, error: orgError } = await supabase
-          .from('organizations')
-          .insert([orgData])
-          .select()
-          .single();
-
-        if (orgError) throw orgError;
-
-        if (formData.firstName && formData.lastName) {
-          const personData = {
-            organization_id: org.id,
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            position: formData.position || null,
-            email: formData.email || null,
-            phone: formData.phone || null,
-            mobile: formData.mobile || null,
-            is_primary: true,
-            is_decision_maker: true,
-          };
-
-          const { error: personError } = await supabase
-            .from('contact_persons')
-            .insert([personData]);
-
-          if (personError) throw personError;
-        }
-
-        showSnackbar(
-          contactType === 'organization' ? 'Organizacja dodana pomyślnie' : 'Podwykonawca dodany pomyślnie',
-          'success'
-        );
-        router.push(`/crm/contacts/${org.id}`);
-      }
+      showSnackbar(
+        contactType === 'organization'
+          ? 'Organizacja dodana pomyślnie'
+          : contactType === 'subcontractor'
+          ? 'Podwykonawca dodany pomyślnie'
+          : 'Kontakt dodany pomyślnie',
+        'success'
+      );
+      router.push(`/crm/contacts/${org.id}`);
     } catch (error: any) {
       console.error('Error creating contact:', error);
       showSnackbar(error.message || 'Błąd podczas dodawania kontaktu', 'error');
@@ -201,7 +288,7 @@ export default function NewContactPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <div className="mb-6 flex items-center space-x-4">
           <button
             onClick={() => router.back()}
@@ -259,27 +346,7 @@ export default function NewContactPage() {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setContactType(null);
-                  setFormData({
-                    name: '',
-                    businessType: 'company',
-                    nip: '',
-                    address: '',
-                    city: '',
-                    postalCode: '',
-                    email: '',
-                    phone: '',
-                    website: '',
-                    notes: '',
-                    firstName: '',
-                    lastName: '',
-                    position: '',
-                    mobile: '',
-                    hourlyRate: '',
-                    specialization: [],
-                  });
-                }}
+                onClick={() => setContactType(null)}
                 className="text-gray-400 hover:text-white transition-colors text-sm"
               >
                 Zmień typ
@@ -287,46 +354,7 @@ export default function NewContactPage() {
             </div>
 
             <div className="space-y-6">
-              {contactType === 'individual' ? (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Imię <span className="text-red-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Nazwisko <span className="text-red-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Stanowisko</label>
-                    <input
-                      type="text"
-                      value={formData.position}
-                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                    />
-                  </div>
-                </>
-              ) : (
+              {contactType !== 'individual' && (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -341,6 +369,44 @@ export default function NewContactPage() {
                       className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
                       placeholder="np. Hotel Grand, Mavinci Sp. z o.o."
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">NIP</label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          value={formData.nip}
+                          onChange={(e) => setFormData({ ...formData, nip: e.target.value })}
+                          className="flex-1 px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          placeholder="0000000000"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleFetchFromGUS}
+                          disabled={loadingGUS}
+                          className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50"
+                        >
+                          {loadingGUS ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Search className="w-5 h-5" />
+                          )}
+                          <span>GUS</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">REGON</label>
+                      <input
+                        type="text"
+                        value={formData.regon}
+                        onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
+                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                        readOnly
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -386,74 +452,148 @@ export default function NewContactPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">NIP</label>
-                      <input
-                        type="text"
-                        value={formData.nip}
-                        onChange={(e) => setFormData({ ...formData, nip: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Strona WWW</label>
-                      <input
-                        type="url"
-                        value={formData.website}
-                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                        placeholder="https://"
-                      />
-                    </div>
-                  </div>
-
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-4">Osoba kontaktowa (opcjonalnie)</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Imię</label>
-                        <input
-                          type="text"
-                          value={formData.firstName}
-                          onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Nazwisko</label>
-                        <input
-                          type="text"
-                          value={formData.lastName}
-                          onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Stanowisko</label>
-                        <input
-                          type="text"
-                          value={formData.position}
-                          onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Telefon komórkowy</label>
-                        <input
-                          type="tel"
-                          value={formData.mobile}
-                          onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                        />
-                      </div>
-                    </div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Strona WWW</label>
+                    <input
+                      type="url"
+                      value={formData.website}
+                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      placeholder="https://"
+                    />
                   </div>
                 </>
               )}
 
               <div className="border-t border-gray-700 pt-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Dane kontaktowe</h3>
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                  <User className="w-5 h-5 text-[#d3bb73]" />
+                  <span>Osoby kontaktowe</span>
+                  <span className="text-sm font-normal text-gray-400">(przynajmniej jedna wymagana)</span>
+                </h3>
+
+                <div className="space-y-4">
+                  {contactPersons.map((person, index) => (
+                    <div key={index} className="bg-[#0f1119] border border-gray-700 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-medium text-white">
+                          Osoba {index + 1}
+                          {person.isPrimary && (
+                            <span className="ml-2 text-xs px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                              Główna
+                            </span>
+                          )}
+                        </h4>
+                        {contactPersons.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeContactPerson(index)}
+                            className="text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">
+                            Imię <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={person.firstName}
+                            onChange={(e) => updateContactPerson(index, 'firstName', e.target.value)}
+                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">
+                            Nazwisko <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={person.lastName}
+                            onChange={(e) => updateContactPerson(index, 'lastName', e.target.value)}
+                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">Stanowisko</label>
+                          <input
+                            type="text"
+                            value={person.position}
+                            onChange={(e) => updateContactPerson(index, 'position', e.target.value)}
+                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">Email</label>
+                          <input
+                            type="email"
+                            value={person.email}
+                            onChange={(e) => updateContactPerson(index, 'email', e.target.value)}
+                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">Telefon</label>
+                          <input
+                            type="tel"
+                            value={person.phone}
+                            onChange={(e) => updateContactPerson(index, 'phone', e.target.value)}
+                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">Telefon komórkowy</label>
+                          <input
+                            type="tel"
+                            value={person.mobile}
+                            onChange={(e) => updateContactPerson(index, 'mobile', e.target.value)}
+                            className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-6">
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={person.isPrimary}
+                            onChange={(e) => updateContactPerson(index, 'isPrimary', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-700 bg-[#1a1d2e] text-[#d3bb73] focus:ring-[#d3bb73]"
+                          />
+                          <span className="text-sm text-gray-300">Główna osoba kontaktowa</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={person.isDecisionMaker}
+                            onChange={(e) => updateContactPerson(index, 'isDecisionMaker', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-700 bg-[#1a1d2e] text-[#d3bb73] focus:ring-[#d3bb73]"
+                          />
+                          <span className="text-sm text-gray-300">Osoba decyzyjna</span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addContactPerson}
+                  className="mt-4 px-4 py-2 border-2 border-dashed border-gray-700 rounded-lg text-gray-400 hover:border-[#d3bb73] hover:text-[#d3bb73] transition-colors flex items-center space-x-2 w-full justify-center"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span>Dodaj kolejną osobę</span>
+                </button>
+              </div>
+
+              <div className="border-t border-gray-700 pt-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Dane kontaktowe organizacji</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
@@ -477,41 +617,106 @@ export default function NewContactPage() {
               </div>
 
               {contactType !== 'individual' && (
-                <div className="border-t border-gray-700 pt-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Adres</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Ulica i numer</label>
-                      <input
-                        type="text"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <>
+                  <div className="border-t border-gray-700 pt-6">
+                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                      <MapPin className="w-5 h-5 text-[#d3bb73]" />
+                      <span>Lokalizacja</span>
+                    </h3>
+                    <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Miasto</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">URL Google Maps</label>
+                        <div className="flex space-x-2">
+                          <input
+                            type="url"
+                            value={formData.googleMapsUrl}
+                            onChange={(e) => setFormData({ ...formData, googleMapsUrl: e.target.value })}
+                            className="flex-1 px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            placeholder="https://maps.google.com/..."
+                          />
+                          <button
+                            type="button"
+                            onClick={handleParseGoogleMaps}
+                            className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2"
+                          >
+                            <MapPin className="w-5 h-5" />
+                            <span>Pobierz</span>
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Skopiuj link z Google Maps, a współrzędne zostaną automatycznie pobrane
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Szerokość geograficzna</label>
+                          <input
+                            type="text"
+                            value={formData.latitude}
+                            onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            placeholder="52.2297"
+                            readOnly
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Długość geograficzna</label>
+                          <input
+                            type="text"
+                            value={formData.longitude}
+                            onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            placeholder="21.0122"
+                            readOnly
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Ulica i numer</label>
                         <input
                           type="text"
-                          value={formData.city}
-                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                           className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
                         />
                       </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Miasto</label>
+                          <input
+                            type="text"
+                            value={formData.city}
+                            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Kod pocztowy</label>
+                          <input
+                            type="text"
+                            value={formData.postalCode}
+                            onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            placeholder="00-000"
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Kod pocztowy</label>
-                        <input
-                          type="text"
-                          value={formData.postalCode}
-                          onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Dodatkowe informacje o lokalizacji</label>
+                        <textarea
+                          value={formData.locationNotes}
+                          onChange={(e) => setFormData({ ...formData, locationNotes: e.target.value })}
+                          rows={2}
                           className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                          placeholder="00-000"
+                          placeholder="np. wejście od podwórka, parking z tyłu budynku..."
                         />
                       </div>
                     </div>
                   </div>
-                </div>
+                </>
               )}
 
               {contactType === 'subcontractor' && (
@@ -596,7 +801,7 @@ export default function NewContactPage() {
                 disabled={loading}
                 className="px-6 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
-                <Save className="w-5 h-5" />
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                 <span>{loading ? 'Zapisywanie...' : 'Zapisz'}</span>
               </button>
             </div>
