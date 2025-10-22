@@ -3209,11 +3209,13 @@ function EditEventModal({
   event: Event;
   onSave: (data: any) => void;
 }) {
-  const [clients, setClients] = useState<any[]>([]);
+  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     name: event.name,
     organization_id: event.organization_id || '',
+    contact_person_id: event.contact_person_id || '',
     category_id: event.category_id || '',
     event_date: event.event_date,
     event_end_date: event.event_end_date || '',
@@ -3224,17 +3226,28 @@ function EditEventModal({
 
   useEffect(() => {
     if (isOpen) {
-      fetchClients();
+      fetchOrganizations();
+      fetchContacts();
       fetchCategories();
     }
   }, [isOpen]);
 
-  const fetchClients = async () => {
+  const fetchOrganizations = async () => {
     const { data } = await supabase
-      .from('clients')
-      .select('id, company_name')
-      .order('company_name');
-    if (data) setClients(data);
+      .from('organizations')
+      .select('id, name, alias')
+      .eq('organization_type', 'client')
+      .order('name');
+    if (data) setOrganizations(data);
+  };
+
+  const fetchContacts = async () => {
+    const { data } = await supabase
+      .from('contacts')
+      .select('id, full_name, first_name, last_name, contact_type')
+      .in('contact_type', ['contact', 'individual'])
+      .order('full_name');
+    if (data) setContacts(data);
   };
 
   const fetchCategories = async () => {
@@ -3265,7 +3278,8 @@ function EditEventModal({
 
     const dataToSave = {
       name: formData.name,
-      client_id: formData.client_id || null,
+      organization_id: formData.organization_id || null,
+      contact_person_id: formData.contact_person_id || null,
       category_id: formData.category_id || null,
       event_date: formData.event_date,
       event_end_date: formData.event_end_date || null,
@@ -3304,20 +3318,38 @@ function EditEventModal({
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Klient
+                Organizacja (Firma)
               </label>
               <select
-                value={formData.client_id}
-                onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                value={formData.organization_id}
+                onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               >
-                <option value="">Wybierz klienta</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.company_name}
+                <option value="">Wybierz organizację</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.alias || org.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                Osoba kontaktowa
+              </label>
+              <select
+                value={formData.contact_person_id}
+                onChange={(e) => setFormData({ ...formData, contact_person_id: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              >
+                <option value="">Wybierz osobę</option>
+                {contacts.map((contact) => (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim()}
                   </option>
                 ))}
               </select>
