@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Layers } from 'lucide-react';
+import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Layers, MapPin } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -186,6 +186,13 @@ export default function EquipmentPage() {
               >
                 <Layers className="w-4 h-4" />
                 Zestawy
+              </button>
+              <button
+                onClick={() => router.push('/crm/equipment/locations')}
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
+              >
+                <MapPin className="w-4 h-4" />
+                Lokalizacje
               </button>
             </>
           )}

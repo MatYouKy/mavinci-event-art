@@ -140,13 +140,24 @@ export default function EquipmentDetailPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
   const [units, setUnits] = useState<EquipmentUnit[]>([]);
+  const [storageLocations, setStorageLocations] = useState<any[]>([]);
 
   const { canManageModule, loading: employeeLoading, currentEmployee } = useCurrentEmployee();
   const canEdit = canManageModule('equipment');
 
   useEffect(() => {
     fetchEquipment();
+    fetchStorageLocations();
   }, [equipmentId]);
+
+  const fetchStorageLocations = async () => {
+    const { data } = await supabase
+      .from('storage_locations')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+    if (data) setStorageLocations(data);
+  };
 
   useEffect(() => {
     if (activeTab === 'history' || activeTab === 'units') {
@@ -302,6 +313,7 @@ export default function EquipmentDetailPage() {
         .update({
           name: editForm.name,
           warehouse_category_id: editForm.warehouse_category_id || null,
+          storage_location_id: editForm.storage_location_id || null,
           brand: editForm.brand || null,
           model: editForm.model || null,
           description: editForm.description || null,
@@ -885,6 +897,29 @@ function DetailsTab({
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.model || '-'}</div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja magazynowa</label>
+              {isEditing ? (
+                <select
+                  name="storage_location_id"
+                  value={editForm.storage_location_id || ''}
+                  onChange={onInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                >
+                  <option value="">Nieokreślona</option>
+                  {storageLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-[#e5e4e2]">
+                  {storageLocations.find(l => l.id === equipment.storage_location_id)?.name || '-'}
+                </div>
               )}
             </div>
 
