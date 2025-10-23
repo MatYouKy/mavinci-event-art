@@ -11,8 +11,9 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import EquipmentSkillRequirementsPanel from '@/components/crm/EquipmentSkillRequirementsPanel';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import EquipmentGallery from '@/components/crm/EquipmentGallery';
-import { useAppSelector } from '@/store/hooks';
+import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import type { RootState } from '@/store/store';
+import { fetchStorageLocations } from '@/store/slices/equipmentSlice';
 
 interface EquipmentStock {
   id: string;
@@ -143,6 +144,7 @@ export default function EquipmentDetailPage() {
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
   const [units, setUnits] = useState<EquipmentUnit[]>([]);
 
+  const dispatch = useAppDispatch();
   const { canManageModule, loading: employeeLoading, currentEmployee } = useCurrentEmployee();
   const canEdit = canManageModule('equipment');
 
@@ -151,7 +153,12 @@ export default function EquipmentDetailPage() {
 
   useEffect(() => {
     fetchEquipment();
-  }, [equipmentId]);
+
+    // Załaduj storage locations jeśli jeszcze nie ma w Redux
+    if (!storageLocations || storageLocations.length === 0) {
+      dispatch(fetchStorageLocations());
+    }
+  }, [equipmentId, dispatch]);
 
   useEffect(() => {
     if (activeTab === 'history' || activeTab === 'units') {
@@ -904,7 +911,7 @@ function DetailsTab({
                   className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 >
                   <option value="">Nieokreślona</option>
-                  {storageLocations?.map((loc) => (
+                  {storageLocations && Array.isArray(storageLocations) && storageLocations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
                       {loc.name}
                     </option>
@@ -912,7 +919,9 @@ function DetailsTab({
                 </select>
               ) : (
                 <div className="text-[#e5e4e2]">
-                  {storageLocations?.find(l => l.id === equipment.storage_location_id)?.name || '-'}
+                  {(storageLocations && Array.isArray(storageLocations) && equipment?.storage_location_id)
+                    ? (storageLocations.find(l => l.id === equipment.storage_location_id)?.name || 'Nieokreślona')
+                    : 'Nieokreślona'}
                 </div>
               )}
             </div>
