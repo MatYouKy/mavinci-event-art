@@ -157,7 +157,7 @@ export default function EquipmentDetailPage() {
     }
   }, [activeTab]);
 
-  const fetchEquipmentWithUnits = async () => {
+  const fetchUnits = async () => {
     try {
       const { data: fullData, error } = await supabase.rpc('get_equipment_details', {
         item_id: equipmentId,
@@ -166,8 +166,6 @@ export default function EquipmentDetailPage() {
 
       if (error) throw error;
       if (!fullData || fullData.error) {
-        showSnackbar('Nie znaleziono sprzętu', 'error');
-        router.push('/crm/equipment');
         return;
       }
 
@@ -176,6 +174,10 @@ export default function EquipmentDetailPage() {
     } catch (error) {
       console.error('Error:', error);
     }
+  };
+
+  const fetchEquipmentWithUnits = async () => {
+    await fetchUnits();
   };
 
   const fetchEquipment = async () => {
@@ -306,6 +308,7 @@ export default function EquipmentDetailPage() {
           user_manual_url: editForm.user_manual_url || null,
           weight_kg: editForm.weight_kg ? parseFloat(editForm.weight_kg) : null,
           cable_specs: cableSpecs,
+          cable_stock_quantity: editForm.cable_stock_quantity ? parseInt(editForm.cable_stock_quantity) : null,
           dimensions_cm: dimensions,
           purchase_date: editForm.purchase_date || null,
           purchase_price: editForm.purchase_price ? parseFloat(editForm.purchase_price) : null,
@@ -631,7 +634,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
   ];
 
   const tabs = isCable
-    ? allTabs.filter(tab => tab.id !== 'components')
+    ? allTabs.filter(tab => tab.id !== 'components' && tab.id !== 'units')
     : allTabs;
 
   useEffect(() => {
@@ -883,6 +886,36 @@ function DetailsTab({
                 <div className="text-[#e5e4e2]">{equipment.model || '-'}</div>
               )}
             </div>
+
+            {(() => {
+              const currentCategoryId = isEditing
+                ? editForm.warehouse_category_id
+                : equipment.warehouse_categories?.id;
+              const currentCategory = warehouseCategories?.find((c: any) => c.id === currentCategoryId);
+              const isCableCategory = currentCategory?.name?.toLowerCase().includes('przewod');
+
+              return isCableCategory ? (
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Ilość na stanie (szt.)
+                  </label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      name="cable_stock_quantity"
+                      value={editForm.cable_stock_quantity || 0}
+                      onChange={onInputChange}
+                      min="0"
+                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    />
+                  ) : (
+                    <div className="text-[#e5e4e2]">
+                      {equipment.cable_stock_quantity || 0} szt.
+                    </div>
+                  )}
+                </div>
+              ) : null;
+            })()}
 
             <div className="md:col-span-2">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
