@@ -2007,46 +2007,19 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
       <div className="space-y-6">
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
           <div className="text-center">
-            {editingQuantity ? (
-              <div className="flex items-center justify-center gap-4 mb-4">
-                <input
-                  type="number"
-                  value={newQuantity}
-                  onChange={(e) => setNewQuantity(parseInt(e.target.value) || 0)}
-                  className="w-32 text-center text-4xl font-light bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg px-4 py-2 text-[#d3bb73] focus:outline-none focus:border-[#d3bb73]"
-                  min="0"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleUpdateCableQuantity}
-                    className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                  >
-                    Zapisz
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingQuantity(false);
-                      setNewQuantity(equipment?.cable_stock_quantity || 0);
-                    }}
-                    className="px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
-                  >
-                    Anuluj
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div
-                onClick={() => canEdit && setEditingQuantity(true)}
-                className={`text-6xl font-light text-[#d3bb73] mb-4 transition-colors ${canEdit ? 'cursor-pointer hover:text-[#d3bb73]/80' : 'cursor-default'}`}
-                title={canEdit ? "Kliknij aby edytować" : "Tylko administrator może edytować"}
+            <div className="text-6xl font-light text-[#d3bb73] mb-4">
+              {equipment?.cable_stock_quantity || 0}
+            </div>
+            <div className="text-lg text-[#e5e4e2]/60 mb-4">Ilość na stanie (szt.)</div>
+            {canEdit && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors mx-auto"
               >
-                {equipment?.cable_stock_quantity || 0}
-              </div>
+                <Plus className="w-4 h-4" />
+                Ustaw ilość
+              </button>
             )}
-            <div className="text-lg text-[#e5e4e2]/60 mb-2">Ilość na stanie (szt.)</div>
-            <p className="text-sm text-[#e5e4e2]/40 max-w-md mx-auto">
-              {editingQuantity ? 'Wprowadź nową ilość sztuk' : (canEdit ? 'Kliknij na liczbę aby ją edytować' : 'Tylko odczyt')}
-            </p>
           </div>
         </div>
       </div>
@@ -2214,9 +2187,52 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-light text-[#e5e4e2] mb-4">
-              {editingUnit ? 'Edytuj jednostkę' : 'Dodaj nową jednostkę'}
+              {usesSimpleQuantity ? 'Ustaw ilość na stanie' : (editingUnit ? 'Edytuj jednostkę' : 'Dodaj nową jednostkę')}
             </h3>
 
+            {usesSimpleQuantity ? (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Ilość sztuk
+                  </label>
+                  <input
+                    type="number"
+                    value={newQuantity}
+                    onChange={(e) => setNewQuantity(parseInt(e.target.value) || 0)}
+                    min="0"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] text-lg focus:outline-none focus:border-[#d3bb73]/30"
+                    placeholder="np. 50"
+                    autoFocus
+                  />
+                  <p className="text-sm text-[#e5e4e2]/40 mt-2">
+                    Wprowadź łączną ilość sztuk tego sprzętu
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => {
+                      setShowModal(false);
+                      setNewQuantity(equipment?.cable_stock_quantity || 0);
+                    }}
+                    className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleUpdateCableQuantity();
+                      setShowModal(false);
+                    }}
+                    className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    Zapisz
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="space-y-4">
               {unitForm.thumbnail_url && (
                 <div className="relative w-32 h-32 mx-auto">
@@ -2364,6 +2380,8 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
                 {saving ? 'Zapisywanie...' : 'Zapisz'}
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}
