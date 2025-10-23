@@ -13,7 +13,7 @@ import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBa
 import EquipmentGallery from '@/components/crm/EquipmentGallery';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import type { RootState } from '@/store/store';
-import { fetchStorageLocations } from '@/store/slices/equipmentSlice';
+import { fetchStorageLocations, fetchEquipmentDetails } from '@/store/slices/equipmentSlice';
 
 interface EquipmentStock {
   id: string;
@@ -150,9 +150,16 @@ export default function EquipmentDetailPage() {
 
   // Pobierz dane z Redux zamiast lokalnego state
   const storageLocations = useAppSelector((state: RootState) => state.equipment.storageLocations);
+  const equipmentDetailsFromRedux = useAppSelector((state: RootState) => state.equipment.equipmentDetails[equipmentId]);
 
   useEffect(() => {
-    fetchEquipment();
+    // Sprawdź czy dane są już w Redux
+    if (!equipmentDetailsFromRedux) {
+      dispatch(fetchEquipmentDetails({ equipmentId, includeUnits: false }));
+    } else {
+      // Użyj danych z Redux
+      loadEquipmentFromRedux(equipmentDetailsFromRedux);
+    }
 
     // Załaduj storage locations jeśli jeszcze nie ma w Redux
     if (!storageLocations || storageLocations.length === 0) {
@@ -160,86 +167,57 @@ export default function EquipmentDetailPage() {
     }
   }, [equipmentId, dispatch]);
 
+  // Aktualizuj lokalne state gdy dane z Redux się zmienią
+  useEffect(() => {
+    if (equipmentDetailsFromRedux) {
+      loadEquipmentFromRedux(equipmentDetailsFromRedux);
+    }
+  }, [equipmentDetailsFromRedux]);
+
+  // Funkcja do ładowania danych z Redux do lokalnego state
+  const loadEquipmentFromRedux = (fullData: any) => {
+    if (!fullData || fullData.error) {
+      showSnackbar('Nie znaleziono sprzętu', 'error');
+      router.push('/crm/equipment');
+      return;
+    }
+
+    const equipmentData = {
+      ...fullData.equipment,
+      warehouse_categories: fullData.warehouse_category,
+      all_warehouse_categories: fullData.warehouse_categories || [],
+      equipment_stock: fullData.equipment_stock || [],
+      equipment_components: fullData.equipment_components || [],
+      equipment_images: fullData.equipment_images || []
+    };
+
+    const formData = {
+      ...equipmentData,
+      dimensions_length: equipmentData.dimensions_cm?.length || '',
+      dimensions_width: equipmentData.dimensions_cm?.width || '',
+      dimensions_height: equipmentData.dimensions_cm?.height || '',
+      cable_length_meters: equipmentData.cable_specs?.length_meters || '',
+      cable_connector_in: equipmentData.cable_specs?.connector_in || '',
+      cable_connector_out: equipmentData.cable_specs?.connector_out || '',
+    };
+
+    setEquipment(equipmentData);
+    setEditForm(formData);
+    setWarehouseCategories(fullData.warehouse_categories || []);
+    setConnectorTypes(fullData.connector_types || []);
+    setUnits(fullData.units || []);
+    setStockHistory(fullData.unit_events || []);
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (activeTab === 'history' || activeTab === 'units') {
-      // Dane już są w cache jeśli wywołaliśmy z include_units=true
-      if (units.length === 0 && activeTab === 'units') {
-        fetchEquipmentWithUnits();
+      // Jeśli units jest puste i są potrzebne, pobierz z include_units
+      if ((!units || units.length === 0) && activeTab === 'units') {
+        dispatch(fetchEquipmentDetails({ equipmentId, includeUnits: true }));
       }
     }
   }, [activeTab]);
-
-  const fetchUnits = async () => {
-    try {
-      const { data: fullData, error } = await supabase.rpc('get_equipment_details', {
-        item_id: equipmentId,
-        include_units: true
-      });
-
-      if (error) throw error;
-      if (!fullData || fullData.error) {
-        return;
-      }
-
-      setUnits(fullData.equipment_units || []);
-      setStockHistory(fullData.unit_events || []);
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const fetchEquipmentWithUnits = async () => {
-    await fetchUnits();
-  };
-
-  const fetchEquipment = async () => {
-    try {
-      setLoading(true);
-
-      // JEDNO zapytanie RPC dla wszystkiego!
-      const { data: fullData, error } = await supabase.rpc('get_equipment_details', {
-        item_id: equipmentId,
-        include_units: false
-      });
-
-      if (error) throw error;
-
-      if (!fullData || fullData.error) {
-        showSnackbar('Nie znaleziono sprzętu', 'error');
-        router.push('/crm/equipment');
-        return;
-      }
-
-      const equipmentData = {
-        ...fullData.equipment,
-        warehouse_categories: fullData.warehouse_category,
-        all_warehouse_categories: fullData.warehouse_categories || [],
-        equipment_stock: fullData.equipment_stock || [],
-        equipment_components: fullData.equipment_components || [],
-        equipment_images: fullData.equipment_images || []
-      };
-
-      const formData = {
-        ...equipmentData,
-        dimensions_length: equipmentData.dimensions_cm?.length || '',
-        dimensions_width: equipmentData.dimensions_cm?.width || '',
-        dimensions_height: equipmentData.dimensions_cm?.height || '',
-        cable_length_meters: equipmentData.cable_specs?.length_meters || '',
-        cable_connector_in: equipmentData.cable_specs?.connector_in || '',
-        cable_connector_out: equipmentData.cable_specs?.connector_out || '',
-      };
-
-      setEquipment(equipmentData);
-      setEditForm(formData);
-      setWarehouseCategories(fullData.warehouse_categories || []);
-      setConnectorTypes(fullData.connector_types || []);
-    } catch (error) {
-      console.error('Error fetching equipment:', error);
-      showSnackbar('Błąd podczas pobierania danych sprzętu', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
 
   const logEquipmentChange = async (fieldName: string, oldValue: any, newValue: any) => {
@@ -353,7 +331,7 @@ export default function EquipmentDetailPage() {
         await logEquipmentChange(field.name, field.old, field.new);
       }
 
-      await fetchEquipment();
+      await dispatch(fetchEquipmentDetails({ equipmentId, includeUnits: false }));
       setIsEditing(false);
       showSnackbar('Zmiany zostały zapisane', 'success');
     } catch (error) {
@@ -542,7 +520,7 @@ export default function EquipmentDetailPage() {
         <ComponentsTab
           equipment={equipment}
           isEditing={isEditing}
-          onUpdate={fetchEquipment}
+          onUpdate={() => dispatch(fetchEquipmentDetails({ equipmentId, includeUnits: false }))}
         />
       )}
 

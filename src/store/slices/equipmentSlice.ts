@@ -16,9 +16,21 @@ export interface EquipmentCategory {
   uses_simple_quantity: boolean;
 }
 
+export interface EquipmentDetails {
+  equipment: any;
+  warehouse_category: EquipmentCategory | null;
+  warehouse_categories: EquipmentCategory[];
+  equipment_stock: any[];
+  equipment_components: any[];
+  equipment_images: any[];
+  units: any[];
+  unit_events: any[];
+}
+
 interface EquipmentState {
   storageLocations: StorageLocation[];
   categories: EquipmentCategory[];
+  equipmentDetails: Record<string, EquipmentDetails>;
   loading: boolean;
   error: string | null;
 }
@@ -26,6 +38,7 @@ interface EquipmentState {
 const initialState: EquipmentState = {
   storageLocations: [],
   categories: [],
+  equipmentDetails: {},
   loading: false,
   error: null,
 };
@@ -54,6 +67,19 @@ export const fetchEquipmentCategories = createAsyncThunk(
 
     if (error) throw error;
     return data || [];
+  }
+);
+
+export const fetchEquipmentDetails = createAsyncThunk(
+  'equipment/fetchDetails',
+  async ({ equipmentId, includeUnits = false }: { equipmentId: string; includeUnits?: boolean }) => {
+    const { data, error } = await supabase.rpc('get_equipment_details', {
+      item_id: equipmentId,
+      include_units: includeUnits
+    });
+
+    if (error) throw error;
+    return { equipmentId, data };
   }
 );
 
@@ -90,6 +116,18 @@ const equipmentSlice = createSlice({
       .addCase(fetchEquipmentCategories.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to fetch categories';
+      })
+      .addCase(fetchEquipmentDetails.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchEquipmentDetails.fulfilled, (state, action) => {
+        state.loading = false;
+        state.equipmentDetails[action.payload.equipmentId] = action.payload.data;
+      })
+      .addCase(fetchEquipmentDetails.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to fetch equipment details';
       });
   },
 });
