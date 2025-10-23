@@ -2043,18 +2043,38 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
 
   const handleUpdateCableQuantity = async () => {
     try {
+      console.log('Updating cable quantity to:', newQuantity, 'for equipment:', equipment.id);
+
       const { error } = await supabase
         .from('equipment_items')
         .update({ cable_stock_quantity: newQuantity })
         .eq('id', equipment.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Update successful, refreshing data...');
 
       setEditingQuantity(false);
-      onUpdate();
+      setShowModal(false);
+
+      // Odśwież dane sprzętu
+      if (onEquipmentUpdate) {
+        await onEquipmentUpdate();
+      }
+
+      if (showSnackbar) {
+        showSnackbar('Ilość zaktualizowana pomyślnie', 'success');
+      }
     } catch (error) {
       console.error('Error updating cable quantity:', error);
-      alert('Błąd podczas aktualizacji ilości');
+      if (showSnackbar) {
+        showSnackbar('Błąd podczas aktualizacji ilości', 'error');
+      } else {
+        alert('Błąd podczas aktualizacji ilości');
+      }
     }
   };
 
@@ -2277,10 +2297,7 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
                     Anuluj
                   </button>
                   <button
-                    onClick={() => {
-                      handleUpdateCableQuantity();
-                      setShowModal(false);
-                    }}
+                    onClick={handleUpdateCableQuantity}
                     className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
                   >
                     Zapisz
