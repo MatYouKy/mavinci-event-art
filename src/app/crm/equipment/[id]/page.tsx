@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight, Copy, MoreVertical } from 'lucide-react';
+import { ArrowLeft, CreditCard as Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight, Copy, MoreVertical } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 import { useDialog } from '@/contexts/DialogContext';
