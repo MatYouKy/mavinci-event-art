@@ -11,6 +11,8 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import EquipmentSkillRequirementsPanel from '@/components/crm/EquipmentSkillRequirementsPanel';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import EquipmentGallery from '@/components/crm/EquipmentGallery';
+import { useAppSelector } from '@/store/hooks';
+import type { RootState } from '@/store/store';
 
 interface EquipmentStock {
   id: string;
@@ -140,30 +142,15 @@ export default function EquipmentDetailPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
   const [units, setUnits] = useState<EquipmentUnit[]>([]);
-  const [storageLocations, setStorageLocations] = useState<any[]>([]);
 
   const { canManageModule, loading: employeeLoading, currentEmployee } = useCurrentEmployee();
   const canEdit = canManageModule('equipment');
 
-  const fetchStorageLocations = async () => {
-    const { data, error } = await supabase
-      .from('storage_locations')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
-
-    if (error) {
-      console.error('Error fetching storage locations:', error);
-      setStorageLocations([]);
-      return;
-    }
-
-    setStorageLocations(data || []);
-  };
+  // Pobierz dane z Redux zamiast lokalnego state
+  const storageLocations = useAppSelector((state: RootState) => state.equipment.storageLocations);
 
   useEffect(() => {
     fetchEquipment();
-    fetchStorageLocations();
   }, [equipmentId]);
 
   useEffect(() => {

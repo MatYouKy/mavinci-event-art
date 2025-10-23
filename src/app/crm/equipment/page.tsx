@@ -10,6 +10,8 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ThreeDotMenu } from '@/components/UI/ThreeDotMenu/ThreeDotMenu';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { useAppDispatch } from '@/store/hooks';
+import { fetchStorageLocations, fetchEquipmentCategories } from '@/store/slices/equipmentSlice';
 
 interface WarehouseCategory {
   id: string;
@@ -42,6 +44,7 @@ interface Equipment {
 
 export default function EquipmentPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
@@ -56,7 +59,9 @@ export default function EquipmentPage() {
 
   useEffect(() => {
     fetchEquipment();
-  }, []);
+    dispatch(fetchStorageLocations());
+    dispatch(fetchEquipmentCategories());
+  }, [dispatch]);
 
   const fetchEquipment = async () => {
     try {
