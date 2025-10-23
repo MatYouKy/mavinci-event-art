@@ -27,10 +27,29 @@ export interface EquipmentDetails {
   unit_events: any[];
 }
 
+export interface EquipmentListItem {
+  id: string;
+  name: string;
+  type: 'equipment' | 'kit';
+  category_name?: string;
+  category_id?: string;
+  thumbnail?: string;
+  total_quantity?: number;
+  available_quantity?: number;
+  [key: string]: any;
+}
+
+export interface EquipmentList {
+  equipment_items: EquipmentListItem[];
+  equipment_kits: EquipmentListItem[];
+  warehouse_categories: EquipmentCategory[];
+}
+
 interface EquipmentState {
   storageLocations: StorageLocation[];
   categories: EquipmentCategory[];
   equipmentDetails: Record<string, EquipmentDetails>;
+  equipmentList: EquipmentList | null;
   loading: boolean;
   error: string | null;
 }
@@ -39,6 +58,7 @@ const initialState: EquipmentState = {
   storageLocations: [],
   categories: [],
   equipmentDetails: {},
+  equipmentList: null,
   loading: false,
   error: null,
 };
@@ -80,6 +100,16 @@ export const fetchEquipmentDetails = createAsyncThunk(
 
     if (error) throw error;
     return { equipmentId, data };
+  }
+);
+
+export const fetchEquipmentList = createAsyncThunk(
+  'equipment/fetchList',
+  async () => {
+    const { data, error } = await supabase.rpc('get_equipment_list');
+
+    if (error) throw error;
+    return data as EquipmentList;
   }
 );
 
@@ -128,6 +158,18 @@ const equipmentSlice = createSlice({
       .addCase(fetchEquipmentDetails.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to fetch equipment details';
+      })
+      .addCase(fetchEquipmentList.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchEquipmentList.fulfilled, (state, action) => {
+        state.loading = false;
+        state.equipmentList = action.payload;
+      })
+      .addCase(fetchEquipmentList.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to fetch equipment list';
       });
   },
 });

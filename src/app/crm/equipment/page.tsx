@@ -10,8 +10,9 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ThreeDotMenu } from '@/components/UI/ThreeDotMenu/ThreeDotMenu';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { useAppDispatch } from '@/store/hooks';
-import { fetchStorageLocations, fetchEquipmentCategories } from '@/store/slices/equipmentSlice';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import type { RootState } from '@/store/store';
+import { fetchStorageLocations, fetchEquipmentCategories, fetchEquipmentList } from '@/store/slices/equipmentSlice';
 
 interface WarehouseCategory {
   id: string;
@@ -51,47 +52,35 @@ export default function EquipmentPage() {
 
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [categories, setCategories] = useState<WarehouseCategory[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
 
+  // Pobierz dane z Redux
+  const equipmentListFromRedux = useAppSelector((state: RootState) => state.equipment.equipmentList);
+  const loading = useAppSelector((state: RootState) => state.equipment.loading);
+
   useEffect(() => {
-    fetchEquipment();
+    // Załaduj dane z Redux jeśli jeszcze nie ma
+    if (!equipmentListFromRedux) {
+      dispatch(fetchEquipmentList());
+    }
     dispatch(fetchStorageLocations());
     dispatch(fetchEquipmentCategories());
-  }, [dispatch]);
+  }, [dispatch, equipmentListFromRedux]);
 
-  const fetchEquipment = async () => {
-    try {
-      setLoading(true);
-
-      // JEDNO zapytanie RPC dla wszystkiego!
-      const { data: fullData, error } = await supabase.rpc('get_equipment_list');
-
-      if (error) throw error;
-
-      if (!fullData) {
-        console.error('No data returned');
-        return;
-      }
-
-      // Połącz equipment_items i equipment_kits
+  // Aktualizuj lokalne state gdy dane z Redux się zmienią
+  useEffect(() => {
+    if (equipmentListFromRedux) {
       const allEquipment = [
-        ...(fullData.equipment_items || []),
-        ...(fullData.equipment_kits || [])
+        ...(equipmentListFromRedux.equipment_items || []),
+        ...(equipmentListFromRedux.equipment_kits || [])
       ];
-
       setEquipment(allEquipment);
-      setCategories(fullData.warehouse_categories || []);
-    } catch (error) {
-      console.error('Error:', error);
-      showSnackbar('Błąd podczas ładowania danych', 'error');
-    } finally {
-      setLoading(false);
+      setCategories(equipmentListFromRedux.warehouse_categories || []);
     }
-  };
+  }, [equipmentListFromRedux]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -101,7 +90,7 @@ export default function EquipmentPage() {
     try {
       await supabase.from('equipment_items').delete().eq('id', id);
       showSnackbar('Usunięto', 'success');
-      fetchEquipment();
+      dispatch(fetchEquipmentList());
     } catch (error) {
       showSnackbar('Błąd', 'error');
     }
