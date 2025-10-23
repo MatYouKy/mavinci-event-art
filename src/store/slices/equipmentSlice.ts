@@ -48,7 +48,7 @@ export const fetchEquipmentCategories = createAsyncThunk(
   'equipment/fetchCategories',
   async () => {
     const { data, error } = await supabase
-      .from('equipment_categories')
+      .from('warehouse_categories')
       .select('*')
       .order('name');
 
