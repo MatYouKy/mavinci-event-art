@@ -911,7 +911,7 @@ function DetailsTab({
                   className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 >
                   <option value="">Nieokreślona</option>
-                  {storageLocations && Array.isArray(storageLocations) && storageLocations.map((loc) => (
+                  {fetchStorageLocations && Array.isArray(fetchStorageLocations) && fetchStorageLocations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
                       {loc.name}
                     </option>
@@ -919,8 +919,8 @@ function DetailsTab({
                 </select>
               ) : (
                 <div className="text-[#e5e4e2]">
-                  {(storageLocations && Array.isArray(storageLocations) && equipment?.storage_location_id)
-                    ? (storageLocations.find(l => l.id === equipment.storage_location_id)?.name || 'Nieokreślona')
+                  {(fetchStorageLocations && Array.isArray(fetchStorageLocations) && equipment?.storage_location_id)
+                    ? (fetchStorageLocations.find(l => l.id === equipment.storage_location_id)?.name || 'Nieokreślona')
                     : 'Nieokreślona'}
                 </div>
               )}
