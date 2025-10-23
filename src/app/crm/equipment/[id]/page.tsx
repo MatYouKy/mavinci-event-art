@@ -1829,6 +1829,14 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   const [newQuantity, setNewQuantity] = useState(
     usesSimpleQuantity ? (equipment?.cable_stock_quantity || 0) : units.length
   );
+
+  console.log('UnitsTab render:', {
+    usesSimpleQuantity,
+    canEdit,
+    showModal,
+    equipment_id: equipment?.id,
+    cable_stock_quantity: equipment?.cable_stock_quantity
+  });
   const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
   const [unitForm, setUnitForm] = useState({
     unit_serial_number: '',
@@ -2089,7 +2097,10 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
             <div className="text-lg text-[#e5e4e2]/60 mb-4">Ilość na stanie (szt.)</div>
             {canEdit && (
               <button
-                onClick={() => setShowModal(true)}
+                onClick={() => {
+                  console.log('Opening modal, showModal will be:', true);
+                  setShowModal(true);
+                }}
                 className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors mx-auto"
               >
                 <Plus className="w-4 h-4" />
@@ -2275,7 +2286,11 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
                   <input
                     type="number"
                     value={newQuantity}
-                    onChange={(e) => setNewQuantity(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 0;
+                      console.log('Input changed to:', val);
+                      setNewQuantity(val);
+                    }}
                     min="0"
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] text-lg focus:outline-none focus:border-[#d3bb73]/30"
                     placeholder="np. 50"
