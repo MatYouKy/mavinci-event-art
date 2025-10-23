@@ -336,15 +336,6 @@ export default function CategoriesPage() {
                           className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                           placeholder="Opis (opcjonalny)"
                         />
-                        <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
-                          <input
-                            type="checkbox"
-                            checked={editUsesSimpleQuantity}
-                            onChange={(e) => setEditUsesSimpleQuantity(e.target.checked)}
-                            className="w-4 h-4 bg-[#1c1f33] border border-[#d3bb73]/20 rounded"
-                          />
-                          Prosta ilość (bez jednostek jako obiektów)
-                        </label>
                         <div className="flex gap-2">
                           <button
                             onClick={handleSave}

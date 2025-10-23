@@ -201,6 +201,7 @@ export default function EquipmentDetailPage() {
       const equipmentData = {
         ...fullData.equipment,
         warehouse_categories: fullData.warehouse_category,
+        all_warehouse_categories: fullData.warehouse_categories || [],
         equipment_stock: fullData.equipment_stock || [],
         equipment_components: fullData.equipment_components || [],
         equipment_images: fullData.equipment_images || []
@@ -1767,7 +1768,24 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 }
 
 function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
-  const usesSimpleQuantity = equipment?.warehouse_categories?.uses_simple_quantity || false;
+  // Znajdź wartość uses_simple_quantity z głównej kategorii
+  const getUsesSimpleQuantity = () => {
+    const currentCategory = equipment?.warehouse_categories;
+    if (!currentCategory) return false;
+
+    // Jeśli to podkategoria (ma parent_id), znajdź główną kategorię
+    if (currentCategory.parent_id) {
+      // Szukaj w liście wszystkich kategorii (zwróconych przez RPC)
+      const allCategories = equipment?.all_warehouse_categories || [];
+      const parentCategory = allCategories.find((c: any) => c.id === currentCategory.parent_id);
+      return parentCategory?.uses_simple_quantity || false;
+    }
+
+    // Jeśli to główna kategoria, użyj jej wartości
+    return currentCategory.uses_simple_quantity || false;
+  };
+
+  const usesSimpleQuantity = getUsesSimpleQuantity();
   const [showModal, setShowModal] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState(false);
   const [newQuantity, setNewQuantity] = useState(
