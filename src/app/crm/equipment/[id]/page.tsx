@@ -2270,7 +2270,9 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
         </div>
       )}
 
-      {showModal && (
+      {showModal && (() => {
+        console.log('🔴 RENDERING MODAL - showModal is TRUE', { usesSimpleQuantity, newQuantity });
+        return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-light text-[#e5e4e2] mb-4">
@@ -2472,7 +2474,8 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {showEventsHistory && selectedUnit && (
         <UnitEventsModal
