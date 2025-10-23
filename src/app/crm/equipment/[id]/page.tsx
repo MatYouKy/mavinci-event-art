@@ -145,11 +145,6 @@ export default function EquipmentDetailPage() {
   const { canManageModule, loading: employeeLoading, currentEmployee } = useCurrentEmployee();
   const canEdit = canManageModule('equipment');
 
-  useEffect(() => {
-    fetchEquipment();
-    fetchStorageLocations();
-  }, [equipmentId]);
-
   const fetchStorageLocations = async () => {
     const { data } = await supabase
       .from('storage_locations')
@@ -158,6 +153,11 @@ export default function EquipmentDetailPage() {
       .order('name');
     if (data) setStorageLocations(data);
   };
+
+  useEffect(() => {
+    fetchEquipment();
+    fetchStorageLocations();
+  }, [equipmentId]);
 
   useEffect(() => {
     if (activeTab === 'history' || activeTab === 'units') {
