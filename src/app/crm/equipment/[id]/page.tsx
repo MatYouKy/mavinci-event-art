@@ -918,7 +918,7 @@ function DetailsTab({
                 </select>
               ) : (
                 <div className="text-[#e5e4e2]">
-                  {storageLocations.find(l => l.id === equipment.storage_location_id)?.name || '-'}
+                  {storageLocations?.find(l => l.id === equipment.storage_location_id)?.name || '-'}
                 </div>
               )}
             </div>
