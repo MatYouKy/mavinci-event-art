@@ -634,7 +634,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
   ];
 
   const tabs = usesSimpleQuantity
-    ? allTabs.filter(tab => tab.id !== 'components' && tab.id !== 'units')
+    ? allTabs.filter(tab => tab.id !== 'components')
     : allTabs;
 
   useEffect(() => {
@@ -886,36 +886,6 @@ function DetailsTab({
                 <div className="text-[#e5e4e2]">{equipment.model || '-'}</div>
               )}
             </div>
-
-            {(() => {
-              const currentCategoryId = isEditing
-                ? editForm.warehouse_category_id
-                : equipment.warehouse_categories?.id;
-              const currentCategory = warehouseCategories?.find((c: any) => c.id === currentCategoryId);
-              const usesSimpleQuantity = currentCategory?.uses_simple_quantity || false;
-
-              return usesSimpleQuantity ? (
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Ilość na stanie (szt.)
-                  </label>
-                  {isEditing ? (
-                    <input
-                      type="number"
-                      name="cable_stock_quantity"
-                      value={editForm.cable_stock_quantity || 0}
-                      onChange={onInputChange}
-                      min="0"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                    />
-                  ) : (
-                    <div className="text-[#e5e4e2]">
-                      {equipment.cable_stock_quantity || 0} szt.
-                    </div>
-                  )}
-                </div>
-              ) : null;
-            })()}
 
             <div className="md:col-span-2">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
@@ -1800,7 +1770,9 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   const usesSimpleQuantity = equipment?.warehouse_categories?.uses_simple_quantity || false;
   const [showModal, setShowModal] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState(false);
-  const [newQuantity, setNewQuantity] = useState(units.length);
+  const [newQuantity, setNewQuantity] = useState(
+    usesSimpleQuantity ? (equipment?.cable_stock_quantity || 0) : units.length
+  );
   const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
   const [unitForm, setUnitForm] = useState({
     unit_serial_number: '',
@@ -2014,20 +1986,14 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   };
 
   const handleUpdateCableQuantity = async () => {
-    const currentCount = units.length;
-    const diff = newQuantity - currentCount;
-
     try {
-      if (diff > 0) {
-        const unitsToAdd = Array.from({ length: diff }, () => ({
-          equipment_id: equipment.id,
-          status: 'available',
-        }));
-        await supabase.from('equipment_units').insert(unitsToAdd);
-      } else if (diff < 0) {
-        const unitsToRemove = units.slice(0, Math.abs(diff));
-        await supabase.from('equipment_units').delete().in('id', unitsToRemove.map((u: any) => u.id));
-      }
+      const { error } = await supabase
+        .from('equipment_items')
+        .update({ cable_stock_quantity: newQuantity })
+        .eq('id', equipment.id);
+
+      if (error) throw error;
+
       setEditingQuantity(false);
       onUpdate();
     } catch (error) {
@@ -2060,7 +2026,7 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
                   <button
                     onClick={() => {
                       setEditingQuantity(false);
-                      setNewQuantity(units.length);
+                      setNewQuantity(equipment?.cable_stock_quantity || 0);
                     }}
                     className="px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
                   >
@@ -2074,12 +2040,12 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
                 className={`text-6xl font-light text-[#d3bb73] mb-4 transition-colors ${canEdit ? 'cursor-pointer hover:text-[#d3bb73]/80' : 'cursor-default'}`}
                 title={canEdit ? "Kliknij aby edytować" : "Tylko administrator może edytować"}
               >
-                {units.length}
+                {equipment?.cable_stock_quantity || 0}
               </div>
             )}
-            <div className="text-lg text-[#e5e4e2]/60 mb-2">Liczba jednostek</div>
+            <div className="text-lg text-[#e5e4e2]/60 mb-2">Ilość na stanie (szt.)</div>
             <p className="text-sm text-[#e5e4e2]/40 max-w-md mx-auto">
-              {editingQuantity ? 'Wprowadź nową liczbę przewodów' : (canEdit ? 'Kliknij na liczbę aby ją edytować' : 'Tylko odczyt')}
+              {editingQuantity ? 'Wprowadź nową ilość sztuk' : (canEdit ? 'Kliknij na liczbę aby ją edytować' : 'Tylko odczyt')}
             </p>
           </div>
         </div>
