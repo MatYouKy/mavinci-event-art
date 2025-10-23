@@ -146,12 +146,19 @@ export default function EquipmentDetailPage() {
   const canEdit = canManageModule('equipment');
 
   const fetchStorageLocations = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('storage_locations')
       .select('*')
       .eq('is_active', true)
       .order('name');
-    if (data) setStorageLocations(data);
+
+    if (error) {
+      console.error('Error fetching storage locations:', error);
+      setStorageLocations([]);
+      return;
+    }
+
+    setStorageLocations(data || []);
   };
 
   useEffect(() => {
