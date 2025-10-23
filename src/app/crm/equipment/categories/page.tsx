@@ -16,6 +16,7 @@ interface WarehouseCategory {
   color: string;
   level: number;
   order_index: number;
+  uses_simple_quantity: boolean;
 }
 
 export default function CategoriesPage() {
@@ -28,10 +29,12 @@ export default function CategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editUsesSimpleQuantity, setEditUsesSimpleQuantity] = useState(false);
   const [addingMain, setAddingMain] = useState(false);
   const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [newUsesSimpleQuantity, setNewUsesSimpleQuantity] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -58,6 +61,7 @@ export default function CategoriesPage() {
     setEditingId(category.id);
     setEditName(category.name);
     setEditDescription(category.description || '');
+    setEditUsesSimpleQuantity(category.uses_simple_quantity || false);
   };
 
   const handleSave = async () => {
@@ -72,6 +76,7 @@ export default function CategoriesPage() {
         .update({
           name: editName.trim(),
           description: editDescription.trim() || null,
+          uses_simple_quantity: editUsesSimpleQuantity,
           updated_at: new Date().toISOString(),
         })
         .eq('id', editingId)
@@ -108,6 +113,7 @@ export default function CategoriesPage() {
         .insert({
           name: newName.trim(),
           description: newDescription.trim() || null,
+          uses_simple_quantity: newUsesSimpleQuantity,
           level: 1,
           parent_id: null,
           order_index: maxOrder + 1,
@@ -126,6 +132,7 @@ export default function CategoriesPage() {
       setAddingMain(false);
       setNewName('');
       setNewDescription('');
+      setNewUsesSimpleQuantity(false);
       fetchCategories();
     } catch (error: any) {
       console.error('Error adding main category:', error);
@@ -249,6 +256,17 @@ export default function CategoriesPage() {
                       placeholder="Opis kategorii"
                     />
                   </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editUsesSimpleQuantity}
+                        onChange={(e) => setEditUsesSimpleQuantity(e.target.checked)}
+                        className="w-4 h-4 bg-[#1c1f33] border border-[#d3bb73]/20 rounded"
+                      />
+                      Prosta ilość magazynowa (bez jednostek jako obiektów)
+                    </label>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={handleSave}
@@ -318,6 +336,15 @@ export default function CategoriesPage() {
                           className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                           placeholder="Opis (opcjonalny)"
                         />
+                        <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
+                          <input
+                            type="checkbox"
+                            checked={editUsesSimpleQuantity}
+                            onChange={(e) => setEditUsesSimpleQuantity(e.target.checked)}
+                            className="w-4 h-4 bg-[#1c1f33] border border-[#d3bb73]/20 rounded"
+                          />
+                          Prosta ilość (bez jednostek jako obiektów)
+                        </label>
                         <div className="flex gap-2">
                           <button
                             onClick={handleSave}
@@ -441,6 +468,17 @@ export default function CategoriesPage() {
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 placeholder="Krótki opis kategorii"
               />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newUsesSimpleQuantity}
+                  onChange={(e) => setNewUsesSimpleQuantity(e.target.checked)}
+                  className="w-4 h-4 bg-[#1c1f33] border border-[#d3bb73]/20 rounded"
+                />
+                Prosta ilość magazynowa (bez jednostek jako obiektów)
+              </label>
             </div>
             <div className="flex gap-2">
               <button

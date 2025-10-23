@@ -621,7 +621,7 @@ export default function EquipmentDetailPage() {
 function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visibleTabs, setVisibleTabs] = useState(5);
-  const isCable = equipment.warehouse_categories?.name?.toLowerCase().includes('przewod');
+  const usesSimpleQuantity = equipment.warehouse_categories?.uses_simple_quantity || false;
 
   const allTabs = [
     { id: 'details', label: 'Podstawowe' },
@@ -633,7 +633,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
     { id: 'history', label: 'Historia' },
   ];
 
-  const tabs = isCable
+  const tabs = usesSimpleQuantity
     ? allTabs.filter(tab => tab.id !== 'components' && tab.id !== 'units')
     : allTabs;
 
@@ -892,9 +892,9 @@ function DetailsTab({
                 ? editForm.warehouse_category_id
                 : equipment.warehouse_categories?.id;
               const currentCategory = warehouseCategories?.find((c: any) => c.id === currentCategoryId);
-              const isCableCategory = currentCategory?.name?.toLowerCase().includes('przewod');
+              const usesSimpleQuantity = currentCategory?.uses_simple_quantity || false;
 
-              return isCableCategory ? (
+              return usesSimpleQuantity ? (
                 <div>
                   <label className="block text-sm text-[#e5e4e2]/60 mb-2">
                     Ilość na stanie (szt.)
@@ -964,13 +964,13 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
     : equipment.warehouse_categories?.id;
 
   const currentCategory = warehouseCategories?.find((c: any) => c.id === currentCategoryId);
-  const isCable = currentCategory?.name?.toLowerCase().includes('przewod');
+  const usesSimpleQuantity = currentCategory?.uses_simple_quantity || false;
 
   return (
     <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
       <h3 className="text-lg font-medium text-[#e5e4e2] mb-6">Parametry techniczne</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {isCable ? (
+        {usesSimpleQuantity ? (
           <>
             {/* Przewody: tylko długość + wtyki */}
             <div>
@@ -1797,7 +1797,7 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 }
 
 function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
-  const isCable = equipment?.equipment_categories?.name?.toLowerCase().includes('przewod');
+  const usesSimpleQuantity = equipment?.warehouse_categories?.uses_simple_quantity || false;
   const [showModal, setShowModal] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState(false);
   const [newQuantity, setNewQuantity] = useState(units.length);
@@ -2036,7 +2036,7 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
     }
   };
 
-  if (isCable) {
+  if (usesSimpleQuantity) {
     return (
       <div className="space-y-6">
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
