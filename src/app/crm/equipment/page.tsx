@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Layers, MapPin } from 'lucide-react';
+import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Layers, MapPin, MoreVertical } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { ThreeDotMenu } from '@/components/UI/ThreeDotMenu/ThreeDotMenu';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 interface WarehouseCategory {
@@ -170,7 +171,9 @@ export default function EquipmentPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn</h2>
-        <div className="flex gap-2">
+
+        {/* Desktop - full buttons */}
+        <div className="hidden md:flex gap-2">
           {canManageModule('equipment') && (
             <>
               <button
@@ -195,6 +198,55 @@ export default function EquipmentPage() {
                 Lokalizacje
               </button>
             </>
+          )}
+          {canCreateInModule('equipment') && (
+            <button
+              onClick={() => router.push('/crm/equipment/new')}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj
+            </button>
+          )}
+        </div>
+
+        {/* Mobile - 3-dot menu + Add button */}
+        <div className="flex md:hidden gap-2">
+          {canManageModule('equipment') && (
+            <div className="relative">
+              <ThreeDotMenu
+                menuPosition="right-top"
+                menu_items={[
+                  {
+                    children: (
+                      <div className="flex items-center gap-2 px-4 py-2">
+                        <FolderTree className="w-4 h-4" />
+                        <span>Kategorie</span>
+                      </div>
+                    ),
+                    onClick: () => router.push('/crm/equipment/categories')
+                  },
+                  {
+                    children: (
+                      <div className="flex items-center gap-2 px-4 py-2">
+                        <Layers className="w-4 h-4" />
+                        <span>Zestawy</span>
+                      </div>
+                    ),
+                    onClick: () => router.push('/crm/equipment/kits')
+                  },
+                  {
+                    children: (
+                      <div className="flex items-center gap-2 px-4 py-2">
+                        <MapPin className="w-4 h-4" />
+                        <span>Lokalizacje</span>
+                      </div>
+                    ),
+                    onClick: () => router.push('/crm/equipment/locations')
+                  }
+                ]}
+              />
+            </div>
           )}
           {canCreateInModule('equipment') && (
             <button
