@@ -186,7 +186,7 @@ export default function EquipmentDetailPage() {
         notes: editForm.notes || null,
       });
 
-      await dispatch(updateEquipmentItem({ equipmentId, payload }));
+      await dispatch(updateEquipmentItem({ id: equipmentId, payload }));
 
       // basic log set
       const fieldsToLog = [
