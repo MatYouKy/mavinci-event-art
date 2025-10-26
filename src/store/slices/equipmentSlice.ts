@@ -513,6 +513,50 @@ const equipmentSlice = createSlice({
 
 export default equipmentSlice.reducer
 
+// Aliasy dla kompatybilności z istniejącym kodem
+export const upsertEquipmentUnit = createAsyncThunk(
+  'equipment/upsertEquipmentUnit',
+  async (payload: { id?: string; equipment_id: string; [key: string]: any }) => {
+    if (payload.id) {
+      const { id, ...updateData } = payload;
+      const { error } = await supabase
+        .from('equipment_units')
+        .update(updateData)
+        .eq('id', id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('equipment_units')
+        .insert(payload);
+      if (error) throw error;
+    }
+    return true;
+  }
+);
+
+export const addUnitEvent = createAsyncThunk(
+  'equipment/addUnitEvent',
+  async (payload: { unit_id: string; event_type: string; description: string; [key: string]: any }) => {
+    const { error } = await supabase
+      .from('equipment_unit_events')
+      .insert(payload);
+    if (error) throw error;
+    return true;
+  }
+);
+
+export const setCableQuantity = createAsyncThunk(
+  'equipment/setCableQuantity',
+  async ({ equipmentId, quantity }: { equipmentId: string; quantity: number }) => {
+    const { error } = await supabase
+      .from('equipment_items')
+      .update({ cable_stock_quantity: quantity })
+      .eq('id', equipmentId);
+    if (error) throw error;
+    return true;
+  }
+);
+
 // =============================
 // PODMIANY W KOMPONENCIE (wycinki do wklejenia)
 // =============================
