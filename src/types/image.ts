@@ -13,13 +13,11 @@ export interface IScreenMetadata {
   src: string;
   position?: IImagePosition;
   upload_settings?: IUploadSettings;
-  objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
 }
 
 export interface IScreenMetadataUpload {
   position?: IImagePosition;
   upload_settings?: IUploadSettings;
-  objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
 }
 
 export interface IImageMetadata {

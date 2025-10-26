@@ -1,18 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight, FolderTree, Layers, MapPin, MoreVertical } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import {
+  Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight,
+  FolderTree, Layers, MapPin
+} from 'lucide-react';
+
 import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ThreeDotMenu } from '@/components/UI/ThreeDotMenu/ThreeDotMenu';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import type { RootState } from '@/store/store';
-import { fetchStorageLocations, fetchEquipmentCategories, fetchEquipmentList } from '@/store/slices/equipmentSlice';
+
+// ⬇️ RTK Query – feed + kategorie + delete
+import {
+  useGetEquipmentFeedQuery,
+  useGetEquipmentCategoriesQuery,
+  useDeleteEquipmentMutation,
+} from './store/equipmentApi';
+
+type UnitStatus = 'available' | 'damaged' | 'in_service' | 'retired';
 
 interface WarehouseCategory {
   id: string;
@@ -27,127 +36,109 @@ interface WarehouseCategory {
 
 interface EquipmentUnit {
   id: string;
-  status: 'available' | 'damaged' | 'in_service' | 'retired';
+  status: UnitStatus;
 }
 
-interface Equipment {
+interface EquipmentListItem {
   id: string;
   name: string;
   warehouse_category_id: string | null;
-  brand: string | null;
-  model: string | null;
+  brand?: string | null;          // dla kits może być null
+  model?: string | null;          // dla kits może być null
   thumbnail_url: string | null;
-  warehouse_categories: WarehouseCategory | null;
-  equipment_units: EquipmentUnit[];
+  created_at?: string | null;
   is_kit?: boolean;
-  description?: string | null;
+  equipment_units?: EquipmentUnit[]; // dla kits może być []
 }
 
 export default function EquipmentPage() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
 
-  const [equipment, setEquipment] = useState<Equipment[]>([]);
-  const [categories, setCategories] = useState<WarehouseCategory[]>([]);
-  const [activeTab, setActiveTab] = useState<string>('all');
+  // Zakres UI
+  const [activeTab, setActiveTab] = useState<string>('all'); // 'all' | categoryId | 'cables'
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
 
-  // Pobierz dane z Redux
-  const equipmentListFromRedux = useAppSelector((state: RootState) => state.equipment.equipmentList);
-  const loading = useAppSelector((state: RootState) => state.equipment.loading);
+  // Paginacja do infinite scroll
+  const [page, setPage] = useState(0);
+  const limit = 24;
+
+  // Kategoria do filtra feedu (z activeTab, ale bez 'all'/'cables')
+  const categoryId = activeTab !== 'all' && activeTab !== 'cables' ? activeTab : null;
+
+  // Hooki RTKQ
+  const { data: categories = [], isLoading: catLoading, isError: catError, refetch: refetchCats } =
+    useGetEquipmentCategoriesQuery();
+
+  const {
+    data: feed,
+    isLoading,
+    isFetching, // true również przy dociąganiu kolejnych stron
+    isError,
+    refetch,
+  } = useGetEquipmentFeedQuery({ q: searchTerm, categoryId, itemType: itemTypeFilter, page, limit });
+
+  const [deleteEquipment, { isLoading: deleting }] = useDeleteEquipmentMutation();
+
+  // Reset strony przy zmianie filtrów
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, categoryId, itemTypeFilter]);
+
+  // IntersectionObserver – strażnik na dole listy
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const hasMore = !!feed?.hasMore;
 
   useEffect(() => {
-    // Załaduj dane z Redux jeśli jeszcze nie ma
-    if (!equipmentListFromRedux) {
-      dispatch(fetchEquipmentList());
-    }
-    dispatch(fetchStorageLocations());
-    dispatch(fetchEquipmentCategories());
-  }, [dispatch, equipmentListFromRedux]);
+    if (!hasMore || isFetching) return;
+    const el = sentinelRef.current;
+    if (!el) return;
 
-  // Aktualizuj lokalne state gdy dane z Redux się zmienią
-  useEffect(() => {
-    if (equipmentListFromRedux) {
-      const allEquipment = [
-        ...(equipmentListFromRedux.equipment_items || []),
-        ...(equipmentListFromRedux.equipment_kits || [])
-      ];
-      setEquipment(allEquipment);
-      setCategories(equipmentListFromRedux.warehouse_categories || []);
-    }
-  }, [equipmentListFromRedux]);
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setPage((p) => p + 1);
+        }
+      },
+      { rootMargin: '800px' }
+    );
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const confirmed = await showConfirm('Czy na pewno chcesz usunąć?', 'Usuń');
-    if (!confirmed) return;
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, isFetching]);
 
-    try {
-      await supabase.from('equipment_items').delete().eq('id', id);
-      showSnackbar('Usunięto', 'success');
-      dispatch(fetchEquipmentList());
-    } catch (error) {
-      showSnackbar('Błąd', 'error');
-    }
-  };
+  // Lista elementów do renderu
+  const items: EquipmentListItem[] = useMemo(() => feed?.items ?? [], [feed]);
+
+  // Kategorie – helpery
+  const mainCategories: WarehouseCategory[] = useMemo(
+    () => categories.filter((c) => c.level === 1),
+    [categories]
+  );
+
+  const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   const getCategoryPath = (categoryId: string | null): string => {
     if (!categoryId) return '';
-    const category = categories.find(c => c.id === categoryId);
-    if (!category) return '';
-
-    let path = category.name;
-    let currentParentId = category.parent_id;
-
-    while (currentParentId) {
-      const parent = categories.find(c => c.id === currentParentId);
-      if (!parent) break;
-      path = `${parent.name} > ${path}`;
-      currentParentId = parent.parent_id;
+    let cur = byId.get(categoryId);
+    if (!cur) return '';
+    const chain = [cur.name];
+    while (cur.parent_id) {
+      cur = byId.get(cur.parent_id);
+      if (!cur) break;
+      chain.unshift(cur.name);
     }
-
-    return path;
+    return chain.join(' > ');
   };
 
-  const getMainCategories = () => {
-    return categories.filter(cat => cat.level === 1);
-  };
-
-  const getParentCategoryId = (categoryId: string | null): string | null => {
-    if (!categoryId) return null;
-    const category = categories.find(c => c.id === categoryId);
-    if (!category) return null;
-
-    if (category.level === 1) return category.id;
-    if (category.level === 2) return category.parent_id;
-    return null;
-  };
-
-  const filtered = equipment.filter((item) => {
-    const search = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.brand?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    if (!search) return false;
-
-    // Filtr typu: wszystko / tylko sprzęt / tylko zestawy
-    if (itemTypeFilter === 'equipment' && item.is_kit) return false;
-    if (itemTypeFilter === 'kits' && !item.is_kit) return false;
-
-    if (activeTab === 'all') return true;
-    if (activeTab === 'cables') return false;
-
-    const parentCategoryId = getParentCategoryId(item.warehouse_category_id);
-    return parentCategoryId === activeTab;
-  });
-
-  const getStock = (item: Equipment) => {
-    const total = item.equipment_units.length;
-    const available = item.equipment_units.filter(u => u.status === 'available').length;
+  const getStock = (item: EquipmentListItem) => {
+    if (item.is_kit) return { available: 0, total: 0, color: 'text-gray-400' };
+    const total = item.equipment_units?.length ?? 0;
+    const available = (item.equipment_units ?? []).filter((u) => u.status === 'available').length;
     if (total === 0) return { available: 0, total: 0, color: 'text-gray-400' };
     const pct = (available / total) * 100;
     if (pct === 0) return { available, total, color: 'text-red-400' };
@@ -155,18 +146,44 @@ export default function EquipmentPage() {
     return { available, total, color: 'text-green-400' };
   };
 
-  if (loading) {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const ok = await showConfirm('Czy na pewno chcesz usunąć?', 'Usuń');
+    if (!ok) return;
+    try {
+      await deleteEquipment(id).unwrap();
+      showSnackbar('Usunięto', 'success');
+      // po usunięciu odśwież bieżący feed od strony 0
+      setPage(0);
+      refetch();
+    } catch {
+      showSnackbar('Błąd podczas usuwania', 'error');
+    }
+  };
+
+  // Błędy / loading (kategorie albo feed)
+  if (isError || catError) {
+    return (
+      <div className="text-[#e5e4e2]/80">
+        Coś poszło nie tak.{' '}
+        <button className="underline" onClick={() => { refetch(); refetchCats(); }}>
+          Spróbuj ponownie
+        </button>
+      </div>
+    );
+  }
+
+  if (isLoading || catLoading) {
     return <div className="flex items-center justify-center h-64 text-[#e5e4e2]/60">Ładowanie...</div>;
   }
 
-  const mainCategories = getMainCategories();
-
   return (
     <div className="space-y-6">
+      {/* HEADER */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn</h2>
 
-        {/* Desktop - full buttons */}
+        {/* Desktop */}
         <div className="hidden md:flex gap-2">
           {canManageModule('equipment') && (
             <>
@@ -204,7 +221,7 @@ export default function EquipmentPage() {
           )}
         </div>
 
-        {/* Mobile - 3-dot menu + Add button */}
+        {/* Mobile */}
         <div className="flex md:hidden gap-2">
           {canManageModule('equipment') && (
             <div className="relative">
@@ -218,7 +235,7 @@ export default function EquipmentPage() {
                         <span>Kategorie</span>
                       </div>
                     ),
-                    onClick: () => router.push('/crm/equipment/categories')
+                    onClick: () => router.push('/crm/equipment/categories'),
                   },
                   {
                     children: (
@@ -227,7 +244,7 @@ export default function EquipmentPage() {
                         <span>Zestawy</span>
                       </div>
                     ),
-                    onClick: () => router.push('/crm/equipment/kits')
+                    onClick: () => router.push('/crm/equipment/kits'),
                   },
                   {
                     children: (
@@ -236,8 +253,8 @@ export default function EquipmentPage() {
                         <span>Lokalizacje</span>
                       </div>
                     ),
-                    onClick: () => router.push('/crm/equipment/locations')
-                  }
+                    onClick: () => router.push('/crm/equipment/locations'),
+                  },
                 ]}
               />
             </div>
@@ -254,6 +271,7 @@ export default function EquipmentPage() {
         </div>
       </div>
 
+      {/* TABS */}
       <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
         <button
           onClick={() => setActiveTab('all')}
@@ -265,7 +283,8 @@ export default function EquipmentPage() {
           </div>
           {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
         </button>
-        {mainCategories.map(cat => (
+
+        {mainCategories.map((cat) => (
           <button
             key={cat.id}
             onClick={() => setActiveTab(cat.id)}
@@ -275,6 +294,7 @@ export default function EquipmentPage() {
             {activeTab === cat.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
           </button>
         ))}
+
         <button
           onClick={() => setActiveTab('cables')}
           className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === 'cables' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
@@ -291,40 +311,22 @@ export default function EquipmentPage() {
         <ConnectorsView viewMode={viewMode} />
       ) : (
         <>
-          {/* Filtr typu: Wszystko / Tylko sprzęt / Tylko zestawy */}
+          {/* Filtry typu */}
           <div className="flex gap-2">
-            <button
-              onClick={() => setItemTypeFilter('all')}
-              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                itemTypeFilter === 'all'
-                  ? 'bg-[#d3bb73] text-[#1c1f33]'
-                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-              }`}
-            >
-              Wszystko
-            </button>
-            <button
-              onClick={() => setItemTypeFilter('equipment')}
-              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                itemTypeFilter === 'equipment'
-                  ? 'bg-[#d3bb73] text-[#1c1f33]'
-                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-              }`}
-            >
-              Tylko sprzęt
-            </button>
-            <button
-              onClick={() => setItemTypeFilter('kits')}
-              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                itemTypeFilter === 'kits'
-                  ? 'bg-[#d3bb73] text-[#1c1f33]'
-                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-              }`}
-            >
-              Tylko zestawy
-            </button>
+            {(['all', 'equipment', 'kits'] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setItemTypeFilter(k)}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                  itemTypeFilter === k ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+                }`}
+              >
+                {k === 'all' ? 'Wszystko' : k === 'equipment' ? 'Tylko sprzęt' : 'Tylko zestawy'}
+              </button>
+            ))}
           </div>
 
+          {/* Search + toggle view */}
           <div className="flex gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
@@ -352,16 +354,19 @@ export default function EquipmentPage() {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {/* Lista */}
+          {items.length === 0 ? (
             <div className="text-center py-12 text-[#e5e4e2]/60">Brak sprzętu</div>
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered.map(item => {
+              {items.map((item) => {
                 const stock = getStock(item);
                 return (
                   <div
                     key={item.id}
-                    onClick={() => router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)}
+                    onClick={() =>
+                      router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)
+                    }
                     className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 cursor-pointer relative"
                   >
                     {canManageModule('equipment') && (
@@ -369,11 +374,11 @@ export default function EquipmentPage() {
                         <ResponsiveActionBar
                           actions={[
                             {
-                              label: 'Usuń',
+                              label: deleting ? 'Usuwanie…' : 'Usuń',
                               onClick: (e) => handleDelete(item.id, e as any),
                               icon: <Trash2 className="w-4 h-4" />,
-                              variant: 'danger'
-                            }
+                              variant: 'danger',
+                            },
                           ]}
                         />
                       </div>
@@ -406,7 +411,9 @@ export default function EquipmentPage() {
                       {item.is_kit ? (
                         <span className="text-[#e5e4e2]/60 italic">Zestaw</span>
                       ) : (
-                        <span className={stock.color}>{stock.available}/{stock.total}</span>
+                        <span className={stock.color}>
+                          {stock.available}/{stock.total}
+                        </span>
                       )}
                       {item.brand && <span className="text-[#e5e4e2]/60">{item.brand}</span>}
                     </div>
@@ -416,12 +423,14 @@ export default function EquipmentPage() {
             </div>
           ) : (
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-              {filtered.map(item => {
+              {items.map((item) => {
                 const stock = getStock(item);
                 return (
                   <div
                     key={item.id}
-                    onClick={() => router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)}
+                    onClick={() =>
+                      router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)
+                    }
                     className="flex items-center gap-4 p-4 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 last:border-0"
                   >
                     <div className="relative">
@@ -460,18 +469,20 @@ export default function EquipmentPage() {
                       {item.is_kit ? (
                         <span className="text-sm text-[#e5e4e2]/60 italic">Zestaw</span>
                       ) : (
-                        <span className={`text-sm ${stock.color}`}>{stock.available}/{stock.total}</span>
+                        <span className={`text-sm ${stock.color}`}>
+                          {stock.available}/{stock.total}
+                        </span>
                       )}
                       {canManageModule('equipment') && (
                         <div onClick={(e) => e.stopPropagation()}>
                           <ResponsiveActionBar
                             actions={[
                               {
-                                label: 'Usuń',
+                                label: deleting ? 'Usuwanie…' : 'Usuń',
                                 onClick: (e) => handleDelete(item.id, e as any),
                                 icon: <Trash2 className="w-4 h-4" />,
-                                variant: 'danger'
-                              }
+                                variant: 'danger',
+                              },
                             ]}
                           />
                         </div>
@@ -481,6 +492,13 @@ export default function EquipmentPage() {
                 );
               })}
             </div>
+          )}
+
+          {/* Sentinel do infinite scroll + status */}
+          <div ref={sentinelRef} />
+          {isFetching && <div className="py-6 text-center text-[#e5e4e2]/60">Ładowanie…</div>}
+          {!hasMore && !isFetching && items.length > 0 && (
+            <div className="py-6 text-center text-[#e5e4e2]/40">To już wszystko 🎉</div>
           )}
         </>
       )}

@@ -1,13 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Edit2, Trash2, ChevronRight, Save, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import {
+  useGetEquipmentCategoriesQuery,
+  useCreateWarehouseCategoryMutation,
+  useUpdateWarehouseCategoryMutation,
+  useDeleteWarehouseCategoryMutation,
+} from '@/app/crm/equipment/store/equipmentApi';
 
-interface WarehouseCategory {
+/** ---- Types ---- **/
+export interface SpecialProperty {
+  name: string;
+  value: boolean;
+}
+
+export interface WarehouseCategoryRow {
   id: string;
   parent_id: string | null;
   name: string;
@@ -16,7 +27,23 @@ interface WarehouseCategory {
   color: string;
   level: number;
   order_index: number;
-  uses_simple_quantity: boolean;
+  is_active: boolean;
+  special_properties: SpecialProperty[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/** ---------- utils ---------- */
+function sanitizeProps(list: SpecialProperty[]): SpecialProperty[] {
+  const seen = new Set<string>();
+  const out: SpecialProperty[] = [];
+  for (const p of list ?? []) {
+    const name = String(p?.name ?? '').trim();
+    if (!name || seen.has(name)) continue;
+    out.push({ name, value: Boolean(p?.value) });
+    seen.add(name);
+  }
+  return out;
 }
 
 export default function CategoriesPage() {
@@ -24,75 +51,62 @@ export default function CategoriesPage() {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
-  const [categories, setCategories] = useState<WarehouseCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  // RTKQ: load categories
+  const { data: categoriesRaw = [], isFetching } = useGetEquipmentCategoriesQuery();
+
+  // ensure non-null special_properties
+  const categories: WarehouseCategoryRow[] = useMemo(
+    () =>
+      (categoriesRaw as WarehouseCategoryRow[]).map((c) => ({
+        ...c,
+        special_properties: Array.isArray(c.special_properties) ? c.special_properties : [],
+      })),
+    [categoriesRaw]
+  );
+
+  // RTKQ: mutations
+  const [createCategory, { isLoading: creating }] = useCreateWarehouseCategoryMutation();
+  const [updateCategory, { isLoading: updating }] = useUpdateWarehouseCategoryMutation();
+  const [deleteCategory, { isLoading: deleting }] = useDeleteWarehouseCategoryMutation();
+
+  // editing state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
-  const [editUsesSimpleQuantity, setEditUsesSimpleQuantity] = useState(false);
+  const [editProps, setEditProps] = useState<SpecialProperty[]>([]);
+  const [newEditPropName, setNewEditPropName] = useState('');
+
+  // add state
   const [addingMain, setAddingMain] = useState(false);
   const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
-  const [newUsesSimpleQuantity, setNewUsesSimpleQuantity] = useState(false);
+  const [newProps, setNewProps] = useState<SpecialProperty[]>([]);
+  const [newPropName, setNewPropName] = useState('');
 
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
-  const fetchCategories = async () => {
-    try {
-      setLoading(true);
-      const { data } = await supabase
-        .from('warehouse_categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('level')
-        .order('order_index');
-      setCategories(data || []);
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEdit = (category: WarehouseCategory) => {
+  const handleEdit = (category: WarehouseCategoryRow) => {
     setEditingId(category.id);
     setEditName(category.name);
-    setEditDescription(category.description || '');
-    setEditUsesSimpleQuantity(category.uses_simple_quantity || false);
+    setEditDescription(category.description ?? '');
+    setEditProps(category.special_properties ?? []);
+    setNewEditPropName('');
   };
 
   const handleSave = async () => {
     if (!editingId || !editName.trim()) return;
-
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Session for update:', session?.user?.id);
+      await updateCategory({
+        id: editingId,
+        name: editName.trim(),
+        description: editDescription.trim() || null,
+        special_properties: sanitizeProps(editProps),
+      }).unwrap();
 
-      const { data, error } = await supabase
-        .from('warehouse_categories')
-        .update({
-          name: editName.trim(),
-          description: editDescription.trim() || null,
-          uses_simple_quantity: editUsesSimpleQuantity,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', editingId)
-        .select();
-
-      if (error) {
-        console.error('Update error:', error);
-        throw error;
-      }
-
-      console.log('Update success:', data);
       showSnackbar('Zapisano zmiany', 'success');
       setEditingId(null);
       setEditName('');
       setEditDescription('');
-      await fetchCategories();
+      setEditProps([]);
     } catch (error: any) {
       console.error('Error updating category:', error);
       showSnackbar(error?.message || 'Błąd zapisu', 'error');
@@ -103,37 +117,25 @@ export default function CategoriesPage() {
     if (!newName.trim()) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Session for insert:', session?.user?.id);
+      const main = categories.filter((c) => c.level === 1);
+      const maxOrder = main.length ? Math.max(...main.map((c) => c.order_index)) : -1;
 
-      const maxOrder = Math.max(...categories.filter(c => c.level === 1).map(c => c.order_index), -1);
+      await createCategory({
+        name: newName.trim(),
+        description: newDescription.trim() || null,
+        special_properties: sanitizeProps(newProps),
+        level: 1,
+        parent_id: null,
+        order_index: maxOrder + 1,
+        color: '#d3bb73',
+      }).unwrap();
 
-      const { data, error } = await supabase
-        .from('warehouse_categories')
-        .insert({
-          name: newName.trim(),
-          description: newDescription.trim() || null,
-          uses_simple_quantity: newUsesSimpleQuantity,
-          level: 1,
-          parent_id: null,
-          order_index: maxOrder + 1,
-          is_active: true,
-          color: '#d3bb73',
-        })
-        .select();
-
-      if (error) {
-        console.error('Insert error:', error);
-        throw error;
-      }
-
-      console.log('Insert success:', data);
       showSnackbar('Dodano kategorię', 'success');
       setAddingMain(false);
       setNewName('');
       setNewDescription('');
-      setNewUsesSimpleQuantity(false);
-      fetchCategories();
+      setNewProps([]);
+      setNewPropName('');
     } catch (error: any) {
       console.error('Error adding main category:', error);
       showSnackbar(error?.message || 'Błąd dodawania', 'error');
@@ -144,32 +146,25 @@ export default function CategoriesPage() {
     if (!newName.trim()) return;
 
     try {
-      const siblings = categories.filter(c => c.parent_id === parentId);
-      const maxOrder = Math.max(...siblings.map(c => c.order_index), -1);
+      const siblings = categories.filter((c) => c.parent_id === parentId);
+      const maxOrder = siblings.length ? Math.max(...siblings.map((c) => c.order_index)) : -1;
 
-      const { data, error } = await supabase
-        .from('warehouse_categories')
-        .insert({
-          name: newName.trim(),
-          description: newDescription.trim() || null,
-          level: 2,
-          parent_id: parentId,
-          order_index: maxOrder + 1,
-          is_active: true,
-          color: '#d3bb73',
-        })
-        .select();
-
-      if (error) {
-        console.error('Insert error:', error);
-        throw error;
-      }
+      await createCategory({
+        name: newName.trim(),
+        description: newDescription.trim() || null,
+        special_properties: sanitizeProps(newProps),
+        level: 2,
+        parent_id: parentId,
+        order_index: maxOrder + 1,
+        color: '#d3bb73',
+      }).unwrap();
 
       showSnackbar('Dodano podkategorię', 'success');
       setAddingSubFor(null);
       setNewName('');
       setNewDescription('');
-      fetchCategories();
+      setNewProps([]);
+      setNewPropName('');
     } catch (error: any) {
       console.error('Error adding subcategory:', error);
       showSnackbar(error?.message || 'Błąd dodawania', 'error');
@@ -185,27 +180,20 @@ export default function CategoriesPage() {
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('warehouse_categories')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('Delete error:', error);
-        throw error;
-      }
-
+      await deleteCategory({ id }).unwrap();
       showSnackbar('Usunięto kategorię', 'success');
-      await fetchCategories();
     } catch (error: any) {
       console.error('Error deleting category:', error);
       showSnackbar(error?.message || 'Błąd usuwania', 'error');
     }
   };
 
-  const mainCategories = categories.filter(c => c.level === 1);
+  const mainCategories = useMemo(
+    () => categories.filter((c) => c.level === 1),
+    [categories]
+  );
 
-  if (loading) {
+  if (isFetching) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
@@ -228,55 +216,50 @@ export default function CategoriesPage() {
       </div>
 
       <div className="space-y-6">
-        {mainCategories.map(mainCat => {
-          const subcategories = categories.filter(c => c.parent_id === mainCat.id);
+        {mainCategories.map((mainCat) => {
+          const subcategories = categories.filter((c) => c.parent_id === mainCat.id);
 
           return (
             <div key={mainCat.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
               {editingId === mainCat.id ? (
                 <div className="space-y-4 mb-6">
-                  <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa kategorii</label>
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                      placeholder="Nazwa kategorii"
-                      autoFocus
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis (opcjonalny)</label>
-                    <input
-                      type="text"
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                      placeholder="Opis kategorii"
-                    />
-                  </div>
-                  <div>
-                    <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editUsesSimpleQuantity}
-                        onChange={(e) => setEditUsesSimpleQuantity(e.target.checked)}
-                        className="w-4 h-4 bg-[#1c1f33] border border-[#d3bb73]/20 rounded"
-                      />
-                      Prosta ilość magazynowa (bez jednostek jako obiektów)
-                    </label>
-                  </div>
+                  <TextField
+                    label="Nazwa kategorii"
+                    value={editName}
+                    onChange={setEditName}
+                    placeholder="Nazwa kategorii"
+                    autoFocus
+                  />
+                  <TextField
+                    label="Opis (opcjonalny)"
+                    value={editDescription}
+                    onChange={setEditDescription}
+                    placeholder="Opis kategorii"
+                  />
+
+                  <SpecialPropsEditor
+                    propsList={editProps}
+                    onChange={setEditProps}
+                    newName={newEditPropName}
+                    setNewName={setNewEditPropName}
+                  />
+
                   <div className="flex gap-2">
                     <button
                       onClick={handleSave}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
+                      disabled={updating}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-60"
                     >
                       <Save className="w-4 h-4" />
                       Zapisz
                     </button>
                     <button
-                      onClick={() => setEditingId(null)}
+                      onClick={() => {
+                        setEditingId(null);
+                        setEditName('');
+                        setEditDescription('');
+                        setEditProps([]);
+                      }}
                       className="flex items-center gap-2 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:border-[#d3bb73]/40"
                     >
                       <X className="w-4 h-4" />
@@ -291,6 +274,7 @@ export default function CategoriesPage() {
                     {mainCat.description && (
                       <p className="text-[#e5e4e2]/60 text-sm">{mainCat.description}</p>
                     )}
+                    <PropsInline propsList={mainCat.special_properties} />
                     <p className="text-[#e5e4e2]/40 text-xs mt-1">
                       {subcategories.length} {subcategories.length === 1 ? 'podkategoria' : 'podkategorii'}
                     </p>
@@ -305,7 +289,8 @@ export default function CategoriesPage() {
                     </button>
                     <button
                       onClick={() => handleDelete(mainCat.id, mainCat.name, subcategories.length > 0)}
-                      className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg"
+                      disabled={deleting}
+                      className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg disabled:opacity-60"
                       title="Usuń kategorię"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -317,35 +302,44 @@ export default function CategoriesPage() {
               <div className="space-y-2">
                 <h4 className="text-sm font-medium text-[#e5e4e2]/80 mb-3">Podkategorie</h4>
 
-                {subcategories.map(subCat => (
+                {subcategories.map((subCat) => (
                   <div key={subCat.id} className="bg-[#0f1119] rounded-lg p-4">
                     {editingId === subCat.id ? (
                       <div className="space-y-3">
-                        <input
-                          type="text"
+                        <TextField
                           value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                          onChange={setEditName}
                           placeholder="Nazwa podkategorii"
                           autoFocus
                         />
-                        <input
-                          type="text"
+                        <TextField
                           value={editDescription}
-                          onChange={(e) => setEditDescription(e.target.value)}
-                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                          onChange={setEditDescription}
                           placeholder="Opis (opcjonalny)"
+                        />
+                        <SpecialPropsEditor
+                          propsList={editProps}
+                          onChange={setEditProps}
+                          newName={newEditPropName}
+                          setNewName={setNewEditPropName}
+                          compact
                         />
                         <div className="flex gap-2">
                           <button
                             onClick={handleSave}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm"
+                            disabled={updating}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm disabled:opacity-60"
                           >
                             <Save className="w-3.5 h-3.5" />
                             Zapisz
                           </button>
                           <button
-                            onClick={() => setEditingId(null)}
+                            onClick={() => {
+                              setEditingId(null);
+                              setEditName('');
+                              setEditDescription('');
+                              setEditProps([]);
+                            }}
                             className="flex items-center gap-2 px-3 py-1.5 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:border-[#d3bb73]/40 text-sm"
                           >
                             <X className="w-3.5 h-3.5" />
@@ -362,6 +356,7 @@ export default function CategoriesPage() {
                             {subCat.description && (
                               <span className="text-[#e5e4e2]/60 text-sm ml-2">— {subCat.description}</span>
                             )}
+                            <PropsInline propsList={subCat.special_properties} />
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -374,7 +369,8 @@ export default function CategoriesPage() {
                           </button>
                           <button
                             onClick={() => handleDelete(subCat.id, subCat.name, false)}
-                            className="p-1.5 text-red-400 hover:bg-red-400/10 rounded-lg"
+                            disabled={deleting}
+                            className="p-1.5 text-red-400 hover:bg-red-400/10 rounded-lg disabled:opacity-60"
                             title="Usuń podkategorię"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -387,25 +383,29 @@ export default function CategoriesPage() {
 
                 {addingSubFor === mainCat.id ? (
                   <div className="bg-[#0f1119] rounded-lg p-4 space-y-3 border-2 border-[#d3bb73]/20">
-                    <input
-                      type="text"
+                    <TextField
                       value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                      onChange={setNewName}
                       placeholder="Nazwa podkategorii"
                       autoFocus
                     />
-                    <input
-                      type="text"
+                    <TextField
                       value={newDescription}
-                      onChange={(e) => setNewDescription(e.target.value)}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                      onChange={setNewDescription}
                       placeholder="Opis (opcjonalny)"
+                    />
+                    <SpecialPropsEditor
+                      propsList={newProps}
+                      onChange={setNewProps}
+                      newName={newPropName}
+                      setNewName={setNewPropName}
+                      compact
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleAddSub(mainCat.id)}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm"
+                        disabled={creating}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm disabled:opacity-60"
                       >
                         <Plus className="w-4 h-4" />
                         Dodaj
@@ -415,6 +415,8 @@ export default function CategoriesPage() {
                           setAddingSubFor(null);
                           setNewName('');
                           setNewDescription('');
+                          setNewProps([]);
+                          setNewPropName('');
                         }}
                         className="px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:border-[#d3bb73]/40 text-sm"
                       >
@@ -439,42 +441,30 @@ export default function CategoriesPage() {
         {addingMain ? (
           <div className="bg-[#1c1f33] border-2 border-[#d3bb73]/20 rounded-xl p-6 space-y-4">
             <h3 className="text-lg font-medium text-[#e5e4e2]">Nowa kategoria główna</h3>
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa kategorii</label>
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                placeholder="np. Dekoracje, Kostiumy..."
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis (opcjonalny)</label>
-              <input
-                type="text"
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                placeholder="Krótki opis kategorii"
-              />
-            </div>
-            <div>
-              <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newUsesSimpleQuantity}
-                  onChange={(e) => setNewUsesSimpleQuantity(e.target.checked)}
-                  className="w-4 h-4 bg-[#1c1f33] border border-[#d3bb73]/20 rounded"
-                />
-                Prosta ilość magazynowa (bez jednostek jako obiektów)
-              </label>
-            </div>
+            <TextField
+              label="Nazwa kategorii"
+              value={newName}
+              onChange={setNewName}
+              placeholder="np. Dekoracje, Kostiumy..."
+              autoFocus
+            />
+            <TextField
+              label="Opis (opcjonalny)"
+              value={newDescription}
+              onChange={setNewDescription}
+              placeholder="Krótki opis kategorii"
+            />
+            <SpecialPropsEditor
+              propsList={newProps}
+              onChange={setNewProps}
+              newName={newPropName}
+              setNewName={setNewPropName}
+            />
             <div className="flex gap-2">
               <button
                 onClick={handleAddMain}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
+                disabled={creating}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-60"
               >
                 <Plus className="w-4 h-4" />
                 Dodaj kategorię
@@ -484,6 +474,8 @@ export default function CategoriesPage() {
                   setAddingMain(false);
                   setNewName('');
                   setNewDescription('');
+                  setNewProps([]);
+                  setNewPropName('');
                 }}
                 className="px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:border-[#d3bb73]/40"
               >
@@ -501,6 +493,138 @@ export default function CategoriesPage() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** ---------- Small UI helpers ---------- */
+
+function TextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+}: {
+  label?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div>
+      {label && <label className="block text-sm text-[#e5e4e2]/60 mb-2">{label}</label>}
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+      />
+    </div>
+  );
+}
+
+function PropsInline({ propsList }: { propsList: SpecialProperty[] }) {
+  const active = propsList?.filter((p) => p.value);
+  if (!active?.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {active.map((p) => (
+        <span
+          key={p.name}
+          className="text-[10px] uppercase tracking-wide bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2]/80 px-2 py-1 rounded"
+        >
+          {p.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SpecialPropsEditor({
+  propsList,
+  onChange,
+  newName,
+  setNewName,
+  compact,
+}: {
+  propsList: SpecialProperty[];
+  onChange: (list: SpecialProperty[]) => void;
+  newName: string;
+  setNewName: (v: string) => void;
+  compact?: boolean;
+}) {
+  const toggle = (name: string) => {
+    const next = [...propsList];
+    const idx = next.findIndex((p) => p.name === name);
+    if (idx >= 0) next[idx] = { ...next[idx], value: !next[idx].value };
+    onChange(next);
+  };
+
+  const remove = (name: string) => {
+    onChange(propsList.filter((p) => p.name !== name));
+  };
+
+  const add = () => {
+    const clean = newName.trim();
+    if (!clean) return;
+    if (propsList.some((p) => p.name === clean)) {
+      setNewName('');
+      return;
+    }
+    onChange([...propsList, { name: clean, value: true }]);
+    setNewName('');
+  };
+
+  return (
+    <div className={`rounded-lg ${compact ? 'p-3' : 'p-4'} bg-[#0f1119] border border-[#d3bb73]/15`}>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          className="flex-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40"
+          placeholder="Dodaj właściwość (np. simple_quantity, requires_serial)"
+        />
+        <button
+          onClick={add}
+          className="px-3 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 text-sm"
+        >
+          Dodaj
+        </button>
+      </div>
+
+      {!!propsList.length && (
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {propsList.map((p) => (
+            <label
+              key={p.name}
+              className="flex items-center justify-between gap-3 bg-[#1c1f33] border border-[#d3bb73]/15 rounded px-3 py-2"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={p.value}
+                  onChange={() => toggle(p.name)}
+                  className="w-4 h-4 bg-[#0f1119] border border-[#d3bb73]/30 rounded"
+                />
+                <span className="text-[#e5e4e2]/90 text-sm">{p.name}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(p.name)}
+                className="text-[#e5e4e2]/50 hover:text-red-400 text-xs"
+                title="Usuń właściwość"
+              >
+                Usuń
+              </button>
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
