@@ -195,6 +195,26 @@ updateCableQuantity: builder.mutation<
       providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
     }),
 
+    // aktualizacja sprzętu
+    updateEquipmentItem: builder.mutation<
+      { success: true },
+      { id: string; payload: Record<string, any> }
+    >({
+      async queryFn({ id, payload }) {
+        const { error } = await supabase
+          .from('equipment_items')
+          .update(payload)
+          .eq('id', id);
+
+        if (error) return { error: error as any };
+        return { data: { success: true } };
+      },
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Equipment', id },
+        'EquipmentList',
+      ],
+    }),
+
     // kasowanie pojedynczego sprzętu (nie dotyczy kitów)
 deleteEquipment: builder.mutation<{ success: true }, string>({
   async queryFn(id) {
@@ -373,6 +393,7 @@ export const {
   useGetUnitsByEquipmentQuery,
   useGetConnectorTypesQuery,
   useGetStorageLocationsQuery,
+  useUpdateEquipmentItemMutation,
   useDeleteEquipmentMutation,
   useGetEquipmentFeedQuery,
   useLazyGetEquipmentFeedQuery,

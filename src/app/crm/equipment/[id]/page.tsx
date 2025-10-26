@@ -18,10 +18,10 @@ import {
   useGetConnectorTypesQuery,
   useGetStorageLocationsQuery,
   useGetEquipmentCategoriesQuery,
+  useUpdateEquipmentItemMutation,
 } from '../store/equipmentApi';
 
 import {
-  updateEquipmentItem,
   softDeleteEquipmentItem,
   addEquipmentComponent,
   deleteEquipmentComponent,
@@ -29,7 +29,6 @@ import {
   duplicateEquipmentUnit,
   fetchUnitEvents,
   logEquipmentEdit,
-  // ✅ ensure these exist in your slice
   upsertEquipmentUnit,
   addUnitEvent,
   setCableQuantity,
@@ -87,6 +86,9 @@ export default function EquipmentDetailPage() {
     isFetching: unitsLoading,
     refetch: refetchUnits,
   } = useGetUnitsByEquipmentQuery(equipmentId, { skip: !equipmentId });
+
+  // RTK Query mutation
+  const [updateEquipmentMutation] = useUpdateEquipmentItemMutation();
 
   const loading = eqLoading || unitsLoading;
 
@@ -186,7 +188,7 @@ export default function EquipmentDetailPage() {
         notes: editForm.notes || null,
       });
 
-      await dispatch(updateEquipmentItem({ id: equipmentId, payload }));
+      await updateEquipmentMutation({ id: equipmentId, payload }).unwrap();
 
       // basic log set
       const fieldsToLog = [
@@ -202,7 +204,6 @@ export default function EquipmentDetailPage() {
       ];
       for (const f of fieldsToLog) await logChange(f.name, f.old, f.new);
 
-      await refetchEquipment();
       setIsEditing(false);
       showSnackbar('Zmiany zostały zapisane', 'success');
     } catch (e: any) {
