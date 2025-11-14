@@ -1,9 +1,11 @@
 # Naprawa błędu 403 Forbidden - CORS Configuration
 
 ## Problem
+
 Formularz kontaktowy zwraca 403 Forbidden po deploy na mavinci.pl
 
 ## Przyczyna
+
 Supabase domyślnie blokuje żądania z nieznanych domen (CORS protection)
 
 ## Rozwiązanie - Dodaj domenę do Supabase
@@ -28,11 +30,13 @@ W polu **Allowed Origins** dodaj:
 https://mavinci.pl
 ```
 
-**WAŻNE:** 
+**WAŻNE:**
+
 - Dodaj również `http://localhost:3000` jeśli testujesz lokalnie
 - Możesz dodać wiele domen, każda w nowej linii
 
 **Przykład:**
+
 ```
 https://mavinci.pl
 http://localhost:3000
@@ -58,6 +62,7 @@ http://localhost:3001
 ### Sprawdź czy zmienne środowiskowe są dostępne:
 
 **Na VPS wykonaj:**
+
 ```bash
 # Zaloguj się na VPS
 ssh user@mavinci.pl
@@ -74,6 +79,7 @@ cat .env
 ```
 
 **Jeśli .env jest pusty lub nie istnieje:**
+
 ```bash
 # Skopiuj z lokalnego komputera
 scp .env user@mavinci.pl:/path/to/project/.env
@@ -91,8 +97,9 @@ sudo systemctl restart mavinci
 ### 1. Sprawdź console przeglądarki (F12)
 
 **Szukaj błędów:**
+
 ```
-Access to fetch at 'https://fuuljhhuhfojtmmfmskq.supabase.co' 
+Access to fetch at 'https://fuuljhhuhfojtmmfmskq.supabase.co'
 from origin 'https://mavinci.pl' has been blocked by CORS policy
 ```
 
@@ -103,6 +110,7 @@ from origin 'https://mavinci.pl' has been blocked by CORS policy
 W DevTools (F12) → Network → kliknij żądanie POST
 
 **Sprawdź czy są:**
+
 - `Origin: https://mavinci.pl`
 - `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
 
@@ -139,10 +147,11 @@ curl -X POST 'https://fuuljhhuhfojtmmfmskq.supabase.co/rest/v1/contact_messages'
 ### Sprawdź RLS policies:
 
 W Supabase Dashboard:
+
 1. Table Editor → contact_messages
 2. Kliknij zakładkę "Policies"
 3. Sprawdź czy jest policy: "Anyone can send contact messages"
-4. Powinna mieć: 
+4. Powinna mieć:
    - Command: INSERT
    - Roles: anon, authenticated
    - Policy: true
@@ -159,4 +168,3 @@ W Supabase Dashboard:
 4. ❌ **Klucz API niepoprawny** → Sprawdź czy NEXT_PUBLIC_SUPABASE_ANON_KEY jest poprawny
 
 **W 99% przypadków to CORS!**
-

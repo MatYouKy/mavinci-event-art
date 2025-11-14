@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { isAdmin as checkIsAdmin, canView, canManage, canCreate, canManagePermissions as checkCanManagePermissions, type Employee } from '@/lib/permissions';
+import {
+  isAdmin as checkIsAdmin,
+  canView,
+  canManage,
+  canCreate,
+  canManagePermissions as checkCanManagePermissions,
+  type Employee,
+} from '@/lib/permissions';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 
 interface CurrentEmployeeData {
   employee: Employee | null;
@@ -19,12 +27,15 @@ let cachedEmployee: Employee | null = null;
 let cachedUserId: string | null = null;
 
 export function useCurrentEmployee(): CurrentEmployeeData {
+  const { user, isAdmin } = useAuth();
   const [employee, setEmployee] = useState<Employee | null>(cachedEmployee);
   const [loading, setLoading] = useState(!cachedEmployee);
 
   const fetchEmployee = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
         setEmployee(null);
@@ -70,11 +81,7 @@ export function useCurrentEmployee(): CurrentEmployeeData {
     fetchEmployee();
   }, []);
 
-  const isAdmin = employee ? checkIsAdmin(employee) : false;
-
-  const canManagePermissions = employee
-    ? checkCanManagePermissions(employee)
-    : false;
+  const canManagePermissions = employee ? checkCanManagePermissions(employee) : false;
 
   const hasScope = (scope: string): boolean => {
     if (!employee) return false;

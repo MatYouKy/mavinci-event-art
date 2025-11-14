@@ -91,9 +91,7 @@ export default function LoginScreen() {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Mavinci © 2025
-          </Text>
+          <Text style={styles.footerText}>Mavinci © 2025</Text>
         </View>
       </View>
     </KeyboardAvoidingView>

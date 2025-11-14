@@ -1,10 +1,13 @@
 # IMAP Email Synchronization Setup
 
 ## Problem
+
 Supabase Edge Functions (Deno) **nie obsługują bibliotek IMAP** z Node.js. Biblioteki takie jak `imap`, `imap-simple` wymagają natywnych modułów Node.js, które nie działają w środowisku Deno Runtime.
 
 ## Rozwiązanie
+
 Aby pobierać emaile przez IMAP, potrzebujesz **zewnętrznego workera Node.js**, który będzie:
+
 1. Łączył się z serwerem IMAP
 2. Pobierał nowe emaile
 3. Zapisywał je do tabeli `received_emails` w Supabase
@@ -30,10 +33,7 @@ const { simpleParser } = require('mailparser');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 async function syncAccount(accountId) {
   // Pobierz konfigurację konta
@@ -68,16 +68,15 @@ async function syncAccount(accountId) {
   console.log(`Found ${messages.length} messages`);
 
   for (const item of messages.slice(-50)) {
-    const all = item.parts.find(part => part.which === '');
+    const all = item.parts.find((part) => part.which === '');
     if (!all) continue;
 
     try {
       const parsed = await simpleParser(all.body);
 
       // Zapisz do bazy (upsert aby uniknąć duplikatów)
-      await supabase
-        .from('received_emails')
-        .upsert({
+      await supabase.from('received_emails').upsert(
+        {
           email_account_id: accountId,
           message_id: parsed.messageId || `${Date.now()}-${Math.random()}`,
           from_address: parsed.from?.text || '',
@@ -88,9 +87,11 @@ async function syncAccount(accountId) {
           received_date: parsed.date || new Date(),
           has_attachments: parsed.attachments && parsed.attachments.length > 0,
           raw_headers: parsed.headers || {},
-        }, {
-          onConflict: 'email_account_id,message_id'
-        });
+        },
+        {
+          onConflict: 'email_account_id,message_id',
+        },
+      );
 
       console.log(`Synced: ${parsed.subject}`);
     } catch (err) {
@@ -123,12 +124,14 @@ setInterval(syncAll, 5 * 60 * 1000);
 ```
 
 Utwórz `.env`:
+
 ```
 SUPABASE_URL=twoj-url
 SUPABASE_SERVICE_ROLE_KEY=twoj-klucz
 ```
 
 Uruchom:
+
 ```bash
 node sync.js
 ```
@@ -136,6 +139,7 @@ node sync.js
 ### Opcja 2: Scheduled Function (Cron Job)
 
 Deploy workera jako:
+
 - **Vercel Cron** (jeśli używasz Vercel)
 - **Railway** (prosty hosting dla Node.js)
 - **DigitalOcean App Platform**
@@ -144,12 +148,14 @@ Deploy workera jako:
 ### Opcja 3: Zapier / Make.com
 
 Użyj gotowej integracji no-code:
+
 1. Trigger: "New Email" (IMAP)
 2. Action: "Create Row" in Supabase (`received_emails`)
 
 ## Konfiguracja w CRM
 
 Po uruchomieniu workera, CRM automatycznie będzie pokazywał:
+
 1. **Wiadomości z formularza** (`contact_messages`)
 2. **Odebrane emaile** (`received_emails`) - zsynchronizowane przez workera
 3. **Wysłane emaile** (`sent_emails`) - wysłane przez CRM

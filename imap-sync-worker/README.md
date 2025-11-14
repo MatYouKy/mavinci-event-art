@@ -34,6 +34,7 @@ nano .env
 ```
 
 Uzupełnij:
+
 ```env
 SUPABASE_URL=https://twojprojekt.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=twoj_service_role_key
@@ -42,6 +43,7 @@ MAX_MESSAGES_PER_SYNC=50
 ```
 
 **Gdzie znaleźć klucze:**
+
 1. Wejdź na https://supabase.com
 2. Wybierz swój projekt
 3. Idź do Settings → API
@@ -52,11 +54,13 @@ MAX_MESSAGES_PER_SYNC=50
 ### 4. Uruchomienie
 
 #### Testowe uruchomienie:
+
 ```bash
 npm start
 ```
 
 Powinieneś zobaczyć:
+
 ```
 ================================================================================
 MAVINCI IMAP SYNC WORKER
@@ -132,6 +136,7 @@ WantedBy=multi-user.target
 ```
 
 Uruchom:
+
 ```bash
 sudo systemctl enable mavinci-imap-sync
 sudo systemctl start mavinci-imap-sync
@@ -146,6 +151,7 @@ sudo journalctl -u mavinci-imap-sync -f
 ### Częstotliwość synchronizacji
 
 Edytuj `.env`:
+
 ```env
 # Synchronizuj co 2 minuty
 SYNC_INTERVAL_MINUTES=2
@@ -169,6 +175,7 @@ MAX_MESSAGES_PER_SYNC=100
 ### Sprawdź czy działa
 
 W bazie danych:
+
 ```sql
 SELECT
   email_address,
@@ -197,6 +204,7 @@ LIMIT 10;
 ### Problem: "Error: Connection timeout"
 
 Sprawdź firewall na VPS:
+
 ```bash
 # Pozwól na połączenia IMAP (port 993)
 sudo ufw allow 993/tcp
@@ -214,6 +222,7 @@ sudo ufw allow out on eth0
 ### Problem: "Too many connections"
 
 Niektóre serwery limitują połączenia. Zmniejsz częstotliwość:
+
 ```env
 SYNC_INTERVAL_MINUTES=10
 ```
@@ -221,6 +230,7 @@ SYNC_INTERVAL_MINUTES=10
 ### Problem: Worker się zatrzymuje
 
 Użyj PM2 który automatycznie restartuje:
+
 ```bash
 pm2 start sync.js --name mavinci-imap-sync --restart-delay=3000
 ```
@@ -228,12 +238,14 @@ pm2 start sync.js --name mavinci-imap-sync --restart-delay=3000
 ## Logs
 
 PM2:
+
 ```bash
 pm2 logs mavinci-imap-sync
 pm2 logs mavinci-imap-sync --lines 100
 ```
 
 Systemd:
+
 ```bash
 journalctl -u mavinci-imap-sync -f
 journalctl -u mavinci-imap-sync --since "1 hour ago"
@@ -250,11 +262,13 @@ node check-accounts.js
 ### Możliwe przyczyny:
 
 **1. Brak kont w bazie danych**
+
 - Dodaj konto w CRM: Pracownicy → Twój profil → Konta Email
 
 **2. Konto nie jest aktywne (`is_active = false`)**
 
 Uruchom w Supabase SQL Editor:
+
 ```sql
 -- Zobacz wszystkie konta
 SELECT email_address, is_active FROM employee_email_accounts;
@@ -264,12 +278,14 @@ UPDATE employee_email_accounts SET is_active = true;
 ```
 
 **3. Zły klucz API**
+
 - Sprawdź czy w `.env` używasz **service_role** key (nie anon!)
 - Znajdziesz go w: Supabase Dashboard → Settings → API
 
 **4. Problem z RLS (Row Level Security)**
 
 Dodaj politykę dla service_role w SQL Editor:
+
 ```sql
 -- Najpierw usuń starą politykę jeśli istnieje
 DROP POLICY IF EXISTS "Service role bypass RLS" ON employee_email_accounts;
@@ -284,6 +300,7 @@ CREATE POLICY "Service role bypass RLS"
 ```
 
 Po naprawie zrestartuj workera:
+
 ```bash
 pm2 restart mavinci-imap-sync
 ```
@@ -293,6 +310,7 @@ pm2 restart mavinci-imap-sync
 Wyślij email testowy na skonfigurowane konto i poczekaj maksymalnie `SYNC_INTERVAL_MINUTES` minut.
 
 W CRM:
+
 1. Idź do **Wiadomości**
 2. Wybierz konto email z listy
 3. Sprawdź czy pojawił się nowy email

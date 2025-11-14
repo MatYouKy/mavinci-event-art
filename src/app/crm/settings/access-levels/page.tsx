@@ -71,10 +71,7 @@ export default function AccessLevelsPage() {
   const fetchAccessLevels = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('access_levels')
-        .select('*')
-        .order('order_index');
+      const { data, error } = await supabase.from('access_levels').select('*').order('order_index');
 
       if (error) throw error;
       setAccessLevels(data || []);
@@ -136,16 +133,16 @@ export default function AccessLevelsPage() {
         if (error) throw error;
         showSnackbar('Poziom dostępu zaktualizowany', 'success');
       } else {
-        const { error } = await supabase
-          .from('access_levels')
-          .insert([{
+        const { error } = await supabase.from('access_levels').insert([
+          {
             name: formData.name,
             slug: formData.slug,
             description: formData.description,
             config: formData.config,
             default_permissions: formData.default_permissions,
             order_index: accessLevels.length + 1,
-          }]);
+          },
+        ]);
 
         if (error) throw error;
         showSnackbar('Poziom dostępu utworzony', 'success');
@@ -163,10 +160,7 @@ export default function AccessLevelsPage() {
     if (!confirm('Czy na pewno chcesz usunąć ten poziom dostępu?')) return;
 
     try {
-      const { error } = await supabase
-        .from('access_levels')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('access_levels').delete().eq('id', id);
 
       if (error) throw error;
       showSnackbar('Poziom dostępu usunięty', 'success');
@@ -195,55 +189,55 @@ export default function AccessLevelsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Shield className="w-6 h-6 text-[#d3bb73]" />
+          <Shield className="h-6 w-6 text-[#d3bb73]" />
           <h1 className="text-2xl font-bold text-[#e5e4e2]">Poziomy dostępu</h1>
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#0f1119] px-4 py-2 rounded hover:bg-[#d3bb73]/90 transition-colors"
+          className="flex items-center gap-2 rounded bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#d3bb73]/90"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           Dodaj poziom
         </button>
       </div>
 
       <div className="grid gap-4">
         {accessLevels.map((level) => (
-          <div key={level.id} className="bg-[#1a1d29] border border-[#d3bb73]/20 rounded-lg p-6">
-            <div className="flex items-start justify-between mb-4">
+          <div key={level.id} className="rounded-lg border border-[#d3bb73]/20 bg-[#1a1d29] p-6">
+            <div className="mb-4 flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">{level.name}</h3>
-                <p className="text-sm text-[#e5e4e2]/60 mb-2">{level.description}</p>
-                <code className="text-xs bg-[#0f1119] px-2 py-1 rounded text-[#d3bb73]">
+                <h3 className="mb-1 text-lg font-medium text-[#e5e4e2]">{level.name}</h3>
+                <p className="mb-2 text-sm text-[#e5e4e2]/60">{level.description}</p>
+                <code className="rounded bg-[#0f1119] px-2 py-1 text-xs text-[#d3bb73]">
                   {level.slug}
                 </code>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleOpenModal(level)}
-                  className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                  className="rounded p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                 >
-                  <Edit className="w-4 h-4" />
+                  <Edit className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => handleDelete(level.id)}
-                  className="p-2 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                  className="rounded p-2 text-red-400 transition-colors hover:bg-red-400/10"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               {Object.entries(level.config).map(([key, value]) => (
                 <div
                   key={key}
-                  className={`text-xs px-3 py-2 rounded ${
+                  className={`rounded px-3 py-2 text-xs ${
                     value
-                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                      : 'bg-[#0f1119] text-[#e5e4e2]/40 border border-[#e5e4e2]/10'
+                      ? 'border border-green-500/30 bg-green-500/20 text-green-400'
+                      : 'border border-[#e5e4e2]/10 bg-[#0f1119] text-[#e5e4e2]/40'
                   }`}
                 >
                   {key.replace(/_/g, ' ')}
@@ -253,12 +247,12 @@ export default function AccessLevelsPage() {
 
             {level.default_permissions.length > 0 && (
               <div className="mt-4">
-                <div className="text-xs text-[#e5e4e2]/60 mb-2">Domyślne uprawnienia:</div>
+                <div className="mb-2 text-xs text-[#e5e4e2]/60">Domyślne uprawnienia:</div>
                 <div className="flex flex-wrap gap-2">
                   {level.default_permissions.map((perm) => (
                     <span
                       key={perm}
-                      className="text-xs bg-[#d3bb73]/20 text-[#d3bb73] px-2 py-1 rounded"
+                      className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]"
                     >
                       {perm}
                     </span>
@@ -271,10 +265,10 @@ export default function AccessLevelsPage() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1a1d29] border border-[#d3bb73]/30 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg border border-[#d3bb73]/30 bg-[#1a1d29]">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-[#e5e4e2]">
                   {editingLevel ? 'Edytuj poziom dostępu' : 'Nowy poziom dostępu'}
                 </h2>
@@ -282,46 +276,48 @@ export default function AccessLevelsPage() {
                   onClick={() => setShowModal(false)}
                   className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/80 mb-2">Nazwa</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/80">Nazwa</label>
                     <input
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/30 rounded px-3 py-2 text-[#e5e4e2]"
+                      className="w-full rounded border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/80 mb-2">Slug</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/80">Slug</label>
                     <input
                       type="text"
                       value={formData.slug}
                       onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/30 rounded px-3 py-2 text-[#e5e4e2]"
+                      className="w-full rounded border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/80 mb-2">Opis</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/80">Opis</label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/30 rounded px-3 py-2 text-[#e5e4e2] h-20"
+                    className="h-20 w-full rounded border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/80 mb-3">Konfiguracja dostępu</label>
+                  <label className="mb-3 block text-sm text-[#e5e4e2]/80">
+                    Konfiguracja dostępu
+                  </label>
                   <div className="grid grid-cols-2 gap-3">
                     {Object.keys(formData.config).map((key) => (
-                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                      <label key={key} className="flex cursor-pointer items-center gap-2">
                         <input
                           type="checkbox"
                           checked={formData.config[key as keyof typeof formData.config]}
@@ -333,19 +329,19 @@ export default function AccessLevelsPage() {
                           }
                           className="rounded text-[#d3bb73]"
                         />
-                        <span className="text-sm text-[#e5e4e2]">
-                          {key.replace(/_/g, ' ')}
-                        </span>
+                        <span className="text-sm text-[#e5e4e2]">{key.replace(/_/g, ' ')}</span>
                       </label>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/80 mb-3">Domyślne uprawnienia</label>
+                  <label className="mb-3 block text-sm text-[#e5e4e2]/80">
+                    Domyślne uprawnienia
+                  </label>
                   <div className="grid grid-cols-2 gap-3">
                     {availablePermissions.map((perm) => (
-                      <label key={perm.value} className="flex items-center gap-2 cursor-pointer">
+                      <label key={perm.value} className="flex cursor-pointer items-center gap-2">
                         <input
                           type="checkbox"
                           checked={formData.default_permissions.includes(perm.value)}
@@ -359,7 +355,7 @@ export default function AccessLevelsPage() {
                               setFormData({
                                 ...formData,
                                 default_permissions: formData.default_permissions.filter(
-                                  (p) => p !== perm.value
+                                  (p) => p !== perm.value,
                                 ),
                               });
                             }
@@ -373,17 +369,17 @@ export default function AccessLevelsPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="mt-6 flex gap-3">
                 <button
                   onClick={handleSave}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#0f1119] px-6 py-2 rounded hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex items-center gap-2 rounded bg-[#d3bb73] px-6 py-2 text-[#0f1119] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className="h-4 w-4" />
                   Zapisz
                 </button>
                 <button
                   onClick={() => setShowModal(false)}
-                  className="px-6 py-2 border border-[#d3bb73]/30 rounded text-[#e5e4e2] hover:bg-[#d3bb73]/10 transition-colors"
+                  className="rounded border border-[#d3bb73]/30 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
                 >
                   Anuluj
                 </button>

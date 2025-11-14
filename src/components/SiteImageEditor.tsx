@@ -110,7 +110,7 @@ export default function SiteImageEditor({
     } catch (error) {
       console.error('Error saving image:', error);
       alert(
-        'Błąd podczas zapisywania obrazu. Sprawdź czy tabela site_images istnieje w bazie danych.'
+        'Błąd podczas zapisywania obrazu. Sprawdź czy tabela site_images istnieje w bazie danych.',
       );
     }
     setSaving(false);
@@ -120,24 +120,22 @@ export default function SiteImageEditor({
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className={`absolute ${positionClasses[position]} z-50 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] p-3 rounded-full shadow-lg transition-all hover:scale-110`}
+        className={`absolute ${positionClasses[position]} z-50 rounded-full bg-[#d3bb73] p-3 text-[#1c1f33] shadow-lg transition-all hover:scale-110 hover:bg-[#d3bb73]/90`}
         title={image ? 'Edytuj obraz' : 'Dodaj obraz'}
       >
-        <Edit2 className="w-5 h-5" />
+        <Edit2 className="h-5 w-5" />
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4">
-          <div className="bg-[#1c1f33] rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-6 flex items-center justify-between z-10">
-              <h2 className="text-2xl font-light text-[#e5e4e2]">
-                Edytuj Obraz - {section}
-              </h2>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg bg-[#1c1f33]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <h2 className="text-2xl font-light text-[#e5e4e2]">Edytuj Obraz - {section}</h2>
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
               >
-                <X className="w-6 h-6" />
+                <X className="h-6 w-6" />
               </button>
             </div>
 
@@ -157,12 +155,10 @@ export default function SiteImageEditor({
             >
               {() => (
                 <Form>
-                  <div className="p-6 space-y-8">
+                  <div className="space-y-8 p-6">
                     <div>
-                      <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">
-                        Obraz Desktop *
-                      </h3>
-                      <div className="bg-[#0f1119] rounded-lg p-4">
+                      <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Obraz Desktop *</h3>
+                      <div className="rounded-lg bg-[#0f1119] p-4">
                         <ImageEditorField
                           fieldName="desktopImage"
                           image={initialImage}
@@ -173,24 +169,19 @@ export default function SiteImageEditor({
                           onSave={async () => {}}
                         />
                       </div>
-                      <p className="text-sm text-[#e5e4e2]/60 mt-2">
-                        Kliknij menu (trzy kropki) aby wgrać obraz lub ustawić
-                        pozycję
+                      <p className="mt-2 text-sm text-[#e5e4e2]/60">
+                        Kliknij menu (trzy kropki) aby wgrać obraz lub ustawić pozycję
                       </p>
                     </div>
 
                     <div>
-                      <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">
+                      <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">
                         Obraz Mobile (opcjonalnie)
                       </h3>
-                      <div className="bg-[#0f1119] rounded-lg p-4">
+                      <div className="rounded-lg bg-[#0f1119] p-4">
                         <ImageEditorField
                           fieldName="mobileImage"
-                          image={
-                            initialImage?.image_metadata?.mobile
-                              ? initialImage
-                              : null
-                          }
+                          image={initialImage?.image_metadata?.mobile ? initialImage : null}
                           isAdmin={true}
                           withMenu={true}
                           mode="vertical"
@@ -198,16 +189,16 @@ export default function SiteImageEditor({
                           onSave={async () => {}}
                         />
                       </div>
-                      <p className="text-sm text-[#e5e4e2]/60 mt-2">
+                      <p className="mt-2 text-sm text-[#e5e4e2]/60">
                         Opcjonalnie: wgraj osobny obraz dla urządzeń mobilnych
                       </p>
                     </div>
 
-                    <div className="bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg p-4">
+                    <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-4">
                       <p className="text-sm text-[#e5e4e2]/80">
                         💡 <strong>Instrukcja:</strong>
                       </p>
-                      <ul className="text-sm text-[#e5e4e2]/70 mt-2 space-y-1 list-disc list-inside">
+                      <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[#e5e4e2]/70">
                         <li>Kliknij menu (⋮) na obrazie aby wgrać zdjęcie</li>
                         <li>Po wgraniu możesz ustawić pozycję (przesunięcie, skalowanie)</li>
                         <li>Kliknij zielony przycisk ✓ aby zaakceptować zmiany</li>
@@ -216,24 +207,24 @@ export default function SiteImageEditor({
                     </div>
                   </div>
 
-                  <div className="sticky bottom-0 bg-[#1c1f33] border-t border-[#d3bb73]/20 p-6 flex gap-3">
+                  <div className="sticky bottom-0 flex gap-3 border-t border-[#d3bb73]/20 bg-[#1c1f33] p-6">
                     <button
                       type="button"
                       onClick={() => setIsOpen(false)}
-                      className="flex-1 px-6 py-3 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                      className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-6 py-3 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                     >
                       Anuluj
                     </button>
                     <button
                       type="submit"
                       disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                     >
                       {saving ? (
                         'Zapisywanie...'
                       ) : (
                         <>
-                          <Save className="w-5 h-5" />
+                          <Save className="h-5 w-5" />
                           Zapisz Zmiany
                         </>
                       )}

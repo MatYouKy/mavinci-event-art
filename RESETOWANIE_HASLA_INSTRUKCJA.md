@@ -23,6 +23,7 @@ Supabase w trybie **Development** (darmowy plan) **NIE WYSYŁA PRAWDZIWYCH MAILI
 5. Skopiuj link i wklej w przeglądarce
 
 **Format linka:**
+
 ```
 https://fuuljhhuhfojtmmfmskq.supabase.co/auth/v1/verify?token=xxx&type=recovery&redirect_to=https://yourdomain.com/crm/reset-password
 ```
@@ -112,10 +113,12 @@ Dodałem funkcjonalność resetowania hasła **bezpośrednio przez admina**.
 ```
 
 **Jeśli SMTP skonfigurowany:**
+
 - ✅ Mail przyjdzie na skrzynkę
 - ✅ Link w mailu prowadzi do `/crm/reset-password`
 
 **Jeśli SMTP NIE skonfigurowany:**
+
 - ❌ Mail NIE przyjdzie
 - ✅ Link jest w Supabase Dashboard (Logs)
 
@@ -149,17 +152,21 @@ Sprawdź czy **Redirect URLs** są poprawnie skonfigurowane:
 ## 🚨 Częste problemy
 
 ### Problem 1: "Link wygasł"
+
 **Przyczyna:** Token resetowania ważny tylko 1 godzinę
 **Rozwiązanie:** Wygeneruj nowy link
 
 ### Problem 2: "Mail nie przychodzi"
+
 **Przyczyna:** Brak SMTP lub email w spam
 **Rozwiązanie:**
+
 - Sprawdź folder SPAM
 - Skonfiguruj SMTP
 - Użyj panelu admina
 
 ### Problem 3: "Invalid redirect URL"
+
 **Przyczyna:** URL nie jest w whitelist Supabase
 **Rozwiązanie:** Dodaj URL w Authentication → URL Configuration
 
@@ -168,10 +175,12 @@ Sprawdź czy **Redirect URLs** są poprawnie skonfigurowane:
 ## 💡 Najlepsze rozwiązanie dla Ciebie
 
 ### **Dla środowiska deweloperskiego (teraz):**
+
 ✅ Używaj **Panelu Admina** do resetowania haseł pracownikom
 ✅ Lub sprawdzaj linki w **Supabase Logs**
 
 ### **Dla środowiska produkcyjnego:**
+
 ✅ Skonfiguruj **Gmail SMTP** (najprostsze)
 ✅ Lub **SendGrid** (bardziej profesjonalne)
 ✅ Dodaj domeny do **Email Templates** w Supabase

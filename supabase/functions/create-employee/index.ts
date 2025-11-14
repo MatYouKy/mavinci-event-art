@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        },
       );
     }
 
@@ -72,18 +72,15 @@ Deno.serve(async (req: Request) => {
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        },
       );
     }
 
     if (!authData.user) {
-      return new Response(
-        JSON.stringify({ error: 'No user returned from auth' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return new Response(JSON.stringify({ error: 'No user returned from auth' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Step 2: Insert employee data
@@ -101,9 +98,7 @@ Deno.serve(async (req: Request) => {
       show_on_website: false,
     };
 
-    const { error: employeeError } = await supabaseAdmin
-      .from('employees')
-      .insert([employeeData]);
+    const { error: employeeError } = await supabaseAdmin.from('employees').insert([employeeData]);
 
     if (employeeError) {
       console.error('Employee insert error:', employeeError);
@@ -114,7 +109,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        },
       );
     }
 
@@ -132,16 +127,13 @@ Deno.serve(async (req: Request) => {
       {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      },
     );
   } catch (error: any) {
     console.error('Unexpected error:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message || 'Internal server error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

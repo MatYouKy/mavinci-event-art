@@ -15,36 +15,34 @@ export function UpdateCableQuantityModal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full max-w-md p-6">
-        <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Ustaw ilość na stanie</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+        <h3 className="mb-4 text-xl font-light text-[#e5e4e2]">Ustaw ilość na stanie</h3>
 
-        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość sztuk</label>
+        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość sztuk</label>
         <input
           type="number"
           min={0}
           value={Number.isFinite(value) ? value : 0}
           onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || '0', 10)))}
-          className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] text-lg focus:outline-none focus:border-[#d3bb73]/30"
+          className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-3 text-lg text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
           placeholder="np. 50"
           autoFocus
         />
-        <p className="text-sm text-[#e5e4e2]/40 mt-2">
-          Wprowadź łączną ilość sztuk tego sprzętu.
-        </p>
+        <p className="mt-2 text-sm text-[#e5e4e2]/40">Wprowadź łączną ilość sztuk tego sprzętu.</p>
 
         <div className="flex gap-3 pt-6">
           <button
             onClick={onClose}
             disabled={saving}
-            className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors disabled:opacity-50"
+            className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20 disabled:opacity-50"
           >
             Anuluj
           </button>
           <button
             onClick={onSave}
             disabled={saving}
-            className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {saving ? 'Zapisywanie…' : 'Zapisz'}
           </button>

@@ -27,7 +27,11 @@ export default function Team() {
   const [editingMetadata, setEditingMetadata] = useState<ImageMetadata | null>(null);
 
   const { isEditMode } = useEditMode();
-  const { employee: currentEmployee, canManageModule, loading: employeeLoading } = useCurrentEmployee();
+  const {
+    employee: currentEmployee,
+    canManageModule,
+    loading: employeeLoading,
+  } = useCurrentEmployee();
   const canEdit = !employeeLoading && canManageModule && canManageModule('employees');
 
   useEffect(() => {
@@ -39,7 +43,9 @@ export default function Team() {
     try {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, team_page_metadata, occupation, role, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level')
+        .select(
+          'id, name, surname, nickname, email, avatar_url, avatar_metadata, team_page_metadata, occupation, role, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level',
+        )
         .eq('show_on_website', true)
         .order('order_index', { ascending: true })
         .order('created_at', { ascending: true });
@@ -102,14 +108,28 @@ export default function Team() {
   };
 
   return (
-    <section className="relative py-24 md:py-32 bg-[#1c1f33] overflow-hidden">
+    <section className="relative overflow-hidden bg-[#1c1f33] py-24 md:py-32">
       <div className="absolute inset-0 opacity-10">
-        <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
+        <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <pattern id="team-dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+            <pattern
+              id="team-dots"
+              x="0"
+              y="0"
+              width="40"
+              height="40"
+              patternUnits="userSpaceOnUse"
+            >
               <circle cx="2" cy="2" r="1" fill="#d3bb73" />
             </pattern>
-            <pattern id="team-lines" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse">
+            <pattern
+              id="team-lines"
+              x="0"
+              y="0"
+              width="80"
+              height="80"
+              patternUnits="userSpaceOnUse"
+            >
               <path d="M0 40 L80 40" stroke="#800020" strokeWidth="0.5" opacity="0.3" />
               <path d="M40 0 L40 80" stroke="#800020" strokeWidth="0.5" opacity="0.3" />
             </pattern>
@@ -119,142 +139,148 @@ export default function Team() {
         </svg>
       </div>
       <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#d3bb73] rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#800020] rounded-full blur-3xl"></div>
+        <div className="absolute left-1/4 top-0 h-96 w-96 rounded-full bg-[#d3bb73] blur-3xl"></div>
+        <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-[#800020] blur-3xl"></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16 md:mb-20">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mb-16 text-center md:mb-20">
           <div className="inline-block">
-            <span className="text-[#d3bb73] text-sm md:text-base font-light tracking-widest uppercase mb-4 block animate-[fadeIn_0.6s_ease-out]">
+            <span className="mb-4 block animate-[fadeIn_0.6s_ease-out] text-sm font-light uppercase tracking-widest text-[#d3bb73] md:text-base">
               Nasz Zespół
             </span>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-light text-[#e5e4e2] mb-6 animate-[fadeIn_0.8s_ease-out]">
+            <h2 className="mb-6 animate-[fadeIn_0.8s_ease-out] text-3xl font-light text-[#e5e4e2] sm:text-4xl md:text-5xl">
               Poznaj Ludzi za Sukcesem
             </h2>
-            <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto animate-[scaleIn_1s_ease-out]"></div>
+            <div className="mx-auto h-1 w-24 animate-[scaleIn_1s_ease-out] bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
           </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="text-[#d3bb73] text-lg">Ładowanie zespołu...</div>
+            <div className="text-lg text-[#d3bb73]">Ładowanie zespołu...</div>
           </div>
         ) : teamMembers.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="py-12 text-center">
             <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
           </div>
         ) : (
           <div className="flex flex-wrap justify-center gap-8">
             {teamMembers.map((member, index) => (
-            <div
-              key={member.id}
-              className="group relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(25%-1.5rem)]"
-              style={{
-                animation: `fadeInUp 0.6s ease-out ${index * 0.2}s both`,
-              }}
-              onMouseEnter={() => setHoveredId(member.id)}
-              onMouseLeave={() => setHoveredId(null)}
-            >
-              <div className="relative overflow-hidden rounded-2xl">
-                <div className="aspect-[3/4] relative bg-[#800020]/10" style={{ overflow: 'hidden' }}>
-<img
-                    src={member.image}
-                    alt={member.alt || member.name}
-                    className="transition-all duration-700"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: 'auto',
-                      objectFit: member.image_metadata?.desktop?.objectFit || 'cover',
-                      transform: `translate(${
-                        member.image_metadata?.desktop?.position?.posX || 0
-                      }%, ${
-                        member.image_metadata?.desktop?.position?.posY || 0
-                      }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`,
-                      transformOrigin: 'center',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = `translate(${
-                        member.image_metadata?.desktop?.position?.posX || 0
-                      }%, ${
-                        member.image_metadata?.desktop?.position?.posY || 0
-                      }%) scale(${(member.image_metadata?.desktop?.position?.scale || 1) * 1.1}) rotate(2deg)`;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = `translate(${
-                        member.image_metadata?.desktop?.position?.posX || 0
-                      }%, ${
-                        member.image_metadata?.desktop?.position?.posY || 0
-                      }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`;
-                    }}
-                  />
-
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/40 to-transparent opacity-60 group-hover:opacity-90 transition-all duration-500"></div>
-
-                  {/* Edit menu - visible only in edit mode */}
-                  {isEditMode && canEdit && (
-                    <button
-                      onClick={() => handleEditImagePosition(member)}
-                      className="absolute top-4 left-4 z-20 p-2 bg-[#d3bb73] rounded-full hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
-                      title="Ustaw pozycję zdjęcia"
-                    >
-                      <MoreVertical className="w-5 h-5 text-[#1c1f33]" />
-                    </button>
-                  )}
-
+              <div
+                key={member.id}
+                className="group relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(25%-1.5rem)]"
+                style={{
+                  animation: `fadeInUp 0.6s ease-out ${index * 0.2}s both`,
+                }}
+                onMouseEnter={() => setHoveredId(member.id)}
+                onMouseLeave={() => setHoveredId(null)}
+              >
+                <div className="relative overflow-hidden rounded-2xl">
                   <div
-                    className={`absolute top-4 right-4 flex gap-2 transition-all duration-500 ${
-                      hoveredId === member.id
-                        ? 'opacity-100 translate-y-0'
-                        : 'opacity-0 -translate-y-4'
-                    }`}
+                    className="relative aspect-[3/4] bg-[#800020]/10"
+                    style={{ overflow: 'hidden' }}
                   >
-                    <button className="w-10 h-10 rounded-full bg-[#d3bb73] backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73]/80 transition-all duration-300 hover:scale-110 hover:rotate-12">
-                      <Linkedin className="w-5 h-5 text-[#1c1f33]" />
-                    </button>
-                    <button className="w-10 h-10 rounded-full bg-[#d3bb73] backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73]/80 transition-all duration-300 hover:scale-110 hover:rotate-12">
-                      <Mail className="w-5 h-5 text-[#1c1f33]" />
-                    </button>
-                  </div>
+                    <img
+                      src={member.image}
+                      alt={member.alt || member.name}
+                      className="transition-all duration-700"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: 'auto',
+                        objectFit: member.image_metadata?.desktop?.objectFit || 'cover',
+                        transform: `translate(${
+                          member.image_metadata?.desktop?.position?.posX || 0
+                        }%, ${
+                          member.image_metadata?.desktop?.position?.posY || 0
+                        }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`,
+                        transformOrigin: 'center',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = `translate(${
+                          member.image_metadata?.desktop?.position?.posX || 0
+                        }%, ${
+                          member.image_metadata?.desktop?.position?.posY || 0
+                        }%) scale(${(member.image_metadata?.desktop?.position?.scale || 1) * 1.1}) rotate(2deg)`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = `translate(${
+                          member.image_metadata?.desktop?.position?.posX || 0
+                        }%, ${
+                          member.image_metadata?.desktop?.position?.posY || 0
+                        }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`;
+                      }}
+                    />
 
-                  <div className={`absolute bottom-0 left-0 right-0 p-6 transform transition-all duration-500 ${
-                    hoveredId === member.id ? '-translate-y-4' : 'translate-y-0'
-                  }`}>
-                    <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-1 group-hover:text-[#d3bb73] transition-colors duration-300">
-                      {member.name}
-                    </h3>
-                    <p className="text-[#d3bb73] text-sm font-light mb-3 tracking-wide">
-                      {member.position || member.role}
-                    </p>
-                    <p
-                      className={`text-[#e5e4e2]/80 text-sm font-light leading-relaxed transition-all duration-500 ${
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/40 to-transparent opacity-60 transition-all duration-500 group-hover:opacity-90"></div>
+
+                    {/* Edit menu - visible only in edit mode */}
+                    {isEditMode && canEdit && (
+                      <button
+                        onClick={() => handleEditImagePosition(member)}
+                        className="absolute left-4 top-4 z-20 rounded-full bg-[#d3bb73] p-2 shadow-lg transition-colors hover:bg-[#d3bb73]/90"
+                        title="Ustaw pozycję zdjęcia"
+                      >
+                        <MoreVertical className="h-5 w-5 text-[#1c1f33]" />
+                      </button>
+                    )}
+
+                    <div
+                      className={`absolute right-4 top-4 flex gap-2 transition-all duration-500 ${
                         hoveredId === member.id
-                          ? 'opacity-100 translate-y-0 max-h-20'
-                          : 'opacity-0 translate-y-4 max-h-0 overflow-hidden'
+                          ? 'translate-y-0 opacity-100'
+                          : '-translate-y-4 opacity-0'
                       }`}
                     >
-                      {member.bio}
-                    </p>
+                      <button className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73] backdrop-blur-sm transition-all duration-300 hover:rotate-12 hover:scale-110 hover:bg-[#d3bb73]/80">
+                        <Linkedin className="h-5 w-5 text-[#1c1f33]" />
+                      </button>
+                      <button className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73] backdrop-blur-sm transition-all duration-300 hover:rotate-12 hover:scale-110 hover:bg-[#d3bb73]/80">
+                        <Mail className="h-5 w-5 text-[#1c1f33]" />
+                      </button>
+                    </div>
+
+                    <div
+                      className={`absolute bottom-0 left-0 right-0 transform p-6 transition-all duration-500 ${
+                        hoveredId === member.id ? '-translate-y-4' : 'translate-y-0'
+                      }`}
+                    >
+                      <h3 className="mb-1 text-xl font-light text-[#e5e4e2] transition-colors duration-300 group-hover:text-[#d3bb73] md:text-2xl">
+                        {member.name}
+                      </h3>
+                      <p className="mb-3 text-sm font-light tracking-wide text-[#d3bb73]">
+                        {member.position || member.role}
+                      </p>
+                      <p
+                        className={`text-sm font-light leading-relaxed text-[#e5e4e2]/80 transition-all duration-500 ${
+                          hoveredId === member.id
+                            ? 'max-h-20 translate-y-0 opacity-100'
+                            : 'max-h-0 translate-y-4 overflow-hidden opacity-0'
+                        }`}
+                      >
+                        {member.bio}
+                      </p>
+                    </div>
+
+                    <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-transparent transition-all duration-500 group-hover:border-[#d3bb73]/30"></div>
                   </div>
-
-                  <div className="absolute inset-0 border-2 border-transparent group-hover:border-[#d3bb73]/30 rounded-2xl transition-all duration-500 pointer-events-none"></div>
                 </div>
-              </div>
 
-              <div className="absolute -inset-1 bg-gradient-to-br from-[#d3bb73]/0 via-[#d3bb73]/0 to-[#d3bb73]/0 group-hover:from-[#d3bb73]/20 group-hover:via-[#d3bb73]/5 group-hover:to-[#d3bb73]/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-700 -z-10"></div>
-            </div>
-          ))}
+                <div className="absolute -inset-1 -z-10 rounded-2xl bg-gradient-to-br from-[#d3bb73]/0 via-[#d3bb73]/0 to-[#d3bb73]/0 opacity-0 blur-xl transition-all duration-700 group-hover:from-[#d3bb73]/20 group-hover:via-[#d3bb73]/5 group-hover:to-[#d3bb73]/20 group-hover:opacity-100"></div>
+              </div>
+            ))}
           </div>
         )}
 
-        <div className="text-center mt-16 animate-[fadeIn_1.2s_ease-out]">
-          <p className="text-[#e5e4e2]/70 text-base md:text-lg font-light mb-6 max-w-2xl mx-auto">
-            Nasz zespół to połączenie doświadczenia, kreatywności i pasji do tworzenia wyjątkowych wydarzeń
+        <div className="mt-16 animate-[fadeIn_1.2s_ease-out] text-center">
+          <p className="mx-auto mb-6 max-w-2xl text-base font-light text-[#e5e4e2]/70 md:text-lg">
+            Nasz zespół to połączenie doświadczenia, kreatywności i pasji do tworzenia wyjątkowych
+            wydarzeń
           </p>
-          <button className="inline-flex items-center gap-2 px-8 py-4 bg-transparent border-2 border-[#d3bb73] text-[#d3bb73] rounded-full font-light hover:bg-[#d3bb73] hover:text-[#1c1f33] transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[#d3bb73]/30">
+          <button className="inline-flex items-center gap-2 rounded-full border-2 border-[#d3bb73] bg-transparent px-8 py-4 font-light text-[#d3bb73] transition-all duration-300 hover:scale-105 hover:bg-[#d3bb73] hover:text-[#1c1f33] hover:shadow-lg hover:shadow-[#d3bb73]/30">
             Dołącz do Zespołu
           </button>
         </div>

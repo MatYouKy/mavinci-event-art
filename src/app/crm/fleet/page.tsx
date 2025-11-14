@@ -90,7 +90,9 @@ export default function FleetPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>(getViewMode('fleet') === 'grid' ? 'cards' : 'table');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(
+    getViewMode('fleet') === 'grid' ? 'cards' : 'table',
+  );
 
   // Statystyki
   const [stats, setStats] = useState({
@@ -116,7 +118,7 @@ export default function FleetPage() {
         },
         () => {
           fetchVehicles();
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -127,7 +129,7 @@ export default function FleetPage() {
         },
         () => {
           fetchVehicles();
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -138,7 +140,7 @@ export default function FleetPage() {
         },
         () => {
           fetchVehicles();
-        }
+        },
       )
       .subscribe();
 
@@ -157,7 +159,8 @@ export default function FleetPage() {
 
       const { data: vehiclesData, error: vehiclesError } = await supabase
         .from('vehicles')
-        .select(`
+        .select(
+          `
           *,
           vehicle_assignments!vehicle_assignments_vehicle_id_fkey (
             employee_id,
@@ -170,15 +173,16 @@ export default function FleetPage() {
               avatar_metadata
             )
           )
-        `)
-        .order('name', { ascending: true});
+        `,
+        )
+        .order('name', { ascending: true });
 
       if (vehiclesError) throw vehiclesError;
 
       const enrichedVehicles = await Promise.all(
         (vehiclesData || []).map(async (vehicle) => {
           const activeAssignment = vehicle.vehicle_assignments?.find(
-            (a: any) => a.status === 'active'
+            (a: any) => a.status === 'active',
           );
 
           const { count: upcomingServices } = await supabase
@@ -186,7 +190,10 @@ export default function FleetPage() {
             .select('*', { count: 'exact', head: true })
             .eq('vehicle_id', vehicle.id)
             .gte('next_service_date', new Date().toISOString())
-            .lte('next_service_date', new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
+            .lte(
+              'next_service_date',
+              new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            );
 
           // Pobierz alerty ubezpieczeniowe z vehicle_alerts (trigger już obliczył czy są potrzebne)
           const { count: expiringInsurance } = await supabase
@@ -215,15 +222,10 @@ export default function FleetPage() {
             .not('avg_consumption', 'is', null)
             .gte('date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString());
 
-          const yearlyMaintenanceCost = maintenanceCosts?.reduce(
-            (sum, r) => sum + (r.total_cost || 0),
-            0
-          ) || 0;
+          const yearlyMaintenanceCost =
+            maintenanceCosts?.reduce((sum, r) => sum + (r.total_cost || 0), 0) || 0;
 
-          const yearlyFuelCost = fuelCosts?.reduce(
-            (sum, r) => sum + (r.total_cost || 0),
-            0
-          ) || 0;
+          const yearlyFuelCost = fuelCosts?.reduce((sum, r) => sum + (r.total_cost || 0), 0) || 0;
 
           const avgFuelConsumption =
             fuelConsumption?.length > 0
@@ -247,11 +249,13 @@ export default function FleetPage() {
           // Check if vehicle is currently in use
           const { data: inUseData, error: inUseError } = await supabase
             .from('event_vehicles')
-            .select(`
+            .select(
+              `
               id,
               driver:employees!event_vehicles_driver_id_fkey(id, name, surname, avatar_url, avatar_metadata),
               event:events(name)
-            `)
+            `,
+            )
             .eq('vehicle_id', vehicle.id)
             .eq('is_in_use', true)
             .maybeSingle();
@@ -275,7 +279,9 @@ export default function FleetPage() {
             primary_image_url: primaryImage?.image_url || null,
             all_images: allImages || [],
             in_use: !!inUseData,
-            in_use_by: inUseData?.driver ? `${inUseData.driver.name} ${inUseData.driver.surname}` : null,
+            in_use_by: inUseData?.driver
+              ? `${inUseData.driver.name} ${inUseData.driver.surname}`
+              : null,
             in_use_event: inUseData?.event?.name || null,
             in_use_driver_id: inUseData?.driver?.id || null,
             in_use_driver_name: inUseData?.driver?.name || null,
@@ -283,7 +289,7 @@ export default function FleetPage() {
             in_use_driver_avatar_url: inUseData?.driver?.avatar_url || null,
             in_use_driver_avatar_metadata: inUseData?.driver?.avatar_metadata || null,
           };
-        })
+        }),
       );
 
       setVehicles(enrichedVehicles);
@@ -302,7 +308,7 @@ export default function FleetPage() {
     const in_service = data.filter((v) => v.status === 'in_service').length;
     const totalCost = data.reduce(
       (sum, v) => sum + (v.yearly_maintenance_cost || 0) + (v.yearly_fuel_cost || 0),
-      0
+      0,
     );
     const averageMileage =
       data.reduce((sum, v) => sum + (v.current_mileage || 0), 0) / Math.max(total, 1);
@@ -328,7 +334,7 @@ export default function FleetPage() {
           v.brand?.toLowerCase().includes(search) ||
           v.model?.toLowerCase().includes(search) ||
           v.registration_number?.toLowerCase().includes(search) ||
-          v.vin?.toLowerCase().includes(search)
+          v.vin?.toLowerCase().includes(search),
       );
     }
 
@@ -348,7 +354,7 @@ export default function FleetPage() {
   const handleDeleteVehicle = async (id: string, name: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć pojazd?',
-      `Pojazd "${name}" zostanie trwale usunięty wraz z całą historią.`
+      `Pojazd "${name}" zostanie trwale usunięty wraz z całą historią.`,
     );
 
     if (!confirmed) return;
@@ -369,9 +375,8 @@ export default function FleetPage() {
   const getStatusBadge = (status: string, inUse: boolean = false) => {
     if (inUse) {
       return (
-        <span className="px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 inline-flex items-center gap-1 w-auto whitespace-nowrap">
-          <Activity className="w-3 h-3" />
-          W użytkowaniu
+        <span className="inline-flex w-auto items-center gap-1 whitespace-nowrap rounded border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
+          <Activity className="h-3 w-3" />W użytkowaniu
         </span>
       );
     }
@@ -385,19 +390,25 @@ export default function FleetPage() {
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
-    return <span className={`px-2 py-1 rounded text-xs inline-block w-auto whitespace-nowrap ${config.class}`}>{config.label}</span>;
+    return (
+      <span
+        className={`inline-block w-auto whitespace-nowrap rounded px-2 py-1 text-xs ${config.class}`}
+      >
+        {config.label}
+      </span>
+    );
   };
 
   const getCategoryIcon = (category: string) => {
     const icons = {
-      personal_car: <Car className="w-5 h-5" />,
-      van: <Car className="w-5 h-5" />,
-      truck: <Car className="w-5 h-5" />,
-      bus: <Car className="w-5 h-5" />,
-      motorcycle: <Car className="w-5 h-5" />,
-      trailer: <Car className="w-5 h-5" />,
+      personal_car: <Car className="h-5 w-5" />,
+      van: <Car className="h-5 w-5" />,
+      truck: <Car className="h-5 w-5" />,
+      bus: <Car className="h-5 w-5" />,
+      motorcycle: <Car className="h-5 w-5" />,
+      trailer: <Car className="h-5 w-5" />,
     };
-    return icons[category as keyof typeof icons] || <Car className="w-5 h-5" />;
+    return icons[category as keyof typeof icons] || <Car className="h-5 w-5" />;
   };
 
   const renderAvatar = (
@@ -405,7 +416,7 @@ export default function FleetPage() {
     surname: string | null,
     avatarUrl: string | null,
     avatarMetadata: any,
-    size: number = 28
+    size: number = 28,
   ) => {
     const position = avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
     const objectFit = avatarMetadata?.desktop?.objectFit || 'cover';
@@ -413,21 +424,21 @@ export default function FleetPage() {
 
     return (
       <div
-        className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer hover:border-[#d3bb73]/40 transition-colors"
+        className="relative cursor-pointer overflow-hidden rounded-full border-2 border-[#0f1119] bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/40"
         style={{ width: `${size}px`, height: `${size}px` }}
       >
         {avatarUrl ? (
           <img
             src={avatarUrl}
             alt={`${name} ${surname}`}
-            className="w-full h-full"
+            className="h-full w-full"
             style={{
               objectFit: objectFit as any,
               transform: `translate(${position.posX}%, ${position.posY}%) scale(${position.scale})`,
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-xs font-medium">
+          <div className="flex h-full w-full items-center justify-center bg-[#1c1f33] text-xs font-medium text-[#e5e4e2]/60">
             {initials}
           </div>
         )}
@@ -437,76 +448,76 @@ export default function FleetPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d3bb73]"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-[#e5e4e2] flex items-center gap-3">
-            <Car className="w-8 h-8 text-[#d3bb73]" />
+          <h1 className="flex items-center gap-3 text-3xl font-bold text-[#e5e4e2]">
+            <Car className="h-8 w-8 text-[#d3bb73]" />
             Flota Pojazdów
           </h1>
-          <p className="text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-[#e5e4e2]/60">
             Zarządzaj pojazdami firmowymi, tankowaniami, przeglądami i ubezpieczeniami
           </p>
         </div>
         {canCreate && (
           <button
             onClick={() => router.push('/crm/fleet/new')}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             Dodaj pojazd
           </button>
         )}
       </div>
 
       {/* Statystyki */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Wszystkie pojazdy</span>
-            <Car className="w-5 h-5 text-[#d3bb73]" />
+            <Car className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">{stats.total}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Aktywne</span>
-            <CheckCircle className="w-5 h-5 text-green-400" />
+            <CheckCircle className="h-5 w-5 text-green-400" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">{stats.active}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">W serwisie</span>
-            <Wrench className="w-5 h-5 text-orange-400" />
+            <Wrench className="h-5 w-5 text-orange-400" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">{stats.in_service}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Koszty roczne</span>
-            <DollarSign className="w-5 h-5 text-[#d3bb73]" />
+            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">
             {(stats.totalCost / 1000).toFixed(1)}k zł
           </div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Śr. przebieg</span>
-            <Gauge className="w-5 h-5 text-[#d3bb73]" />
+            <Gauge className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">
             {stats.averageMileage.toLocaleString()} km
@@ -515,18 +526,18 @@ export default function FleetPage() {
       </div>
 
       {/* Filtry i wyszukiwanie */}
-      <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-        <div className="flex flex-col md:flex-row gap-4">
+      <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+        <div className="flex flex-col gap-4 md:flex-row">
           {/* Wyszukiwarka */}
           <div className="flex-1">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-[#e5e4e2]/40" />
               <input
                 type="text"
                 placeholder="Szukaj po nazwie, marce, modelu, rejestracji lub VIN..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 pl-10 pr-4 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/50 focus:outline-none"
               />
             </div>
           </div>
@@ -535,7 +546,7 @@ export default function FleetPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
           >
             <option value="all">Wszystkie statusy</option>
             <option value="active">Dostępny</option>
@@ -549,7 +560,7 @@ export default function FleetPage() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
           >
             <option value="all">Wszystkie kategorie</option>
             <option value="personal_car">Samochód osobowy</option>
@@ -567,13 +578,13 @@ export default function FleetPage() {
                 setViewMode('cards');
                 saveViewMode('fleet', 'grid');
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                 viewMode === 'cards'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
               }`}
             >
-              <LayoutGrid className="w-4 h-4" />
+              <LayoutGrid className="h-4 w-4" />
               Kafelki
             </button>
             <button
@@ -581,13 +592,13 @@ export default function FleetPage() {
                 setViewMode('table');
                 saveViewMode('fleet', 'list');
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                 viewMode === 'table'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
               }`}
             >
-              <List className="w-4 h-4" />
+              <List className="h-4 w-4" />
               Lista
             </button>
           </div>
@@ -596,24 +607,24 @@ export default function FleetPage() {
 
       {/* Lista pojazdów */}
       {filteredVehicles.length === 0 ? (
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-          <Car className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 text-lg">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+          <Car className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="text-lg text-[#e5e4e2]/60">
             {searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
               ? 'Nie znaleziono pojazdów spełniających kryteria'
               : 'Brak pojazdów. Dodaj pierwszy pojazd do floty.'}
           </p>
         </div>
       ) : viewMode === 'cards' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredVehicles.map((vehicle) => (
             <div
               key={vehicle.id}
-              className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden hover:border-[#d3bb73]/30 transition-colors"
+              className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/30"
             >
               {/* Image Carousel */}
               <div
-                className="h-48 bg-[#0f1119] flex items-center justify-center relative cursor-pointer group"
+                className="group relative flex h-48 cursor-pointer items-center justify-center bg-[#0f1119]"
                 onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
               >
                 {vehicle.all_images.length > 0 ? (
@@ -621,7 +632,7 @@ export default function FleetPage() {
                     <img
                       src={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.image_url}
                       alt={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.title || vehicle.name}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
                     {vehicle.all_images.length > 1 && (
                       <>
@@ -629,38 +640,39 @@ export default function FleetPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setImageIndexes(prev => ({
+                              setImageIndexes((prev) => ({
                                 ...prev,
-                                [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1)
+                                [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1),
                               }));
                             }}
-                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
                           >
-                            <ChevronLeft className="w-4 h-4" />
+                            <ChevronLeft className="h-4 w-4" />
                           </button>
                         )}
                         {(imageIndexes[vehicle.id] || 0) < vehicle.all_images.length - 1 && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setImageIndexes(prev => ({
+                              setImageIndexes((prev) => ({
                                 ...prev,
-                                [vehicle.id]: Math.min(vehicle.all_images.length - 1, (prev[vehicle.id] || 0) + 1)
+                                [vehicle.id]: Math.min(
+                                  vehicle.all_images.length - 1,
+                                  (prev[vehicle.id] || 0) + 1,
+                                ),
                               }));
                             }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
                           >
-                            <ChevronRight className="w-4 h-4" />
+                            <ChevronRight className="h-4 w-4" />
                           </button>
                         )}
-                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                        <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1">
                           {vehicle.all_images.map((_, idx) => (
                             <div
                               key={idx}
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                idx === (imageIndexes[vehicle.id] || 0)
-                                  ? 'bg-white'
-                                  : 'bg-white/40'
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                idx === (imageIndexes[vehicle.id] || 0) ? 'bg-white' : 'bg-white/40'
                               }`}
                             />
                           ))}
@@ -669,18 +681,18 @@ export default function FleetPage() {
                     )}
                   </>
                 ) : (
-                  <Car className="w-24 h-24 text-[#e5e4e2]/20" />
+                  <Car className="h-24 w-24 text-[#e5e4e2]/20" />
                 )}
-                <div className="absolute top-2 right-2">{getStatusBadge(vehicle.status, vehicle.in_use)}</div>
+                <div className="absolute right-2 top-2">
+                  {getStatusBadge(vehicle.status, vehicle.in_use)}
+                </div>
               </div>
 
               {/* Content */}
               <div className="p-4">
-                <div className="flex items-start justify-between mb-2">
+                <div className="mb-2 flex items-start justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-[#e5e4e2] mb-1">
-                      {vehicle.name}
-                    </h3>
+                    <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2]">{vehicle.name}</h3>
                     <p className="text-sm text-[#e5e4e2]/60">
                       {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
                     </p>
@@ -688,37 +700,33 @@ export default function FleetPage() {
                   {getCategoryIcon(vehicle.category)}
                 </div>
 
-                <div className="space-y-2 mb-4">
+                <div className="mb-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-[#e5e4e2]/60">Rejestracja:</span>
-                    <span className="text-[#e5e4e2] font-medium">
+                    <span className="font-medium text-[#e5e4e2]">
                       {vehicle.registration_number || '-'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-[#e5e4e2]/60">Przebieg:</span>
-                    <span className="text-[#e5e4e2] font-medium">
+                    <span className="font-medium text-[#e5e4e2]">
                       {vehicle.current_mileage?.toLocaleString() || 0} km
                     </span>
                   </div>
                   {vehicle.assigned_employee_name && (
                     <div className="flex items-center gap-2 text-sm">
-                      <Users className="w-4 h-4 text-[#d3bb73]" />
+                      <Users className="h-4 w-4 text-[#d3bb73]" />
                       <span className="text-[#e5e4e2]/80">
                         {vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}
                       </span>
                     </div>
                   )}
                   {vehicle.in_use && vehicle.in_use_by && (
-                    <div className="flex items-center gap-2 text-sm bg-[#d3bb73]/10 px-2 py-1 rounded">
-                      <Activity className="w-4 h-4 text-[#d3bb73]" />
-                      <span className="text-[#d3bb73] font-medium">
-                        {vehicle.in_use_by}
-                      </span>
+                    <div className="flex items-center gap-2 rounded bg-[#d3bb73]/10 px-2 py-1 text-sm">
+                      <Activity className="h-4 w-4 text-[#d3bb73]" />
+                      <span className="font-medium text-[#d3bb73]">{vehicle.in_use_by}</span>
                       {vehicle.in_use_event && (
-                        <span className="text-[#e5e4e2]/60 text-xs">
-                          • {vehicle.in_use_event}
-                        </span>
+                        <span className="text-xs text-[#e5e4e2]/60">• {vehicle.in_use_event}</span>
                       )}
                     </div>
                   )}
@@ -726,17 +734,17 @@ export default function FleetPage() {
 
                 {/* Alerts and Status */}
                 {(vehicle.upcoming_services > 0 || vehicle.expiring_insurance > 0) && (
-                  <div className="flex gap-2 mb-4 flex-wrap">
+                  <div className="mb-4 flex flex-wrap gap-2">
                     {vehicle.upcoming_services > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 px-2 py-1 rounded">
-                        <Wrench className="w-3 h-3" />
+                      <div className="flex items-center gap-1 rounded bg-orange-500/10 px-2 py-1 text-xs text-orange-400">
+                        <Wrench className="h-3 w-3" />
                         {vehicle.upcoming_services} przegląd
                         {vehicle.upcoming_services > 1 ? 'y' : ''}
                       </div>
                     )}
                     {vehicle.expiring_insurance > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded">
-                        <Shield className="w-3 h-3" />
+                      <div className="flex items-center gap-1 rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
+                        <Shield className="h-3 w-3" />
                         Ubezp.
                       </div>
                     )}
@@ -747,9 +755,9 @@ export default function FleetPage() {
                 {canManage && (
                   <button
                     onClick={() => setQuickFuelVehicle(vehicle)}
-                    className="w-full flex items-center justify-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/20 transition-colors text-sm mb-2"
+                    className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
                   >
-                    <Fuel className="w-4 h-4" />
+                    <Fuel className="h-4 w-4" />
                     Dodaj tankowanie
                   </button>
                 )}
@@ -758,24 +766,24 @@ export default function FleetPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
-                    className="flex-1 flex items-center justify-center gap-2 bg-[#0f1119] text-[#e5e4e2] px-4 py-2 rounded-lg hover:bg-[#0f1119]/80 transition-colors text-sm"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#0f1119] px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
                   >
-                    <Eye className="w-4 h-4" />
+                    <Eye className="h-4 w-4" />
                     Szczegóły
                   </button>
                   {canManage && (
                     <>
                       <button
                         onClick={() => router.push(`/crm/fleet/${vehicle.id}/edit`)}
-                        className="flex items-center justify-center bg-[#0f1119] text-[#e5e4e2] px-3 py-2 rounded-lg hover:bg-[#0f1119]/80 transition-colors"
+                        className="flex items-center justify-center rounded-lg bg-[#0f1119] px-3 py-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteVehicle(vehicle.id, vehicle.name)}
-                        className="flex items-center justify-center bg-red-500/10 text-red-400 px-3 py-2 rounded-lg hover:bg-red-500/20 transition-colors"
+                        className="flex items-center justify-center rounded-lg bg-red-500/10 px-3 py-2 text-red-400 transition-colors hover:bg-red-500/20"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </>
                   )}
@@ -785,38 +793,34 @@ export default function FleetPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-[#0f1119] border-b border-[#d3bb73]/10">
+              <thead className="border-b border-[#d3bb73]/10 bg-[#0f1119]">
                 <tr>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">Pojazd</th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Pojazd</th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">
                     Rejestracja
                   </th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">
-                    Przebieg
-                  </th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Przebieg</th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">
                     Przypisany
                   </th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">Status</th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">Alerty</th>
-                  <th className="text-right p-4 text-sm font-medium text-[#e5e4e2]/60">
-                    Akcje
-                  </th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Status</th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Alerty</th>
+                  <th className="p-4 text-right text-sm font-medium text-[#e5e4e2]/60">Akcje</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredVehicles.map((vehicle) => (
                   <tr
                     key={vehicle.id}
-                    className="border-b border-[#d3bb73]/5 hover:bg-[#0f1119]/50 transition-colors"
+                    className="border-b border-[#d3bb73]/5 transition-colors hover:bg-[#0f1119]/50"
                   >
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div
-                          className="relative w-16 h-16 rounded-lg overflow-hidden bg-[#0f1119] flex items-center justify-center flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-[#d3bb73]/50 transition-all"
+                          className="relative flex h-16 w-16 flex-shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#0f1119] transition-all hover:ring-2 hover:ring-[#d3bb73]/50"
                           onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
                           onMouseEnter={() => setHoveredVehicleId(vehicle.id)}
                           onMouseLeave={() => setHoveredVehicleId(null)}
@@ -825,22 +829,22 @@ export default function FleetPage() {
                             <img
                               src={vehicle.all_images[0]?.image_url}
                               alt={vehicle.name}
-                              className="w-full h-full object-cover"
+                              className="h-full w-full object-cover"
                             />
                           ) : (
-                            <Car className="w-8 h-8 text-[#e5e4e2]/20" />
+                            <Car className="h-8 w-8 text-[#e5e4e2]/20" />
                           )}
 
                           {/* Popover on hover */}
                           {hoveredVehicleId === vehicle.id && vehicle.all_images.length > 0 && (
-                            <div className="absolute left-20 top-0 z-50 w-64 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl p-2 pointer-events-none">
+                            <div className="pointer-events-none absolute left-20 top-0 z-50 w-64 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-2 shadow-2xl">
                               <img
                                 src={vehicle.all_images[0]?.image_url}
                                 alt={vehicle.name}
-                                className="w-full h-48 object-cover rounded"
+                                className="h-48 w-full rounded object-cover"
                               />
                               {vehicle.all_images.length > 1 && (
-                                <div className="text-xs text-[#e5e4e2]/60 text-center mt-2">
+                                <div className="mt-2 text-center text-xs text-[#e5e4e2]/60">
                                   +{vehicle.all_images.length - 1} więcej
                                 </div>
                               )}
@@ -858,66 +862,71 @@ export default function FleetPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-[#e5e4e2]">
-                      {vehicle.registration_number || '-'}
-                    </td>
+                    <td className="p-4 text-[#e5e4e2]">{vehicle.registration_number || '-'}</td>
                     <td className="p-4 text-[#e5e4e2]">
                       {vehicle.current_mileage?.toLocaleString() || 0} km
                     </td>
                     <td className="p-4 text-[#e5e4e2]/80">
-                       {vehicle.in_use && vehicle.in_use_driver_id && (
-                          <Popover
-                            content={
-                              <div className="p-3 min-w-[200px] items-center justify-center">
-                                <div className="flex items-center justify-center">
-                                  <div onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}>
-                                    {renderAvatar(
-                                      vehicle.in_use_driver_name,
-                                      vehicle.in_use_driver_surname,
-                                      vehicle.in_use_driver_avatar_url,
-                                      vehicle.in_use_driver_avatar_metadata,
-                                      48
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <button
-                                      onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}
-                                      className="text-[#e5e4e2] hover:text-[#d3bb73] font-medium text-sm transition-colors truncate block w-full text-left"
-                                    >
-                                      {vehicle.in_use_driver_name} {vehicle.in_use_driver_surname}
-                                    </button>
-                                    <div className="text-xs text-[#e5e4e2]/60 mt-1">
-                                      Kliknij aby przejść do profilu
-                                    </div>
+                      {vehicle.in_use && vehicle.in_use_driver_id && (
+                        <Popover
+                          content={
+                            <div className="min-w-[200px] items-center justify-center p-3">
+                              <div className="flex items-center justify-center">
+                                <div
+                                  onClick={() =>
+                                    router.push(`/crm/employees/${vehicle.in_use_driver_id}`)
+                                  }
+                                >
+                                  {renderAvatar(
+                                    vehicle.in_use_driver_name,
+                                    vehicle.in_use_driver_surname,
+                                    vehicle.in_use_driver_avatar_url,
+                                    vehicle.in_use_driver_avatar_metadata,
+                                    48,
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <button
+                                    onClick={() =>
+                                      router.push(`/crm/employees/${vehicle.in_use_driver_id}`)
+                                    }
+                                    className="block w-full truncate text-left text-sm font-medium text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
+                                  >
+                                    {vehicle.in_use_driver_name} {vehicle.in_use_driver_surname}
+                                  </button>
+                                  <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                                    Kliknij aby przejść do profilu
                                   </div>
                                 </div>
                               </div>
-                            }
-                          >
-                            {renderAvatar(
-                              vehicle.in_use_driver_name,
-                              vehicle.in_use_driver_surname,
-                              vehicle.in_use_driver_avatar_url,
-                              vehicle.in_use_driver_avatar_metadata,
-                              28
-                            )}
-                            <p className="ml-4 text-xs text-[#e5e4e2]/60 mt-1">{`${vehicle.in_use_driver_name} ${vehicle.in_use_driver_surname}`} </p>
-                          </Popover>
-                        )}
+                            </div>
+                          }
+                        >
+                          {renderAvatar(
+                            vehicle.in_use_driver_name,
+                            vehicle.in_use_driver_surname,
+                            vehicle.in_use_driver_avatar_url,
+                            vehicle.in_use_driver_avatar_metadata,
+                            28,
+                          )}
+                          <p className="ml-4 mt-1 text-xs text-[#e5e4e2]/60">
+                            {`${vehicle.in_use_driver_name} ${vehicle.in_use_driver_surname}`}{' '}
+                          </p>
+                        </Popover>
+                      )}
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         {getStatusBadge(vehicle.status, vehicle.in_use)}
-                       
                       </div>
                     </td>
                     <td className="p-4">
                       <div className="flex gap-2">
                         {vehicle.upcoming_services > 0 && (
-                          <Wrench className="w-4 h-4 text-orange-400" />
+                          <Wrench className="h-4 w-4 text-orange-400" />
                         )}
                         {vehicle.expiring_insurance > 0 && (
-                          <Shield className="w-4 h-4 text-red-400" />
+                          <Shield className="h-4 w-4 text-red-400" />
                         )}
                       </div>
                     </td>
@@ -925,33 +934,33 @@ export default function FleetPage() {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
-                          className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                          className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                           title="Podgląd"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => setQuickFuelVehicle(vehicle)}
-                          className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                          className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-500/10"
                           title="Dodaj tankowanie"
                         >
-                          <Fuel className="w-4 h-4" />
+                          <Fuel className="h-4 w-4" />
                         </button>
                         {canManage && (
                           <>
                             <button
                               onClick={() => router.push(`/crm/fleet/${vehicle.id}/edit`)}
-                              className="p-2 text-[#e5e4e2] hover:bg-[#0f1119] rounded-lg transition-colors"
+                              className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
                               title="Edytuj"
                             >
-                              <Edit className="w-4 h-4" />
+                              <Edit className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteVehicle(vehicle.id, vehicle.name)}
-                              className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                              className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10"
                               title="Usuń"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </>
                         )}

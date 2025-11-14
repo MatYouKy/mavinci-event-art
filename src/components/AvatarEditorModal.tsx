@@ -64,11 +64,11 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
       }}
     >
       <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex items-center justify-between">
           <h3 className="text-xl font-light text-[#e5e4e2]">Edytuj Avatar</h3>
           <button
             onClick={onClose}
-            className="text-[#e5e4e2] hover:text-[#d3bb73] transition-colors"
+            className="text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
           >
             <X size={24} />
           </button>
@@ -78,12 +78,12 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
           {({ values }) => (
             <Form>
               <div className="flex flex-col items-center space-y-4">
-                <div className="text-sm text-[#e5e4e2]/60 mb-2 text-center">
+                <div className="mb-2 text-center text-sm text-[#e5e4e2]/60">
                   Ustaw zdjęcie profilowe - obszar w okręgu będzie widoczny
                 </div>
 
-                <div className="relative w-full max-w-lg aspect-square overflow-hidden rounded-lg">
-                  <div className="relative w-full h-full bg-white">
+                <div className="relative aspect-square w-full max-w-lg overflow-hidden rounded-lg">
+                  <div className="relative h-full w-full bg-white">
                     <ImageEditorField
                       fieldName="avatar"
                       image={values.avatar}
@@ -97,15 +97,16 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
                   </div>
 
                   <div
-                    className="absolute inset-0 pointer-events-none"
+                    className="pointer-events-none absolute inset-0"
                     style={{
-                      background: 'radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.75) 40%)',
+                      background:
+                        'radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.75) 40%)',
                       borderRadius: '8px',
                     }}
                   />
 
                   <div
-                    className="absolute inset-0 pointer-events-none border-2 border-[#d3bb73] rounded-full"
+                    className="pointer-events-none absolute inset-0 rounded-full border-2 border-[#d3bb73]"
                     style={{
                       width: '80%',
                       height: '80%',
@@ -115,9 +116,9 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
                   />
                 </div>
 
-                <div className="text-xs text-[#e5e4e2]/40 text-center max-w-md">
-                  Okrąg pokazuje jak avatar będzie wyglądać w systemie CRM i na stronie.
-                  Użyj sliderów i menu aby dopasować pozycję zdjęcia.
+                <div className="max-w-md text-center text-xs text-[#e5e4e2]/40">
+                  Okrąg pokazuje jak avatar będzie wyglądać w systemie CRM i na stronie. Użyj
+                  sliderów i menu aby dopasować pozycję zdjęcia.
                 </div>
               </div>
 
@@ -125,7 +126,7 @@ export const AvatarEditorModal: React.FC<AvatarEditorModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-6 py-2.5 rounded-lg bg-[#e5e4e2]/10 text-[#e5e4e2] hover:bg-[#e5e4e2]/20 transition-colors"
+                  className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2.5 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                 >
                   Zamknij
                 </button>

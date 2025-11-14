@@ -21,26 +21,32 @@ Zamiast używać `@react-navigation/drawer`, stworzyliśmy **własny Custom Draw
 ## Zmiany
 
 ### 1. Utworzono Custom Drawer Component
+
 **Plik**: `/mobile/src/components/CustomDrawer.tsx`
 
 Używa:
+
 - `Modal` - dla overlay
 - `Animated.View` - dla animacji slide
 - `TouchableOpacity` - dla interakcji
 - Brak zależności od gesture-handler ani reanimated
 
 ### 2. Zaktualizowano MainTabNavigator
+
 **Plik**: `/mobile/src/navigation/MainTabNavigator.tsx`
 
 Zmiany:
+
 - Dodano state management dla drawer visibility
 - Dodano tracking aktywnego ekranu
 - Zintegrowano CustomDrawer jako overlay
 
 ### 3. Zaktualizowano RootNavigator
+
 **Plik**: `/mobile/src/navigation/RootNavigator.tsx`
 
 Zmieniono:
+
 ```typescript
 // Przed
 import DrawerNavigator from './DrawerNavigator';
@@ -52,9 +58,11 @@ import MainTabNavigator from './MainTabNavigator';
 ```
 
 ### 4. Usunięto Niepotrzebne Pakiety
+
 **Plik**: `/mobile/package.json`
 
 Usunięto:
+
 ```json
 "@react-navigation/drawer": "^6.7.2",
 "react-native-gesture-handler": "~2.22.1",
@@ -62,21 +70,25 @@ Usunięto:
 ```
 
 ### 5. Uproszczono Babel Config
+
 **Plik**: `/mobile/babel.config.js`
 
 Usunięto plugin reanimated:
+
 ```javascript
 // Przed
-plugins: ['react-native-reanimated/plugin']
+plugins: ['react-native-reanimated/plugin'];
 
 // Po
 // brak plugins
 ```
 
 ### 6. Usunięto Import w App.tsx
+
 **Plik**: `/mobile/App.tsx`
 
 Usunięto:
+
 ```typescript
 import 'react-native-gesture-handler';
 ```
@@ -141,6 +153,7 @@ npx expo start --clear
 ## Testowanie
 
 Drawer powinien:
+
 1. ✅ Otwierać się po kliknięciu hamburger icon
 2. ✅ Zamykać się po kliknięciu backdrop
 3. ✅ Zamykać się po wyborze menu item
@@ -152,6 +165,7 @@ Drawer powinien:
 ## Pliki Do Usunięcia (opcjonalnie)
 
 Stare pliki które nie są już używane:
+
 ```
 /mobile/src/navigation/DrawerNavigator.tsx (stary)
 ```
@@ -166,14 +180,14 @@ Możesz je usunąć lub zachować jako backup.
 
 ## Porównanie
 
-| Feature | @react-navigation/drawer | Custom Drawer |
-|---------|-------------------------|---------------|
-| Kompatybilność | ❌ Problemy z Reanimated 3 | ✅ Działa wszędzie |
-| Zależności | 3 pakiety (drawer, gesture-handler, reanimated) | 0 dodatkowych |
-| Bundle size | ~500KB | ~5KB |
-| Customizacja | Ograniczona | Pełna kontrola |
-| Performance | Dobre | Świetne (native) |
-| Maintenance | Wymaga aktualizacji | Stabilne |
+| Feature        | @react-navigation/drawer                        | Custom Drawer      |
+| -------------- | ----------------------------------------------- | ------------------ |
+| Kompatybilność | ❌ Problemy z Reanimated 3                      | ✅ Działa wszędzie |
+| Zależności     | 3 pakiety (drawer, gesture-handler, reanimated) | 0 dodatkowych      |
+| Bundle size    | ~500KB                                          | ~5KB               |
+| Customizacja   | Ograniczona                                     | Pełna kontrola     |
+| Performance    | Dobre                                           | Świetne (native)   |
+| Maintenance    | Wymaga aktualizacji                             | Stabilne           |
 
 ## W Razie Problemów
 

@@ -37,20 +37,39 @@ export default function Portfolio() {
     setLoading(false);
   };
 
-  const categories = ['all', ...Array.from(new Set(projects.map(p => p.category)))];
-  const filteredProjects = selectedCategory === 'all'
-    ? projects.slice(0, 6)
-    : projects.filter(p => p.category === selectedCategory).slice(0, 6);
+  const categories = ['all', ...Array.from(new Set(projects.map((p) => p.category)))];
+  const filteredProjects =
+    selectedCategory === 'all'
+      ? projects.slice(0, 6)
+      : projects.filter((p) => p.category === selectedCategory).slice(0, 6);
 
   return (
-    <section id="portfolio" className="relative py-24 md:py-32 bg-[#1c1f33] overflow-hidden" aria-labelledby="portfolio-heading">
+    <section
+      id="portfolio"
+      className="relative overflow-hidden bg-[#1c1f33] py-24 md:py-32"
+      aria-labelledby="portfolio-heading"
+    >
       <div className="absolute inset-0 opacity-10">
-        <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
+        <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <pattern id="portfolio-dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+            <pattern
+              id="portfolio-dots"
+              x="0"
+              y="0"
+              width="40"
+              height="40"
+              patternUnits="userSpaceOnUse"
+            >
               <circle cx="2" cy="2" r="1" fill="#d3bb73" />
             </pattern>
-            <pattern id="portfolio-lines" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse">
+            <pattern
+              id="portfolio-lines"
+              x="0"
+              y="0"
+              width="80"
+              height="80"
+              patternUnits="userSpaceOnUse"
+            >
               <path d="M0 40 L80 40" stroke="#800020" strokeWidth="0.5" opacity="0.3" />
               <path d="M40 0 L40 80" stroke="#800020" strokeWidth="0.5" opacity="0.3" />
             </pattern>
@@ -60,31 +79,34 @@ export default function Portfolio() {
         </svg>
       </div>
       <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#d3bb73] rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#800020] rounded-full blur-3xl"></div>
+        <div className="absolute left-1/4 top-0 h-96 w-96 rounded-full bg-[#d3bb73] blur-3xl"></div>
+        <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-[#800020] blur-3xl"></div>
       </div>
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16 md:mb-20">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mb-16 text-center md:mb-20">
           <div className="inline-block">
-            <span className="text-[#d3bb73] text-sm md:text-base font-light tracking-widest uppercase mb-4 block animate-[fadeIn_0.6s_ease-out]">
+            <span className="mb-4 block animate-[fadeIn_0.6s_ease-out] text-sm font-light uppercase tracking-widest text-[#d3bb73] md:text-base">
               Portfolio
             </span>
-            <h2 id="portfolio-heading" className="text-3xl sm:text-4xl md:text-5xl font-light text-[#e5e4e2] mb-6 animate-[fadeIn_0.8s_ease-out]">
+            <h2
+              id="portfolio-heading"
+              className="mb-6 animate-[fadeIn_0.8s_ease-out] text-3xl font-light text-[#e5e4e2] sm:text-4xl md:text-5xl"
+            >
               Nasze Realizacje Eventowe
             </h2>
-            <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto animate-[scaleIn_1s_ease-out]"></div>
+            <div className="mx-auto h-1 w-24 animate-[scaleIn_1s_ease-out] bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
           </div>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-3 mb-12">
+        <div className="mb-12 flex flex-wrap justify-center gap-3">
           {categories.map((category) => (
             <button
               key={category}
               onClick={() => setSelectedCategory(category)}
-              className={`px-6 py-2 rounded-full text-sm font-light transition-all duration-300 ${
+              className={`rounded-full px-6 py-2 text-sm font-light transition-all duration-300 ${
                 selectedCategory === category
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
-                  : 'bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20'
+                  : 'border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
               }`}
             >
               {category === 'all' ? 'Wszystkie' : category}
@@ -94,76 +116,79 @@ export default function Portfolio() {
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="text-[#d3bb73] text-lg">Ładowanie projektów...</div>
+            <div className="text-lg text-[#d3bb73]">Ładowanie projektów...</div>
           </div>
         ) : projects.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="py-12 text-center">
             <p className="text-[#e5e4e2]/60">Brak projektów do wyświetlenia</p>
           </div>
         ) : (
           <div className="flex flex-wrap justify-center gap-3 md:gap-4">
             {filteredProjects.map((project, index) => (
-            <Link
-              href={`/portfolio/${project.id}`}
-              key={project.id}
-              className="group relative overflow-hidden rounded-2xl cursor-pointer block w-full md:w-[calc(33.333%-1.33rem)]"
-              style={{
-                animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
-              }}
-              onMouseEnter={() => setHoveredId(project.id)}
-              onMouseLeave={() => setHoveredId(null)}
-            >
-              <div className="aspect-[4/5] relative overflow-hidden">
-                <img
-                  src={project.image_metadata?.desktop?.src || project.image}
-                  alt={project.alt || project.title}
-                  className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
-                />
+              <Link
+                href={`/portfolio/${project.id}`}
+                key={project.id}
+                className="group relative block w-full cursor-pointer overflow-hidden rounded-2xl md:w-[calc(33.333%-1.33rem)]"
+                style={{
+                  animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
+                }}
+                onMouseEnter={() => setHoveredId(project.id)}
+                onMouseLeave={() => setHoveredId(null)}
+              >
+                <div className="relative aspect-[4/5] overflow-hidden">
+                  <img
+                    src={project.image_metadata?.desktop?.src || project.image}
+                    alt={project.alt || project.title}
+                    className="h-full w-full object-cover transition-all duration-700 group-hover:scale-110"
+                  />
 
-                <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 transition-opacity duration-500 group-hover:opacity-95"></div>
 
-                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-[-10px] group-hover:translate-y-0">
-                  <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
-                    <Eye className="w-5 h-5 text-[#1c1f33]" />
+                  <div className="absolute right-4 top-4 flex translate-y-[-10px] transform gap-2 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
+                    <div className="flex h-10 w-10 transform items-center justify-center rounded-full bg-[#d3bb73]/90 backdrop-blur-sm transition-colors duration-300 hover:scale-110 hover:bg-[#d3bb73]">
+                      <Eye className="h-5 w-5 text-[#1c1f33]" />
+                    </div>
+                    <div className="flex h-10 w-10 transform items-center justify-center rounded-full bg-[#d3bb73]/90 backdrop-blur-sm transition-colors duration-300 hover:scale-110 hover:bg-[#d3bb73]">
+                      <ArrowUpRight className="h-5 w-5 text-[#1c1f33]" />
+                    </div>
                   </div>
-                  <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
-                    <ArrowUpRight className="w-5 h-5 text-[#1c1f33]" />
+
+                  <div className="absolute bottom-0 left-0 right-0 transform p-6 transition-all duration-500">
+                    <div className="mb-3">
+                      <span className="inline-block rounded-full border border-[#d3bb73]/40 bg-[#d3bb73]/20 px-3 py-1 text-xs font-light tracking-wide text-[#d3bb73] backdrop-blur-md">
+                        {project.category}
+                      </span>
+                    </div>
+
+                    <h3 className="mb-2 transform text-xl font-light text-[#e5e4e2] transition-all duration-500 group-hover:translate-x-2 md:text-2xl">
+                      {project.title}
+                    </h3>
+
+                    <p
+                      className={`text-sm font-light leading-relaxed text-[#e5e4e2]/70 transition-all duration-500 ${
+                        hoveredId === project.id
+                          ? 'max-h-20 translate-y-0 opacity-100'
+                          : 'max-h-0 translate-y-4 opacity-0'
+                      }`}
+                    >
+                      {project.description}
+                    </p>
                   </div>
+
+                  <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-transparent transition-all duration-500 group-hover:border-[#d3bb73]/30"></div>
                 </div>
-
-                <div className="absolute bottom-0 left-0 right-0 p-6 transform transition-all duration-500">
-                  <div className="mb-3">
-                    <span className="inline-block px-3 py-1 bg-[#d3bb73]/20 backdrop-blur-md border border-[#d3bb73]/40 rounded-full text-[#d3bb73] text-xs font-light tracking-wide">
-                      {project.category}
-                    </span>
-                  </div>
-
-                  <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-2 transform transition-all duration-500 group-hover:translate-x-2">
-                    {project.title}
-                  </h3>
-
-                  <p
-                    className={`text-[#e5e4e2]/70 text-sm font-light leading-relaxed transition-all duration-500 ${
-                      hoveredId === project.id
-                        ? 'opacity-100 translate-y-0 max-h-20'
-                        : 'opacity-0 translate-y-4 max-h-0'
-                    }`}
-                  >
-                    {project.description}
-                  </p>
-                </div>
-
-                <div className="absolute inset-0 border-2 border-transparent group-hover:border-[#d3bb73]/30 rounded-2xl transition-all duration-500 pointer-events-none"></div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))}
           </div>
         )}
 
-        <div className="text-center mt-16 animate-[fadeIn_1.2s_ease-out]">
-          <Link href="/portfolio" className="group inline-flex items-center gap-3 px-8 py-4 bg-transparent border-2 border-[#d3bb73] text-[#d3bb73] rounded-full font-light hover:bg-[#d3bb73] hover:text-[#1c1f33] transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[#d3bb73]/30">
+        <div className="mt-16 animate-[fadeIn_1.2s_ease-out] text-center">
+          <Link
+            href="/portfolio"
+            className="group inline-flex items-center gap-3 rounded-full border-2 border-[#d3bb73] bg-transparent px-8 py-4 font-light text-[#d3bb73] transition-all duration-300 hover:scale-105 hover:bg-[#d3bb73] hover:text-[#1c1f33] hover:shadow-lg hover:shadow-[#d3bb73]/30"
+          >
             Zobacz Wszystkie Projekty
-            <ArrowUpRight className="w-5 h-5 group-hover:rotate-45 transition-transform duration-300" />
+            <ArrowUpRight className="h-5 w-5 transition-transform duration-300 group-hover:rotate-45" />
           </Link>
         </div>
       </div>

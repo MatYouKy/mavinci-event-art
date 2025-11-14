@@ -48,12 +48,20 @@ export default function AdminTeamPanel() {
         imageMetadata = {
           desktop: {
             src: imageUrl,
-            position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+            position: values.imageData.image_metadata?.desktop?.position || {
+              posX: 0,
+              posY: 0,
+              scale: 1,
+            },
             objectFit: values.imageData.image_metadata?.desktop?.objectFit || 'cover',
           },
           mobile: {
             src: imageUrl,
-            position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+            position: values.imageData.image_metadata?.mobile?.position || {
+              posX: 0,
+              posY: 0,
+              scale: 1,
+            },
             objectFit: values.imageData.image_metadata?.mobile?.objectFit || 'cover',
           },
         };
@@ -61,12 +69,20 @@ export default function AdminTeamPanel() {
         imageMetadata = {
           desktop: {
             src: values.imageData.image_metadata?.desktop?.src || values.image || imageUrl,
-            position: values.imageData.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+            position: values.imageData.image_metadata?.desktop?.position || {
+              posX: 0,
+              posY: 0,
+              scale: 1,
+            },
             objectFit: values.imageData.image_metadata?.desktop?.objectFit || 'cover',
           },
           mobile: {
             src: values.imageData.image_metadata?.mobile?.src || values.image || imageUrl,
-            position: values.imageData.image_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+            position: values.imageData.image_metadata?.mobile?.position || {
+              posX: 0,
+              posY: 0,
+              scale: 1,
+            },
             objectFit: values.imageData.image_metadata?.mobile?.objectFit || 'cover',
           },
         };
@@ -119,7 +135,10 @@ export default function AdminTeamPanel() {
   };
 
   const handleDelete = async (id: string) => {
-    const confirmed = await showConfirm('Czy na pewno chcesz usunąć tego członka zespołu?', 'Usuń członka zespołu');
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć tego członka zespołu?',
+      'Usuń członka zespołu',
+    );
     if (!confirmed) {
       return;
     }
@@ -179,9 +198,9 @@ export default function AdminTeamPanel() {
         <h2 className="text-2xl font-light text-[#e5e4e2]">Zarządzaj Zespołem</h2>
         <button
           onClick={() => setIsAdding(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="h-5 w-5" />
           Dodaj Członka
         </button>
       </div>
@@ -228,12 +247,12 @@ export default function AdminTeamPanel() {
         >
           {({ submitForm, values }) => (
             <Form className="p-6">
-              <h3 className="text-xl font-light text-[#e5e4e2] mb-6">
+              <h3 className="mb-6 text-xl font-light text-[#e5e4e2]">
                 {editingMember ? 'Edytuj Członka Zespołu' : 'Nowy Członek Zespołu'}
               </h3>
 
               <div className="mb-6">
-                <label className="block text-sm font-medium text-[#d3bb73] mb-2">
+                <label className="mb-2 block text-sm font-medium text-[#d3bb73]">
                   Zdjęcie (proporcje 3:4)
                 </label>
                 <ImageEditorField
@@ -253,7 +272,7 @@ export default function AdminTeamPanel() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormInput
                   name="name"
                   label="Imię i nazwisko"
@@ -261,17 +280,8 @@ export default function AdminTeamPanel() {
                   required
                 />
                 <FormInput name="position" label="Pozycja" placeholder="CEO" />
-                <FormInput
-                  name="role"
-                  label="Rola"
-                  placeholder="Creative Director"
-                />
-                <FormInput
-                  name="email"
-                  label="Email"
-                  placeholder="email@mavinci.pl"
-                  type="email"
-                />
+                <FormInput name="role" label="Rola" placeholder="Creative Director" />
+                <FormInput name="email" label="Email" placeholder="email@mavinci.pl" type="email" />
                 <FormInput
                   name="linkedin"
                   label="LinkedIn URL"
@@ -287,16 +297,11 @@ export default function AdminTeamPanel() {
                   label="Facebook URL"
                   placeholder="https://facebook.com/..."
                 />
-                <FormInput
-                  name="order_index"
-                  label="Kolejność"
-                  type="number"
-                  placeholder="1"
-                />
+                <FormInput name="order_index" label="Kolejność" type="number" placeholder="1" />
               </div>
 
               <div className="mb-6">
-                <label className="flex items-center gap-2 text-[#e5e4e2] cursor-pointer">
+                <label className="flex cursor-pointer items-center gap-2 text-[#e5e4e2]">
                   <FormInput
                     name="is_visible"
                     type="checkbox"
@@ -317,18 +322,18 @@ export default function AdminTeamPanel() {
                 />
               </div>
 
-              <div className="flex gap-3 justify-end">
+              <div className="flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                  className="rounded-lg bg-[#800020]/20 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
                 >
                   Anuluj
                 </button>
                 <button
                   type="button"
                   onClick={submitForm}
-                  className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+                  className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
                   Zapisz
                 </button>
@@ -341,47 +346,33 @@ export default function AdminTeamPanel() {
       {/* Members List */}
       <div className="grid grid-cols-1 gap-4">
         {members.map((member) => (
-          <div
-            key={member.id}
-            className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6"
-          >
+          <div key={member.id} className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="relative w-16 h-20 rounded-lg overflow-hidden bg-[#800020]/10">
+                <div className="relative h-20 w-16 overflow-hidden rounded-lg bg-[#800020]/10">
                   <img
                     src={member.image_metadata?.desktop?.src || member.image}
                     alt={member.alt || member.name}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                     style={{
-                      objectFit:
-                        member.image_metadata?.desktop?.objectFit || 'cover',
+                      objectFit: member.image_metadata?.desktop?.objectFit || 'cover',
                       transform: `translate(${
                         member.image_metadata?.desktop?.position?.posX || 0
-                      }%, ${
-                        member.image_metadata?.desktop?.position?.posY || 0
-                      }%) scale(${
+                      }%, ${member.image_metadata?.desktop?.position?.posY || 0}%) scale(${
                         member.image_metadata?.desktop?.position?.scale || 1
                       })`,
                     }}
                   />
                 </div>
                 <div>
-                  <h3 className="text-lg font-medium text-[#e5e4e2]">
-                    {member.name}
-                  </h3>
-                  <p className="text-[#d3bb73] text-sm">{member.position}</p>
-                  {member.role && (
-                    <p className="text-[#e5e4e2]/60 text-sm">{member.role}</p>
-                  )}
-                  <div className="flex items-center gap-4 mt-1">
-                    <p className="text-xs text-[#e5e4e2]/60">
-                      Kolejność: {member.order_index}
-                    </p>
+                  <h3 className="text-lg font-medium text-[#e5e4e2]">{member.name}</h3>
+                  <p className="text-sm text-[#d3bb73]">{member.position}</p>
+                  {member.role && <p className="text-sm text-[#e5e4e2]/60">{member.role}</p>}
+                  <div className="mt-1 flex items-center gap-4">
+                    <p className="text-xs text-[#e5e4e2]/60">Kolejność: {member.order_index}</p>
                     <p
                       className={`text-xs ${
-                        member.is_visible
-                          ? 'text-green-400'
-                          : 'text-[#e5e4e2]/40'
+                        member.is_visible ? 'text-green-400' : 'text-[#e5e4e2]/40'
                       }`}
                     >
                       {member.is_visible ? '✓ Widoczny' : '✗ Ukryty'}
@@ -392,17 +383,17 @@ export default function AdminTeamPanel() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setEditingMember(member)}
-                  className="p-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                  className="rounded-lg bg-[#d3bb73]/20 p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                   title="Edytuj"
                 >
-                  <Edit2 className="w-5 h-5" />
+                  <Edit2 className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => handleDelete(member.id)}
-                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                  className="rounded-lg bg-[#800020]/20 p-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
                   title="Usuń"
                 >
-                  <Trash2 className="w-5 h-5" />
+                  <Trash2 className="h-5 w-5" />
                 </button>
               </div>
             </div>

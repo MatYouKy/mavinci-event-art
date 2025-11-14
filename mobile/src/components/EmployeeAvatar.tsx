@@ -36,8 +36,10 @@ export default function EmployeeAvatar({
   size = 48,
   onPress,
 }: EmployeeAvatarProps) {
-  const position = avatarMetadata?.mobile?.position || avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
-  const objectFit = avatarMetadata?.mobile?.objectFit || avatarMetadata?.desktop?.objectFit || 'cover';
+  const position = avatarMetadata?.mobile?.position ||
+    avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
+  const objectFit =
+    avatarMetadata?.mobile?.objectFit || avatarMetadata?.desktop?.objectFit || 'cover';
 
   const Container = onPress ? TouchableOpacity : View;
 

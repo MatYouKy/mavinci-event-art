@@ -144,15 +144,19 @@ CREATE TRIGGER trigger_update_site_images_updated_at
 ## Jeśli nadal nie działa:
 
 ### Problem 1: "Success" ale nadal błąd
+
 - Wyloguj się i zaloguj ponownie
 - Wyczyść cache przeglądarki (Ctrl+Shift+Delete)
 - Spróbuj w trybie incognito
 
 ### Problem 2: SQL daje błąd "already exists"
+
 To znaczy że tabela już istnieje! To dobrze. Przejdź do KROK 7.
 
 ### Problem 3: SQL daje inny błąd
+
 Skopiuj dokładny komunikat błędu i sprawdź czy:
+
 - Skopiowałeś CAŁY SQL (od początku do końca)
 - Nie ma żadnych dodatkowych znaków na początku/końcu
 - Wybrałeś właściwy projekt w Supabase
@@ -162,6 +166,7 @@ Skopiuj dokładny komunikat błędu i sprawdź czy:
 ## Skąd wziąć darmowe obrazy URL?
 
 ### Pexels (zalecane):
+
 1. Wejdź na: https://www.pexels.com/
 2. Wyszukaj obraz (np. "business meeting")
 3. Kliknij na obraz
@@ -169,6 +174,7 @@ Skopiuj dokładny komunikat błędu i sprawdź czy:
 5. Wklej ten URL w edytorze obrazów
 
 ### Format URL musi być:
+
 ```
 ✅ https://images.pexels.com/photos/123456/pexels-photo-123456.jpeg
 ✅ https://images.unsplash.com/photo-123456

@@ -21,7 +21,12 @@ interface PortfolioFeaturesEditorProps {
 const AVAILABLE_ICONS: AvailableIcon[] = [
   // Ludzie
   { name: 'Users', label: 'Zespół', category: 'ludzie', description: 'Profesjonalny zespół' },
-  { name: 'UserCheck', label: 'Ekspert', category: 'ludzie', description: 'Eksperci w swojej dziedzinie' },
+  {
+    name: 'UserCheck',
+    label: 'Ekspert',
+    category: 'ludzie',
+    description: 'Eksperci w swojej dziedzinie',
+  },
   { name: 'UsersRound', label: 'Grupa', category: 'ludzie', description: 'Duża grupa uczestników' },
 
   // Czas
@@ -32,19 +37,44 @@ const AVAILABLE_ICONS: AvailableIcon[] = [
   // Jakość
   { name: 'Award', label: 'Jakość', category: 'jakość', description: 'Najwyższa jakość' },
   { name: 'Star', label: 'Wyróżnienie', category: 'jakość', description: 'Nagradzana realizacja' },
-  { name: 'BadgeCheck', label: 'Certyfikat', category: 'jakość', description: 'Certyfikowana jakość' },
+  {
+    name: 'BadgeCheck',
+    label: 'Certyfikat',
+    category: 'jakość',
+    description: 'Certyfikowana jakość',
+  },
   { name: 'Target', label: 'Precyzja', category: 'jakość', description: 'Precyzyjna realizacja' },
 
   // Technologia
-  { name: 'Lightbulb', label: 'Innowacyjność', category: 'technologia', description: 'Innowacyjne rozwiązania' },
+  {
+    name: 'Lightbulb',
+    label: 'Innowacyjność',
+    category: 'technologia',
+    description: 'Innowacyjne rozwiązania',
+  },
   { name: 'Zap', label: 'Energia', category: 'technologia', description: 'Pełna energii' },
   { name: 'Radio', label: 'Sprzęt', category: 'technologia', description: 'Profesjonalny sprzęt' },
-  { name: 'Settings', label: 'Konfiguracja', category: 'technologia', description: 'Dopasowana konfiguracja' },
+  {
+    name: 'Settings',
+    label: 'Konfiguracja',
+    category: 'technologia',
+    description: 'Dopasowana konfiguracja',
+  },
   { name: 'Mic', label: 'Audio', category: 'technologia', description: 'Profesjonalne audio' },
 
   // Realizacja
-  { name: 'CheckCircle2', label: 'Kompleksowość', category: 'realizacja', description: 'Kompleksowa realizacja' },
-  { name: 'Package', label: 'Kompletność', category: 'realizacja', description: 'Kompletne wyposażenie' },
+  {
+    name: 'CheckCircle2',
+    label: 'Kompleksowość',
+    category: 'realizacja',
+    description: 'Kompleksowa realizacja',
+  },
+  {
+    name: 'Package',
+    label: 'Kompletność',
+    category: 'realizacja',
+    description: 'Kompletne wyposażenie',
+  },
   { name: 'Truck', label: 'Logistyka', category: 'realizacja', description: 'Sprawna logistyka' },
   { name: 'Wrench', label: 'Serwis', category: 'realizacja', description: 'Pełen serwis' },
 
@@ -52,22 +82,28 @@ const AVAILABLE_ICONS: AvailableIcon[] = [
   { name: 'TrendingUp', label: 'Wzrost', category: 'sukces', description: 'Rosnące wyniki' },
   { name: 'ThumbsUp', label: 'Zadowolenie', category: 'sukces', description: 'Zadowolony klient' },
   { name: 'Heart', label: 'Pasja', category: 'sukces', description: 'Z pasją i zaangażowaniem' },
-  { name: 'Sparkles', label: 'Wyjątkowość', category: 'sukces', description: 'Wyjątkowe wydarzenie' },
+  {
+    name: 'Sparkles',
+    label: 'Wyjątkowość',
+    category: 'sukces',
+    description: 'Wyjątkowe wydarzenie',
+  },
 ];
 
 export default function PortfolioFeaturesEditor({
   projectId,
   features,
-  onChange
+  onChange,
 }: PortfolioFeaturesEditorProps) {
   const [showIconPicker, setShowIconPicker] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const categories = ['all', ...new Set(AVAILABLE_ICONS.map(icon => icon.category))];
+  const categories = ['all', ...new Set(AVAILABLE_ICONS.map((icon) => icon.category))];
 
-  const filteredIcons = selectedCategory === 'all'
-    ? AVAILABLE_ICONS
-    : AVAILABLE_ICONS.filter(icon => icon.category === selectedCategory);
+  const filteredIcons =
+    selectedCategory === 'all'
+      ? AVAILABLE_ICONS
+      : AVAILABLE_ICONS.filter((icon) => icon.category === selectedCategory);
 
   const addFeature = () => {
     const newFeature: PortfolioProjectFeature = {
@@ -132,14 +168,12 @@ export default function PortfolioFeaturesEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-white">
-          Cechy & Mocne Strony
-        </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-white">Cechy & Mocne Strony</h3>
         <button
           type="button"
           onClick={addFeature}
-          className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
+          className="rounded-lg bg-yellow-600 px-4 py-2 text-white transition-colors hover:bg-yellow-700"
         >
           + Dodaj Cechę
         </button>
@@ -147,47 +181,43 @@ export default function PortfolioFeaturesEditor({
 
       <div className="space-y-3">
         {features.map((feature, index) => (
-          <div
-            key={index}
-            className="bg-gray-800/50 border border-gray-700 rounded-lg p-4"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div key={index} className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {/* Icon Picker */}
               <div className="relative">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Ikona
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-300">Ikona</label>
                 <button
                   type="button"
                   onClick={() => setShowIconPicker(showIconPicker === index ? null : index)}
-                  className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-left flex items-center gap-3 hover:border-yellow-500 transition-colors"
+                  className="flex w-full items-center gap-3 rounded-lg border border-gray-600 bg-gray-900 px-4 py-3 text-left transition-colors hover:border-yellow-500"
                 >
-                  <div className="w-10 h-10 rounded-full bg-yellow-600/20 flex items-center justify-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-600/20">
                     {renderIcon(feature.icon_name, 'w-5 h-5 text-yellow-500')}
                   </div>
                   <div>
-                    <div className="text-white font-medium">
-                      {AVAILABLE_ICONS.find(i => i.name === feature.icon_name)?.label || feature.icon_name}
+                    <div className="font-medium text-white">
+                      {AVAILABLE_ICONS.find((i) => i.name === feature.icon_name)?.label ||
+                        feature.icon_name}
                     </div>
                     <div className="text-sm text-gray-400">Kliknij aby zmienić</div>
                   </div>
                 </button>
 
                 {showIconPicker === index && (
-                  <div className="absolute z-[100] mt-2 w-full min-w-[500px] bg-gray-900 border-2 border-yellow-500 rounded-lg shadow-2xl p-4">
+                  <div className="absolute z-[100] mt-2 w-full min-w-[500px] rounded-lg border-2 border-yellow-500 bg-gray-900 p-4 shadow-2xl">
                     {/* Debug Info */}
-                    <div className="text-xs text-gray-500 mb-2">
+                    <div className="mb-2 text-xs text-gray-500">
                       Załadowano: {AVAILABLE_ICONS.length} ikon | Widoczne: {filteredIcons.length}
                     </div>
 
                     {/* Category Filter */}
-                    <div className="flex gap-2 mb-3 flex-wrap">
-                      {categories.map(cat => (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {categories.map((cat) => (
                         <button
                           key={cat}
                           type="button"
                           onClick={() => setSelectedCategory(cat)}
-                          className={`px-3 py-1 rounded text-sm transition-colors ${
+                          className={`rounded px-3 py-1 text-sm transition-colors ${
                             selectedCategory === cat
                               ? 'bg-yellow-600 text-white'
                               : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
@@ -199,13 +229,13 @@ export default function PortfolioFeaturesEditor({
                     </div>
 
                     {/* Icon Grid */}
-                    <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+                    <div className="grid max-h-64 grid-cols-4 gap-2 overflow-y-auto">
                       {filteredIcons.length === 0 ? (
-                        <div className="col-span-4 text-center py-8 text-gray-400">
+                        <div className="col-span-4 py-8 text-center text-gray-400">
                           Brak ikon w tej kategorii
                         </div>
                       ) : (
-                        filteredIcons.map(icon => (
+                        filteredIcons.map((icon) => (
                           <button
                             key={icon.name}
                             type="button"
@@ -213,7 +243,7 @@ export default function PortfolioFeaturesEditor({
                               updateFeature(index, { icon_name: icon.name });
                               setShowIconPicker(null);
                             }}
-                            className={`p-3 rounded-lg flex flex-col items-center gap-1 transition-colors ${
+                            className={`flex flex-col items-center gap-1 rounded-lg p-3 transition-colors ${
                               feature.icon_name === icon.name
                                 ? 'bg-yellow-600 text-white'
                                 : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
@@ -221,7 +251,7 @@ export default function PortfolioFeaturesEditor({
                             title={icon.description}
                           >
                             {renderIcon(icon.name, 'w-6 h-6')}
-                            <span className="text-xs text-center line-clamp-2">{icon.label}</span>
+                            <span className="line-clamp-2 text-center text-xs">{icon.label}</span>
                           </button>
                         ))
                       )}
@@ -232,28 +262,26 @@ export default function PortfolioFeaturesEditor({
 
               {/* Title Input */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Tytuł Cechy
-                </label>
+                <label className="mb-2 block text-sm font-medium text-gray-300">Tytuł Cechy</label>
                 <input
                   type="text"
                   value={feature.title}
                   onChange={(e) => updateFeature(index, { title: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-600 bg-gray-900 px-4 py-3 text-white focus:border-yellow-500 focus:outline-none"
                   placeholder="np. Profesjonalna Obsługa"
                 />
               </div>
 
               {/* Description (optional) */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="mb-2 block text-sm font-medium text-gray-300">
                   Opis (opcjonalnie)
                 </label>
                 <input
                   type="text"
                   value={feature.description || ''}
                   onChange={(e) => updateFeature(index, { description: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-600 bg-gray-900 px-4 py-3 text-white focus:border-yellow-500 focus:outline-none"
                   placeholder="Dodatkowy opis cechy"
                 />
               </div>
@@ -264,7 +292,7 @@ export default function PortfolioFeaturesEditor({
               <button
                 type="button"
                 onClick={() => removeFeature(index)}
-                className="px-3 py-1 text-red-400 hover:text-red-300 transition-colors text-sm"
+                className="px-3 py-1 text-sm text-red-400 transition-colors hover:text-red-300"
               >
                 Usuń
               </button>
@@ -273,7 +301,7 @@ export default function PortfolioFeaturesEditor({
         ))}
 
         {features.length === 0 && (
-          <div className="text-center py-8 text-gray-400">
+          <div className="py-8 text-center text-gray-400">
             Brak cech. Kliknij &quot;Dodaj Cechę&quot; aby rozpocząć.
           </div>
         )}

@@ -32,45 +32,23 @@ export const FormInput: React.FC<FormInputProps> = ({
           {...field}
           type="checkbox"
           checked={field.value}
-          className="w-5 h-5 rounded bg-[#1c1f33] border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0"
+          className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0"
         />
-        {label && (
-          <label className="text-[#e5e4e2] font-light cursor-pointer">
-            {label}
-          </label>
-        )}
-        {hasError && (
-          <p className="text-red-500 text-sm mt-1">{meta.error}</p>
-        )}
+        {label && <label className="cursor-pointer font-light text-[#e5e4e2]">{label}</label>}
+        {hasError && <p className="mt-1 text-sm text-red-500">{meta.error}</p>}
       </div>
     );
   }
 
   return (
     <div className="mb-4">
-      {label && (
-        <label className="block text-[#e5e4e2] mb-2 font-light">
-          {label}
-        </label>
-      )}
+      {label && <label className="mb-2 block font-light text-[#e5e4e2]">{label}</label>}
       {multiline ? (
-        <textarea
-          {...field}
-          placeholder={placeholder}
-          rows={rows}
-          className={inputClasses}
-        />
+        <textarea {...field} placeholder={placeholder} rows={rows} className={inputClasses} />
       ) : (
-        <input
-          {...field}
-          type={type}
-          placeholder={placeholder}
-          className={inputClasses}
-        />
+        <input {...field} type={type} placeholder={placeholder} className={inputClasses} />
       )}
-      {hasError && (
-        <p className="text-red-500 text-sm mt-1">{meta.error}</p>
-      )}
+      {hasError && <p className="mt-1 text-sm text-red-500">{meta.error}</p>}
     </div>
   );
 };

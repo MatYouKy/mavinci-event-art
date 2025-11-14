@@ -90,7 +90,7 @@ export default function TasksScreen() {
           if (employee) {
             fetchTasks();
           }
-        }
+        },
       )
       .subscribe();
 
@@ -122,7 +122,7 @@ export default function TasksScreen() {
       if (error2) throw error2;
 
       // Get unique task IDs
-      const assignedTaskIds = assignedTasksData?.map(ta => ta.task_id) || [];
+      const assignedTaskIds = assignedTasksData?.map((ta) => ta.task_id) || [];
 
       // Fetch assigned tasks
       let assignedTasks: any[] = [];
@@ -140,12 +140,10 @@ export default function TasksScreen() {
 
       // Combine and deduplicate
       const allTasks = [...(createdTasks || []), ...assignedTasks];
-      const uniqueTasks = Array.from(
-        new Map(allTasks.map((task) => [task.id, task])).values()
-      );
+      const uniqueTasks = Array.from(new Map(allTasks.map((task) => [task.id, task])).values());
 
       // Fetch assignees for all tasks
-      const taskIds = uniqueTasks.map(t => t.id);
+      const taskIds = uniqueTasks.map((t) => t.id);
       if (taskIds.length > 0) {
         const { data: assigneesData, error: error4 } = await supabase
           .from('task_assignees')
@@ -155,7 +153,7 @@ export default function TasksScreen() {
         if (error4) throw error4;
 
         // Fetch employee details
-        const employeeIds = [...new Set(assigneesData?.map(a => a.employee_id) || [])];
+        const employeeIds = [...new Set(assigneesData?.map((a) => a.employee_id) || [])];
         if (employeeIds.length > 0) {
           const { data: employeesData, error: error5 } = await supabase
             .from('employees')
@@ -165,21 +163,21 @@ export default function TasksScreen() {
           if (error5) throw error5;
 
           // Map employees by ID
-          const employeesMap = new Map(employeesData?.map(e => [e.id, e]) || []);
+          const employeesMap = new Map(employeesData?.map((e) => [e.id, e]) || []);
 
           // Attach assignees to tasks
-          uniqueTasks.forEach(task => {
-            const taskAssignees = assigneesData?.filter(a => a.task_id === task.id) || [];
-            task.task_assignees = taskAssignees.map(ta => ({
+          uniqueTasks.forEach((task) => {
+            const taskAssignees = assigneesData?.filter((a) => a.task_id === task.id) || [];
+            task.task_assignees = taskAssignees.map((ta) => ({
               employee_id: ta.employee_id,
-              employees: employeesMap.get(ta.employee_id)
+              employees: employeesMap.get(ta.employee_id),
             }));
           });
         }
       }
 
-      uniqueTasks.sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      uniqueTasks.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
 
       setTasks(uniqueTasks);
@@ -207,9 +205,7 @@ export default function TasksScreen() {
 
       // Update local state
       setTasks((prev) =>
-        prev.map((task) =>
-          task.id === taskId ? { ...task, board_column: newColumn } : task
-        )
+        prev.map((task) => (task.id === taskId ? { ...task, board_column: newColumn } : task)),
       );
     } catch (error) {
       console.error('Error moving task:', error);
@@ -217,7 +213,7 @@ export default function TasksScreen() {
   };
 
   const filteredTasks = tasks.filter((task) =>
-    task.title.toLowerCase().includes(searchQuery.toLowerCase())
+    task.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const getTasksByColumn = (columnId: string) => {
@@ -239,7 +235,9 @@ export default function TasksScreen() {
         <Text style={styles.taskTitle} numberOfLines={2}>
           {task.title}
         </Text>
-        <View style={[styles.priorityBadge, { backgroundColor: `${priorityColors[task.priority]}20` }]}>
+        <View
+          style={[styles.priorityBadge, { backgroundColor: `${priorityColors[task.priority]}20` }]}
+        >
           <Text style={[styles.priorityText, { color: priorityColors[task.priority] }]}>
             {priorityLabels[task.priority]}
           </Text>
@@ -255,7 +253,10 @@ export default function TasksScreen() {
       <View style={styles.taskFooter}>
         <View style={styles.assignees}>
           {task.task_assignees.slice(0, 3).map((assignee, index) => (
-            <View key={assignee.employee_id} style={[styles.avatarWrapper, { marginLeft: index > 0 ? -8 : 0 }]}>
+            <View
+              key={assignee.employee_id}
+              style={[styles.avatarWrapper, { marginLeft: index > 0 ? -8 : 0 }]}
+            >
               <EmployeeAvatar
                 avatarUrl={assignee.employees.avatar_url}
                 avatarMetadata={assignee.employees.avatar_metadata}
@@ -275,7 +276,10 @@ export default function TasksScreen() {
           <View style={styles.dueDateContainer}>
             <Feather name="calendar" size={12} color={colors.text.secondary} />
             <Text style={styles.dueDate}>
-              {new Date(task.due_date).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })}
+              {new Date(task.due_date).toLocaleDateString('pl-PL', {
+                day: '2-digit',
+                month: '2-digit',
+              })}
             </Text>
           </View>
         )}
@@ -295,7 +299,12 @@ export default function TasksScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.searchContainer}>
-          <Feather name="search" size={20} color={colors.text.secondary} style={styles.searchIcon} />
+          <Feather
+            name="search"
+            size={20}
+            color={colors.text.secondary}
+            style={styles.searchIcon}
+          />
           <TextInput
             style={styles.searchInput}
             placeholder="Szukaj zadań..."
@@ -316,7 +325,13 @@ export default function TasksScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         style={styles.boardContainer}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary.gold]} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary.gold]}
+          />
+        }
       >
         {BOARD_COLUMNS.map((column) => {
           const columnTasks = getTasksByColumn(column.id);

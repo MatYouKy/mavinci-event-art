@@ -1,14 +1,14 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
+  if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
       headers: corsHeaders,
@@ -16,60 +16,61 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const authHeader = req.headers.get("Authorization");
+    const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      throw new Error("Missing authorization header");
+      throw new Error('Missing authorization header');
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
 
     if (authError || !user) {
-      throw new Error("Unauthorized");
+      throw new Error('Unauthorized');
     }
 
     const { emailAccountId } = await req.json();
 
     if (!emailAccountId) {
-      throw new Error("Missing emailAccountId");
+      throw new Error('Missing emailAccountId');
     }
 
     const { data: emailAccount, error: accountError } = await supabase
-      .from("employee_email_accounts")
-      .select("*")
-      .eq("id", emailAccountId)
+      .from('employee_email_accounts')
+      .select('*')
+      .eq('id', emailAccountId)
       .maybeSingle();
 
     if (accountError || !emailAccount) {
-      throw new Error("Email account not found");
+      throw new Error('Email account not found');
     }
 
     const emails = [];
 
-    console.log("Fetching emails for account:", emailAccount.email_address);
+    console.log('Fetching emails for account:', emailAccount.email_address);
 
     // 1. Pobierz wysłane emaile z tego konta
     const { data: sentEmails, error: sentError } = await supabase
-      .from("sent_emails")
-      .select(`
+      .from('sent_emails')
+      .select(
+        `
         *,
         employees(name, surname, email)
-      `)
-      .eq("email_account_id", emailAccountId)
-      .order("sent_at", { ascending: false })
+      `,
+      )
+      .eq('email_account_id', emailAccountId)
+      .order('sent_at', { ascending: false })
       .limit(50);
 
     if (sentEmails && !sentError) {
       for (const sent of sentEmails) {
         const employee = sent.employees as any;
-        const fromName = employee
-          ? `${employee.name} ${employee.surname}`
-          : "System";
+        const fromName = employee ? `${employee.name} ${employee.surname}` : 'System';
         const fromEmail = employee?.email || emailAccount.email_address;
 
         emails.push({
@@ -77,24 +78,26 @@ Deno.serve(async (req: Request) => {
           to: sent.to_address,
           subject: sent.subject,
           date: new Date(sent.sent_at),
-          text: sent.body.replace(/<[^>]*>/g, ""),
+          text: sent.body.replace(/<[^>]*>/g, ''),
           html: sent.body,
           messageId: sent.message_id || sent.id,
-          type: "sent",
-          source: "sent_emails",
+          type: 'sent',
+          source: 'sent_emails',
         });
       }
     }
 
     // 2. Pobierz odebrane emaile z bazy
     const { data: receivedEmails, error: receivedError } = await supabase
-      .from("received_emails")
-      .select(`
+      .from('received_emails')
+      .select(
+        `
         *,
         assigned_employee:employees(name, surname)
-      `)
-      .eq("email_account_id", emailAccountId)
-      .order("received_date", { ascending: false })
+      `,
+      )
+      .eq('email_account_id', emailAccountId)
+      .order('received_date', { ascending: false })
       .limit(50);
 
     if (receivedEmails && !receivedError) {
@@ -104,11 +107,11 @@ Deno.serve(async (req: Request) => {
           to: received.to_address,
           subject: received.subject,
           date: new Date(received.received_date),
-          text: received.body_text || "",
-          html: received.body_html || "",
+          text: received.body_text || '',
+          html: received.body_html || '',
           messageId: received.message_id || received.id,
-          type: "received",
-          source: "received_emails",
+          type: 'received',
+          source: 'received_emails',
           isRead: received.is_read,
           isStarred: received.is_starred,
         });
@@ -118,7 +121,9 @@ Deno.serve(async (req: Request) => {
     // Sortuj wszystkie emaile po dacie
     emails.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    console.log(`Returned ${emails.length} emails (sent: ${sentEmails?.length || 0}, received: ${receivedEmails?.length || 0})`);
+    console.log(
+      `Returned ${emails.length} emails (sent: ${sentEmails?.length || 0}, received: ${receivedEmails?.length || 0})`,
+    );
 
     return new Response(
       JSON.stringify({
@@ -134,18 +139,15 @@ Deno.serve(async (req: Request) => {
       {
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-      }
+      },
     );
   } catch (error) {
-    console.error("Error fetching emails:", error);
+    console.error('Error fetching emails:', error);
 
-    const errorMessage = error instanceof Error
-      ? error.message
-      : typeof error === "string"
-      ? error
-      : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error';
 
     return new Response(
       JSON.stringify({
@@ -157,9 +159,9 @@ Deno.serve(async (req: Request) => {
         status: 400,
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-      }
+      },
     );
   }
 });

@@ -13,6 +13,7 @@ Aplikacja mobilna React Native dla systemu CRM Mavinci, działająca na Android 
 ## 📱 Funkcjonalności
 
 ### ✅ Zaimplementowane:
+
 - 🔐 Logowanie (email/hasło przez Supabase Auth)
 - 📊 Dashboard z nadchodzącymi wydarzeniami i zadaniami
 - 🎨 Współdzielony system kolorów z aplikacją webową
@@ -21,6 +22,7 @@ Aplikacja mobilna React Native dla systemu CRM Mavinci, działająca na Android 
 - 🔄 Pull-to-refresh na Dashboard
 
 ### 🚧 Do zaimplementowania (placeholder):
+
 - 📅 Kalendarz wydarzeń
 - ✅ Lista zadań
 - 👥 Lista klientów
@@ -65,6 +67,7 @@ npm install  # UWAGA: Używaj npm, NIE yarn!
 ```
 
 **⚠️ Ważne:**
+
 - Aplikacja używa **Expo SDK 54** - upewnij się że masz najnowsze **Expo Go**:
   - [Android Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent)
   - [iOS Expo Go](https://apps.apple.com/app/expo-go/id982107779)
@@ -175,6 +178,7 @@ Sesja jest automatycznie zapisywana w `AsyncStorage` i przywracana po ponownym u
 Aplikacja korzysta z **tej samej bazy danych** co aplikacja webowa:
 
 ### Tabele używane:
+
 - `employees` - pracownicy (logowanie, dane użytkownika)
 - `events` - wydarzenia
 - `tasks` - zadania
@@ -182,6 +186,7 @@ Aplikacja korzysta z **tej samej bazy danych** co aplikacja webowa:
 - `notifications` - powiadomienia
 
 ### Row Level Security (RLS):
+
 Wszystkie polityki RLS z aplikacji webowej działają również w mobile! 🔒
 
 ## 🚀 Build produkcyjny
@@ -243,6 +248,7 @@ eas build --platform ios --profile production
 Expo automatycznie generuje folder `.expo/` podczas uruchamiania. Jest on **już dodany do `.gitignore`** i nie powinien być commitowany!
 
 Jeśli widzisz zmiany w:
+
 - `mobile/.expo/` - ignoruj, nie commituj
 - `mobile/yarn.lock` - ignoruj, używamy npm
 - Pliki `mobile/.expo/metro/...` - automatycznie generowane

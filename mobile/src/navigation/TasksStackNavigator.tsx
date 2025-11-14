@@ -13,11 +13,7 @@ const Stack = createNativeStackNavigator<TasksStackParamList>();
 export default function TasksStackNavigator() {
   return (
     <Stack.Navigator>
-      <Stack.Screen
-        name="TasksList"
-        component={TasksScreen}
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="TasksList" component={TasksScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="TaskDetail"
         component={TaskDetailScreen}

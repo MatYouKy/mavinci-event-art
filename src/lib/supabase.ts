@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://fuuljhhuhfojtmmfmskq.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1dWxqaGh1aGZvanRtbWZtc2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5NDI5NjEsImV4cCI6MjA3NTUxODk2MX0.xe8_YUgENMeXwuLSZVatAfDBZLi5lcfyV3sHjaD8dmE';
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://fuuljhhuhfojtmmfmskq.supabase.co';
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1dWxqaGh1aGZvanRtbWZtc2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5NDI5NjEsImV4cCI6MjA3NTUxODk2MX0.xe8_YUgENMeXwuLSZVatAfDBZLi5lcfyV3sHjaD8dmE';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables!');
@@ -17,8 +20,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     headers: {
       apikey: supabaseAnonKey,
-    }
-  }
+    },
+  },
 });
 
 // For API routes - create admin client with service role key
@@ -31,8 +34,8 @@ export const getSupabaseAdmin = () => {
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
-      persistSession: false
-    }
+      persistSession: false,
+    },
   });
 };
 

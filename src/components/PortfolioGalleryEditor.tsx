@@ -106,26 +106,26 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
         <button
           type="button"
           onClick={() => setIsAdding(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           Dodaj zdjęcie
         </button>
       </div>
 
       {isAdding && (
-        <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6">
-          <h5 className="text-[#e5e4e2] mb-4">Nowe zdjęcie</h5>
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+          <h5 className="mb-4 text-[#e5e4e2]">Nowe zdjęcie</h5>
           <SimpleImageUploader
             onImageSelect={(imageData) => setNewImageData(imageData)}
             showPreview={true}
           />
-          <div className="flex gap-3 mt-4">
+          <div className="mt-4 flex gap-3">
             <button
               type="button"
               onClick={handleAddImage}
               disabled={uploading || !newImageData?.file}
-              className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-lg bg-[#d3bb73] px-6 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {uploading ? 'Wgrywanie...' : 'Dodaj zdjęcie'}
             </button>
@@ -135,7 +135,7 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
                 setIsAdding(false);
                 setNewImageData(null);
               }}
-              className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+              className="rounded-lg bg-[#800020]/20 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
             >
               Anuluj
             </button>
@@ -143,11 +143,11 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {gallery.map((image, index) => (
-          <div key={index} className="relative group">
+          <div key={index} className="group relative">
             {editingIndex === index ? (
-              <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-4">
+              <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-4">
                 <SimpleImageUploader
                   onImageSelect={(imageData) => setEditImageData(imageData)}
                   initialImage={{
@@ -156,12 +156,12 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
                   }}
                   showPreview={true}
                 />
-                <div className="flex gap-2 mt-2">
+                <div className="mt-2 flex gap-2">
                   <button
                     type="button"
                     onClick={() => handleUpdateImage(index)}
                     disabled={uploading}
-                    className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                    className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                   >
                     {uploading ? 'Zapisywanie...' : 'Zapisz'}
                   </button>
@@ -171,7 +171,7 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
                       setEditingIndex(null);
                       setEditImageData(null);
                     }}
-                    className="flex-1 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                    className="flex-1 rounded-lg bg-[#800020]/20 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
                   >
                     Anuluj
                   </button>
@@ -179,14 +179,14 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
               </div>
             ) : (
               <>
-                <div className="aspect-[4/3] relative overflow-hidden rounded-lg border border-[#d3bb73]/10">
+                <div className="relative aspect-[4/3] overflow-hidden rounded-lg border border-[#d3bb73]/10">
                   <img
                     src={image.image_metadata?.desktop?.src || image.src}
                     alt={image.alt || 'Zdjęcie z galerii'}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                   />
                 </div>
-                <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute right-2 top-2 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
                     type="button"
                     onClick={() => {
@@ -196,16 +196,16 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
                         image_metadata: image.image_metadata,
                       } as IUploadImage);
                     }}
-                    className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                    className="rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Edit className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteImage(index)}
-                    className="p-2 bg-[#800020] text-[#e5e4e2] rounded-lg hover:bg-[#800020]/90 transition-colors"
+                    className="rounded-lg bg-[#800020] p-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/90"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </>
@@ -215,10 +215,10 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
       </div>
 
       {gallery.length === 0 && !isAdding && (
-        <div className="text-center py-12 border border-dashed border-[#d3bb73]/20 rounded-xl">
-          <ImageIcon className="w-12 h-12 text-[#d3bb73]/50 mx-auto mb-4" />
+        <div className="rounded-xl border border-dashed border-[#d3bb73]/20 py-12 text-center">
+          <ImageIcon className="mx-auto mb-4 h-12 w-12 text-[#d3bb73]/50" />
           <p className="text-[#e5e4e2]/50">Brak zdjęć w galerii</p>
-          <p className="text-[#e5e4e2]/30 text-sm mt-2">Kliknij "Dodaj zdjęcie" aby rozpocząć</p>
+          <p className="mt-2 text-sm text-[#e5e4e2]/30">Kliknij "Dodaj zdjęcie" aby rozpocząć</p>
         </div>
       )}
     </div>

@@ -1,0 +1,1 @@
+export type ViewModeType = 'grid' | 'list' | 'table';

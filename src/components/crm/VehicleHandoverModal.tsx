@@ -82,7 +82,7 @@ export default function VehicleHandoverModal({
           .select('id')
           .eq('vehicle_id', vehicle.vehicle_id);
 
-        const eventVehicleIds = eventVehicles?.map(ev => ev.id) || [];
+        const eventVehicleIds = eventVehicles?.map((ev) => ev.id) || [];
 
         if (eventVehicleIds.length > 0) {
           const { data, error } = await supabase
@@ -129,7 +129,7 @@ export default function VehicleHandoverModal({
           .select('id')
           .eq('vehicle_id', vehicle.vehicle_id);
 
-        const eventVehicleIds = eventVehicles?.map(ev => ev.id) || [];
+        const eventVehicleIds = eventVehicles?.map((ev) => ev.id) || [];
 
         if (eventVehicleIds.length > 0) {
           const { data: lastHandover } = await supabase
@@ -146,7 +146,7 @@ export default function VehicleHandoverModal({
               : 'Nieznany kierowca';
             showSnackbar(
               `Pojazd nie został jeszcze zdany! Ostatni odbiór: ${driverName} (${formatDate(lastHandover.timestamp)})`,
-              'error'
+              'error',
             );
             setLoading(false);
             return;
@@ -165,10 +165,7 @@ export default function VehicleHandoverModal({
 
       if (error) throw error;
 
-      showSnackbar(
-        handoverType === 'pickup' ? 'Pojazd odebrany' : 'Pojazd zdany',
-        'success'
-      );
+      showSnackbar(handoverType === 'pickup' ? 'Pojazd odebrany' : 'Pojazd zdany', 'success');
       onSuccess();
     } catch (error: any) {
       console.error('Error saving handover:', error);
@@ -179,30 +176,25 @@ export default function VehicleHandoverModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 max-w-md w-full p-6">
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="text-xl font-semibold text-[#e5e4e2]">
             {handoverType === 'pickup' ? 'Odbierz pojazd' : 'Zdaj pojazd'}
           </h3>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-[#0f1119] rounded transition-colors"
-          >
-            <X className="w-5 h-5 text-[#e5e4e2]/60" />
+          <button onClick={onClose} className="rounded p-1 transition-colors hover:bg-[#0f1119]">
+            <X className="h-5 w-5 text-[#e5e4e2]/60" />
           </button>
         </div>
 
-        <p className="text-[#e5e4e2]/60 mb-6">
+        <p className="mb-6 text-[#e5e4e2]/60">
           {vehicle.vehicles?.name || vehicle.external_company_name}
-          {vehicle.vehicles?.registration_number && (
-            <> ({vehicle.vehicles.registration_number})</>
-          )}
+          {vehicle.vehicles?.registration_number && <> ({vehicle.vehicles.registration_number})</>}
         </p>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Stan licznika (km)
               {loadingLastOdometer ? (
                 <span className="ml-2 text-xs">Ładowanie...</span>
@@ -216,37 +208,35 @@ export default function VehicleHandoverModal({
               type="number"
               value={odometerReading}
               onChange={(e) => setOdometerReading(e.target.value)}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]"
+              className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
               placeholder="np. 125000"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Uwagi (opcjonalnie)
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Uwagi (opcjonalnie)</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2]"
+              className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
               rows={3}
               placeholder="np. Stan techniczny, uszkodzenia, tankowanie..."
             />
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="mt-6 flex gap-3">
           <button
             onClick={onClose}
             disabled={loading}
-            className="flex-1 px-4 py-2 border border-[#d3bb73]/20 rounded hover:bg-[#0f1119] transition-colors text-[#e5e4e2] disabled:opacity-50"
+            className="flex-1 rounded border border-[#d3bb73]/20 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119] disabled:opacity-50"
           >
             Anuluj
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors font-medium disabled:opacity-50"
+            className="flex-1 rounded bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? 'Zapisywanie...' : 'Zapisz'}
           </button>

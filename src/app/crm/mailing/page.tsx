@@ -42,8 +42,8 @@ export default function MailingPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Kampanie mailingowe</h2>
-        <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
-          <Plus className="w-4 h-4" />
+        <button className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90">
+          <Plus className="h-4 w-4" />
           Nowa kampania
         </button>
       </div>
@@ -52,42 +52,39 @@ export default function MailingPage() {
         {campaigns.map((campaign) => (
           <div
             key={campaign.id}
-            className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+            className="cursor-pointer rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30"
           >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-4 flex-1">
-                <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
-                  <Mail className="w-6 h-6 text-[#d3bb73]" />
+            <div className="mb-4 flex items-start justify-between">
+              <div className="flex flex-1 items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/20">
+                  <Mail className="h-6 w-6 text-[#d3bb73]" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-medium text-[#e5e4e2]">
-                      {campaign.name}
-                    </h3>
-                    <span
-                      className={`px-2 py-1 rounded text-xs ${
-                        statusColors[campaign.status]
-                      }`}
-                    >
+                  <div className="mb-2 flex items-center gap-3">
+                    <h3 className="text-lg font-medium text-[#e5e4e2]">{campaign.name}</h3>
+                    <span className={`rounded px-2 py-1 text-xs ${statusColors[campaign.status]}`}>
                       {statusLabels[campaign.status]}
                     </span>
                   </div>
-                  <p className="text-sm text-[#e5e4e2]/70 mb-1">
-                    Temat: {campaign.subject}
-                  </p>
+                  <p className="mb-1 text-sm text-[#e5e4e2]/70">Temat: {campaign.subject}</p>
                   <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/60">
-                    <Users className="w-3 h-3" />
+                    <Users className="h-3 w-3" />
                     {campaign.recipients_count} odbiorców
                     {campaign.status === 'sent' && (
                       <>
                         <span>•</span>
-                        <span>Wysłana: {new Date(campaign.sent_at).toLocaleDateString('pl-PL')}</span>
+                        <span>
+                          Wysłana: {new Date(campaign.sent_at).toLocaleDateString('pl-PL')}
+                        </span>
                       </>
                     )}
                     {campaign.status === 'scheduled' && (
                       <>
                         <span>•</span>
-                        <span>Zaplanowana: {new Date(campaign.scheduled_at!).toLocaleDateString('pl-PL')}</span>
+                        <span>
+                          Zaplanowana:{' '}
+                          {new Date(campaign.scheduled_at!).toLocaleDateString('pl-PL')}
+                        </span>
                       </>
                     )}
                   </div>
@@ -96,7 +93,7 @@ export default function MailingPage() {
             </div>
 
             {campaign.status === 'sent' && (
-              <div className="pt-4 border-t border-[#d3bb73]/10 grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-4 border-t border-[#d3bb73]/10 pt-4">
                 <div>
                   <div className="text-2xl font-light text-[#e5e4e2]">
                     {campaign.recipients_count}
@@ -104,15 +101,11 @@ export default function MailingPage() {
                   <div className="text-xs text-[#e5e4e2]/60">Wysłane</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-light text-[#d3bb73]">
-                    {campaign.opened_count}
-                  </div>
+                  <div className="text-2xl font-light text-[#d3bb73]">{campaign.opened_count}</div>
                   <div className="text-xs text-[#e5e4e2]/60">Otwarte</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-light text-green-400">
-                    {campaign.clicked_count}
-                  </div>
+                  <div className="text-2xl font-light text-green-400">{campaign.clicked_count}</div>
                   <div className="text-xs text-[#e5e4e2]/60">Kliknięcia</div>
                 </div>
               </div>

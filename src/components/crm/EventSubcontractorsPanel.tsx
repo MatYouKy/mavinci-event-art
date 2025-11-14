@@ -86,7 +86,8 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
 
       const { data: tasksData, error: tasksError } = await supabase
         .from('subcontractor_tasks')
-        .select(`
+        .select(
+          `
           *,
           subcontractors (
             id,
@@ -98,7 +99,8 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
             rating,
             specialization
           )
-        `)
+        `,
+        )
         .eq('event_id', eventId)
         .order('start_date', { ascending: false });
 
@@ -107,7 +109,8 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
 
       const { data: contractsData, error: contractsError } = await supabase
         .from('subcontractor_contracts')
-        .select(`
+        .select(
+          `
           *,
           subcontractors (
             id,
@@ -119,7 +122,8 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
             rating,
             specialization
           )
-        `)
+        `,
+        )
         .eq('event_id', eventId)
         .order('created_at', { ascending: false });
 
@@ -174,22 +178,28 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     return labels[status] || status;
   };
 
-  const tasksBySubcontractor = tasks.reduce((acc, task) => {
-    const subId = task.subcontractor_id;
-    if (!acc[subId]) {
-      acc[subId] = [];
-    }
-    acc[subId].push(task);
-    return acc;
-  }, {} as Record<string, SubcontractorTask[]>);
+  const tasksBySubcontractor = tasks.reduce(
+    (acc, task) => {
+      const subId = task.subcontractor_id;
+      if (!acc[subId]) {
+        acc[subId] = [];
+      }
+      acc[subId].push(task);
+      return acc;
+    },
+    {} as Record<string, SubcontractorTask[]>,
+  );
 
   const uniqueSubcontractorIds = new Set([
-    ...tasks.map(t => t.subcontractor_id),
-    ...contracts.map(c => c.subcontractor_id)
+    ...tasks.map((t) => t.subcontractor_id),
+    ...contracts.map((c) => c.subcontractor_id),
   ]);
 
   const totalTasksCost = tasks.reduce((sum, task) => sum + (task.total_cost || 0), 0);
-  const totalContractsValue = contracts.reduce((sum, contract) => sum + (contract.total_value || 0), 0);
+  const totalContractsValue = contracts.reduce(
+    (sum, contract) => sum + (contract.total_value || 0),
+    0,
+  );
 
   if (loading) {
     return (
@@ -203,44 +213,40 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-[#e5e4e2]">
-            Podwykonawcy wydarzenia
-          </h2>
-          <p className="text-sm text-[#e5e4e2]/60 mt-1">
+          <h2 className="text-xl font-bold text-[#e5e4e2]">Podwykonawcy wydarzenia</h2>
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Zarządzaj zadaniami podwykonawców dla tego wydarzenia
           </p>
         </div>
         <button
           onClick={() => setShowAddTaskModal(true)}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           Dodaj zadanie
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <UserCheck className="w-5 h-5 text-blue-400" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center gap-3">
+            <UserCheck className="h-5 w-5 text-blue-400" />
             <span className="text-sm text-[#e5e4e2]/60">Podwykonawcy</span>
           </div>
-          <div className="text-2xl font-bold text-[#e5e4e2]">
-            {uniqueSubcontractorIds.size}
-          </div>
+          <div className="text-2xl font-bold text-[#e5e4e2]">{uniqueSubcontractorIds.size}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Clock className="w-5 h-5 text-yellow-400" />
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center gap-3">
+            <Clock className="h-5 w-5 text-yellow-400" />
             <span className="text-sm text-[#e5e4e2]/60">Zadania</span>
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">{tasks.length}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-green-400" />
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-green-400" />
             <span className="text-sm text-[#e5e4e2]/60">Koszt zadań</span>
           </div>
           <div className="text-2xl font-bold text-[#d3bb73]">
@@ -248,26 +254,24 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
           </div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <FileText className="w-5 h-5 text-purple-400" />
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center gap-3">
+            <FileText className="h-5 w-5 text-purple-400" />
             <span className="text-sm text-[#e5e4e2]/60">Umowy</span>
           </div>
-          <div className="text-2xl font-bold text-[#d3bb73]">
-            {contracts.length}
-          </div>
+          <div className="text-2xl font-bold text-[#d3bb73]">{contracts.length}</div>
         </div>
       </div>
 
       {uniqueSubcontractorIds.size === 0 ? (
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-          <UserCheck className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 mb-4">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+          <UserCheck className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
+          <p className="mb-4 text-[#e5e4e2]/60">
             Brak przypisanych podwykonawców do tego wydarzenia
           </p>
           <button
             onClick={() => setShowAddTaskModal(true)}
-            className="bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
             Dodaj pierwsze zadanie
           </button>
@@ -276,7 +280,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
         <div className="space-y-6">
           {Array.from(uniqueSubcontractorIds).map((subId) => {
             const subTasks = tasksBySubcontractor[subId] || [];
-            const subContracts = contracts.filter(c => c.subcontractor_id === subId);
+            const subContracts = contracts.filter((c) => c.subcontractor_id === subId);
             const sub = subTasks[0]?.subcontractors || subContracts[0]?.subcontractors;
 
             if (!sub) return null;
@@ -284,40 +288,35 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
             const subTotalCost = subTasks.reduce((sum, task) => sum + (task.total_cost || 0), 0);
 
             return (
-              <div
-                key={subId}
-                className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6"
-              >
-                <div className="flex items-start justify-between mb-6 pb-4 border-b border-[#d3bb73]/10">
+              <div key={subId} className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+                <div className="mb-6 flex items-start justify-between border-b border-[#d3bb73]/10 pb-4">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                      <UserCheck className="w-6 h-6 text-blue-400" />
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-500/20">
+                      <UserCheck className="h-6 w-6 text-blue-400" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-[#e5e4e2] mb-1">
+                      <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2]">
                         {sub.company_name}
                       </h3>
                       {sub.contact_person && (
-                        <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                          {sub.contact_person}
-                        </p>
+                        <p className="mb-2 text-sm text-[#e5e4e2]/60">{sub.contact_person}</p>
                       )}
                       <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                         {sub.email && (
                           <span className="flex items-center gap-1">
-                            <Mail className="w-4 h-4" />
+                            <Mail className="h-4 w-4" />
                             {sub.email}
                           </span>
                         )}
                         {sub.phone && (
                           <span className="flex items-center gap-1">
-                            <Phone className="w-4 h-4" />
+                            <Phone className="h-4 w-4" />
                             {sub.phone}
                           </span>
                         )}
                         {sub.rating && (
                           <span className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                             {sub.rating}/5
                           </span>
                         )}
@@ -326,13 +325,11 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                   </div>
 
                   <div className="text-right">
-                    <div className="text-sm text-[#e5e4e2]/60 mb-1">
-                      Całkowity koszt
-                    </div>
+                    <div className="mb-1 text-sm text-[#e5e4e2]/60">Całkowity koszt</div>
                     <div className="text-2xl font-bold text-[#d3bb73]">
                       {subTotalCost.toLocaleString('pl-PL')} zł
                     </div>
-                    <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                    <div className="mt-1 text-xs text-[#e5e4e2]/40">
                       {subTasks.length} zadań | {subContracts.length} umów
                     </div>
                   </div>
@@ -340,38 +337,34 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
 
                 {subTasks.length > 0 && (
                   <div className="mb-4">
-                    <h4 className="text-sm font-medium text-[#e5e4e2] mb-3 flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
+                    <h4 className="mb-3 flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
+                      <Clock className="h-4 w-4" />
                       Zadania ({subTasks.length})
                     </h4>
                     <div className="space-y-3">
                       {subTasks.map((task) => (
                         <div
                           key={task.id}
-                          className="bg-[#0f1119] rounded-lg p-4 border border-[#d3bb73]/5"
+                          className="rounded-lg border border-[#d3bb73]/5 bg-[#0f1119] p-4"
                         >
-                          <div className="flex items-start justify-between mb-2">
+                          <div className="mb-2 flex items-start justify-between">
                             <div>
-                              <h5 className="font-medium text-[#e5e4e2] mb-1">
-                                {task.task_name}
-                              </h5>
+                              <h5 className="mb-1 font-medium text-[#e5e4e2]">{task.task_name}</h5>
                               {task.description && (
-                                <p className="text-sm text-[#e5e4e2]/60">
-                                  {task.description}
-                                </p>
+                                <p className="text-sm text-[#e5e4e2]/60">{task.description}</p>
                               )}
                             </div>
                             <div className="flex items-center gap-2">
                               <span
-                                className={`px-2 py-1 rounded text-xs ${getStatusColor(
-                                  task.status
+                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
+                                  task.status,
                                 )}`}
                               >
                                 {getStatusLabel(task.status)}
                               </span>
                               <span
-                                className={`px-2 py-1 rounded text-xs ${getStatusColor(
-                                  task.payment_status
+                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
+                                  task.payment_status,
                                 )}`}
                               >
                                 {getStatusLabel(task.payment_status)}
@@ -379,31 +372,25 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-4 gap-4 text-sm mt-3">
+                          <div className="mt-3 grid grid-cols-4 gap-4 text-sm">
                             <div>
-                              <div className="text-[#e5e4e2]/40 text-xs mb-1">
-                                Rozliczenie
-                              </div>
+                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Rozliczenie</div>
                               <div className="text-[#e5e4e2]">
                                 {task.payment_type === 'fixed'
                                   ? 'Ryczałt'
                                   : task.payment_type === 'hourly'
-                                  ? 'Godzinowe'
-                                  : 'Mieszane'}
+                                    ? 'Godzinowe'
+                                    : 'Mieszane'}
                               </div>
                             </div>
                             <div>
-                              <div className="text-[#e5e4e2]/40 text-xs mb-1">
-                                Godziny
-                              </div>
+                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Godziny</div>
                               <div className="text-[#e5e4e2]">
                                 {task.actual_hours}h / {task.estimated_hours}h
                               </div>
                             </div>
                             <div>
-                              <div className="text-[#e5e4e2]/40 text-xs mb-1">
-                                Stawka/Cena
-                              </div>
+                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Stawka/Cena</div>
                               <div className="text-[#e5e4e2]">
                                 {task.payment_type === 'fixed'
                                   ? `${task.fixed_price} zł`
@@ -411,26 +398,24 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                               </div>
                             </div>
                             <div>
-                              <div className="text-[#e5e4e2]/40 text-xs mb-1">
-                                Koszt
-                              </div>
-                              <div className="text-[#d3bb73] font-semibold">
+                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Koszt</div>
+                              <div className="font-semibold text-[#d3bb73]">
                                 {task.total_cost?.toLocaleString('pl-PL')} zł
                               </div>
                             </div>
                           </div>
 
                           {(task.start_date || task.end_date) && (
-                            <div className="mt-3 pt-3 border-t border-[#d3bb73]/5 flex items-center gap-4 text-xs text-[#e5e4e2]/60">
+                            <div className="mt-3 flex items-center gap-4 border-t border-[#d3bb73]/5 pt-3 text-xs text-[#e5e4e2]/60">
                               {task.start_date && (
                                 <span className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
+                                  <Calendar className="h-3 w-3" />
                                   Od: {new Date(task.start_date).toLocaleDateString('pl-PL')}
                                 </span>
                               )}
                               {task.end_date && (
                                 <span className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
+                                  <Calendar className="h-3 w-3" />
                                   Do: {new Date(task.end_date).toLocaleDateString('pl-PL')}
                                 </span>
                               )}
@@ -444,41 +429,39 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
 
                 {subContracts.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-medium text-[#e5e4e2] mb-3 flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
+                    <h4 className="mb-3 flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
+                      <FileText className="h-4 w-4" />
                       Umowy ({subContracts.length})
                     </h4>
                     <div className="space-y-3">
                       {subContracts.map((contract) => (
                         <div
                           key={contract.id}
-                          className="bg-[#0f1119] rounded-lg p-4 border border-[#d3bb73]/5"
+                          className="rounded-lg border border-[#d3bb73]/5 bg-[#0f1119] p-4"
                         >
                           <div className="flex items-start justify-between">
                             <div>
-                              <h5 className="font-medium text-[#e5e4e2] mb-1">
-                                {contract.title}
-                              </h5>
+                              <h5 className="mb-1 font-medium text-[#e5e4e2]">{contract.title}</h5>
                               <p className="text-sm text-[#e5e4e2]/60">
                                 {contract.contract_number}
                               </p>
                             </div>
                             <div className="text-right">
                               <span
-                                className={`px-2 py-1 rounded text-xs ${getStatusColor(
-                                  contract.status
+                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
+                                  contract.status,
                                 )}`}
                               >
                                 {getStatusLabel(contract.status)}
                               </span>
-                              <div className="text-[#d3bb73] font-semibold mt-2">
+                              <div className="mt-2 font-semibold text-[#d3bb73]">
                                 {contract.total_value.toLocaleString('pl-PL')} zł
                               </div>
                             </div>
                           </div>
                           {contract.file_path && (
-                            <div className="mt-3 pt-3 border-t border-[#d3bb73]/5 flex items-center gap-2 text-sm text-[#d3bb73]">
-                              <FileText className="w-4 h-4" />
+                            <div className="mt-3 flex items-center gap-2 border-t border-[#d3bb73]/5 pt-3 text-sm text-[#d3bb73]">
+                              <FileText className="h-4 w-4" />
                               <span>Umowa dostępna w plikach wydarzenia</span>
                             </div>
                           )}
@@ -544,11 +527,11 @@ function AddTaskModal({
     contract_type: 'project' as 'frame' | 'project',
   });
 
-  const selectedSubcontractor = subcontractors.find(s => s.id === formData.subcontractor_id);
+  const selectedSubcontractor = subcontractors.find((s) => s.id === formData.subcontractor_id);
 
   useEffect(() => {
     if (selectedSubcontractor && formData.payment_type === 'hourly' && formData.hourly_rate === 0) {
-      setFormData(prev => ({ ...prev, hourly_rate: selectedSubcontractor.hourly_rate }));
+      setFormData((prev) => ({ ...prev, hourly_rate: selectedSubcontractor.hourly_rate }));
     }
   }, [selectedSubcontractor, formData.payment_type]);
 
@@ -590,21 +573,19 @@ function AddTaskModal({
 
       // Jeśli trzeba utworzyć umowę
       if (createContract && contractData.contract_number && contractData.title) {
-        const { error: contractError } = await supabase
-          .from('subcontractor_contracts')
-          .insert([
-            {
-              subcontractor_id: formData.subcontractor_id,
-              event_id: eventId,
-              contract_number: contractData.contract_number,
-              contract_type: contractData.contract_type,
-              title: contractData.title,
-              description: contractData.description || null,
-              total_value: contractData.total_value,
-              status: 'draft',
-              created_by: user?.user?.id,
-            },
-          ]);
+        const { error: contractError } = await supabase.from('subcontractor_contracts').insert([
+          {
+            subcontractor_id: formData.subcontractor_id,
+            event_id: eventId,
+            contract_number: contractData.contract_number,
+            contract_type: contractData.contract_type,
+            title: contractData.title,
+            description: contractData.description || null,
+            total_value: contractData.total_value,
+            status: 'draft',
+            created_by: user?.user?.id,
+          },
+        ]);
 
         if (contractError) throw contractError;
       }
@@ -620,28 +601,23 @@ function AddTaskModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-3xl w-full my-8 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      <div className="my-8 max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj zadanie dla podwykonawcy</h2>
-          <button
-            onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-          >
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="space-y-6">
           {/* Wybór podwykonawcy */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Podwykonawca *
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Podwykonawca *</label>
             <select
               value={formData.subcontractor_id}
               onChange={(e) => setFormData({ ...formData, subcontractor_id: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="">Wybierz podwykonawcę...</option>
               {subcontractors.map((sub) => (
@@ -654,70 +630,62 @@ function AddTaskModal({
 
           {/* Nazwa zadania */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Nazwa zadania *
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa zadania *</label>
             <input
               type="text"
               value={formData.task_name}
               onChange={(e) => setFormData({ ...formData, task_name: e.target.value })}
               placeholder="np. Obsługa nagłośnienia"
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
 
           {/* Opis */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
               placeholder="Szczegóły zadania..."
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+              className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
 
           {/* Daty */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Data rozpoczęcia
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data rozpoczęcia</label>
               <input
                 type="date"
                 value={formData.start_date}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Data zakończenia
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data zakończenia</label>
               <input
                 type="date"
                 value={formData.end_date}
                 onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
           </div>
 
           {/* Typ rozliczenia */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Typ rozliczenia
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ rozliczenia</label>
             <div className="grid grid-cols-3 gap-3">
               {(['hourly', 'fixed', 'mixed'] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => setFormData({ ...formData, payment_type: type })}
-                  className={`px-4 py-2 rounded-lg border transition-colors ${
+                  className={`rounded-lg border px-4 py-2 transition-colors ${
                     formData.payment_type === type
-                      ? 'bg-[#d3bb73] text-[#1c1f33] border-[#d3bb73]'
-                      : 'bg-[#1c1f33] text-[#e5e4e2] border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                      ? 'border-[#d3bb73] bg-[#d3bb73] text-[#1c1f33]'
+                      : 'border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2] hover:border-[#d3bb73]/40'
                   }`}
                 >
                   {type === 'hourly' ? 'Godzinowe' : type === 'fixed' ? 'Ryczałt' : 'Mieszane'}
@@ -729,53 +697,53 @@ function AddTaskModal({
           {/* Godziny i stawki */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Szacowane godziny
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Szacowane godziny</label>
               <input
                 type="number"
                 value={formData.estimated_hours}
-                onChange={(e) => setFormData({ ...formData, estimated_hours: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                onChange={(e) =>
+                  setFormData({ ...formData, estimated_hours: parseFloat(e.target.value) || 0 })
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Rzeczywiste godziny
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rzeczywiste godziny</label>
               <input
                 type="number"
                 value={formData.actual_hours}
-                onChange={(e) => setFormData({ ...formData, actual_hours: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                onChange={(e) =>
+                  setFormData({ ...formData, actual_hours: parseFloat(e.target.value) || 0 })
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
           </div>
 
           {(formData.payment_type === 'hourly' || formData.payment_type === 'mixed') && (
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Stawka godzinowa (zł)
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka godzinowa (zł)</label>
               <input
                 type="number"
                 value={formData.hourly_rate}
-                onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                onChange={(e) =>
+                  setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
           )}
 
           {(formData.payment_type === 'fixed' || formData.payment_type === 'mixed') && (
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Cena ryczałtowa (zł)
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena ryczałtowa (zł)</label>
               <input
                 type="number"
                 value={formData.fixed_price}
-                onChange={(e) => setFormData({ ...formData, fixed_price: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                onChange={(e) =>
+                  setFormData({ ...formData, fixed_price: parseFloat(e.target.value) || 0 })
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
           )}
@@ -783,13 +751,11 @@ function AddTaskModal({
           {/* Statusy */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Status zadania
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status zadania</label>
               <select
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               >
                 <option value="planned">Zaplanowane</option>
                 <option value="in_progress">W trakcie</option>
@@ -798,13 +764,11 @@ function AddTaskModal({
               </select>
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Status płatności
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status płatności</label>
               <select
                 value={formData.payment_status}
                 onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               >
                 <option value="pending">Oczekuje</option>
                 <option value="paid">Zapłacone</option>
@@ -814,40 +778,43 @@ function AddTaskModal({
           </div>
 
           {/* Opcjonalna umowa */}
-          <div className="pt-6 border-t border-[#d3bb73]/10">
-            <label className="flex items-center gap-2 text-sm text-[#e5e4e2] mb-4 cursor-pointer">
+          <div className="border-t border-[#d3bb73]/10 pt-6">
+            <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-[#e5e4e2]">
               <input
                 type="checkbox"
                 checked={createContract}
                 onChange={(e) => setCreateContract(e.target.checked)}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
               />
               Utwórz umowę dla tego zadania
             </label>
 
             {createContract && (
-              <div className="space-y-4 pl-6 border-l-2 border-[#d3bb73]/20">
+              <div className="space-y-4 border-l-2 border-[#d3bb73]/20 pl-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                      Numer umowy *
-                    </label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Numer umowy *</label>
                     <input
                       type="text"
                       value={contractData.contract_number}
-                      onChange={(e) => setContractData({ ...contractData, contract_number: e.target.value })}
+                      onChange={(e) =>
+                        setContractData({ ...contractData, contract_number: e.target.value })
+                      }
                       placeholder="np. UMW/2025/001"
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                      Typ umowy
-                    </label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ umowy</label>
                     <select
                       value={contractData.contract_type}
-                      onChange={(e) => setContractData({ ...contractData, contract_type: e.target.value as 'frame' | 'project' })}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      onChange={(e) =>
+                        setContractData({
+                          ...contractData,
+                          contract_type: e.target.value as 'frame' | 'project',
+                        })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     >
                       <option value="project">Projektowa</option>
                       <option value="frame">Ramowa</option>
@@ -856,39 +823,40 @@ function AddTaskModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Tytuł umowy *
-                  </label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Tytuł umowy *</label>
                   <input
                     type="text"
                     value={contractData.title}
                     onChange={(e) => setContractData({ ...contractData, title: e.target.value })}
                     placeholder="np. Umowa o świadczenie usług nagłośnienia"
-                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Wartość umowy (zł)
-                  </label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wartość umowy (zł)</label>
                   <input
                     type="number"
                     value={contractData.total_value}
-                    onChange={(e) => setContractData({ ...contractData, total_value: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    onChange={(e) =>
+                      setContractData({
+                        ...contractData,
+                        total_value: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Opis umowy
-                  </label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis umowy</label>
                   <textarea
                     value={contractData.description}
-                    onChange={(e) => setContractData({ ...contractData, description: e.target.value })}
+                    onChange={(e) =>
+                      setContractData({ ...contractData, description: e.target.value })
+                    }
                     rows={2}
-                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+                    className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
               </div>
@@ -896,18 +864,18 @@ function AddTaskModal({
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="mt-6 flex gap-3">
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {saving ? 'Zapisywanie...' : 'Dodaj zadanie'}
           </button>
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
           >
             Anuluj
           </button>

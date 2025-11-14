@@ -56,12 +56,12 @@ export interface EventMemberPermissions {
 export async function canUserPerformAction(
   eventId: string,
   userId: string,
-  action: EventPermission
+  action: EventPermission,
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc('can_user_perform_action', {
     p_event_id: eventId,
     p_user_id: userId,
-    p_action: action
+    p_action: action,
   });
 
   if (error) {
@@ -77,7 +77,7 @@ export async function canUserPerformAction(
  */
 export async function getMemberPermissions(
   eventId: string,
-  employeeId: string
+  employeeId: string,
 ): Promise<EventMemberPermissions | null> {
   const { data, error } = await supabase
     .from('event_member_permissions')
@@ -97,9 +97,7 @@ export async function getMemberPermissions(
 /**
  * Get all members with their permissions for an event
  */
-export async function getEventMembers(
-  eventId: string
-): Promise<EventMemberPermissions[]> {
+export async function getEventMembers(eventId: string): Promise<EventMemberPermissions[]> {
   const { data, error } = await supabase
     .from('event_member_permissions')
     .select('*')
@@ -129,14 +127,14 @@ export async function grantCollaboratorPermissions(
     can_invite_members: boolean;
     can_view_budget: boolean;
   }>,
-  grantedBy: string
+  grantedBy: string,
 ) {
   const { data, error } = await supabase
     .from('employee_assignments')
     .update({
       ...permissions,
       granted_by: grantedBy,
-      permissions_updated_at: new Date().toISOString()
+      permissions_updated_at: new Date().toISOString(),
     })
     .eq('id', assignmentId)
     .select()
@@ -165,7 +163,7 @@ export async function revokeCollaboratorPermissions(assignmentId: string) {
       can_invite_members: false,
       can_view_budget: false,
       granted_by: null,
-      permissions_updated_at: new Date().toISOString()
+      permissions_updated_at: new Date().toISOString(),
     })
     .eq('id', assignmentId)
     .select()
@@ -182,13 +180,11 @@ export async function revokeCollaboratorPermissions(assignmentId: string) {
 /**
  * Get audit log for an event
  */
-export async function getEventAuditLog(
-  eventId: string,
-  limit: number = 100
-) {
+export async function getEventAuditLog(eventId: string, limit: number = 100) {
   const { data, error } = await supabase
     .from('event_audit_log')
-    .select(`
+    .select(
+      `
       *,
       employee:employees(
         id,
@@ -196,7 +192,8 @@ export async function getEventAuditLog(
         surname,
         nickname
       )
-    `)
+    `,
+    )
     .eq('event_id', eventId)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -212,10 +209,7 @@ export async function getEventAuditLog(
 /**
  * Check if user is event creator
  */
-export async function isEventCreator(
-  eventId: string,
-  userId: string
-): Promise<boolean> {
+export async function isEventCreator(eventId: string, userId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('events')
     .select('created_by')
@@ -255,7 +249,7 @@ export function getPermissionLabel(permission: EventPermission): string {
     edit_files: 'Zarządzanie plikami',
     edit_equipment: 'Zarządzanie sprzętem',
     invite_members: 'Zapraszanie członków',
-    view_budget: 'Widok budżetu'
+    view_budget: 'Widok budżetu',
   };
 
   return labels[permission];
@@ -273,7 +267,7 @@ export function getActionLabel(action: string): string {
     accept: 'Zaakceptowano',
     reject: 'Odrzucono',
     grant_permission: 'Nadano uprawnienia',
-    revoke_permission: 'Odebrano uprawnienia'
+    revoke_permission: 'Odebrano uprawnienia',
   };
 
   return labels[action] || action;
@@ -292,7 +286,7 @@ export function getEntityTypeLabel(entityType: string): string {
     equipment: 'Sprzęt',
     member: 'Członek zespołu',
     employee_assignments: 'Członek zespołu',
-    permission: 'Uprawnienie'
+    permission: 'Uprawnienie',
   };
 
   return labels[entityType] || entityType;

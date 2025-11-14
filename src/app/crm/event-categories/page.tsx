@@ -67,10 +67,12 @@ export default function EventCategoriesPage() {
     try {
       const { data, error } = await supabase
         .from('event_categories')
-        .select(`
+        .select(
+          `
           *,
           icon:custom_icons(id, name, svg_code, preview_color)
-        `)
+        `,
+        )
         .order('name');
 
       if (error) throw error;
@@ -84,10 +86,7 @@ export default function EventCategoriesPage() {
 
   const fetchIcons = async () => {
     try {
-      const { data, error } = await supabase
-        .from('custom_icons')
-        .select('*')
-        .order('name');
+      const { data, error } = await supabase.from('custom_icons').select('*').order('name');
 
       if (error) throw error;
       setIcons(data || []);
@@ -178,9 +177,7 @@ export default function EventCategoriesPage() {
 
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('event_categories')
-          .insert([dataToSave]);
+        const { error } = await supabase.from('event_categories').insert([dataToSave]);
 
         if (error) throw error;
       }
@@ -197,13 +194,15 @@ export default function EventCategoriesPage() {
     e.preventDefault();
 
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.refreshSession();
 
       if (sessionError || !session?.user?.id) {
         throw new Error('Nie można odświeżyć sesji. Zaloguj się ponownie.');
       }
 
-      console.log('User ID:', session.user.id);
 
       const { data: employee, error: employeeError } = await supabase
         .from('employees')
@@ -212,14 +211,19 @@ export default function EventCategoriesPage() {
         .maybeSingle();
 
       console.log('Employee data:', employee);
-      console.log('Has event_categories_manage?', employee?.permissions?.includes('event_categories_manage'));
+      console.log(
+        'Has event_categories_manage?',
+        employee?.permissions?.includes('event_categories_manage'),
+      );
 
       if (!employee) {
         throw new Error('Nie znaleziono danych pracownika');
       }
 
       if (!employee.permissions?.includes('event_categories_manage')) {
-        throw new Error('Brak uprawnień: event_categories_manage. Skontaktuj się z administratorem.');
+        throw new Error(
+          'Brak uprawnień: event_categories_manage. Skontaktuj się z administratorem.',
+        );
       }
 
       if (editingIcon) {
@@ -248,12 +252,14 @@ export default function EventCategoriesPage() {
 
         const { data, error } = await supabase
           .from('custom_icons')
-          .insert([{
-            name: iconFormData.name,
-            svg_code: iconFormData.svg_code,
-            preview_color: iconFormData.preview_color,
-            created_by: session.user.id,
-          }])
+          .insert([
+            {
+              name: iconFormData.name,
+              svg_code: iconFormData.svg_code,
+              preview_color: iconFormData.preview_color,
+              created_by: session.user.id,
+            },
+          ])
           .select();
 
         if (error) {
@@ -270,7 +276,9 @@ export default function EventCategoriesPage() {
       handleCloseIconModal();
     } catch (error: any) {
       console.error('Error saving icon:', error);
-      alert(`Błąd: ${error?.message || 'Nieznany błąd'}\n\nKod: ${error?.code || 'brak'}\n\nSprawdź konsolę (F12)`);
+      alert(
+        `Błąd: ${error?.message || 'Nieznany błąd'}\n\nKod: ${error?.code || 'brak'}\n\nSprawdź konsolę (F12)`,
+      );
     }
   };
 
@@ -278,10 +286,7 @@ export default function EventCategoriesPage() {
     if (!confirm('Czy na pewno chcesz usunąć tę kategorię?')) return;
 
     try {
-      const { error } = await supabase
-        .from('event_categories')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('event_categories').delete().eq('id', id);
 
       if (error) throw error;
       await fetchCategories();
@@ -295,10 +300,7 @@ export default function EventCategoriesPage() {
     if (!confirm('Czy na pewno chcesz usunąć tę ikonę?')) return;
 
     try {
-      const { error } = await supabase
-        .from('custom_icons')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('custom_icons').delete().eq('id', id);
 
       if (error) throw error;
       await fetchIcons();
@@ -309,13 +311,21 @@ export default function EventCategoriesPage() {
   };
 
   const presetColors = [
-    '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6',
-    '#EC4899', '#6B7280', '#14B8A6', '#F97316', '#84CC16',
+    '#EF4444',
+    '#F59E0B',
+    '#10B981',
+    '#3B82F6',
+    '#8B5CF6',
+    '#EC4899',
+    '#6B7280',
+    '#14B8A6',
+    '#F97316',
+    '#84CC16',
   ];
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-gray-400">Ładowanie...</div>
       </div>
     );
@@ -324,77 +334,77 @@ export default function EventCategoriesPage() {
   return (
     <PermissionGuard permission="event_categories_manage">
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">Kategorie wydarzeń</h1>
+              <h1 className="mb-2 text-3xl font-bold text-white">Kategorie wydarzeń</h1>
               <p className="text-gray-400">Zarządzaj kategoriami i ikonami dla wydarzeń</p>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowIconModal(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-gray-700 px-6 py-3 text-white transition-colors hover:bg-gray-600"
               >
-                <Sparkles className="w-5 h-5" />
+                <Sparkles className="h-5 w-5" />
                 Zarządzaj ikonami
               </button>
               <button
                 onClick={() => handleOpenModal()}
-                className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-white transition-colors hover:bg-blue-700"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="h-5 w-5" />
                 Nowa kategoria
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {categories.map((category) => (
               <div
                 key={category.id}
-                className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 hover:border-gray-600 transition-all"
+                className="rounded-lg border border-gray-700 bg-gray-800/50 p-6 backdrop-blur-sm transition-all hover:border-gray-600"
               >
-                <div className="flex items-start justify-between mb-4">
+                <div className="mb-4 flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div
-                      className="w-12 h-12 rounded-lg flex items-center justify-center"
+                      className="flex h-12 w-12 items-center justify-center rounded-lg"
                       style={{ backgroundColor: category.color }}
                     >
                       {category.icon ? (
                         <div
-                          className="w-6 h-6 text-white"
+                          className="h-6 w-6 text-white"
                           dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
                         />
                       ) : (
-                        <Palette className="w-6 h-6 text-white" />
+                        <Palette className="h-6 w-6 text-white" />
                       )}
                     </div>
                     <div>
-                      <h3 className="text-white font-semibold text-lg">{category.name}</h3>
+                      <h3 className="text-lg font-semibold text-white">{category.name}</h3>
                       <span className="text-xs text-gray-400">{category.color}</span>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleOpenModal(category)}
-                      className="p-2 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded transition-colors"
+                      className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-blue-400"
                     >
-                      <Pencil className="w-4 h-4" />
+                      <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(category.id)}
-                      className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
+                      className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-red-400"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
                 {category.description && (
-                  <p className="text-gray-400 text-sm mb-3">{category.description}</p>
+                  <p className="mb-3 text-sm text-gray-400">{category.description}</p>
                 )}
                 <div className="flex items-center gap-2">
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
                       category.is_active
                         ? 'bg-green-500/20 text-green-400'
                         : 'bg-gray-500/20 text-gray-400'
@@ -408,60 +418,63 @@ export default function EventCategoriesPage() {
           </div>
 
           {showModal && (
-            <div key={editingCategory?.id || 'new'} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700 max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
+            <div
+              key={editingCategory?.id || 'new'}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            >
+              <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-gray-700 bg-gray-800 p-6">
+                <div className="mb-6 flex items-center justify-between">
                   <h2 className="text-xl font-bold text-white">
                     {editingCategory ? 'Edytuj kategorię' : 'Nowa kategoria'}
                   </h2>
                   <button
                     onClick={handleCloseModal}
-                    className="text-gray-400 hover:text-white transition-colors"
+                    className="text-gray-400 transition-colors hover:text-white"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
                       Nazwa kategorii *
                     </label>
                     <input
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Ikona
-                    </label>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Ikona</label>
                     <div className="space-y-3">
                       <button
                         type="button"
                         onClick={() => setShowIconPicker(!showIconPicker)}
-                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-left flex items-center justify-between hover:bg-gray-600 transition-colors"
+                        className="flex w-full items-center justify-between rounded-lg border border-gray-600 bg-gray-700 px-4 py-3 text-left transition-colors hover:bg-gray-600"
                       >
                         <div className="flex items-center gap-3">
                           {formData.icon_id ? (
                             <>
                               <div
-                                className="w-8 h-8 flex items-center justify-center rounded bg-gray-600"
+                                className="flex h-8 w-8 items-center justify-center rounded bg-gray-600"
                                 dangerouslySetInnerHTML={{
-                                  __html: icons.find((i) => i.id === formData.icon_id)?.svg_code || '',
+                                  __html:
+                                    icons.find((i) => i.id === formData.icon_id)?.svg_code || '',
                                 }}
                               />
                               <span className="text-white">
-                                {icons.find((i) => i.id === formData.icon_id)?.name || 'Wybierz ikonę'}
+                                {icons.find((i) => i.id === formData.icon_id)?.name ||
+                                  'Wybierz ikonę'}
                               </span>
                             </>
                           ) : (
                             <>
-                              <Image className="w-8 h-8 text-gray-400" />
+                              <Image className="h-8 w-8 text-gray-400" />
                               <span className="text-gray-400">Wybierz ikonę (opcjonalnie)</span>
                             </>
                           )}
@@ -475,12 +488,12 @@ export default function EventCategoriesPage() {
                             }}
                             className="text-red-400 hover:text-red-300"
                           >
-                            <X className="w-4 h-4" />
+                            <X className="h-4 w-4" />
                           </button>
                         )}
                       </button>
                       {showIconPicker && (
-                        <div className="grid grid-cols-4 gap-2 p-3 bg-gray-900 rounded-lg border border-gray-600 max-h-48 overflow-y-auto">
+                        <div className="grid max-h-48 grid-cols-4 gap-2 overflow-y-auto rounded-lg border border-gray-600 bg-gray-900 p-3">
                           {icons.map((icon) => (
                             <button
                               key={icon.id}
@@ -489,15 +502,15 @@ export default function EventCategoriesPage() {
                                 setFormData({ ...formData, icon_id: icon.id });
                                 setShowIconPicker(false);
                               }}
-                              className={`p-3 rounded-lg transition-all ${
+                              className={`rounded-lg p-3 transition-all ${
                                 formData.icon_id === icon.id
-                                  ? 'bg-blue-600 scale-110'
+                                  ? 'scale-110 bg-blue-600'
                                   : 'bg-gray-700 hover:bg-gray-600'
                               }`}
                               title={icon.name}
                             >
                               <div
-                                className="w-6 h-6 text-white mx-auto"
+                                className="mx-auto h-6 w-6 text-white"
                                 dangerouslySetInnerHTML={{ __html: icon.svg_code }}
                               />
                             </button>
@@ -508,21 +521,19 @@ export default function EventCategoriesPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Kolor *
-                    </label>
-                    <div className="flex gap-3 mb-3">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Kolor *</label>
+                    <div className="mb-3 flex gap-3">
                       <input
                         type="color"
                         value={formData.color}
                         onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                        className="w-16 h-10 rounded cursor-pointer"
+                        className="h-10 w-16 cursor-pointer rounded"
                       />
                       <input
                         type="text"
                         value={formData.color}
                         onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                        className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
                         placeholder="#3B82F6"
                         pattern="^#[0-9A-Fa-f]{6}$"
                         required
@@ -534,8 +545,10 @@ export default function EventCategoriesPage() {
                           key={color}
                           type="button"
                           onClick={() => setFormData({ ...formData, color })}
-                          className={`w-full h-8 rounded border-2 transition-all ${
-                            formData.color === color ? 'border-white scale-110' : 'border-transparent'
+                          className={`h-8 w-full rounded border-2 transition-all ${
+                            formData.color === color
+                              ? 'scale-110 border-white'
+                              : 'border-transparent'
                           }`}
                           style={{ backgroundColor: color }}
                         />
@@ -544,13 +557,11 @@ export default function EventCategoriesPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Opis
-                    </label>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Opis</label>
                     <textarea
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
                       rows={3}
                     />
                   </div>
@@ -561,7 +572,7 @@ export default function EventCategoriesPage() {
                       id="is_active"
                       checked={formData.is_active}
                       onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      className="w-4 h-4 rounded border-gray-600 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded border-gray-600 text-blue-600 focus:ring-blue-500"
                     />
                     <label htmlFor="is_active" className="text-sm text-gray-300">
                       Kategoria aktywna
@@ -572,13 +583,13 @@ export default function EventCategoriesPage() {
                     <button
                       type="button"
                       onClick={handleCloseModal}
-                      className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                      className="flex-1 rounded-lg bg-gray-700 px-4 py-2 text-white transition-colors hover:bg-gray-600"
                     >
                       Anuluj
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                      className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
                     >
                       {editingCategory ? 'Zapisz' : 'Utwórz'}
                     </button>
@@ -589,45 +600,50 @@ export default function EventCategoriesPage() {
           )}
 
           {showIconModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <div className="bg-gray-800 rounded-xl p-6 max-w-4xl w-full border border-gray-700 max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+              <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-gray-700 bg-gray-800 p-6">
+                <div className="mb-6 flex items-center justify-between">
                   <h2 className="text-xl font-bold text-white">Zarządzanie ikonami</h2>
                   <button
                     onClick={handleCloseIconModal}
-                    className="text-gray-400 hover:text-white transition-colors"
+                    className="text-gray-400 transition-colors hover:text-white"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
 
-                <form onSubmit={handleSubmitIcon} className="space-y-4 mb-6 p-4 bg-gray-900 rounded-lg">
-                  <h3 className="text-lg font-semibold text-white mb-4">
+                <form
+                  onSubmit={handleSubmitIcon}
+                  className="mb-6 space-y-4 rounded-lg bg-gray-900 p-4"
+                >
+                  <h3 className="mb-4 text-lg font-semibold text-white">
                     {editingIcon ? 'Edytuj ikonę' : 'Dodaj nową ikonę'}
                   </h3>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
                       Nazwa ikony *
                     </label>
                     <input
                       type="text"
                       value={iconFormData.name}
                       onChange={(e) => setIconFormData({ ...iconFormData, name: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
                       placeholder="np. Mikrofon"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
                       Kod SVG *
                     </label>
                     <textarea
                       value={iconFormData.svg_code}
-                      onChange={(e) => setIconFormData({ ...iconFormData, svg_code: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                      onChange={(e) =>
+                        setIconFormData({ ...iconFormData, svg_code: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 font-mono text-sm text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
                       rows={6}
                       placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">...</svg>'
                       required
@@ -635,33 +651,35 @@ export default function EventCategoriesPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Podgląd
-                    </label>
-                    <div className="flex items-center gap-4 p-4 bg-gray-700 rounded-lg">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Podgląd</label>
+                    <div className="flex items-center gap-4 rounded-lg bg-gray-700 p-4">
                       {iconFormData.svg_code && (
                         <div
-                          className="w-12 h-12 flex items-center justify-center rounded-lg"
+                          className="flex h-12 w-12 items-center justify-center rounded-lg"
                           style={{ backgroundColor: iconFormData.preview_color }}
                         >
                           <div
-                            className="w-8 h-8 text-white"
+                            className="h-8 w-8 text-white"
                             dangerouslySetInnerHTML={{ __html: iconFormData.svg_code }}
                           />
                         </div>
                       )}
-                      <div className="flex gap-3 flex-1">
+                      <div className="flex flex-1 gap-3">
                         <input
                           type="color"
                           value={iconFormData.preview_color}
-                          onChange={(e) => setIconFormData({ ...iconFormData, preview_color: e.target.value })}
-                          className="w-16 h-10 rounded cursor-pointer"
+                          onChange={(e) =>
+                            setIconFormData({ ...iconFormData, preview_color: e.target.value })
+                          }
+                          className="h-10 w-16 cursor-pointer rounded"
                         />
                         <input
                           type="text"
                           value={iconFormData.preview_color}
-                          onChange={(e) => setIconFormData({ ...iconFormData, preview_color: e.target.value })}
-                          className="flex-1 px-4 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white"
+                          onChange={(e) =>
+                            setIconFormData({ ...iconFormData, preview_color: e.target.value })
+                          }
+                          className="flex-1 rounded-lg border border-gray-500 bg-gray-600 px-4 py-2 text-white"
                           placeholder="#3B82F6"
                         />
                       </div>
@@ -675,13 +693,13 @@ export default function EventCategoriesPage() {
                         setEditingIcon(null);
                         setIconFormData({ name: '', svg_code: '', preview_color: '#3B82F6' });
                       }}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                      className="rounded-lg bg-gray-700 px-4 py-2 text-white transition-colors hover:bg-gray-600"
                     >
                       Anuluj
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
                     >
                       {editingIcon ? 'Zaktualizuj' : 'Dodaj ikonę'}
                     </button>
@@ -689,20 +707,20 @@ export default function EventCategoriesPage() {
                 </form>
 
                 <div className="border-t border-gray-700 pt-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Dostępne ikony</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <h3 className="mb-4 text-lg font-semibold text-white">Dostępne ikony</h3>
+                  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                     {icons.map((icon) => (
                       <div
                         key={icon.id}
-                        className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-all"
+                        className="rounded-lg border border-gray-700 bg-gray-900 p-4 transition-all hover:border-gray-600"
                       >
-                        <div className="flex items-center justify-between mb-3">
+                        <div className="mb-3 flex items-center justify-between">
                           <div
-                            className="w-12 h-12 flex items-center justify-center rounded-lg"
+                            className="flex h-12 w-12 items-center justify-center rounded-lg"
                             style={{ backgroundColor: icon.preview_color }}
                           >
                             <div
-                              className="w-8 h-8 text-white"
+                              className="h-8 w-8 text-white"
                               dangerouslySetInnerHTML={{ __html: icon.svg_code }}
                             />
                           </div>
@@ -710,20 +728,20 @@ export default function EventCategoriesPage() {
                             <button
                               type="button"
                               onClick={() => handleOpenIconModal(icon)}
-                              className="p-1 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded"
+                              className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-blue-400"
                             >
-                              <Pencil className="w-4 h-4" />
+                              <Pencil className="h-4 w-4" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteIcon(icon.id)}
-                              className="p-1 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded"
+                              className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-red-400"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
-                        <p className="text-white text-sm font-medium">{icon.name}</p>
+                        <p className="text-sm font-medium text-white">{icon.name}</p>
                       </div>
                     ))}
                   </div>

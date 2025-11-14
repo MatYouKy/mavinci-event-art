@@ -16,10 +16,7 @@ export async function POST(request: NextRequest) {
     const { employeeId, newPassword, requesterId } = await request.json();
 
     if (!employeeId || !newPassword || !requesterId) {
-      return NextResponse.json(
-        { error: 'Brak wymaganych parametrów' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Brak wymaganych parametrów' }, { status: 400 });
     }
 
     const { data: requester, error: requesterError } = await supabaseAdmin
@@ -31,7 +28,7 @@ export async function POST(request: NextRequest) {
     if (requesterError || !requester) {
       return NextResponse.json(
         { error: 'Nie znaleziono użytkownika wykonującego operację' },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -41,24 +38,18 @@ export async function POST(request: NextRequest) {
       requester.permissions?.includes('admin');
 
     if (!hasPermission) {
-      return NextResponse.json(
-        { error: 'Brak uprawnień do resetowania hasła' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Brak uprawnień do resetowania hasła' }, { status: 403 });
     }
 
-    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
-      employeeId,
-      {
-        password: newPassword,
-      }
-    );
+    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(employeeId, {
+      password: newPassword,
+    });
 
     if (error) {
       console.error('Error updating password:', error);
       return NextResponse.json(
         { error: error.message || 'Błąd podczas resetowania hasła' },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -70,7 +61,7 @@ export async function POST(request: NextRequest) {
     console.error('Error in reset-employee-password:', error);
     return NextResponse.json(
       { error: error.message || 'Wystąpił nieoczekiwany błąd' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

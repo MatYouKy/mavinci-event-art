@@ -150,13 +150,17 @@ Po zakończeniu konfiguracji:
 ## Rozwiązywanie Problemów
 
 ### "relation does not exist"
+
 Wykonaj odpowiednią migrację SQL dla brakującej tabeli.
 
 ### "column does not exist"
+
 Upewnij się, że wykonałeś migrację `20251008150000_add_metadata_and_opacity_to_site_images.sql`.
 
 ### "Invalid API key"
+
 Sprawdź czy skopiowałeś poprawny klucz `anon` (nie `service_role`).
 
 ### "Not connected to the internet"
+
 Sprawdź czy URL projektu jest poprawny i czy projekt jest aktywny.

@@ -3,10 +3,12 @@
 ## 🎯 Problem:
 
 **Zgłoszenie:**
+
 > "Dodałem nową polisę która jest na rok, alert powinien zniknąć ale dalej pokazuje się na /crm/fleet i /crm/fleet/[id]"
 
 **Przyczyna:**
 Frontend **NIE korzystał** z tabeli `vehicle_alerts` i triggera! Zamiast tego:
+
 1. `/crm/fleet/page.tsx` - liczył polisy bezpośrednio z `insurance_policies` (60 dni przed końcem)
 2. `/crm/fleet/[id]/page.tsx` - filtrował wszystkie aktywne polisy wygasające w ciągu 60 dni
 3. **Ignorował logikę ciągłości ochrony z triggera!**
@@ -16,6 +18,7 @@ Frontend **NIE korzystał** z tabeli `vehicle_alerts` i triggera! Zamiast tego:
 ### 1. `/crm/fleet/page.tsx` (Lista pojazdów)
 
 **PRZED:**
+
 ```typescript
 const { count: expiringInsurance } = await supabase
   .from('insurance_policies')
@@ -28,6 +31,7 @@ const { count: expiringInsurance } = await supabase
 ```
 
 **PO:**
+
 ```typescript
 // Pobierz alerty ubezpieczeniowe z vehicle_alerts (trigger już obliczył czy są potrzebne)
 const { count: expiringInsurance } = await supabase
@@ -40,6 +44,7 @@ const { count: expiringInsurance } = await supabase
 ```
 
 **Dodano Realtime:**
+
 ```typescript
 const channel = supabase
   .channel('fleet_changes')
@@ -52,26 +57,31 @@ const channel = supabase
 ### 2. `/crm/fleet/[id]/page.tsx` (Szczegóły pojazdu)
 
 **PRZED:**
+
 ```typescript
 const expiringInsurance = insurancePolicies.filter(
-  (p) => p.status === 'active' && getDaysUntil(p.end_date)! > 0 && getDaysUntil(p.end_date)! <= 60
+  (p) => p.status === 'active' && getDaysUntil(p.end_date)! > 0 && getDaysUntil(p.end_date)! <= 60,
 );
 // ✗ Filtruje WSZYSTKIE aktywne polisy (ignoruje ciągłość!)
 ```
 
 **PO:**
+
 ```typescript
 // Użyj alertów z vehicle_alerts zamiast samodzielnie filtrować
 // Trigger już obliczył czy alert jest potrzebny (sprawdził ciągłość ochrony)
-const expiringInsurance = vehicleAlerts.map(alert => {
-  // Znajdź polisę powiązaną z alertem
-  const policy = insurancePolicies.find(p => p.id === alert.related_id);
-  return policy || null;
-}).filter(Boolean) as InsurancePolicy[];
+const expiringInsurance = vehicleAlerts
+  .map((alert) => {
+    // Znajdź polisę powiązaną z alertem
+    const policy = insurancePolicies.find((p) => p.id === alert.related_id);
+    return policy || null;
+  })
+  .filter(Boolean) as InsurancePolicy[];
 // ✓ Używa alertów z triggera!
 ```
 
 **Dodano fetch alertów:**
+
 ```typescript
 const [vehicleRes, ..., insuranceRes, alertsRes, ...] = await Promise.all([
   ...
@@ -95,6 +105,7 @@ setVehicleAlerts(alertsRes.data || []);
 ```
 
 **Dodano Realtime:**
+
 ```typescript
 channel
   .on('postgres_changes', { table: 'maintenance_records' }, () => fetchVehicleData())
@@ -165,6 +176,7 @@ REZULTAT: Alert pojawia się natychmiast! ✓
 ## 📊 Zmiany w plikach:
 
 ### Zmienione pliki:
+
 1. **src/app/crm/fleet/page.tsx**
    - Linia 169-175: Zmiana z `insurance_policies` na `vehicle_alerts`
    - Linia 107-143: Dodano realtime dla `vehicle_alerts` i `insurance_policies`
@@ -178,28 +190,35 @@ REZULTAT: Alert pojawia się natychmiast! ✓
    - Linia 241-252: Dodano realtime dla `vehicle_alerts`
 
 ### Nowe zależności:
+
 - Tabela: `vehicle_alerts` (już istnieje)
 - Trigger: `manage_insurance_alerts()` (FIX_ALERTS_AFTER_INSPECTION_V2.sql)
 
 ## 🎯 Co musisz zrobić:
 
 ### 1. Zastosuj trigger SQL (jeśli jeszcze nie):
+
 ```
 FIX_ALERTS_AFTER_INSPECTION_V2.sql
 ```
+
 W Supabase Dashboard → SQL Editor → Uruchom
 
 ### 2. Zbuduj i wdróż frontend:
+
 ```bash
 npm run build
 ```
+
 Już zrobione! ✓
 
 ### 3. Wyczyść cache przeglądarki:
+
 - Ctrl+Shift+R (Chrome/Firefox)
 - Lub otwórz w trybie incognito
 
 ### 4. Test:
+
 1. Otwórz `/crm/fleet`
 2. Zobacz pojazd z alertem
 3. Dodaj nową polisę z ciągłością
@@ -219,6 +238,7 @@ Już zrobione! ✓
 Jeśli alert dalej się pokazuje:
 
 1. **Sprawdź w konsoli DevTools:**
+
 ```javascript
 // Otwórz Network tab
 // Szukaj requestu do: vehicle_alerts?vehicle_id=eq.XXX
@@ -226,6 +246,7 @@ Jeśli alert dalej się pokazuje:
 ```
 
 2. **Sprawdź w bazie:**
+
 ```sql
 SELECT * FROM vehicle_alerts
 WHERE vehicle_id = 'twoje-vehicle-id'
@@ -235,6 +256,7 @@ AND is_active = true;
 ```
 
 3. **Wymuś refresh:**
+
 ```sql
 UPDATE insurance_policies
 SET updated_at = now()
@@ -244,15 +266,17 @@ AND type = 'oc';
 ```
 
 4. **Sprawdź realtime:**
+
 ```javascript
 // W konsoli przeglądarki:
-supabase.getChannels()
+supabase.getChannels();
 // Powinien być channel 'fleet_changes' z subskrypcją
 ```
 
 ## ✨ Gotowe!
 
 Po wdrożeniu:
+
 - ✅ Alerty znikają automatycznie po dodaniu polisy z ciągłością
 - ✅ Alerty pozostają jeśli jest luka w ochronie
 - ✅ Realtime aktualizacja (1-2 sekundy)

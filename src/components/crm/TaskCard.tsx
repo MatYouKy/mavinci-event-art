@@ -72,13 +72,16 @@ export default function TaskCard({
 }: TaskCardProps) {
   const router = useRouter();
 
-  const assignees = task.task_assignees?.map(a => ({
-    employee_id: a.employee_id,
-    employees: a.employees,
-  })) || task.assignees?.map(a => ({
-    employee_id: a.employee.id,
-    employees: a.employee,
-  })) || [];
+  const assignees =
+    task.task_assignees?.map((a) => ({
+      employee_id: a.employee_id,
+      employees: a.employees,
+    })) ||
+    task.assignees?.map((a) => ({
+      employee_id: a.employee.id,
+      employees: a.employee,
+    })) ||
+    [];
 
   const handleTitleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -87,36 +90,36 @@ export default function TaskCard({
 
   return (
     <div
-      className={`bg-[#0f1119] border rounded-lg p-4 transition-all group ${
+      className={`group rounded-lg border bg-[#0f1119] p-4 transition-all ${
         isDragging
-          ? 'opacity-50 border-[#d3bb73]/50'
+          ? 'border-[#d3bb73]/50 opacity-50'
           : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
       }`}
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-start gap-2 flex-1 min-w-0">
+      <div className="mb-2 flex items-start justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
           {showDragHandle && canManage && (
-            <GripVertical className="w-4 h-4 text-[#e5e4e2]/40 flex-shrink-0 mt-0.5" />
+            <GripVertical className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#e5e4e2]/40" />
           )}
           <button
             onClick={handleTitleClick}
-            className="text-sm font-medium text-[#e5e4e2] hover:text-[#d3bb73] transition-colors text-left flex-1 truncate"
+            className="flex-1 truncate text-left text-sm font-medium text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
           >
             {task.title}
           </button>
         </div>
         {canManage && (
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2">
+          <div className="ml-2 flex flex-shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             {onAssign && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onAssign(task);
                 }}
-                className="p-1 text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                className="rounded p-1 text-blue-400 transition-colors hover:bg-blue-500/10"
                 title="Przypisz pracowników"
               >
-                <UserPlus className="w-4 h-4" />
+                <UserPlus className="h-4 w-4" />
               </button>
             )}
             {onEdit && (
@@ -125,10 +128,10 @@ export default function TaskCard({
                   e.stopPropagation();
                   onEdit(task);
                 }}
-                className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                className="rounded p-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                 title="Edytuj"
               >
-                <Edit className="w-4 h-4" />
+                <Edit className="h-4 w-4" />
               </button>
             )}
             {onDelete && (
@@ -137,10 +140,10 @@ export default function TaskCard({
                   e.stopPropagation();
                   onDelete(task.id);
                 }}
-                className="p-1 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                className="rounded p-1 text-red-400 transition-colors hover:bg-red-500/10"
                 title="Usuń"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -148,30 +151,24 @@ export default function TaskCard({
       </div>
 
       {task.description && (
-        <p className="text-xs text-[#e5e4e2]/60 mb-2 line-clamp-2">
-          {task.description}
-        </p>
+        <p className="mb-2 line-clamp-2 text-xs text-[#e5e4e2]/60">{task.description}</p>
       )}
 
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <span
-          className={`text-xs px-2 py-1 rounded border ${
-            priorityColors[task.priority]
-          }`}
-        >
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className={`rounded border px-2 py-1 text-xs ${priorityColors[task.priority]}`}>
           {priorityLabels[task.priority]}
         </span>
 
         {task.due_date && (
           <div className="flex items-center gap-1 text-xs text-[#e5e4e2]/60">
-            <Calendar className="w-3 h-3" />
+            <Calendar className="h-3 w-3" />
             {new Date(task.due_date).toLocaleDateString('pl-PL')}
           </div>
         )}
 
         {task.comments_count !== undefined && task.comments_count > 0 && (
-          <div className="flex items-center gap-1 text-xs text-blue-400 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/30">
-            <MessageSquare className="w-3 h-3" />
+          <div className="flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-xs text-blue-400">
+            <MessageSquare className="h-3 w-3" />
             {task.comments_count}
           </div>
         )}
@@ -184,9 +181,7 @@ export default function TaskCard({
       )}
 
       {additionalActions && (
-        <div className="mt-2 pt-2 border-t border-[#d3bb73]/5">
-          {additionalActions}
-        </div>
+        <div className="mt-2 border-t border-[#d3bb73]/5 pt-2">{additionalActions}</div>
       )}
     </div>
   );

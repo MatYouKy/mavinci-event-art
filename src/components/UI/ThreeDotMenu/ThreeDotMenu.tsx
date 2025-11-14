@@ -77,7 +77,7 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
   return (
     <div ref={menuRef} className={`absolute ${getPositionClasses()} z-[9999]`}>
       {menuAction ? (
-        <div className="bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 p-1 z-[10000]">
+        <div className="z-[10000] rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33]/95 p-1 shadow-xl backdrop-blur-md">
           {menuActionContent}
         </div>
       ) : (
@@ -88,18 +88,20 @@ export const ThreeDotMenu: React.FC<ThreeDotMenuProps> = ({
               e.stopPropagation();
               setIsOpen(!isOpen);
             }}
-            className="w-10 h-10 rounded-full bg-[#1c1f33]/80 backdrop-blur-md flex items-center justify-center hover:bg-[#d3bb73] transition-all duration-300 border border-[#d3bb73]/30"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#1c1f33]/80 backdrop-blur-md transition-all duration-300 hover:bg-[#d3bb73]"
           >
-            <MoreVertical className="w-5 h-5 text-[#e5e4e2]" />
+            <MoreVertical className="h-5 w-5 text-[#e5e4e2]" />
           </button>
 
           {isOpen && (
-            <div className={`absolute ${getDropdownClasses()} w-56 bg-[#1c1f33]/95 backdrop-blur-md rounded-lg shadow-xl border border-[#d3bb73]/30 overflow-hidden z-[9999]`}>
+            <div
+              className={`absolute ${getDropdownClasses()} z-[9999] w-56 overflow-hidden rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33]/95 shadow-xl backdrop-blur-md`}
+            >
               {menu_items.map((item, index) => (
                 <button
                   key={index}
                   onClick={(e) => handleMenuItemClick(item.onClick, e)}
-                  className="w-full px-4 py-3 text-left text-[#e5e4e2] hover:bg-[#d3bb73]/20 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
+                  className="w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left text-[#e5e4e2] transition-colors last:border-b-0 hover:bg-[#d3bb73]/20"
                 >
                   {item.children}
                 </button>

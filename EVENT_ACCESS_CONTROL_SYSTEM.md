@@ -5,17 +5,20 @@
 System rozróżnia 3 poziomy dostępu do wydarzeń:
 
 ### 1. **AUTOR** (Event Creator)
+
 - Osoba która stworzyła wydarzenie
 - Ma **pełną kontrolę** nad wszystkim
 - Może edytować wydarzenie, zarządzać zespołem, przydzielać uprawnienia
 - Nie można mu odebrać dostępu
 
 ### 2. **ZAPROSZENI** (Invited Members)
+
 - Domyślnie mają dostęp **tylko do odczytu**
 - Widzą podstawowe informacje (zgodnie z ich `access_level`)
 - Przykład: DJ widzi agendę i pliki, Technik widzi sprzęt
 
 ### 3. **WSPÓŁPRACOWNICY** (Collaborators)
+
 - Zaproszeni członkowie z **podwyższonymi uprawnieniami**
 - Mogą edytować wybrane aspekty wydarzenia
 - Autor/Admin nadaje im konkretne uprawnienia
@@ -26,15 +29,15 @@ System rozróżnia 3 poziomy dostępu do wydarzeń:
 
 Każdy członek zespołu (w `employee_assignments`) może mieć następujące uprawnienia:
 
-| Uprawnienie | Kolumna | Opis |
-|------------|---------|------|
-| **Edycja wydarzenia** | `can_edit_event` | Może zmieniać nazwę, datę, lokalizację, opis |
-| **Edycja agendy** | `can_edit_agenda` | Może zarządzać harmonogramem |
-| **Edycja zadań** | `can_edit_tasks` | Może tworzyć/edytować/usuwać zadania |
-| **Edycja plików** | `can_edit_files` | Może dodawać/usuwać pliki |
-| **Edycja sprzętu** | `can_edit_equipment` | Może zarządzać przypisanym sprzętem |
-| **Zapraszanie członków** | `can_invite_members` | Może zapraszać innych ludzi |
-| **Widok budżetu** | `can_view_budget` | Widzi informacje finansowe |
+| Uprawnienie              | Kolumna              | Opis                                         |
+| ------------------------ | -------------------- | -------------------------------------------- |
+| **Edycja wydarzenia**    | `can_edit_event`     | Może zmieniać nazwę, datę, lokalizację, opis |
+| **Edycja agendy**        | `can_edit_agenda`    | Może zarządzać harmonogramem                 |
+| **Edycja zadań**         | `can_edit_tasks`     | Może tworzyć/edytować/usuwać zadania         |
+| **Edycja plików**        | `can_edit_files`     | Może dodawać/usuwać pliki                    |
+| **Edycja sprzętu**       | `can_edit_equipment` | Może zarządzać przypisanym sprzętem          |
+| **Zapraszanie członków** | `can_invite_members` | Może zapraszać innych ludzi                  |
+| **Widok budżetu**        | `can_view_budget`    | Widzi informacje finansowe                   |
 
 ---
 
@@ -49,6 +52,7 @@ Każda zmiana jest **automatycznie zapisywana** w tabeli `event_audit_log`:
 - **Dodatkowy kontekst** (`metadata`)
 
 ### Śledzone akcje:
+
 - `create` - tworzenie nowych elementów
 - `update` - edycja istniejących
 - `delete` - usuwanie
@@ -188,11 +192,13 @@ AND employee_id = 'user-uuid';
 ## Migracje do zastosowania
 
 ### 1. Podstawowy system kontroli dostępu
+
 ```
 supabase/migrations/20251017010000_create_event_access_control_system.sql
 ```
 
 Dodaje:
+
 - Kolumny uprawnień do `employee_assignments`
 - Tabelę `event_audit_log`
 - Triggery automatycznego logowania
@@ -200,11 +206,13 @@ Dodaje:
 - Widok `event_member_permissions`
 
 ### 2. Aktualizacja RLS policies
+
 ```
 supabase/migrations/20251017010001_update_events_rls_with_access_control.sql
 ```
 
 Aktualizuje RLS aby respektowały nowy system uprawnień:
+
 - `events` - edycja tylko dla autorów i współpracowników z `can_edit_event`
 - `employee_assignments` - zapraszanie przez współpracowników z `can_invite_members`
 - `tasks` - zarządzanie dla współpracowników z `can_edit_tasks`

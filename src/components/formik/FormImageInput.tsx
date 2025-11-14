@@ -62,29 +62,23 @@ export const FormImageInput = forwardRef<FormImageInputHandle, FormImageInputPro
     };
 
     return (
-      <div className="h-full w-full flex flex-col">
-        {label && (
-          <label className="block text-[#e5e4e2] mb-2 font-light">
-            {label}
-          </label>
-        )}
+      <div className="flex h-full w-full flex-col">
+        {label && <label className="mb-2 block font-light text-[#e5e4e2]">{label}</label>}
         <div
           onClick={() => inputRef.current?.click()}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          className={`flex-1 w-full bg-transparent border-2 border-dashed rounded-lg cursor-pointer transition-colors flex flex-col items-center justify-center gap-2 ${
+          className={`flex w-full flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed bg-transparent transition-colors ${
             isDragging
               ? 'border-[#d3bb73] bg-[#d3bb73]/10'
               : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/50'
           }`}
         >
-          <Upload className="w-8 h-8 text-[#d3bb73]/60" />
-          <p className="text-[#e5e4e2]/40 text-sm">
-            {field.value instanceof File
-              ? field.value.name
-              : 'Kliknij lub przeciągnij zdjęcie'}
+          <Upload className="h-8 w-8 text-[#d3bb73]/60" />
+          <p className="text-sm text-[#e5e4e2]/40">
+            {field.value instanceof File ? field.value.name : 'Kliknij lub przeciągnij zdjęcie'}
           </p>
         </div>
         <input
@@ -96,7 +90,7 @@ export const FormImageInput = forwardRef<FormImageInputHandle, FormImageInputPro
         />
       </div>
     );
-  }
+  },
 );
 
 FormImageInput.displayName = 'FormImageInput';

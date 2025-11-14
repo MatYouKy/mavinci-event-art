@@ -2,7 +2,29 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Car, ArrowLeft, CreditCard as Edit, Fuel, Wrench, Shield, FileText, Calendar, MapPin, Gauge, DollarSign, Plus, AlertTriangle, Clock, User, Trash2, TrendingUp, TrendingDown, Activity, Image as ImageIcon, X } from 'lucide-react';
+import {
+  Car,
+  ArrowLeft,
+  CreditCard as Edit,
+  Fuel,
+  Wrench,
+  Shield,
+  FileText,
+  Calendar,
+  MapPin,
+  Gauge,
+  DollarSign,
+  Plus,
+  AlertTriangle,
+  Clock,
+  User,
+  Trash2,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Image as ImageIcon,
+  X,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -122,7 +144,9 @@ export default function VehicleDetailPage() {
   const [vehicleAlerts, setVehicleAlerts] = useState<any[]>([]);
   const [handoverHistory, setHandoverHistory] = useState<VehicleHandover[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery' | 'history'
+  >('overview');
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
@@ -144,7 +168,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .on(
           'postgres_changes',
@@ -155,7 +179,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .on(
           'postgres_changes',
@@ -167,7 +191,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .on(
           'postgres_changes',
@@ -179,7 +203,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .on(
           'postgres_changes',
@@ -191,7 +215,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .on(
           'postgres_changes',
@@ -203,7 +227,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .on(
           'postgres_changes',
@@ -215,7 +239,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .on(
           'postgres_changes',
@@ -227,7 +251,7 @@ export default function VehicleDetailPage() {
           },
           () => {
             fetchVehicleData();
-          }
+          },
         )
         .subscribe();
 
@@ -241,7 +265,19 @@ export default function VehicleDetailPage() {
     try {
       setLoading(true);
 
-      const [vehicleRes, fuelRes, maintenanceRes, inspectionsRes, oilRes, timingBeltRes, repairsRes, insuranceRes, alertsRes, handoverRes, inUseRes] = await Promise.all([
+      const [
+        vehicleRes,
+        fuelRes,
+        maintenanceRes,
+        inspectionsRes,
+        oilRes,
+        timingBeltRes,
+        repairsRes,
+        insuranceRes,
+        alertsRes,
+        handoverRes,
+        inUseRes,
+      ] = await Promise.all([
         supabase.from('vehicles').select('*').eq('id', vehicleId).single(),
         supabase
           .from('fuel_entries')
@@ -298,13 +334,15 @@ export default function VehicleDetailPage() {
           .order('timestamp', { ascending: false }),
         supabase
           .from('event_vehicles')
-          .select(`
+          .select(
+            `
             id,
             is_in_use,
             pickup_timestamp,
             driver:employees!event_vehicles_driver_id_fkey(id, name, surname),
             event:events(id, name)
-          `)
+          `,
+          )
           .eq('vehicle_id', vehicleId)
           .eq('is_in_use', true)
           .maybeSingle(),
@@ -315,7 +353,9 @@ export default function VehicleDetailPage() {
       setVehicle({
         ...vehicleRes.data,
         in_use: !!inUseRes.data,
-        in_use_by: inUseRes.data?.driver ? `${inUseRes.data.driver.name} ${inUseRes.data.driver.surname}` : null,
+        in_use_by: inUseRes.data?.driver
+          ? `${inUseRes.data.driver.name} ${inUseRes.data.driver.surname}`
+          : null,
         in_use_event: inUseRes.data?.event?.name || null,
         in_use_event_id: inUseRes.data?.event?.id || null,
         pickup_timestamp: inUseRes.data?.pickup_timestamp || null,
@@ -324,10 +364,16 @@ export default function VehicleDetailPage() {
 
       // Połącz wszystkie wpisy serwisowe
       const allMaintenance: MaintenanceRecord[] = [
-        ...(maintenanceRes.data || []).map((r: any) => ({ ...r, source: 'maintenance_records' as const })),
+        ...(maintenanceRes.data || []).map((r: any) => ({
+          ...r,
+          source: 'maintenance_records' as const,
+        })),
         ...(inspectionsRes.data || []).map((r: any) => ({
           id: r.id,
-          type: r.inspection_type === 'technical_inspection' ? 'Przegląd techniczny' : 'Przegląd okresowy',
+          type:
+            r.inspection_type === 'technical_inspection'
+              ? 'Przegląd techniczny'
+              : 'Przegląd okresowy',
           date: r.inspection_date,
           odometer_reading: r.odometer_reading,
           title: `${r.inspection_type === 'technical_inspection' ? 'Przegląd techniczny' : 'Przegląd okresowy'} - ${r.passed ? 'Pozytywny' : 'Negatywny'}`,
@@ -416,16 +462,13 @@ export default function VehicleDetailPage() {
   const handleDeleteMaintenanceRecord = async (record: MaintenanceRecord) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć ten wpis serwisowy?',
-      'Tej operacji nie można cofnąć.'
+      'Tej operacji nie można cofnąć.',
     );
 
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from(record.source)
-        .delete()
-        .eq('id', record.id);
+      const { error } = await supabase.from(record.source).delete().eq('id', record.id);
 
       if (error) throw error;
 
@@ -440,16 +483,13 @@ export default function VehicleDetailPage() {
   const handleDeleteInsurance = async (policy: InsurancePolicy) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć to ubezpieczenie?',
-      'Tej operacji nie można cofnąć.'
+      'Tej operacji nie można cofnąć.',
     );
 
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('insurance_policies')
-        .delete()
-        .eq('id', policy.id);
+      const { error } = await supabase.from('insurance_policies').delete().eq('id', policy.id);
 
       if (error) throw error;
 
@@ -468,7 +508,7 @@ export default function VehicleDetailPage() {
       'Zakończ użytkowanie pojazdu',
       'Czy na pewno chcesz zakończyć użytkowanie tego pojazdu? Pojazd zostanie zwolniony z wydarzenia.',
       'Zakończ',
-      'Anuluj'
+      'Anuluj',
     );
 
     if (!confirmed) return;
@@ -494,9 +534,8 @@ export default function VehicleDetailPage() {
   const getStatusBadge = (status: string, inUse: boolean = false) => {
     if (inUse) {
       return (
-        <span className="px-3 py-1 rounded text-sm bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 flex items-center gap-2">
-          <Activity className="w-4 h-4" />
-          W użytkowaniu
+        <span className="flex items-center gap-2 rounded border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]">
+          <Activity className="h-4 w-4" />W użytkowaniu
         </span>
       );
     }
@@ -510,7 +549,7 @@ export default function VehicleDetailPage() {
       expired: { label: 'Wygasłe', class: 'bg-red-500/20 text-red-400' },
     };
     const c = config[status] || config.inactive;
-    return <span className={`px-2 py-1 rounded text-xs ${c.class}`}>{c.label}</span>;
+    return <span className={`rounded px-2 py-1 text-xs ${c.class}`}>{c.label}</span>;
   };
 
   const getDaysUntil = (date: string) => {
@@ -520,16 +559,21 @@ export default function VehicleDetailPage() {
   };
 
   const upcomingMaintenance = maintenanceRecords.filter(
-    (r) => r.next_service_date && getDaysUntil(r.next_service_date)! > 0 && getDaysUntil(r.next_service_date)! <= 30
+    (r) =>
+      r.next_service_date &&
+      getDaysUntil(r.next_service_date)! > 0 &&
+      getDaysUntil(r.next_service_date)! <= 30,
   );
 
   // Użyj alertów z vehicle_alerts zamiast samodzielnie filtrować
   // Trigger już obliczył czy alert jest potrzebny (sprawdził ciągłość ochrony)
-  const expiringInsurance = vehicleAlerts.map(alert => {
-    // Znajdź polisę powiązaną z alertem
-    const policy = insurancePolicies.find(p => p.id === alert.related_id);
-    return policy || null;
-  }).filter(Boolean) as InsurancePolicy[];
+  const expiringInsurance = vehicleAlerts
+    .map((alert) => {
+      // Znajdź polisę powiązaną z alertem
+      const policy = insurancePolicies.find((p) => p.id === alert.related_id);
+      return policy || null;
+    })
+    .filter(Boolean) as InsurancePolicy[];
 
   const totalFuelCost = fuelEntries.reduce((sum, f) => sum + (f.total_cost || 0), 0);
   const totalMaintenanceCost = maintenanceRecords.reduce((sum, m) => sum + (m.total_cost || 0), 0);
@@ -543,8 +587,8 @@ export default function VehicleDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d3bb73]"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
@@ -553,37 +597,37 @@ export default function VehicleDetailPage() {
     return (
       <div className="p-6">
         <div className="text-center">
-          <Car className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 text-lg">Nie znaleziono pojazdu</p>
+          <Car className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="text-lg text-[#e5e4e2]/60">Nie znaleziono pojazdu</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] mb-4"
+            className="mb-4 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="h-4 w-4" />
             Powrót do listy
           </button>
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-[#e5e4e2]">{vehicle.name}</h1>
             {getStatusBadge(vehicle.status, vehicle.in_use || false)}
           </div>
-          <p className="text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-[#e5e4e2]/60">
             {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
           </p>
           {vehicle.in_use && vehicle.in_use_by && (
-            <div className="flex items-center gap-3 mt-2 p-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg">
+            <div className="mt-2 flex items-center gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-3">
               <div className="flex-1">
-                <p className="text-[#d3bb73] text-sm flex items-center gap-2">
-                  <User className="w-4 h-4" />
+                <p className="flex items-center gap-2 text-sm text-[#d3bb73]">
+                  <User className="h-4 w-4" />
                   Użytkowany przez: {vehicle.in_use_by}
                   {vehicle.in_use_event && (
                     <span className="text-[#e5e4e2]/60">
@@ -598,8 +642,8 @@ export default function VehicleDetailPage() {
                   )}
                 </p>
                 {vehicle.pickup_timestamp && (
-                  <p className="text-xs text-[#e5e4e2]/60 mt-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
+                  <p className="mt-1 flex items-center gap-1 text-xs text-[#e5e4e2]/60">
+                    <Clock className="h-3 w-3" />
                     Odbiór: {new Date(vehicle.pickup_timestamp).toLocaleString('pl-PL')}
                   </p>
                 )}
@@ -607,10 +651,10 @@ export default function VehicleDetailPage() {
               {canManage && (
                 <button
                   onClick={handleEndUsage}
-                  className="flex items-center gap-2 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors text-sm font-medium"
+                  className="flex items-center gap-2 rounded-lg bg-red-500/20 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30"
                   title="Zakończ użytkowanie pojazdu"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="h-4 w-4" />
                   Zakończ użytkowanie
                 </button>
               )}
@@ -620,9 +664,9 @@ export default function VehicleDetailPage() {
         {canManage && (
           <button
             onClick={() => router.push(`/crm/fleet/${vehicleId}/edit`)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Edit className="w-5 h-5" />
+            <Edit className="h-5 w-5" />
             Edytuj
           </button>
         )}
@@ -636,13 +680,14 @@ export default function VehicleDetailPage() {
             return (
               <div
                 key={m.id}
-                className="flex items-center gap-3 bg-orange-500/10 border border-orange-500/20 rounded-lg p-4"
+                className="flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-500/10 p-4"
               >
-                <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0" />
+                <AlertTriangle className="h-5 w-5 flex-shrink-0 text-orange-400" />
                 <div className="flex-1">
-                  <p className="text-orange-400 font-medium">Zbliżający się przegląd</p>
-                  <p className="text-[#e5e4e2]/80 text-sm">
-                    {m.title} - za {days} {days === 1 ? 'dzień' : 'dni'} ({formatDate(m.next_service_date)})
+                  <p className="font-medium text-orange-400">Zbliżający się przegląd</p>
+                  <p className="text-sm text-[#e5e4e2]/80">
+                    {m.title} - za {days} {days === 1 ? 'dzień' : 'dni'} (
+                    {formatDate(m.next_service_date)})
                   </p>
                 </div>
               </div>
@@ -653,14 +698,14 @@ export default function VehicleDetailPage() {
             return (
               <div
                 key={i.id}
-                className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-lg p-4"
+                className="flex items-center gap-3 rounded-lg border border-red-500/20 bg-red-500/10 p-4"
               >
-                <Shield className="w-5 h-5 text-red-400 flex-shrink-0" />
+                <Shield className="h-5 w-5 flex-shrink-0 text-red-400" />
                 <div className="flex-1">
-                  <p className="text-red-400 font-medium">Wygasające ubezpieczenie</p>
-                  <p className="text-[#e5e4e2]/80 text-sm">
-                    {i.type.toUpperCase()} ({i.insurance_company}) - za {days} {days === 1 ? 'dzień' : 'dni'} (
-                    {formatDate(i.end_date)})
+                  <p className="font-medium text-red-400">Wygasające ubezpieczenie</p>
+                  <p className="text-sm text-[#e5e4e2]/80">
+                    {i.type.toUpperCase()} ({i.insurance_company}) - za {days}{' '}
+                    {days === 1 ? 'dzień' : 'dni'} ({formatDate(i.end_date)})
                   </p>
                 </div>
               </div>
@@ -670,23 +715,23 @@ export default function VehicleDetailPage() {
       )}
 
       {/* Statystyki */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         {vehicle?.vehicle_type !== 'trailer' && (
           <>
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-              <div className="flex items-center justify-between mb-2">
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm text-[#e5e4e2]/60">Przebieg</span>
-                <Gauge className="w-5 h-5 text-[#d3bb73]" />
+                <Gauge className="h-5 w-5 text-[#d3bb73]" />
               </div>
               <div className="text-2xl font-bold text-[#e5e4e2]">
                 {vehicle.current_mileage?.toLocaleString()} km
               </div>
             </div>
 
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-              <div className="flex items-center justify-between mb-2">
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm text-[#e5e4e2]/60">Śr. zużycie</span>
-                <Activity className="w-5 h-5 text-[#d3bb73]" />
+                <Activity className="h-5 w-5 text-[#d3bb73]" />
               </div>
               <div className="text-2xl font-bold text-[#e5e4e2]">
                 {avgConsumption > 0 ? `${avgConsumption.toFixed(1)} l/100km` : '-'}
@@ -696,10 +741,10 @@ export default function VehicleDetailPage() {
         )}
 
         {vehicle?.vehicle_type !== 'trailer' && (
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-            <div className="flex items-center justify-between mb-2">
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+            <div className="mb-2 flex items-center justify-between">
               <span className="text-sm text-[#e5e4e2]/60">Koszt paliwa</span>
-              <Fuel className="w-5 h-5 text-[#d3bb73]" />
+              <Fuel className="h-5 w-5 text-[#d3bb73]" />
             </div>
             <div className="text-2xl font-bold text-[#e5e4e2]">
               {(totalFuelCost / 1000).toFixed(1)}k zł
@@ -707,10 +752,10 @@ export default function VehicleDetailPage() {
           </div>
         )}
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Koszt serwisu</span>
-            <Wrench className="w-5 h-5 text-[#d3bb73]" />
+            <Wrench className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">
             {(totalMaintenanceCost / 1000).toFixed(1)}k zł
@@ -723,7 +768,9 @@ export default function VehicleDetailPage() {
         <div className="flex gap-4">
           {[
             { id: 'overview', label: 'Informacje', icon: Car },
-            ...(vehicle?.vehicle_type !== 'trailer' ? [{ id: 'fuel', label: 'Tankowania', icon: Fuel }] : []),
+            ...(vehicle?.vehicle_type !== 'trailer'
+              ? [{ id: 'fuel', label: 'Tankowania', icon: Fuel }]
+              : []),
             { id: 'maintenance', label: 'Serwis i naprawy', icon: Wrench },
             { id: 'insurance', label: 'Ubezpieczenia', icon: Shield },
             { id: 'history', label: 'Historia użytkowania', icon: Clock },
@@ -732,13 +779,13 @@ export default function VehicleDetailPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+              className={`flex items-center gap-2 border-b-2 px-4 py-3 transition-colors ${
                 activeTab === tab.id
                   ? 'border-[#d3bb73] text-[#d3bb73]'
                   : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
               }`}
             >
-              <tab.icon className="w-4 h-4" />
+              <tab.icon className="h-4 w-4" />
               {tab.label}
             </button>
           ))}
@@ -750,54 +797,54 @@ export default function VehicleDetailPage() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Podstawowe dane */}
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-              <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane podstawowe</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Dane podstawowe</h2>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Marka i model</span>
-                  <p className="text-[#e5e4e2] font-medium">
+                  <p className="font-medium text-[#e5e4e2]">
                     {vehicle.brand} {vehicle.model}
                   </p>
                 </div>
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Rok produkcji</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.year || '-'}</p>
+                  <p className="font-medium text-[#e5e4e2]">{vehicle.year || '-'}</p>
                 </div>
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Numer rejestracyjny</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.registration_number || '-'}</p>
+                  <p className="font-medium text-[#e5e4e2]">{vehicle.registration_number || '-'}</p>
                 </div>
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">VIN</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.vin || '-'}</p>
+                  <p className="font-medium text-[#e5e4e2]">{vehicle.vin || '-'}</p>
                 </div>
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Kolor</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.color || '-'}</p>
+                  <p className="font-medium text-[#e5e4e2]">{vehicle.color || '-'}</p>
                 </div>
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Kategoria</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.category || '-'}</p>
+                  <p className="font-medium text-[#e5e4e2]">{vehicle.category || '-'}</p>
                 </div>
                 {vehicle.vehicle_type !== 'trailer' && (
                   <>
                     <div>
                       <span className="text-sm text-[#e5e4e2]/60">Typ paliwa</span>
-                      <p className="text-[#e5e4e2] font-medium">{vehicle.fuel_type || '-'}</p>
+                      <p className="font-medium text-[#e5e4e2]">{vehicle.fuel_type || '-'}</p>
                     </div>
                     <div>
                       <span className="text-sm text-[#e5e4e2]/60">Skrzynia biegów</span>
-                      <p className="text-[#e5e4e2] font-medium">{vehicle.transmission || '-'}</p>
+                      <p className="font-medium text-[#e5e4e2]">{vehicle.transmission || '-'}</p>
                     </div>
                     <div>
                       <span className="text-sm text-[#e5e4e2]/60">Moc</span>
-                      <p className="text-[#e5e4e2] font-medium">
+                      <p className="font-medium text-[#e5e4e2]">
                         {vehicle.power_hp ? `${vehicle.power_hp} KM` : '-'}
                       </p>
                     </div>
                     <div>
                       <span className="text-sm text-[#e5e4e2]/60">Pojemność silnika</span>
-                      <p className="text-[#e5e4e2] font-medium">
+                      <p className="font-medium text-[#e5e4e2]">
                         {vehicle.engine_capacity ? `${vehicle.engine_capacity} cm³` : '-'}
                       </p>
                     </div>
@@ -805,17 +852,17 @@ export default function VehicleDetailPage() {
                 )}
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Typ własności</span>
-                  <p className="text-[#e5e4e2] font-medium">{vehicle.ownership_type || '-'}</p>
+                  <p className="font-medium text-[#e5e4e2]">{vehicle.ownership_type || '-'}</p>
                 </div>
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Data zakupu</span>
-                  <p className="text-[#e5e4e2] font-medium">{formatDate(vehicle.purchase_date)}</p>
+                  <p className="font-medium text-[#e5e4e2]">{formatDate(vehicle.purchase_date)}</p>
                 </div>
               </div>
             </div>
 
             {/* Właściwości pojazdu */}
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
               <VehicleAttributesPanel vehicleId={vehicleId} canEdit={canManage} />
             </div>
 
@@ -824,18 +871,18 @@ export default function VehicleDetailPage() {
 
             {/* Opis i notatki */}
             {(vehicle.description || vehicle.notes) && (
-              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-                <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dodatkowe informacje</h2>
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+                <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Dodatkowe informacje</h2>
                 {vehicle.description && (
                   <div className="mb-4">
                     <span className="text-sm text-[#e5e4e2]/60">Opis</span>
-                    <p className="text-[#e5e4e2] mt-1">{vehicle.description}</p>
+                    <p className="mt-1 text-[#e5e4e2]">{vehicle.description}</p>
                   </div>
                 )}
                 {vehicle.notes && (
                   <div>
                     <span className="text-sm text-[#e5e4e2]/60">Notatki</span>
-                    <p className="text-[#e5e4e2] mt-1">{vehicle.notes}</p>
+                    <p className="mt-1 text-[#e5e4e2]">{vehicle.notes}</p>
                   </div>
                 )}
               </div>
@@ -850,17 +897,17 @@ export default function VehicleDetailPage() {
               {canManage && (
                 <button
                   onClick={() => setShowFuelModal(true)}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj tankowanie
                 </button>
               )}
             </div>
 
             {fuelEntries.length === 0 ? (
-              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-                <Fuel className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+                <Fuel className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                 <p className="text-[#e5e4e2]/60">Brak wpisów tankowania</p>
               </div>
             ) : (
@@ -868,27 +915,31 @@ export default function VehicleDetailPage() {
                 {fuelEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4"
+                    className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <Calendar className="w-4 h-4 text-[#d3bb73]" />
-                          <span className="text-[#e5e4e2] font-medium">{formatDate(entry.date)}</span>
+                        <div className="mb-2 flex items-center gap-3">
+                          <Calendar className="h-4 w-4 text-[#d3bb73]" />
+                          <span className="font-medium text-[#e5e4e2]">
+                            {formatDate(entry.date)}
+                          </span>
                           {entry.is_full_tank && (
-                            <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
+                            <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
                               Pełny bak
                             </span>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                           <div>
                             <span className="text-[#e5e4e2]/60">Stacja</span>
                             <p className="text-[#e5e4e2]">{entry.location || '-'}</p>
                           </div>
                           <div>
                             <span className="text-[#e5e4e2]/60">Przebieg</span>
-                            <p className="text-[#e5e4e2]">{entry.odometer_reading?.toLocaleString()} km</p>
+                            <p className="text-[#e5e4e2]">
+                              {entry.odometer_reading?.toLocaleString()} km
+                            </p>
                           </div>
                           <div>
                             <span className="text-[#e5e4e2]/60">Litry</span>
@@ -896,14 +947,16 @@ export default function VehicleDetailPage() {
                           </div>
                           <div>
                             <span className="text-[#e5e4e2]/60">Koszt</span>
-                            <p className="text-[#e5e4e2] font-medium">{formatCurrency(entry.total_cost)}</p>
+                            <p className="font-medium text-[#e5e4e2]">
+                              {formatCurrency(entry.total_cost)}
+                            </p>
                           </div>
                         </div>
                         {entry.avg_consumption && (
                           <div className="mt-2 flex items-center gap-2 text-sm">
-                            <Activity className="w-4 h-4 text-[#d3bb73]" />
+                            <Activity className="h-4 w-4 text-[#d3bb73]" />
                             <span className="text-[#e5e4e2]/60">Średnie zużycie:</span>
-                            <span className="text-[#d3bb73] font-medium">
+                            <span className="font-medium text-[#d3bb73]">
                               {entry.avg_consumption.toFixed(1)} l/100km
                             </span>
                             {entry.distance_since_last && (
@@ -929,17 +982,17 @@ export default function VehicleDetailPage() {
               {canManage && (
                 <button
                   onClick={() => setShowMaintenanceModal(true)}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj wpis serwisowy
                 </button>
               )}
             </div>
 
             {maintenanceRecords.length === 0 ? (
-              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-                <Wrench className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+                <Wrench className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                 <p className="text-[#e5e4e2]/60">Brak wpisów serwisowych</p>
               </div>
             ) : (
@@ -947,28 +1000,28 @@ export default function VehicleDetailPage() {
                 {maintenanceRecords.map((record) => (
                   <div
                     key={record.id}
-                    className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4"
+                    className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
                   >
-                    <div className="flex items-start justify-between mb-3">
+                    <div className="mb-3 flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-[#e5e4e2] font-medium">{record.title}</h3>
+                        <div className="mb-2 flex items-center gap-3">
+                          <h3 className="font-medium text-[#e5e4e2]">{record.title}</h3>
                           {getStatusBadge(record.status)}
                         </div>
                         <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                           <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
+                            <Calendar className="h-4 w-4" />
                             {formatDate(record.date)}
                           </span>
                           <span className="flex items-center gap-1">
-                            <Gauge className="w-4 h-4" />
+                            <Gauge className="h-4 w-4" />
                             {record.odometer_reading?.toLocaleString()} km
                           </span>
                         </div>
                       </div>
                       <div className="flex items-start gap-3">
                         <div className="text-right">
-                          <div className="text-[#d3bb73] font-medium text-lg">
+                          <div className="text-lg font-medium text-[#d3bb73]">
                             {formatCurrency(record.total_cost)}
                           </div>
                           <div className="text-xs text-[#e5e4e2]/60">
@@ -981,16 +1034,16 @@ export default function VehicleDetailPage() {
                         {isAdmin && (
                           <button
                             onClick={() => handleDeleteMaintenanceRecord(record)}
-                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                            className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
                             title="Usuń wpis"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         )}
                       </div>
                     </div>
                     {record.description && (
-                      <p className="text-sm text-[#e5e4e2]/80 mb-2">{record.description}</p>
+                      <p className="mb-2 text-sm text-[#e5e4e2]/80">{record.description}</p>
                     )}
                     {record.service_provider && (
                       <div className="text-sm text-[#e5e4e2]/60">
@@ -998,10 +1051,10 @@ export default function VehicleDetailPage() {
                       </div>
                     )}
                     {record.next_service_date && (
-                      <div className="mt-3 pt-3 border-t border-[#d3bb73]/10 flex items-center gap-2 text-sm">
-                        <Clock className="w-4 h-4 text-orange-400" />
+                      <div className="mt-3 flex items-center gap-2 border-t border-[#d3bb73]/10 pt-3 text-sm">
+                        <Clock className="h-4 w-4 text-orange-400" />
                         <span className="text-[#e5e4e2]/60">Następny serwis:</span>
-                        <span className="text-[#e5e4e2] font-medium">
+                        <span className="font-medium text-[#e5e4e2]">
                           {formatDate(record.next_service_date)}
                         </span>
                         {record.next_service_mileage && (
@@ -1025,49 +1078,46 @@ export default function VehicleDetailPage() {
               {canManage && (
                 <button
                   onClick={() => setShowInsuranceModal(true)}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj ubezpieczenie
                 </button>
               )}
             </div>
 
             {insurancePolicies.length === 0 ? (
-              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-                <Shield className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+                <Shield className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                 <p className="text-[#e5e4e2]/60">Brak polis ubezpieczeniowych</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {insurancePolicies.map((policy) => {
                   const daysUntilExpiry = getDaysUntil(policy.end_date);
-                  const isExpiringSoon = daysUntilExpiry && daysUntilExpiry > 0 && daysUntilExpiry <= 60;
+                  const isExpiringSoon =
+                    daysUntilExpiry && daysUntilExpiry > 0 && daysUntilExpiry <= 60;
 
                   return (
                     <div
                       key={policy.id}
-                      className={`bg-[#1c1f33] rounded-lg border p-4 ${
-                        isExpiringSoon
-                          ? 'border-red-500/30 bg-red-500/5'
-                          : 'border-[#d3bb73]/10'
+                      className={`rounded-lg border bg-[#1c1f33] p-4 ${
+                        isExpiringSoon ? 'border-red-500/30 bg-red-500/5' : 'border-[#d3bb73]/10'
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-3">
+                      <div className="mb-3 flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-[#e5e4e2] font-medium uppercase">
-                              {policy.type}
-                            </h3>
+                          <div className="mb-2 flex items-center gap-3">
+                            <h3 className="font-medium uppercase text-[#e5e4e2]">{policy.type}</h3>
                             {getStatusBadge(policy.status)}
                             {isExpiringSoon && (
-                              <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
+                              <span className="flex items-center gap-1 rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
+                                <AlertTriangle className="h-3 w-3" />
                                 Wygasa za {daysUntilExpiry} dni
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-[#e5e4e2]/80 mb-1">
+                          <div className="mb-1 text-sm text-[#e5e4e2]/80">
                             {policy.insurance_company}
                           </div>
                           <div className="text-sm text-[#e5e4e2]/60">
@@ -1076,7 +1126,7 @@ export default function VehicleDetailPage() {
                         </div>
                         <div className="flex items-start gap-3">
                           <div className="text-right">
-                            <div className="text-[#d3bb73] font-medium text-lg">
+                            <div className="text-lg font-medium text-[#d3bb73]">
                               {formatCurrency(policy.premium_amount)}
                             </div>
                             <div className="text-xs text-[#e5e4e2]/60">składka roczna</div>
@@ -1084,10 +1134,10 @@ export default function VehicleDetailPage() {
                           {isAdmin && (
                             <button
                               onClick={() => handleDeleteInsurance(policy)}
-                              className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                              className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
                               title="Usuń ubezpieczenie"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           )}
                         </div>
@@ -1095,11 +1145,13 @@ export default function VehicleDetailPage() {
                       <div className="flex items-center gap-6 text-sm">
                         <div>
                           <span className="text-[#e5e4e2]/60">Początek:</span>
-                          <span className="text-[#e5e4e2] ml-2">{formatDate(policy.start_date)}</span>
+                          <span className="ml-2 text-[#e5e4e2]">
+                            {formatDate(policy.start_date)}
+                          </span>
                         </div>
                         <div>
                           <span className="text-[#e5e4e2]/60">Koniec:</span>
-                          <span className="text-[#e5e4e2] ml-2">{formatDate(policy.end_date)}</span>
+                          <span className="ml-2 text-[#e5e4e2]">{formatDate(policy.end_date)}</span>
                         </div>
                       </div>
                       {policy.notes && (
@@ -1116,14 +1168,14 @@ export default function VehicleDetailPage() {
         {/* Gallery Tab */}
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-              <h3 className="text-lg font-semibold text-[#e5e4e2] mb-4">
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <h3 className="mb-4 text-lg font-semibold text-[#e5e4e2]">
                 Historia odbiorów i zdań pojazdu
               </h3>
 
               {handoverHistory.length === 0 ? (
-                <div className="text-center py-12">
-                  <Clock className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-3" />
+                <div className="py-12 text-center">
+                  <Clock className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak historii użytkowania pojazdu</p>
                 </div>
               ) : (
@@ -1131,13 +1183,13 @@ export default function VehicleDetailPage() {
                   {handoverHistory.map((handover) => (
                     <div
                       key={handover.id}
-                      className="bg-[#0f1119] rounded-lg p-4 border border-[#d3bb73]/10"
+                      className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
+                          <div className="mb-2 flex items-center gap-3">
                             <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
+                              className={`rounded px-2 py-1 text-xs font-medium ${
                                 handover.handover_type === 'pickup'
                                   ? 'bg-blue-500/20 text-blue-400'
                                   : 'bg-green-500/20 text-green-400'
@@ -1145,19 +1197,19 @@ export default function VehicleDetailPage() {
                             >
                               {handover.handover_type === 'pickup' ? 'Odbiór' : 'Zdanie'}
                             </span>
-                            <span className="text-[#e5e4e2] font-medium">
+                            <span className="font-medium text-[#e5e4e2]">
                               {handover.odometer_reading.toLocaleString('pl-PL')} km
                             </span>
                           </div>
 
                           <div className="space-y-1 text-sm">
                             <div className="flex items-center gap-2 text-[#e5e4e2]/80">
-                              <User className="w-4 h-4 text-[#d3bb73]" />
+                              <User className="h-4 w-4 text-[#d3bb73]" />
                               <span>{handover.driver_name}</span>
                             </div>
 
                             <div className="flex items-center gap-2 text-[#e5e4e2]/80">
-                              <Calendar className="w-4 h-4 text-[#d3bb73]" />
+                              <Calendar className="h-4 w-4 text-[#d3bb73]" />
                               <span>{formatDate(handover.timestamp)}</span>
                               <span className="text-[#e5e4e2]/60">
                                 {new Date(handover.timestamp).toLocaleTimeString('pl-PL', {
@@ -1168,20 +1220,20 @@ export default function VehicleDetailPage() {
                             </div>
 
                             <div className="flex items-center gap-2 text-[#e5e4e2]/80">
-                              <Activity className="w-4 h-4 text-[#d3bb73]" />
+                              <Activity className="h-4 w-4 text-[#d3bb73]" />
                               <span>{handover.event_name}</span>
                             </div>
 
                             {handover.event_location && (
                               <div className="flex items-center gap-2 text-[#e5e4e2]/60">
-                                <MapPin className="w-4 h-4 text-[#d3bb73]/60" />
+                                <MapPin className="h-4 w-4 text-[#d3bb73]/60" />
                                 <span>{handover.event_location}</span>
                               </div>
                             )}
 
                             {handover.notes && (
-                              <div className="mt-2 pt-2 border-t border-[#d3bb73]/10">
-                                <p className="text-[#e5e4e2]/70 text-sm">{handover.notes}</p>
+                              <div className="mt-2 border-t border-[#d3bb73]/10 pt-2">
+                                <p className="text-sm text-[#e5e4e2]/70">{handover.notes}</p>
                               </div>
                             )}
                           </div>

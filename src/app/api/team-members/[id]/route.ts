@@ -9,13 +9,19 @@ import { NextResponse } from 'next/server';
  */
 
 export async function PUT() {
-  return NextResponse.json({
-    error: 'This endpoint is deprecated. Please use /crm/employees to manage team members.'
-  }, { status: 410 });
+  return NextResponse.json(
+    {
+      error: 'This endpoint is deprecated. Please use /crm/employees to manage team members.',
+    },
+    { status: 410 },
+  );
 }
 
 export async function DELETE() {
-  return NextResponse.json({
-    error: 'This endpoint is deprecated. Please use /crm/employees to manage team members.'
-  }, { status: 410 });
+  return NextResponse.json(
+    {
+      error: 'This endpoint is deprecated. Please use /crm/employees to manage team members.',
+    },
+    { status: 410 },
+  );
 }

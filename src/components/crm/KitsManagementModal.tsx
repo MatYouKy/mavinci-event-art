@@ -75,7 +75,9 @@ export default function KitsManagementModal({
     thumbnail_url: '',
     warehouse_category_id: '',
   });
-  const [kitItems, setKitItems] = useState<{equipment_id: string; quantity: number; notes: string}[]>([]);
+  const [kitItems, setKitItems] = useState<
+    { equipment_id: string; quantity: number; notes: string }[]
+  >([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,7 +98,7 @@ export default function KitsManagementModal({
 
   useEffect(() => {
     if (initialKitId && kits.length > 0) {
-      const kit = kits.find(k => k.id === initialKitId);
+      const kit = kits.find((k) => k.id === initialKitId);
       if (kit) {
         setViewingKit(kit);
       }
@@ -108,13 +110,15 @@ export default function KitsManagementModal({
       setLoading(true);
       const { data, error } = await supabase
         .from('equipment_kits')
-        .select(`
+        .select(
+          `
           *,
           equipment_kit_items(
             *,
             equipment_items(id, name, brand, model, thumbnail_url)
           )
-        `)
+        `,
+        )
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -136,11 +140,13 @@ export default function KitsManagementModal({
         thumbnail_url: kit.thumbnail_url || '',
         warehouse_category_id: kit.warehouse_category_id || '',
       });
-      setKitItems(kit.equipment_kit_items.map(item => ({
-        equipment_id: item.equipment_id,
-        quantity: item.quantity,
-        notes: item.notes || '',
-      })));
+      setKitItems(
+        kit.equipment_kit_items.map((item) => ({
+          equipment_id: item.equipment_id,
+          quantity: item.quantity,
+          notes: item.notes || '',
+        })),
+      );
     } else {
       setEditingKit(null);
       setKitForm({
@@ -161,7 +167,7 @@ export default function KitsManagementModal({
     setUploading(true);
     try {
       const url = await uploadImage(file, 'equipment-kits');
-      setKitForm(prev => ({ ...prev, thumbnail_url: url }));
+      setKitForm((prev) => ({ ...prev, thumbnail_url: url }));
     } catch (error) {
       console.error('Error uploading image:', error);
       showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
@@ -171,7 +177,7 @@ export default function KitsManagementModal({
   };
 
   const handleAddKitItem = (equipmentId: string) => {
-    if (kitItems.some(item => item.equipment_id === equipmentId)) {
+    if (kitItems.some((item) => item.equipment_id === equipmentId)) {
       showSnackbar('Ten sprzęt jest już w zestawie', 'warning');
       return;
     }
@@ -182,12 +188,17 @@ export default function KitsManagementModal({
     setKitItems(kitItems.filter((_, i) => i !== index));
   };
 
-  const handleUpdateKitItem = (index: number, field: 'quantity' | 'notes', value: string | number) => {
+  const handleUpdateKitItem = (
+    index: number,
+    field: 'quantity' | 'notes',
+    value: string | number,
+  ) => {
     const updated = [...kitItems];
     if (field === 'quantity') {
       const newQty = typeof value === 'number' ? value : parseInt(value) || 1;
-      const equipmentItem = equipment.find(e => e.id === updated[index].equipment_id);
-      const availableQty = equipmentItem?.equipment_units?.filter(u => u.status === 'available').length || 0;
+      const equipmentItem = equipment.find((e) => e.id === updated[index].equipment_id);
+      const availableQty =
+        equipmentItem?.equipment_units?.filter((u) => u.status === 'available').length || 0;
 
       if (newQty > availableQty) {
         showSnackbar(`Maksymalna dostępna ilość: ${availableQty} szt.`, 'warning');
@@ -213,7 +224,9 @@ export default function KitsManagementModal({
 
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       let kitId = editingKit?.id;
 
@@ -337,31 +350,32 @@ export default function KitsManagementModal({
     }
   };
 
-  const filteredEquipment = equipment.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.model?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredEquipment = equipment.filter(
+    (item) =>
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.model?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const wrapperClass = inline
-    ? "w-full"
-    : "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4";
+    ? 'w-full'
+    : 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
 
   const contentClass = inline
-    ? "bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full overflow-hidden flex flex-col"
-    : "bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col";
+    ? 'bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full overflow-hidden flex flex-col'
+    : 'bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col';
 
   return (
     <div className={wrapperClass}>
       <div className={contentClass}>
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Zarządzanie zestawami sprzętu</h3>
           {!inline && (
             <button
               onClick={onClose}
-              className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
+              className="rounded-lg p-2 transition-colors hover:bg-[#e5e4e2]/10"
             >
-              <X className="w-5 h-5 text-[#e5e4e2]" />
+              <X className="h-5 w-5 text-[#e5e4e2]" />
             </button>
           )}
         </div>
@@ -369,85 +383,87 @@ export default function KitsManagementModal({
         <div className="flex-1 overflow-y-auto p-6">
           {!showAddForm ? (
             <>
-              <div className="flex items-center justify-between mb-6">
+              <div className="mb-6 flex items-center justify-between">
                 <p className="text-[#e5e4e2]/60">
                   Zestawy pozwalają na grupowanie sprzętu (np. "Kablarka Standard 1")
                 </p>
                 {canManage && (
                   <button
                     onClick={() => handleOpenForm()}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="h-4 w-4" />
                     Nowy zestaw
                   </button>
                 )}
               </div>
 
               {loading ? (
-                <div className="text-center py-12 text-[#e5e4e2]/60">Ładowanie...</div>
+                <div className="py-12 text-center text-[#e5e4e2]/60">Ładowanie...</div>
               ) : kits.length === 0 ? (
-                <div className="text-center py-12">
-                  <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <div className="py-12 text-center">
+                  <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak zestawów</p>
-                  <p className="text-sm text-[#e5e4e2]/40 mt-2">Kliknij "Nowy zestaw" aby stworzyć pierwszy zestaw</p>
+                  <p className="mt-2 text-sm text-[#e5e4e2]/40">
+                    Kliknij "Nowy zestaw" aby stworzyć pierwszy zestaw
+                  </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {kits.map((kit) => (
                     <div
                       key={kit.id}
-                      className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-xl p-4"
+                      className="rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                     >
-                      <div className="flex items-start gap-4 mb-3">
+                      <div className="mb-3 flex items-start gap-4">
                         {kit.thumbnail_url ? (
                           <img
                             src={kit.thumbnail_url}
                             alt={kit.name}
-                            className="w-16 h-16 rounded-lg object-cover"
+                            className="h-16 w-16 rounded-lg object-cover"
                           />
                         ) : (
-                          <div className="w-16 h-16 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
-                            <Package className="w-8 h-8 text-[#d3bb73]" />
+                          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[#d3bb73]/20">
+                            <Package className="h-8 w-8 text-[#d3bb73]" />
                           </div>
                         )}
                         <div className="flex-1">
-                          <h4 className="text-[#e5e4e2] font-medium mb-1">{kit.name}</h4>
+                          <h4 className="mb-1 font-medium text-[#e5e4e2]">{kit.name}</h4>
                           {kit.description && (
                             <p className="text-sm text-[#e5e4e2]/60">{kit.description}</p>
                           )}
-                          <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                          <p className="mt-1 text-xs text-[#e5e4e2]/40">
                             {kit.equipment_kit_items.length} pozycji
                           </p>
                         </div>
                         <div className="flex gap-2">
                           <button
                             onClick={() => setViewingKit(kit)}
-                            className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                            className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-500/10"
                             title="Podgląd i drukowanie"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="h-4 w-4" />
                           </button>
                           {canManage && (
                             <>
                               <button
                                 onClick={() => handleDuplicateKit(kit)}
-                                className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                                className="rounded-lg p-2 text-purple-400 transition-colors hover:bg-purple-500/10"
                                 title="Duplikuj zestaw"
                               >
-                                <Copy className="w-4 h-4" />
+                                <Copy className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => handleOpenForm(kit)}
-                                className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                                className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                               >
-                                <Edit className="w-4 h-4" />
+                                <Edit className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => handleDeleteKit(kit.id)}
-                                className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </>
                           )}
@@ -457,12 +473,17 @@ export default function KitsManagementModal({
                       {kit.equipment_kit_items.length > 0 && (
                         <div className="space-y-1 pl-20">
                           {kit.equipment_kit_items.map((item) => (
-                            <div key={item.id} className="text-sm text-[#e5e4e2]/60 flex items-center gap-2">
+                            <div
+                              key={item.id}
+                              className="flex items-center gap-2 text-sm text-[#e5e4e2]/60"
+                            >
                               <span className="text-[#d3bb73]">•</span>
                               <span>{item.quantity}x</span>
                               <span>{item.equipment_items.name}</span>
                               {item.equipment_items.brand && (
-                                <span className="text-[#e5e4e2]/40">({item.equipment_items.brand})</span>
+                                <span className="text-[#e5e4e2]/40">
+                                  ({item.equipment_items.brand})
+                                </span>
                               )}
                             </div>
                           ))}
@@ -476,29 +497,31 @@ export default function KitsManagementModal({
           ) : (
             <div className="space-y-6">
               <div>
-                <h4 className="text-[#e5e4e2] font-medium mb-4">
+                <h4 className="mb-4 font-medium text-[#e5e4e2]">
                   {editingKit ? 'Edytuj zestaw' : 'Nowy zestaw'}
                 </h4>
 
                 <div className="space-y-4">
                   {kitForm.thumbnail_url && (
-                    <div className="relative w-32 h-32 mx-auto">
+                    <div className="relative mx-auto h-32 w-32">
                       <img
                         src={kitForm.thumbnail_url}
                         alt="Miniaturka"
-                        className="w-full h-full object-cover rounded-lg border border-[#d3bb73]/20"
+                        className="h-full w-full rounded-lg border border-[#d3bb73]/20 object-cover"
                       />
                       <button
-                        onClick={() => setKitForm(prev => ({ ...prev, thumbnail_url: '' }))}
-                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                        onClick={() => setKitForm((prev) => ({ ...prev, thumbnail_url: '' }))}
+                        className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
                   )}
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Miniaturka (opcjonalna)</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Miniaturka (opcjonalna)
+                    </label>
                     <input
                       type="file"
                       accept="image/*"
@@ -509,41 +532,49 @@ export default function KitsManagementModal({
                     />
                     <label
                       htmlFor="kit-thumbnail-upload"
-                      className={`flex items-center justify-center gap-2 w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] cursor-pointer hover:border-[#d3bb73]/30 transition-colors ${uploading ? 'opacity-50' : ''}`}
+                      className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30 ${uploading ? 'opacity-50' : ''}`}
                     >
-                      <Plus className="w-4 h-4" />
-                      {uploading ? 'Przesyłanie...' : kitForm.thumbnail_url ? 'Zmień zdjęcie' : 'Dodaj zdjęcie'}
+                      <Plus className="h-4 w-4" />
+                      {uploading
+                        ? 'Przesyłanie...'
+                        : kitForm.thumbnail_url
+                          ? 'Zmień zdjęcie'
+                          : 'Dodaj zdjęcie'}
                     </label>
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa zestawu *</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa zestawu *</label>
                     <input
                       type="text"
                       value={kitForm.name}
-                      onChange={(e) => setKitForm(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => setKitForm((prev) => ({ ...prev, name: e.target.value }))}
                       placeholder="np. Kablarka Standard 1"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
                     <textarea
                       value={kitForm.description}
-                      onChange={(e) => setKitForm(prev => ({ ...prev, description: e.target.value }))}
+                      onChange={(e) =>
+                        setKitForm((prev) => ({ ...prev, description: e.target.value }))
+                      }
                       rows={2}
                       placeholder="Krótki opis zestawu..."
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kategoria</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
                     <select
                       value={kitForm.warehouse_category_id}
-                      onChange={(e) => setKitForm(prev => ({ ...prev, warehouse_category_id: e.target.value }))}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                      onChange={(e) =>
+                        setKitForm((prev) => ({ ...prev, warehouse_category_id: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                     >
                       <option value="">Brak kategorii</option>
                       {categories.map((cat) => (
@@ -557,39 +588,57 @@ export default function KitsManagementModal({
               </div>
 
               <div className="border-t border-[#d3bb73]/10 pt-6">
-                <h5 className="text-[#e5e4e2] font-medium mb-4">Pozycje w zestawie</h5>
+                <h5 className="mb-4 font-medium text-[#e5e4e2]">Pozycje w zestawie</h5>
 
                 {kitItems.length > 0 && (
-                  <div className="space-y-3 mb-4">
+                  <div className="mb-4 space-y-3">
                     {kitItems.map((item, index) => {
-                      const eq = equipment.find(e => e.id === item.equipment_id);
+                      const eq = equipment.find((e) => e.id === item.equipment_id);
                       return (
-                        <div key={index} className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3">
+                        <div
+                          key={index}
+                          className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3"
+                        >
                           <div className="flex items-start gap-3">
                             {eq?.thumbnail_url && (
                               <img
                                 src={eq.thumbnail_url}
                                 alt={eq.name}
-                                className="w-12 h-12 rounded object-cover"
+                                className="h-12 w-12 rounded object-cover"
                               />
                             )}
                             <div className="flex-1">
-                              <div className="text-[#e5e4e2] font-medium">{eq?.name || 'Nieznany sprzęt'}</div>
+                              <div className="font-medium text-[#e5e4e2]">
+                                {eq?.name || 'Nieznany sprzęt'}
+                              </div>
                               {eq?.brand && (
-                                <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
+                                <div className="text-sm text-[#e5e4e2]/60">
+                                  {eq.brand} {eq.model}
+                                </div>
                               )}
-                              <div className="grid grid-cols-2 gap-2 mt-2">
+                              <div className="mt-2 grid grid-cols-2 gap-2">
                                 <div>
                                   <label className="text-xs text-[#e5e4e2]/40">
-                                    Ilość <span className="text-[#d3bb73]">(maks. {eq?.equipment_units?.filter(u => u.status === 'available').length || 0})</span>
+                                    Ilość{' '}
+                                    <span className="text-[#d3bb73]">
+                                      (maks.{' '}
+                                      {eq?.equipment_units?.filter((u) => u.status === 'available')
+                                        .length || 0}
+                                      )
+                                    </span>
                                   </label>
                                   <input
                                     type="number"
                                     min="1"
-                                    max={eq?.equipment_units?.filter(u => u.status === 'available').length || 0}
+                                    max={
+                                      eq?.equipment_units?.filter((u) => u.status === 'available')
+                                        .length || 0
+                                    }
                                     value={item.quantity}
-                                    onChange={(e) => handleUpdateKitItem(index, 'quantity', e.target.value)}
-                                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded px-2 py-1 text-[#e5e4e2] text-sm"
+                                    onChange={(e) =>
+                                      handleUpdateKitItem(index, 'quantity', e.target.value)
+                                    }
+                                    className="w-full rounded border border-[#d3bb73]/10 bg-[#1c1f33] px-2 py-1 text-sm text-[#e5e4e2]"
                                   />
                                 </div>
                                 <div>
@@ -597,18 +646,20 @@ export default function KitsManagementModal({
                                   <input
                                     type="text"
                                     value={item.notes}
-                                    onChange={(e) => handleUpdateKitItem(index, 'notes', e.target.value)}
+                                    onChange={(e) =>
+                                      handleUpdateKitItem(index, 'notes', e.target.value)
+                                    }
                                     placeholder="opcjonalne"
-                                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded px-2 py-1 text-[#e5e4e2] text-sm placeholder-[#e5e4e2]/30"
+                                    className="w-full rounded border border-[#d3bb73]/10 bg-[#1c1f33] px-2 py-1 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30"
                                   />
                                 </div>
                               </div>
                             </div>
                             <button
                               onClick={() => handleRemoveKitItem(index)}
-                              className="p-1 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                              className="rounded p-1 text-red-400 transition-colors hover:bg-red-500/10"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
@@ -617,9 +668,9 @@ export default function KitsManagementModal({
                   </div>
                 )}
 
-                <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Search className="w-4 h-4 text-[#e5e4e2]/40" />
+                <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Search className="h-4 w-4 text-[#e5e4e2]/40" />
                     <input
                       type="text"
                       value={searchTerm}
@@ -629,38 +680,41 @@ export default function KitsManagementModal({
                     />
                   </div>
 
-                  <div className="max-h-60 overflow-y-auto space-y-2">
+                  <div className="max-h-60 space-y-2 overflow-y-auto">
                     {filteredEquipment.map((item) => {
-                      const isAdded = kitItems.some(ki => ki.equipment_id === item.id);
+                      const isAdded = kitItems.some((ki) => ki.equipment_id === item.id);
                       return (
                         <button
                           key={item.id}
                           onClick={() => !isAdded && handleAddKitItem(item.id)}
                           disabled={isAdded}
-                          className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors ${
-                            isAdded
-                              ? 'opacity-50 cursor-not-allowed'
-                              : 'hover:bg-[#1c1f33]'
+                          className={`flex w-full items-center gap-3 rounded-lg p-2 transition-colors ${
+                            isAdded ? 'cursor-not-allowed opacity-50' : 'hover:bg-[#1c1f33]'
                           }`}
                         >
                           {item.thumbnail_url ? (
                             <img
                               src={item.thumbnail_url}
                               alt={item.name}
-                              className="w-10 h-10 rounded object-cover"
+                              className="h-10 w-10 rounded object-cover"
                             />
                           ) : (
-                            <div className="w-10 h-10 bg-[#d3bb73]/20 rounded flex items-center justify-center">
-                              <Package className="w-5 h-5 text-[#d3bb73]" />
+                            <div className="flex h-10 w-10 items-center justify-center rounded bg-[#d3bb73]/20">
+                              <Package className="h-5 w-5 text-[#d3bb73]" />
                             </div>
                           )}
                           <div className="flex-1 text-left">
-                            <div className="text-[#e5e4e2] text-sm">{item.name}</div>
+                            <div className="text-sm text-[#e5e4e2]">{item.name}</div>
                             {item.brand && (
-                              <div className="text-xs text-[#e5e4e2]/60">{item.brand} {item.model}</div>
+                              <div className="text-xs text-[#e5e4e2]/60">
+                                {item.brand} {item.model}
+                              </div>
                             )}
-                            <div className="text-xs text-[#d3bb73] mt-1">
-                              Dostępne: {item.equipment_units?.filter(u => u.status === 'available').length || 0} szt.
+                            <div className="mt-1 text-xs text-[#d3bb73]">
+                              Dostępne:{' '}
+                              {item.equipment_units?.filter((u) => u.status === 'available')
+                                .length || 0}{' '}
+                              szt.
                             </div>
                           </div>
                           {isAdded && <span className="text-xs text-green-400">✓ Dodano</span>}
@@ -671,17 +725,17 @@ export default function KitsManagementModal({
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t border-[#d3bb73]/10">
+              <div className="flex gap-3 border-t border-[#d3bb73]/10 pt-4">
                 <button
                   onClick={() => setShowAddForm(false)}
-                  className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                  className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                 >
                   Anuluj
                 </button>
                 <button
                   onClick={handleSaveKit}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                  className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                 >
                   {saving ? 'Zapisywanie...' : 'Zapisz zestaw'}
                 </button>
@@ -743,23 +797,25 @@ export default function KitsManagementModal({
             }
           `}</style>
 
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4 print:hidden">
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
-                <h3 className="text-xl font-light text-[#e5e4e2]">Podgląd zestawu: {viewingKit.name}</h3>
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 print:hidden">
+            <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+              <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
+                <h3 className="text-xl font-light text-[#e5e4e2]">
+                  Podgląd zestawu: {viewingKit.name}
+                </h3>
                 <div className="flex gap-2">
                   <button
                     onClick={() => window.print()}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                   >
-                    <Printer className="w-4 h-4" />
+                    <Printer className="h-4 w-4" />
                     Drukuj checklistę
                   </button>
                   <button
                     onClick={() => setViewingKit(null)}
-                    className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
+                    className="rounded-lg p-2 transition-colors hover:bg-[#e5e4e2]/10"
                   >
-                    <X className="w-5 h-5 text-[#e5e4e2]" />
+                    <X className="h-5 w-5 text-[#e5e4e2]" />
                   </button>
                 </div>
               </div>
@@ -770,47 +826,51 @@ export default function KitsManagementModal({
                     <img
                       src={viewingKit.thumbnail_url}
                       alt={viewingKit.name}
-                      className="w-24 h-24 rounded-lg object-cover"
+                      className="h-24 w-24 rounded-lg object-cover"
                     />
                   )}
                   <div>
-                    <h2 className="text-2xl font-medium text-[#e5e4e2] mb-2">{viewingKit.name}</h2>
+                    <h2 className="mb-2 text-2xl font-medium text-[#e5e4e2]">{viewingKit.name}</h2>
                     {viewingKit.description && (
-                      <p className="text-[#e5e4e2]/60 mb-2">{viewingKit.description}</p>
+                      <p className="mb-2 text-[#e5e4e2]/60">{viewingKit.description}</p>
                     )}
                     <p className="text-sm text-[#e5e4e2]/40">
-                      {viewingKit.equipment_kit_items.length} pozycji • Utworzono: {new Date(viewingKit.created_at).toLocaleDateString('pl-PL')}
+                      {viewingKit.equipment_kit_items.length} pozycji • Utworzono:{' '}
+                      {new Date(viewingKit.created_at).toLocaleDateString('pl-PL')}
                     </p>
                   </div>
                 </div>
 
-                <div className="border border-[#d3bb73]/20 rounded-lg overflow-hidden">
-                  <div className="bg-[#d3bb73]/10 px-4 py-3 border-b border-[#d3bb73]/20">
-                    <h4 className="text-[#e5e4e2] font-medium">Lista sprzętu</h4>
+                <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20">
+                  <div className="border-b border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3">
+                    <h4 className="font-medium text-[#e5e4e2]">Lista sprzętu</h4>
                   </div>
                   <div className="divide-y divide-[#d3bb73]/10">
                     {viewingKit.equipment_kit_items.map((item, index) => {
-                      const availableQty = equipment.find(e => e.id === item.equipment_id)?.equipment_units?.filter(u => u.status === 'available').length || 0;
+                      const availableQty =
+                        equipment
+                          .find((e) => e.id === item.equipment_id)
+                          ?.equipment_units?.filter((u) => u.status === 'available').length || 0;
                       const isAvailable = availableQty >= item.quantity;
 
                       return (
                         <div
                           key={item.id}
-                          className="p-4 hover:bg-[#0f1119] transition-colors flex items-start gap-4 cursor-pointer group"
+                          className="group flex cursor-pointer items-start gap-4 p-4 transition-colors hover:bg-[#0f1119]"
                           onClick={() => {
                             window.location.href = `/crm/equipment/${item.equipment_id}`;
                           }}
                         >
-                          <div className="flex-shrink-0 w-6 h-6 border-2 border-[#d3bb73]/40 rounded" />
+                          <div className="h-6 w-6 flex-shrink-0 rounded border-2 border-[#d3bb73]/40" />
                           <div className="flex-1">
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-[#e5e4e2] font-medium group-hover:text-[#d3bb73]">
+                                <div className="mb-1 flex items-center gap-2">
+                                  <span className="font-medium text-[#e5e4e2] group-hover:text-[#d3bb73]">
                                     {index + 1}. {item.equipment_items.name}
                                   </span>
                                   {!isAvailable && (
-                                    <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">
+                                    <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
                                       Niewystarczająca ilość
                                     </span>
                                   )}
@@ -821,7 +881,7 @@ export default function KitsManagementModal({
                                   </p>
                                 )}
                                 {item.notes && (
-                                  <p className="text-sm text-[#e5e4e2]/40 mt-1">
+                                  <p className="mt-1 text-sm text-[#e5e4e2]/40">
                                     Notatka: {item.notes}
                                   </p>
                                 )}
@@ -830,7 +890,9 @@ export default function KitsManagementModal({
                                 <div className="text-lg font-medium text-[#e5e4e2]">
                                   {item.quantity} szt.
                                 </div>
-                                <div className={`text-xs ${isAvailable ? 'text-green-400' : 'text-red-400'}`}>
+                                <div
+                                  className={`text-xs ${isAvailable ? 'text-green-400' : 'text-red-400'}`}
+                                >
                                   Dostępne: {availableQty}
                                 </div>
                               </div>
@@ -848,32 +910,40 @@ export default function KitsManagementModal({
           {/* Ukryty element do druku */}
           <div id="kit-checklist-print" className="hidden print:block">
             <h1>{viewingKit.name}</h1>
-            {viewingKit.description && <p style={{marginBottom: '10pt'}}>{viewingKit.description}</p>}
+            {viewingKit.description && (
+              <p style={{ marginBottom: '10pt' }}>{viewingKit.description}</p>
+            )}
 
             <table>
               <thead>
                 <tr>
-                  <th style={{width: '40px'}}>✓</th>
-                  <th style={{width: '40px'}}>Lp.</th>
+                  <th style={{ width: '40px' }}>✓</th>
+                  <th style={{ width: '40px' }}>Lp.</th>
                   <th>Nazwa sprzętu</th>
                   <th>Model</th>
-                  <th style={{width: '60px', textAlign: 'center'}}>Ilość</th>
-                  <th style={{width: '70px', textAlign: 'center'}}>Wydano</th>
-                  <th style={{width: '70px', textAlign: 'center'}}>Zdano</th>
-                  <th style={{width: '120px'}}>Stan na odbiór</th>
+                  <th style={{ width: '60px', textAlign: 'center' }}>Ilość</th>
+                  <th style={{ width: '70px', textAlign: 'center' }}>Wydano</th>
+                  <th style={{ width: '70px', textAlign: 'center' }}>Zdano</th>
+                  <th style={{ width: '120px' }}>Stan na odbiór</th>
                   <th>Notatki</th>
                 </tr>
               </thead>
               <tbody>
                 {viewingKit.equipment_kit_items.map((item, index) => (
                   <tr key={item.id}>
-                    <td><span className="checkbox"></span></td>
+                    <td>
+                      <span className="checkbox"></span>
+                    </td>
                     <td>{index + 1}</td>
                     <td>{item.equipment_items.name}</td>
-                    <td>{item.equipment_items.brand ? `${item.equipment_items.brand} ${item.equipment_items.model || ''}` : '-'}</td>
-                    <td style={{textAlign: 'center'}}>{item.quantity}</td>
-                    <td style={{textAlign: 'center'}}>_____</td>
-                    <td style={{textAlign: 'center'}}>_____</td>
+                    <td>
+                      {item.equipment_items.brand
+                        ? `${item.equipment_items.brand} ${item.equipment_items.model || ''}`
+                        : '-'}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>{item.quantity}</td>
+                    <td style={{ textAlign: 'center' }}>_____</td>
+                    <td style={{ textAlign: 'center' }}>_____</td>
                     <td>_________________</td>
                     <td>{item.notes || '-'}</td>
                   </tr>
@@ -881,10 +951,10 @@ export default function KitsManagementModal({
               </tbody>
             </table>
 
-            <div style={{marginTop: '30pt', borderTop: '1pt solid #ccc', paddingTop: '15pt'}}>
+            <div style={{ marginTop: '30pt', borderTop: '1pt solid #ccc', paddingTop: '15pt' }}>
               <p>Data: {new Date().toLocaleDateString('pl-PL')}</p>
-              <p style={{marginTop: '20pt'}}>Osoba wydająca: _____________________________</p>
-              <p style={{marginTop: '20pt'}}>Osoba odbierająca: _____________________________</p>
+              <p style={{ marginTop: '20pt' }}>Osoba wydająca: _____________________________</p>
+              <p style={{ marginTop: '20pt' }}>Osoba odbierająca: _____________________________</p>
             </div>
           </div>
         </>

@@ -87,10 +87,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     if (!confirm('Czy na pewno chcesz usunąć to konto email?')) return;
 
     try {
-      const { error } = await supabase
-        .from('employee_email_accounts')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('employee_email_accounts').delete().eq('id', id);
 
       if (error) throw error;
       alert('Konto email zostało usunięte');
@@ -125,7 +122,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   };
 
   if (loading) {
-    return <div className="text-[#e5e4e2]/60 text-center py-8">Ładowanie...</div>;
+    return <div className="py-8 text-center text-[#e5e4e2]/60">Ładowanie...</div>;
   }
 
   const handleGenerateSignature = async () => {
@@ -142,19 +139,19 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
 
     const signatureHtml = generateEmailSignature(signatureData);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     try {
-      const { error } = await supabase
-        .from('employee_signatures')
-        .upsert({
-          employee_id: employeeId,
-          ...signatureData,
-          custom_html: signatureHtml,
-          use_custom_html: true,
-          updated_at: new Date().toISOString(),
-        });
+      const { error } = await supabase.from('employee_signatures').upsert({
+        employee_id: employeeId,
+        ...signatureData,
+        custom_html: signatureHtml,
+        use_custom_html: true,
+        updated_at: new Date().toISOString(),
+      });
 
       if (error) throw error;
 
@@ -171,24 +168,24 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-light text-[#e5e4e2]">Konta Email</h3>
-          <p className="text-sm text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Zarządzaj kontami email przypisanymi do pracownika
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => router.push('/crm/employees/signature')}
-            className="flex items-center gap-2 bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30"
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/30"
           >
-            <FileSignature className="w-4 h-4" />
+            <FileSignature className="h-4 w-4" />
             Zarządzaj stopką
           </button>
           {isAdmin && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Dodaj konto
             </button>
           )}
@@ -196,13 +193,13 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       </div>
 
       {accounts.length === 0 ? (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-12 text-center">
-          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 mb-4">Brak skonfigurowanych kont email</p>
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+          <Mail className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="mb-4 text-[#e5e4e2]/60">Brak skonfigurowanych kont email</p>
           {isAdmin && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+              className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
             >
               Dodaj pierwsze konto
             </button>
@@ -213,27 +210,25 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           {accounts.map((account) => (
             <div
               key={account.id}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6"
+              className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6"
             >
-              <div className="flex items-start justify-between mb-4">
+              <div className="mb-4 flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h4 className="text-[#e5e4e2] font-medium text-lg">
-                      {account.account_name}
-                    </h4>
+                  <div className="mb-2 flex items-center gap-3">
+                    <h4 className="text-lg font-medium text-[#e5e4e2]">{account.account_name}</h4>
                     {account.is_default && (
-                      <span className="px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs">
+                      <span className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
                         Domyślne
                       </span>
                     )}
                     {!account.is_active && (
-                      <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs">
+                      <span className="rounded bg-red-500/20 px-2 py-1 text-xs text-red-400">
                         Nieaktywne
                       </span>
                     )}
                   </div>
-                  <p className="text-[#e5e4e2]/70 text-sm flex items-center gap-2">
-                    <Mail className="w-4 h-4" />
+                  <p className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                    <Mail className="h-4 w-4" />
                     {account.email_address}
                   </p>
                 </div>
@@ -242,32 +237,32 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     {!account.is_default && (
                       <button
                         onClick={() => toggleDefault(account.id)}
-                        className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 px-3 py-1 rounded border border-[#d3bb73]/30 hover:border-[#d3bb73]/50"
+                        className="rounded border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:border-[#d3bb73]/50 hover:text-[#d3bb73]/80"
                       >
                         Ustaw domyślne
                       </button>
                     )}
                     <button
                       onClick={() => setEditingAccount(account)}
-                      className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
                       title="Edytuj konto"
                     >
-                      <Edit className="w-4 h-4 text-[#d3bb73]" />
+                      <Edit className="h-4 w-4 text-[#d3bb73]" />
                     </button>
                     <button
                       onClick={() => handleDelete(account.id)}
-                      className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 transition-colors hover:bg-red-500/10"
                       title="Usuń konto"
                     >
-                      <Trash2 className="w-4 h-4 text-red-400" />
+                      <Trash2 className="h-4 w-4 text-red-400" />
                     </button>
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+              <div className="grid grid-cols-1 gap-6 text-sm md:grid-cols-2">
                 <div className="space-y-3">
-                  <h5 className="text-[#d3bb73] font-medium mb-2">IMAP (Odbieranie)</h5>
+                  <h5 className="mb-2 font-medium text-[#d3bb73]">IMAP (Odbieranie)</h5>
                   <InfoRow label="Serwer" value={`${account.imap_host}:${account.imap_port}`} />
                   <InfoRow label="Login" value={account.imap_username} />
                   <div className="flex items-center gap-2">
@@ -276,16 +271,18 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       value={showPasswords[account.id] ? account.imap_password : '••••••••'}
                     />
                     <button
-                      onClick={() => setShowPasswords({
-                        ...showPasswords,
-                        [account.id]: !showPasswords[account.id]
-                      })}
-                      className="p-1 hover:bg-[#0f1119] rounded"
+                      onClick={() =>
+                        setShowPasswords({
+                          ...showPasswords,
+                          [account.id]: !showPasswords[account.id],
+                        })
+                      }
+                      className="rounded p-1 hover:bg-[#0f1119]"
                     >
                       {showPasswords[account.id] ? (
-                        <EyeOff className="w-4 h-4 text-[#e5e4e2]/60" />
+                        <EyeOff className="h-4 w-4 text-[#e5e4e2]/60" />
                       ) : (
-                        <Eye className="w-4 h-4 text-[#e5e4e2]/60" />
+                        <Eye className="h-4 w-4 text-[#e5e4e2]/60" />
                       )}
                     </button>
                   </div>
@@ -293,7 +290,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                 </div>
 
                 <div className="space-y-3">
-                  <h5 className="text-[#d3bb73] font-medium mb-2">SMTP (Wysyłanie)</h5>
+                  <h5 className="mb-2 font-medium text-[#d3bb73]">SMTP (Wysyłanie)</h5>
                   <InfoRow label="Serwer" value={`${account.smtp_host}:${account.smtp_port}`} />
                   <InfoRow label="Login" value={account.smtp_username} />
                   <InfoRow
@@ -305,9 +302,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
               </div>
 
               {account.signature && (
-                <div className="mt-4 pt-4 border-t border-[#d3bb73]/10">
-                  <p className="text-xs text-[#e5e4e2]/60 mb-2">Podpis email:</p>
-                  <pre className="text-sm text-[#e5e4e2]/70 whitespace-pre-wrap font-mono bg-[#0f1119] p-3 rounded">
+                <div className="mt-4 border-t border-[#d3bb73]/10 pt-4">
+                  <p className="mb-2 text-xs text-[#e5e4e2]/60">Podpis email:</p>
+                  <pre className="whitespace-pre-wrap rounded bg-[#0f1119] p-3 font-mono text-sm text-[#e5e4e2]/70">
                     {account.signature}
                   </pre>
                 </div>
@@ -412,7 +409,7 @@ function AddEmailAccountModal({
         p_smtp_use_tls: formData.smtp_use_tls,
         p_signature: formData.signature || null,
         p_is_default: formData.is_default || false,
-        p_is_active: formData.is_active !== false
+        p_is_active: formData.is_active !== false,
       });
 
       console.log('Insert result:', { data, error });
@@ -430,7 +427,11 @@ function AddEmailAccountModal({
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       const errorDetails = JSON.stringify(err, null, 2);
       console.error('Full error details:', errorDetails);
-      alert('❌ Błąd podczas dodawania konta email:\n\n' + errorMessage + '\n\nSprawdź konsolę dla szczegółów.');
+      alert(
+        '❌ Błąd podczas dodawania konta email:\n\n' +
+          errorMessage +
+          '\n\nSprawdź konsolę dla szczegółów.',
+      );
     } finally {
       setSaving(false);
     }
@@ -450,7 +451,7 @@ function AddEmailAccountModal({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
         },
         body: JSON.stringify({
           to: formData.email_address,
@@ -482,7 +483,9 @@ function AddEmailAccountModal({
       const result = await response.json();
 
       if (result.success) {
-        alert(`✅ Połączenie SMTP działa poprawnie!\n\nTest email został wysłany na: ${formData.email_address}`);
+        alert(
+          `✅ Połączenie SMTP działa poprawnie!\n\nTest email został wysłany na: ${formData.email_address}`,
+        );
       } else {
         alert('❌ Test połączenia nie powiódł się:\n\n' + (result.error || 'Nieznany błąd'));
       }
@@ -495,144 +498,152 @@ function AddEmailAccountModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-2xl w-full my-8">
-        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Dodaj konto email</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      <div className="my-8 w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <h2 className="mb-6 text-xl font-light text-[#e5e4e2]">Dodaj konto email</h2>
 
-        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+        <div className="max-h-[70vh] space-y-6 overflow-y-auto pr-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa konta *</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa konta *</label>
               <input
                 type="text"
                 value={formData.account_name}
                 onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 placeholder="np. Biuro główne"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa wyświetlana *</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa wyświetlana *</label>
               <input
                 type="text"
                 value={formData.from_name}
                 onChange={(e) => setFormData({ ...formData, from_name: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 placeholder="np. Jan Kowalski"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Adres email *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Adres email *</label>
             <input
               type="email"
               value={formData.email_address}
               onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               placeholder="biuro@firma.pl"
             />
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
-            <h3 className="text-[#d3bb73] font-medium mb-4">Konfiguracja IMAP (odbieranie)</h3>
+            <h3 className="mb-4 font-medium text-[#d3bb73]">Konfiguracja IMAP (odbieranie)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Serwer IMAP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Serwer IMAP</label>
                 <input
                   type="text"
                   value={formData.imap_host}
                   onChange={(e) => setFormData({ ...formData, imap_host: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Port</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Port</label>
                 <input
                   type="number"
                   value={formData.imap_port}
-                  onChange={(e) => setFormData({ ...formData, imap_port: parseInt(e.target.value) })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  onChange={(e) =>
+                    setFormData({ ...formData, imap_port: parseInt(e.target.value) })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Login IMAP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Login IMAP</label>
                 <input
                   type="text"
                   value={formData.imap_username}
                   onChange={(e) => setFormData({ ...formData, imap_username: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Hasło IMAP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Hasło IMAP</label>
                 <input
                   type="password"
                   value={formData.imap_password}
                   onChange={(e) => setFormData({ ...formData, imap_password: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
             </div>
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
-            <h3 className="text-[#d3bb73] font-medium mb-4">Konfiguracja SMTP (wysyłanie)</h3>
+            <h3 className="mb-4 font-medium text-[#d3bb73]">Konfiguracja SMTP (wysyłanie)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Serwer SMTP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Serwer SMTP</label>
                 <input
                   type="text"
                   value={formData.smtp_host}
                   onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                   placeholder="smtp.example.com"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Port <span className="text-xs text-[#d3bb73]">(465=SSL, 587=TLS)</span>
                 </label>
                 <input
                   type="number"
                   value={formData.smtp_port}
-                  onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  onChange={(e) =>
+                    setFormData({ ...formData, smtp_port: parseInt(e.target.value) })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                   placeholder="465 lub 587"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Login SMTP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Login SMTP</label>
                 <input
                   type="text"
                   value={formData.smtp_username}
                   onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Hasło SMTP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Hasło SMTP</label>
                 <input
                   type="password"
                   value={formData.smtp_password}
                   onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2 flex items-center justify-between">
               <label className="block text-sm text-[#e5e4e2]/60">Podpis email (HTML)</label>
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm('Czy chcesz przejść do kreatora stopki? Możesz tam wygenerować profesjonalną stopkę HTML.')) {
+                  if (
+                    confirm(
+                      'Czy chcesz przejść do kreatora stopki? Możesz tam wygenerować profesjonalną stopkę HTML.',
+                    )
+                  ) {
                     window.open('/crm/employees/signature', '_blank');
                   }
                 }}
-                className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 underline"
+                className="text-xs text-[#d3bb73] underline hover:text-[#d3bb73]/80"
               >
                 Otwórz kreator stopki
               </button>
@@ -640,32 +651,32 @@ function AddEmailAccountModal({
             <textarea
               value={formData.signature}
               onChange={(e) => setFormData({ ...formData, signature: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px] font-mono text-xs"
+              className="min-h-[100px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 font-mono text-xs text-[#e5e4e2]"
               placeholder="<div>Twoja stopka HTML...</div>"
             />
-            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+            <p className="mt-1 text-xs text-[#e5e4e2]/40">
               Możesz wkleić tutaj HTML wygenerowany w kreatorze stopki lub napisać własny
             </p>
           </div>
 
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={formData.is_default}
                 onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                className="w-4 h-4"
+                className="h-4 w-4"
               />
               <span className="text-sm text-[#e5e4e2]">Ustaw jako domyślne</span>
             </label>
           </div>
         </div>
 
-        <div className="flex gap-3 pt-6 mt-6 border-t border-[#d3bb73]/10">
+        <div className="mt-6 flex gap-3 border-t border-[#d3bb73]/10 pt-6">
           <button
             onClick={handleTestConnection}
             disabled={saving || testing}
-            className="px-4 py-2 rounded-lg border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-50"
             title="Sprawdź czy połączenie SMTP działa poprawnie"
           >
             {testing ? 'Testowanie...' : 'Testuj połączenie'}
@@ -673,14 +684,14 @@ function AddEmailAccountModal({
           <button
             onClick={handleSubmit}
             disabled={saving || testing}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? 'Zapisywanie...' : 'Dodaj konto'}
           </button>
           <button
             onClick={onClose}
             disabled={saving || testing}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
           >
             Anuluj
           </button>
@@ -782,7 +793,7 @@ function EditEmailAccountModal({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
         },
         body: JSON.stringify({
           to: formData.email_address,
@@ -814,7 +825,9 @@ function EditEmailAccountModal({
       const result = await response.json();
 
       if (result.success) {
-        alert(`✅ Połączenie SMTP działa poprawnie!\n\nTest email został wysłany na: ${formData.email_address}`);
+        alert(
+          `✅ Połączenie SMTP działa poprawnie!\n\nTest email został wysłany na: ${formData.email_address}`,
+        );
       } else {
         alert('❌ Test połączenia nie powiódł się:\n\n' + (result.error || 'Nieznany błąd'));
       }
@@ -827,144 +840,152 @@ function EditEmailAccountModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-2xl w-full my-8">
-        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Edytuj konto email</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      <div className="my-8 w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <h2 className="mb-6 text-xl font-light text-[#e5e4e2]">Edytuj konto email</h2>
 
-        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+        <div className="max-h-[70vh] space-y-6 overflow-y-auto pr-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa konta *</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa konta *</label>
               <input
                 type="text"
                 value={formData.account_name}
                 onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 placeholder="np. Biuro główne"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa wyświetlana *</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa wyświetlana *</label>
               <input
                 type="text"
                 value={formData.from_name}
                 onChange={(e) => setFormData({ ...formData, from_name: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 placeholder="np. Jan Kowalski"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Adres email *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Adres email *</label>
             <input
               type="email"
               value={formData.email_address}
               onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               placeholder="biuro@firma.pl"
             />
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
-            <h3 className="text-[#d3bb73] font-medium mb-4">Konfiguracja IMAP (odbieranie)</h3>
+            <h3 className="mb-4 font-medium text-[#d3bb73]">Konfiguracja IMAP (odbieranie)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Serwer IMAP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Serwer IMAP</label>
                 <input
                   type="text"
                   value={formData.imap_host}
                   onChange={(e) => setFormData({ ...formData, imap_host: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Port</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Port</label>
                 <input
                   type="number"
                   value={formData.imap_port}
-                  onChange={(e) => setFormData({ ...formData, imap_port: parseInt(e.target.value) })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  onChange={(e) =>
+                    setFormData({ ...formData, imap_port: parseInt(e.target.value) })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Login IMAP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Login IMAP</label>
                 <input
                   type="text"
                   value={formData.imap_username}
                   onChange={(e) => setFormData({ ...formData, imap_username: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Hasło IMAP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Hasło IMAP</label>
                 <input
                   type="password"
                   value={formData.imap_password}
                   onChange={(e) => setFormData({ ...formData, imap_password: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
             </div>
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
-            <h3 className="text-[#d3bb73] font-medium mb-4">Konfiguracja SMTP (wysyłanie)</h3>
+            <h3 className="mb-4 font-medium text-[#d3bb73]">Konfiguracja SMTP (wysyłanie)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Serwer SMTP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Serwer SMTP</label>
                 <input
                   type="text"
                   value={formData.smtp_host}
                   onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                   placeholder="smtp.example.com"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Port <span className="text-xs text-[#d3bb73]">(465=SSL, 587=TLS)</span>
                 </label>
                 <input
                   type="number"
                   value={formData.smtp_port}
-                  onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  onChange={(e) =>
+                    setFormData({ ...formData, smtp_port: parseInt(e.target.value) })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                   placeholder="465 lub 587"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Login SMTP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Login SMTP</label>
                 <input
                   type="text"
                   value={formData.smtp_username}
                   onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Hasło SMTP</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Hasło SMTP</label>
                 <input
                   type="password"
                   value={formData.smtp_password}
                   onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2 flex items-center justify-between">
               <label className="block text-sm text-[#e5e4e2]/60">Podpis email (HTML)</label>
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm('Czy chcesz przejść do kreatora stopki? Możesz tam wygenerować profesjonalną stopkę HTML.')) {
+                  if (
+                    confirm(
+                      'Czy chcesz przejść do kreatora stopki? Możesz tam wygenerować profesjonalną stopkę HTML.',
+                    )
+                  ) {
                     window.open('/crm/employees/signature', '_blank');
                   }
                 }}
-                className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 underline"
+                className="text-xs text-[#d3bb73] underline hover:text-[#d3bb73]/80"
               >
                 Otwórz kreator stopki
               </button>
@@ -972,41 +993,41 @@ function EditEmailAccountModal({
             <textarea
               value={formData.signature}
               onChange={(e) => setFormData({ ...formData, signature: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px] font-mono text-xs"
+              className="min-h-[100px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 font-mono text-xs text-[#e5e4e2]"
               placeholder="<div>Twoja stopka HTML...</div>"
             />
-            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+            <p className="mt-1 text-xs text-[#e5e4e2]/40">
               Możesz wkleić tutaj HTML wygenerowany w kreatorze stopki lub napisać własny
             </p>
           </div>
 
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={formData.is_default}
                 onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                className="w-4 h-4"
+                className="h-4 w-4"
               />
               <span className="text-sm text-[#e5e4e2]">Ustaw jako domyślne</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={formData.is_active}
                 onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                className="w-4 h-4"
+                className="h-4 w-4"
               />
               <span className="text-sm text-[#e5e4e2]">Konto aktywne</span>
             </label>
           </div>
         </div>
 
-        <div className="flex gap-3 pt-6 mt-6 border-t border-[#d3bb73]/10">
+        <div className="mt-6 flex gap-3 border-t border-[#d3bb73]/10 pt-6">
           <button
             onClick={handleTestConnection}
             disabled={saving || testing}
-            className="px-4 py-2 rounded-lg border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-50"
             title="Sprawdź czy połączenie SMTP działa poprawnie"
           >
             {testing ? 'Testowanie...' : 'Testuj połączenie'}
@@ -1014,14 +1035,14 @@ function EditEmailAccountModal({
           <button
             onClick={handleSubmit}
             disabled={saving || testing}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? 'Zapisywanie...' : 'Zaktualizuj konto'}
           </button>
           <button
             onClick={onClose}
             disabled={saving || testing}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
           >
             Anuluj
           </button>

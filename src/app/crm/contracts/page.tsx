@@ -45,11 +45,13 @@ export default function ContractsPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('contracts')
-        .select(`
+        .select(
+          `
           *,
           client:clients!client_id(company_name, first_name, last_name),
           event:events!event_id(name)
-        `)
+        `,
+        )
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -70,7 +72,7 @@ export default function ContractsPage() {
       filtered = filtered.filter(
         (c) =>
           c.contract_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.title.toLowerCase().includes(searchQuery.toLowerCase())
+          c.title.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -119,7 +121,7 @@ export default function ContractsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0d1a] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -127,47 +129,47 @@ export default function ContractsPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-light text-[#e5e4e2] mb-2">Umowy</h1>
+            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Umowy</h1>
             <p className="text-[#e5e4e2]/60">Zarządzaj umowami</p>
           </div>
           <div className="flex gap-3">
             <button
               onClick={() => router.push('/crm/contract-templates')}
-              className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] px-6 py-3 rounded-lg font-medium hover:bg-[#1c1f33]/80 transition-colors border border-[#d3bb73]/20"
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-6 py-3 font-medium text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]/80"
             >
-              <FileType className="w-5 h-5" />
+              <FileType className="h-5 w-5" />
               Szablony
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="h-5 w-5" />
               Nowa umowa
             </button>
           </div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
               <input
                 type="text"
                 placeholder="Szukaj umów..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 pl-10 pr-4 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
 
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="all">Wszystkie statusy</option>
               <option value="draft">Projekt</option>
@@ -179,15 +181,15 @@ export default function ContractsPage() {
         </div>
 
         {filteredContracts.length === 0 ? (
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-12 text-center">
-            <FileText className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-            <h3 className="text-xl font-light text-[#e5e4e2] mb-2">Brak umów</h3>
-            <p className="text-[#e5e4e2]/60 mb-6">Utwórz pierwszą umowę</p>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+            <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+            <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">Brak umów</h3>
+            <p className="mb-6 text-[#e5e4e2]/60">Utwórz pierwszą umowę</p>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="h-5 w-5" />
               Nowa umowa
             </button>
           </div>
@@ -196,32 +198,28 @@ export default function ContractsPage() {
             {filteredContracts.map((contract) => (
               <div
                 key={contract.id}
-                className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-colors cursor-pointer"
+                className="cursor-pointer rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-colors hover:border-[#d3bb73]/30"
                 onClick={() => router.push(`/crm/contracts/${contract.id}`)}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="mb-2 flex items-center gap-3">
                       <h3 className="text-lg font-light text-[#e5e4e2]">
                         {contract.contract_number}
                       </h3>
                       <span
-                        className={`text-xs px-2 py-1 rounded ${
-                          statusColors[contract.status]
-                        }`}
+                        className={`rounded px-2 py-1 text-xs ${statusColors[contract.status]}`}
                       >
                         {statusLabels[contract.status]}
                       </span>
                     </div>
-                    <p className="text-[#e5e4e2] mb-2">{contract.title}</p>
+                    <p className="mb-2 text-[#e5e4e2]">{contract.title}</p>
                     <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/60">
                       <span>Klient: {getClientName(contract)}</span>
                       {contract.event && <span>Event: {contract.event.name}</span>}
                       {contract.valid_from && (
                         <span>
-                          Ważna:{' '}
-                          {new Date(contract.valid_from).toLocaleDateString('pl-PL')}{' '}
-                          -{' '}
+                          Ważna: {new Date(contract.valid_from).toLocaleDateString('pl-PL')} -{' '}
                           {contract.valid_until
                             ? new Date(contract.valid_until).toLocaleDateString('pl-PL')
                             : 'bezterminowo'}
@@ -236,10 +234,10 @@ export default function ContractsPage() {
                         e.stopPropagation();
                         router.push(`/crm/contracts/${contract.id}`);
                       }}
-                      className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                       title="Szczegóły"
                     >
-                      <Eye className="w-5 h-5" />
+                      <Eye className="h-5 w-5" />
                     </button>
                     {contract.pdf_url && (
                       <button
@@ -247,10 +245,10 @@ export default function ContractsPage() {
                           e.stopPropagation();
                           window.open(contract.pdf_url, '_blank');
                         }}
-                        className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
+                        className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-400/10"
                         title="Pobierz PDF"
                       >
-                        <Download className="w-5 h-5" />
+                        <Download className="h-5 w-5" />
                       </button>
                     )}
                     <button
@@ -258,10 +256,10 @@ export default function ContractsPage() {
                         e.stopPropagation();
                         handleDelete(contract.id);
                       }}
-                      className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-400/10"
                       title="Usuń"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="h-5 w-5" />
                     </button>
                   </div>
                 </div>
@@ -352,14 +350,14 @@ function CreateContractModal({
     if (!template) return;
 
     router.push(
-      `/crm/contracts/create?template=${formData.template_id}&client=${formData.client_id}&event=${formData.event_id}&title=${encodeURIComponent(formData.title)}`
+      `/crm/contracts/create?template=${formData.template_id}&client=${formData.client_id}&event=${formData.event_id}&title=${encodeURIComponent(formData.title)}`,
     );
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-lg w-full">
-        <div className="flex items-center justify-between mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-light text-[#e5e4e2]">Nowa umowa</h2>
           <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
             ✕
@@ -368,13 +366,11 @@ function CreateContractModal({
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Szablon umowy *
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Szablon umowy *</label>
             <select
               value={formData.template_id}
               onChange={(e) => setFormData({ ...formData, template_id: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="">Wybierz szablon</option>
               {templates.map((template) => (
@@ -386,39 +382,38 @@ function CreateContractModal({
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Tytuł umowy *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Tytuł umowy *</label>
             <input
               type="text"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               placeholder="np. Umowa na organizację eventu"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Klient</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Klient</label>
             <select
               value={formData.client_id}
               onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="">Wybierz klienta</option>
               {clients.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.company_name ||
-                    `${client.first_name} ${client.last_name}`}
+                  {client.company_name || `${client.first_name} ${client.last_name}`}
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Event (opcjonalny)</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Event (opcjonalny)</label>
             <select
               value={formData.event_id}
               onChange={(e) => setFormData({ ...formData, event_id: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="">Wybierz event</option>
               {events.map((event) => (
@@ -430,16 +425,16 @@ function CreateContractModal({
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="mt-6 flex gap-3">
           <button
             onClick={handleSubmit}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
             Dalej
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] transition-colors"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#1c1f33]"
           >
             Anuluj
           </button>

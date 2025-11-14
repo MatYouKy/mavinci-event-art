@@ -48,7 +48,7 @@ export default function NotificationsScreen() {
           },
           () => {
             fetchNotifications();
-          }
+          },
         )
         .subscribe();
 
@@ -64,7 +64,8 @@ export default function NotificationsScreen() {
     try {
       const { data, error } = await supabase
         .from('notification_recipients')
-        .select(`
+        .select(
+          `
           id,
           is_read,
           notification:notifications(
@@ -76,7 +77,8 @@ export default function NotificationsScreen() {
             related_entity_id,
             created_at
           )
-        `)
+        `,
+        )
         .eq('user_id', employee.id)
         .order('created_at', { ascending: false });
 
@@ -107,7 +109,7 @@ export default function NotificationsScreen() {
         .eq('id', recipientId);
 
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
+        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)),
       );
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -134,10 +136,13 @@ export default function NotificationsScreen() {
     markAsRead(notification.id, (notification as any).recipient_id);
 
     if (notification.related_entity_type === 'task' && notification.related_entity_id) {
-      navigation.navigate('Tasks' as never, {
-        screen: 'TaskDetail',
-        params: { taskId: notification.related_entity_id },
-      } as never);
+      navigation.navigate(
+        'Tasks' as never,
+        {
+          screen: 'TaskDetail',
+          params: { taskId: notification.related_entity_id },
+        } as never,
+      );
     }
   };
 
@@ -162,10 +167,7 @@ export default function NotificationsScreen() {
 
     return (
       <TouchableOpacity
-        style={[
-          styles.notificationItem,
-          !item.is_read && styles.unreadNotification,
-        ]}
+        style={[styles.notificationItem, !item.is_read && styles.unreadNotification]}
         onPress={() => handleNotificationPress(item)}
       >
         <View style={styles.notificationIcon}>

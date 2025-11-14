@@ -131,6 +131,7 @@ Funkcja dodawania użytkowników przez panel CRM będzie dodana w przyszłości.
 **Przyczyna:** Nieprawidłowy email lub hasło.
 
 **Rozwiązanie:**
+
 1. Upewnij się że używasz: **admin@mavinci.pl** / **Mavinci2025!**
 2. Sprawdź czy CAPS LOCK nie jest włączony
 3. Skopiuj hasło zamiast przepisywać (końcowe wykrzyknik!)
@@ -140,6 +141,7 @@ Funkcja dodawania użytkowników przez panel CRM będzie dodana w przyszłości.
 **Przyczyna:** Serwer dev cache'uje stare zmienne środowiskowe.
 
 **Rozwiązanie:**
+
 1. Zatrzymaj serwer (Ctrl+C)
 2. Sprawdź `.env`: powinno być `0ec90b57d6e95fcbda19832f`
 3. Uruchom ponownie: `npm run dev`

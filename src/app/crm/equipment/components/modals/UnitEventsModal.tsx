@@ -47,7 +47,7 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
     setUploading(true);
     try {
       const url = await uploadImage(file, 'equipment-events');
-      setEventForm(prev => ({ ...prev, image_url: url }));
+      setEventForm((prev) => ({ ...prev, image_url: url }));
     } catch (error) {
       console.error('Error uploading image:', error);
       alert('Błąd podczas przesyłania zdjęcia');
@@ -63,24 +63,28 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
     }
 
     if (eventForm.event_type === 'sold') {
-      if (!confirm('Czy na pewno chcesz oznaczyć tę jednostkę jako sprzedaną? Jednostka zostanie usunięta z systemu.')) {
+      if (
+        !confirm(
+          'Czy na pewno chcesz oznaczyć tę jednostkę jako sprzedaną? Jednostka zostanie usunięta z systemu.',
+        )
+      ) {
         return;
       }
     }
 
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const { error: eventError } = await supabase
-        .from('equipment_unit_events')
-        .insert({
-          unit_id: unit.id,
-          event_type: eventForm.event_type,
-          description: eventForm.description,
-          image_url: eventForm.image_url || null,
-          employee_id: user?.id || null,
-        });
+      const { error: eventError } = await supabase.from('equipment_unit_events').insert({
+        unit_id: unit.id,
+        event_type: eventForm.event_type,
+        description: eventForm.description,
+        image_url: eventForm.image_url || null,
+        employee_id: user?.id || null,
+      });
 
       if (eventError) throw eventError;
 
@@ -149,58 +153,68 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <div>
-            <h3 className="text-xl font-light text-[#e5e4e2] mb-1">Historia zdarzeń</h3>
+            <h3 className="mb-1 text-xl font-light text-[#e5e4e2]">Historia zdarzeń</h3>
             <p className="text-sm text-[#e5e4e2]/60">
               {unit.unit_serial_number ? `SN: ${unit.unit_serial_number}` : 'Bez numeru seryjnego'}
             </p>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="mt-2 flex items-center gap-2">
               <span className="text-xs text-[#e5e4e2]/40">Aktualny status:</span>
-              <span className={`px-2 py-1 rounded text-xs ${
-                unit.status === 'available' ? 'bg-green-500/20 text-green-400' :
-                unit.status === 'damaged' ? 'bg-red-500/20 text-red-400' :
-                unit.status === 'in_service' ? 'bg-orange-500/20 text-orange-400' :
-                'bg-gray-500/20 text-gray-400'
-              }`}>
-                {unit.status === 'available' ? 'Dostępny' :
-                 unit.status === 'damaged' ? 'Uszkodzony' :
-                 unit.status === 'in_service' ? 'Serwis' :
-                 'Wycofany'}
+              <span
+                className={`rounded px-2 py-1 text-xs ${
+                  unit.status === 'available'
+                    ? 'bg-green-500/20 text-green-400'
+                    : unit.status === 'damaged'
+                      ? 'bg-red-500/20 text-red-400'
+                      : unit.status === 'in_service'
+                        ? 'bg-orange-500/20 text-orange-400'
+                        : 'bg-gray-500/20 text-gray-400'
+                }`}
+              >
+                {unit.status === 'available'
+                  ? 'Dostępny'
+                  : unit.status === 'damaged'
+                    ? 'Uszkodzony'
+                    : unit.status === 'in_service'
+                      ? 'Serwis'
+                      : 'Wycofany'}
               </span>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowAddEvent(!showAddEvent)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Dodaj zdarzenie
             </button>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
+              className="rounded-lg p-2 transition-colors hover:bg-[#e5e4e2]/10"
             >
-              <X className="w-5 h-5 text-[#e5e4e2]" />
+              <X className="h-5 w-5 text-[#e5e4e2]" />
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
           {showAddEvent && (
-            <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-xl p-4 mb-6">
-              <h4 className="text-[#e5e4e2] font-medium mb-4">Nowe zdarzenie</h4>
+            <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+              <h4 className="mb-4 font-medium text-[#e5e4e2]">Nowe zdarzenie</h4>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typ zdarzenia</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ zdarzenia</label>
                     <select
                       value={eventForm.event_type}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, event_type: e.target.value as any }))}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                      onChange={(e) =>
+                        setEventForm((prev) => ({ ...prev, event_type: e.target.value as any }))
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                     >
                       <option value="note">Notatka</option>
                       <option value="damage">Uszkodzenie (zmienia status)</option>
@@ -210,23 +224,25 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                       <option value="sold">Sprzedaż (usuwa jednostkę)</option>
                     </select>
                     {eventForm.event_type === 'damage' && (
-                      <p className="text-xs text-red-400 mt-1">
+                      <p className="mt-1 text-xs text-red-400">
                         Status zostanie zmieniony na "Uszkodzony"
                       </p>
                     )}
                     {eventForm.event_type === 'repair' && (
-                      <p className="text-xs text-green-400 mt-1">
+                      <p className="mt-1 text-xs text-green-400">
                         Status zostanie zmieniony na "Dostępny"
                       </p>
                     )}
                     {eventForm.event_type === 'sold' && (
-                      <p className="text-xs text-red-400 mt-1">
+                      <p className="mt-1 text-xs text-red-400">
                         UWAGA: Jednostka zostanie całkowicie usunięta z systemu!
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zdjęcie (opcjonalne)</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Zdjęcie (opcjonalne)
+                    </label>
                     <input
                       type="file"
                       accept="image/*"
@@ -237,10 +253,14 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     />
                     <label
                       htmlFor="event-image-upload"
-                      className={`flex items-center justify-center gap-2 w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] cursor-pointer hover:border-[#d3bb73]/30 transition-colors ${uploading ? 'opacity-50' : ''}`}
+                      className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30 ${uploading ? 'opacity-50' : ''}`}
                     >
-                      <Upload className="w-4 h-4" />
-                      {uploading ? 'Przesyłanie...' : eventForm.image_url ? 'Zmień zdjęcie' : 'Dodaj zdjęcie'}
+                      <Upload className="h-4 w-4" />
+                      {uploading
+                        ? 'Przesyłanie...'
+                        : eventForm.image_url
+                          ? 'Zmień zdjęcie'
+                          : 'Dodaj zdjęcie'}
                     </label>
                   </div>
                 </div>
@@ -250,24 +270,26 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     <img
                       src={eventForm.image_url}
                       alt="Preview"
-                      className="w-full max-h-48 object-contain rounded-lg"
+                      className="max-h-48 w-full rounded-lg object-contain"
                     />
                     <button
-                      onClick={() => setEventForm(prev => ({ ...prev, image_url: '' }))}
-                      className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                      onClick={() => setEventForm((prev) => ({ ...prev, image_url: '' }))}
+                      className="absolute right-2 top-2 rounded-lg bg-red-500 p-1 text-white hover:bg-red-600"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis zdarzenia</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis zdarzenia</label>
                   <textarea
                     value={eventForm.description}
-                    onChange={(e) => setEventForm(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) =>
+                      setEventForm((prev) => ({ ...prev, description: e.target.value }))
+                    }
                     rows={4}
-                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                     placeholder="Opisz szczegóły zdarzenia..."
                   />
                 </div>
@@ -275,14 +297,14 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowAddEvent(false)}
-                    className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                    className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                   >
                     Anuluj
                   </button>
                   <button
                     onClick={handleAddEvent}
                     disabled={saving}
-                    className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                    className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                   >
                     {saving ? 'Zapisywanie...' : 'Dodaj'}
                   </button>
@@ -292,8 +314,8 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
           )}
 
           {events.length === 0 ? (
-            <div className="text-center py-12">
-              <History className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <div className="py-12 text-center">
+              <History className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak zdarzeń</p>
             </div>
           ) : (
@@ -301,10 +323,10 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
               {events.map((event: UnitEvent) => (
                 <div
                   key={event.id}
-                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-xl p-4"
+                  className="rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-3 flex-wrap">
+                  <div className="mb-2 flex items-start justify-between">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className={`font-medium ${eventTypeColors[event.event_type]}`}>
                         {eventTypeLabels[event.event_type]}
                       </span>
@@ -319,7 +341,7 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     </div>
                   </div>
 
-                  <p className="text-[#e5e4e2] mb-2">{event.description}</p>
+                  <p className="mb-2 text-[#e5e4e2]">{event.description}</p>
 
                   {event.old_status && event.new_status && (
                     <div className="text-sm text-[#e5e4e2]/60">
@@ -331,7 +353,7 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     <img
                       src={event.image_url}
                       alt="Zdjęcie zdarzenia"
-                      className="mt-3 w-full max-h-64 object-contain rounded-lg border border-[#d3bb73]/10"
+                      className="mt-3 max-h-64 w-full rounded-lg border border-[#d3bb73]/10 object-contain"
                     />
                   )}
                 </div>

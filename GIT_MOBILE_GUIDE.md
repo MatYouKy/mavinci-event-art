@@ -7,6 +7,7 @@
 **Problem:** Poprzedni `npm install` nie powiódł się (EACCES), node_modules niepełne.
 
 **Rozwiązanie:**
+
 ```bash
 cd mobile
 
@@ -39,6 +40,7 @@ npm install
 ```
 npm warn EBADENGINE Unsupported engine...
 ```
+
 **To są tylko ostrzeżenia!** npm je ignoruje. Instalacja powinna się udać.
 
 **WAŻNE:** `npm install` MUSI zakończyć się **bez błędów EACCES**. Jeśli widzisz błąd - napraw go najpierw!
@@ -50,6 +52,7 @@ npm warn EBADENGINE Unsupported engine...
 ### Co się dzieje?
 
 Po uruchomieniu `npm start` w folderze `mobile/`, Expo automatycznie generuje:
+
 - `mobile/.expo/` - cache Metro bundlera
 - `mobile/.metro-health-check*` - pliki tymczasowe
 - `mobile/yarn.lock` - jeśli użyjesz yarn (a nie npm)
@@ -85,6 +88,7 @@ git status
 ```
 
 Jeśli widzisz:
+
 ```
 modified:   mobile/.expo/...
 untracked:  mobile/.expo/...
@@ -117,11 +121,13 @@ git commit -m "fix: ignore Expo generated files"
 ### Problem z `package.json`
 
 Jeśli używasz **yarn** do deploy (`yarn deploy`), może on:
+
 1. Sortować dependencies alfabetycznie
 2. Aktualizować wersje z `^` na konkretne
 3. Dodawać pole `resolutions`
 
 **Rozwiązanie:**
+
 ```bash
 # Użyj npm zamiast yarn
 npm run deploy
@@ -138,6 +144,7 @@ npm run deploy
 Jeśli `deploy.sh` się zmienia, sprawdź:
 
 1. **Line endings (CRLF vs LF)**
+
    ```bash
    # Sprawdź
    file deploy.sh
@@ -160,6 +167,7 @@ Jeśli `deploy.sh` się zmienia, sprawdź:
 ## 📦 Co powinno być commitowane?
 
 ### ✅ TAK - commituj:
+
 - `mobile/src/**` - kod źródłowy
 - `mobile/package.json` - dependencies
 - `mobile/app.json` - konfiguracja Expo
@@ -168,6 +176,7 @@ Jeśli `deploy.sh` się zmienia, sprawdź:
 - `mobile/.env.example` - przykładowa konfiguracja
 
 ### ❌ NIE - ignoruj:
+
 - `mobile/.expo/**` - cache Expo
 - `mobile/node_modules/` - zależności npm
 - `mobile/.env` - twoje dane (secrets!)
@@ -303,6 +312,7 @@ Przed `yarn deploy` lub `npm run deploy`:
 ---
 
 **TL;DR:**
+
 1. `.gitignore` już ignoruje `mobile/.expo/` ✅
 2. Nie używaj `yarn` w mobile/ (tylko `npm`) ✅
 3. Jeśli widzisz zmiany w `.expo/` → zignoruj je ✅

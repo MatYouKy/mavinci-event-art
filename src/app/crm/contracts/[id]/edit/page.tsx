@@ -38,12 +38,14 @@ export default function EditContractPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('contracts')
-        .select(`
+        .select(
+          `
           *,
           client:clients!client_id(company_name, first_name, last_name),
           event:events!event_id(name, event_date),
           template:contract_templates!template_id(*)
-        `)
+        `,
+        )
         .eq('id', contractId)
         .maybeSingle();
 
@@ -88,10 +90,7 @@ export default function EditContractPage() {
         updates.total_amount = parseFloat(formData.total_amount);
       }
 
-      const { error } = await supabase
-        .from('contracts')
-        .update(updates)
-        .eq('id', contractId);
+      const { error } = await supabase.from('contracts').update(updates).eq('id', contractId);
 
       if (error) throw error;
 
@@ -107,7 +106,7 @@ export default function EditContractPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
       </div>
     );
@@ -115,14 +114,14 @@ export default function EditContractPage() {
 
   if (!contract) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-[#e5e4e2]/60">Nie znaleziono umowy</div>
       </div>
     );
   }
 
-  const clientName = contract.client?.company_name ||
-    `${contract.client?.first_name} ${contract.client?.last_name}`;
+  const clientName =
+    contract.client?.company_name || `${contract.client?.first_name} ${contract.client?.last_name}`;
 
   return (
     <div className="space-y-6">
@@ -130,15 +129,13 @@ export default function EditContractPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push(`/crm/contracts/${contractId}`)}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft className="h-6 w-6" />
           </button>
           <div>
-            <h1 className="text-2xl font-light text-[#e5e4e2]">
-              Edycja umowy
-            </h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+            <h1 className="text-2xl font-light text-[#e5e4e2]">Edycja umowy</h1>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">
               {contract.contract_number} - {clientName}
             </p>
           </div>
@@ -147,31 +144,29 @@ export default function EditContractPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowPreview(!showPreview)}
-            className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] px-4 py-2 rounded-lg hover:bg-[#1c1f33]/80 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]/80"
           >
-            <Eye className="w-5 h-5" />
+            <Eye className="h-5 w-5" />
             {showPreview ? 'Edycja' : 'Podgląd'}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
-            <Save className="w-5 h-5" />
+            <Save className="h-5 w-5" />
             {saving ? 'Zapisywanie...' : 'Zapisz'}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-              Treść umowy
-            </label>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Treść umowy</label>
 
             {showPreview ? (
-              <div className="bg-white text-black p-12 rounded-lg min-h-[600px]">
+              <div className="min-h-[600px] rounded-lg bg-white p-12 text-black">
                 {logoSettings.show_header_logo && logoSettings.header_logo_url && (
                   <div className="mb-8">
                     <img
@@ -189,22 +184,23 @@ export default function EditContractPage() {
                       src={logoSettings.center_logo_url}
                       alt="Logo"
                       style={{ height: `${logoSettings.center_logo_height}px` }}
-                      className="object-contain mx-auto"
+                      className="mx-auto object-contain"
                     />
                   </div>
                 )}
 
-                <div className="whitespace-pre-wrap font-mono text-sm" style={{ whiteSpace: 'pre-wrap' }}>
+                <div
+                  className="whitespace-pre-wrap font-mono text-sm"
+                  style={{ whiteSpace: 'pre-wrap' }}
+                >
                   {formData.content || 'Brak treści'}
                 </div>
               </div>
             ) : (
               <textarea
                 value={formData.content}
-                onChange={(e) =>
-                  setFormData({ ...formData, content: e.target.value })
-                }
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] font-mono text-sm resize-none"
+                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 font-mono text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 rows={25}
                 placeholder="Treść umowy..."
               />
@@ -213,56 +209,40 @@ export default function EditContractPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Informacje
-            </h2>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje</h2>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Klient
-                </label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Klient</label>
                 <div className="text-[#e5e4e2]">{clientName}</div>
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Event
-                </label>
-                <div className="text-[#e5e4e2]">
-                  {contract.event?.name || 'Brak'}
-                </div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Event</label>
+                <div className="text-[#e5e4e2]">{contract.event?.name || 'Brak'}</div>
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Numer umowy
-                </label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Numer umowy</label>
                 <div className="text-[#e5e4e2]">{contract.contract_number}</div>
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Wartość (PLN)
-                </label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wartość (PLN)</label>
                 <input
                   type="number"
                   value={formData.total_amount}
-                  onChange={(e) =>
-                    setFormData({ ...formData, total_amount: e.target.value })
-                  }
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  onChange={(e) => setFormData({ ...formData, total_amount: e.target.value })}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="0.00"
                   step="0.01"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Status
-                </label>
-                <div className="text-[#e5e4e2] capitalize">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status</label>
+                <div className="capitalize text-[#e5e4e2]">
                   {contract.status === 'draft' && 'Szkic'}
                   {contract.status === 'sent' && 'Wysłana'}
                   {contract.status === 'signed' && 'Podpisana'}
@@ -273,11 +253,9 @@ export default function EditContractPage() {
           </div>
 
           {logoSettings.show_header_logo && logoSettings.header_logo_url && (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">
-                Logo nagłówka
-              </h3>
-              <div className="border border-[#d3bb73]/10 rounded-lg p-3 bg-[#0f1119]">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]">Logo nagłówka</h3>
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
                 <img
                   src={logoSettings.header_logo_url}
                   alt="Logo nagłówka"
@@ -289,16 +267,14 @@ export default function EditContractPage() {
           )}
 
           {logoSettings.show_center_logo && logoSettings.center_logo_url && (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">
-                Logo centralne
-              </h3>
-              <div className="border border-[#d3bb73]/10 rounded-lg p-3 bg-[#0f1119] text-center">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]">Logo centralne</h3>
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-center">
                 <img
                   src={logoSettings.center_logo_url}
                   alt="Logo centralne"
                   style={{ height: `${logoSettings.center_logo_height}px` }}
-                  className="object-contain mx-auto"
+                  className="mx-auto object-contain"
                 />
               </div>
             </div>

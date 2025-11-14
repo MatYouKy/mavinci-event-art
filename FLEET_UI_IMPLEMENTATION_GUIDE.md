@@ -60,6 +60,7 @@ interface InsurancePolicy {
 ```
 
 **Struktura panelu:**
+
 - Header: "Ubezpieczenia" + liczba aktywnych + przycisk "Dodaj"
 - Lista ubezpieczeń (grupowanie: OC, AC, inne)
 - Dla każdego: typ, firma, ważność, status, kwota
@@ -96,6 +97,7 @@ interface PeriodicInspection {
 ```
 
 **Struktura panelu:**
+
 - Header: "Przeglądy okresowe" + status aktualnego + przycisk "Dodaj"
 - Aktualny przegląd (duża karta na górze):
   - Typ: Przegląd techniczny
@@ -110,7 +112,14 @@ interface PeriodicInspection {
 ```typescript
 interface MaintenanceRepair {
   id: string;
-  repair_type: 'service' | 'repair' | 'tire_change' | 'oil_change' | 'brake_service' | 'battery_replacement' | 'other';
+  repair_type:
+    | 'service'
+    | 'repair'
+    | 'tire_change'
+    | 'oil_change'
+    | 'brake_service'
+    | 'battery_replacement'
+    | 'other';
   severity: 'low' | 'medium' | 'high';
   title: string;
   description?: string;
@@ -143,6 +152,7 @@ interface MaintenanceRepair {
 ```
 
 **Struktura panelu:**
+
 - Header: "Serwis i naprawy" + filtry + przycisk "Zgłoś"
 - Aktywne naprawy (na górze, czerwone jeśli blokujące)
 - Lista napraw:
@@ -260,17 +270,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 serve(async (req) => {
   const supabaseClient = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   );
 
   // Wywołaj funkcję generowania alertów
   await supabaseClient.rpc('generate_vehicle_alerts');
   await supabaseClient.rpc('update_vehicle_status_from_alerts');
 
-  return new Response(
-    JSON.stringify({ success: true, message: 'Alerty wygenerowane' }),
-    { headers: { 'Content-Type': 'application/json' } }
-  );
+  return new Response(JSON.stringify({ success: true, message: 'Alerty wygenerowane' }), {
+    headers: { 'Content-Type': 'application/json' },
+  });
 });
 ```
 
@@ -313,10 +322,12 @@ const { data: inspections } = await supabase
 // Pobieranie napraw
 const { data: repairs } = await supabase
   .from('maintenance_repairs')
-  .select(`
+  .select(
+    `
     *,
     assigned_to:employees(name, surname)
-  `)
+  `,
+  )
   .eq('vehicle_id', vehicleId)
   .order('reported_date', { ascending: false });
 ```
@@ -335,11 +346,11 @@ useEffect(() => {
         event: '*',
         schema: 'public',
         table: 'vehicle_alerts',
-        filter: `vehicle_id=eq.${vehicleId}`
+        filter: `vehicle_id=eq.${vehicleId}`,
       },
       () => {
         fetchAlerts();
-      }
+      },
     )
     .subscribe();
 
@@ -388,6 +399,7 @@ Po implementacji przetestuj:
 ## Wsparcie
 
 W razie pytań lub problemów:
+
 - Sprawdź FLEET_SYSTEM_REORGANIZATION.md - pełna dokumentacja
 - Sprawdź APPLY_FLEET_MIGRATION.md - instrukcja migracji
 - Sprawdź kod w VehicleAlertsWidget.tsx - przykładowa implementacja

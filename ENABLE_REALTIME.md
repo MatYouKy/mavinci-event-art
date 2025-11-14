@@ -18,6 +18,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE contact_messages;
 ```
 
 LUB przez UI:
+
 1. Kliknij na publication `supabase_realtime`
 2. Dodaj tabelę `notifications`
 3. Dodaj tabelę `contact_messages`
@@ -26,6 +27,7 @@ LUB przez UI:
 ## Krok 3: Sprawdź czy działa
 
 W konsoli przeglądarki (F12) powinieneś zobaczyć:
+
 ```
 [NotificationCenter] Subscription status: SUBSCRIBED
 ```
@@ -34,7 +36,7 @@ W konsoli przeglądarki (F12) powinieneś zobaczyć:
 
 ```sql
 -- Sprawdź czy tabela jest w publikacji
-SELECT * FROM pg_publication_tables 
+SELECT * FROM pg_publication_tables
 WHERE pubname = 'supabase_realtime';
 
 -- Jeśli nie ma notifications, dodaj:

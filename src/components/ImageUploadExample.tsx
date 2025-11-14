@@ -38,7 +38,6 @@ export default function ImageUploadExample() {
       //   image_mobile: urls.mobile,
       //   image_thumbnail: urls.thumbnail,
       // });
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -75,24 +74,25 @@ export default function ImageUploadExample() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
-        <h2 className="text-2xl font-light text-[#e5e4e2] mb-4 flex items-center gap-2">
-          <ImageIcon className="w-6 h-6 text-[#d3bb73]" />
+    <div className="mx-auto max-w-4xl space-y-6 p-6">
+      <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+        <h2 className="mb-4 flex items-center gap-2 text-2xl font-light text-[#e5e4e2]">
+          <ImageIcon className="h-6 w-6 text-[#d3bb73]" />
           System Optymalizacji Obrazów
         </h2>
-        <p className="text-[#e5e4e2]/70 mb-6">
-          Automatyczna kompresja i generowanie wersji responsywnych (desktop 2200px, mobile 800px, thumbnail 400px)
+        <p className="mb-6 text-[#e5e4e2]/70">
+          Automatyczna kompresja i generowanie wersji responsywnych (desktop 2200px, mobile 800px,
+          thumbnail 400px)
         </p>
 
         {/* Upload buttons */}
-        <div className="grid md:grid-cols-2 gap-4 mb-6">
-          <label className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-[#d3bb73]/30 rounded-lg cursor-pointer hover:border-[#d3bb73]/50 transition-colors">
-            <Upload className="w-8 h-8 text-[#d3bb73] mb-2" />
-            <span className="text-[#e5e4e2] text-sm font-medium mb-1">
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
+          <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]/30 p-8 transition-colors hover:border-[#d3bb73]/50">
+            <Upload className="mb-2 h-8 w-8 text-[#d3bb73]" />
+            <span className="mb-1 text-sm font-medium text-[#e5e4e2]">
               Upload z wersjami responsive
             </span>
-            <span className="text-[#e5e4e2]/60 text-xs text-center">
+            <span className="text-center text-xs text-[#e5e4e2]/60">
               Generuje desktop, mobile i thumbnail
             </span>
             <input
@@ -104,12 +104,10 @@ export default function ImageUploadExample() {
             />
           </label>
 
-          <label className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-[#d3bb73]/30 rounded-lg cursor-pointer hover:border-[#d3bb73]/50 transition-colors">
-            <ImageIcon className="w-8 h-8 text-[#d3bb73] mb-2" />
-            <span className="text-[#e5e4e2] text-sm font-medium mb-1">
-              Upload prosty
-            </span>
-            <span className="text-[#e5e4e2]/60 text-xs text-center">
+          <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]/30 p-8 transition-colors hover:border-[#d3bb73]/50">
+            <ImageIcon className="mb-2 h-8 w-8 text-[#d3bb73]" />
+            <span className="mb-1 text-sm font-medium text-[#e5e4e2]">Upload prosty</span>
+            <span className="text-center text-xs text-[#e5e4e2]/60">
               Tylko desktop (2200px max)
             </span>
             <input
@@ -124,9 +122,9 @@ export default function ImageUploadExample() {
 
         {/* Loading state */}
         {uploading && (
-          <div className="bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg p-4 mb-6">
+          <div className="mb-6 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-4">
             <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#d3bb73]"></div>
+              <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
               <span className="text-[#e5e4e2]">Przetwarzanie i upload obrazu...</span>
             </div>
           </div>
@@ -134,9 +132,9 @@ export default function ImageUploadExample() {
 
         {/* Error state */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+          <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
             <div className="flex items-center gap-3">
-              <X className="w-5 h-5 text-red-500" />
+              <X className="h-5 w-5 text-red-500" />
               <span className="text-red-500">{error}</span>
             </div>
           </div>
@@ -145,24 +143,24 @@ export default function ImageUploadExample() {
         {/* Success state */}
         {uploadedUrls && !uploading && (
           <div className="space-y-4">
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <Check className="w-5 h-5 text-green-500" />
-                <span className="text-green-500 font-medium">Upload zakończony!</span>
+            <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4">
+              <div className="mb-3 flex items-center gap-3">
+                <Check className="h-5 w-5 text-green-500" />
+                <span className="font-medium text-green-500">Upload zakończony!</span>
               </div>
-              <div className="text-[#e5e4e2]/70 text-sm space-y-1">
+              <div className="space-y-1 text-sm text-[#e5e4e2]/70">
                 <div>Oryginalny rozmiar: {(originalSize / 1024 / 1024).toFixed(2)} MB</div>
               </div>
             </div>
 
             {/* URLs display */}
-            <div className="bg-[#0f1119] rounded-lg p-4 space-y-3">
-              <h3 className="text-[#e5e4e2] font-medium mb-2">Wygenerowane wersje:</h3>
+            <div className="space-y-3 rounded-lg bg-[#0f1119] p-4">
+              <h3 className="mb-2 font-medium text-[#e5e4e2]">Wygenerowane wersje:</h3>
 
               <div className="space-y-2">
                 <div>
-                  <span className="text-[#d3bb73] text-sm">Desktop (2200px):</span>
-                  <div className="text-[#e5e4e2]/60 text-xs font-mono break-all mt-1">
+                  <span className="text-sm text-[#d3bb73]">Desktop (2200px):</span>
+                  <div className="mt-1 break-all font-mono text-xs text-[#e5e4e2]/60">
                     {uploadedUrls.desktop}
                   </div>
                 </div>
@@ -170,15 +168,15 @@ export default function ImageUploadExample() {
                 {uploadedUrls.mobile !== uploadedUrls.desktop && (
                   <>
                     <div>
-                      <span className="text-[#d3bb73] text-sm">Mobile (800px):</span>
-                      <div className="text-[#e5e4e2]/60 text-xs font-mono break-all mt-1">
+                      <span className="text-sm text-[#d3bb73]">Mobile (800px):</span>
+                      <div className="mt-1 break-all font-mono text-xs text-[#e5e4e2]/60">
                         {uploadedUrls.mobile}
                       </div>
                     </div>
 
                     <div>
-                      <span className="text-[#d3bb73] text-sm">Thumbnail (400px):</span>
-                      <div className="text-[#e5e4e2]/60 text-xs font-mono break-all mt-1">
+                      <span className="text-sm text-[#d3bb73]">Thumbnail (400px):</span>
+                      <div className="mt-1 break-all font-mono text-xs text-[#e5e4e2]/60">
                         {uploadedUrls.thumbnail}
                       </div>
                     </div>
@@ -188,9 +186,9 @@ export default function ImageUploadExample() {
             </div>
 
             {/* Preview using ResponsiveImage component */}
-            <div className="bg-[#0f1119] rounded-lg p-4">
-              <h3 className="text-[#e5e4e2] font-medium mb-3">Podgląd (responsive):</h3>
-              <div className="aspect-video rounded-lg overflow-hidden">
+            <div className="rounded-lg bg-[#0f1119] p-4">
+              <h3 className="mb-3 font-medium text-[#e5e4e2]">Podgląd (responsive):</h3>
+              <div className="aspect-video overflow-hidden rounded-lg">
                 <ResponsiveImage
                   desktop={uploadedUrls.desktop}
                   mobile={uploadedUrls.mobile}
@@ -199,7 +197,7 @@ export default function ImageUploadExample() {
                   loading="eager"
                 />
               </div>
-              <p className="text-[#e5e4e2]/60 text-xs mt-2">
+              <p className="mt-2 text-xs text-[#e5e4e2]/60">
                 Zmień szerokość okna przeglądarki - na mobile załaduje się mniejsza wersja!
               </p>
             </div>
@@ -208,14 +206,14 @@ export default function ImageUploadExample() {
       </div>
 
       {/* Documentation */}
-      <div className="bg-[#1c1f33]/50 border border-[#d3bb73]/10 rounded-xl p-6">
-        <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">📚 Jak używać w swoim kodzie</h3>
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-6">
+        <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">📚 Jak używać w swoim kodzie</h3>
 
         <div className="space-y-4 text-sm">
           <div>
-            <h4 className="text-[#d3bb73] font-medium mb-2">1. Upload z wersjami responsive:</h4>
-            <pre className="bg-[#0f1119] rounded-lg p-3 text-[#e5e4e2]/70 overflow-x-auto text-xs">
-{`const urls = await uploadOptimizedImage(file, 'folder');
+            <h4 className="mb-2 font-medium text-[#d3bb73]">1. Upload z wersjami responsive:</h4>
+            <pre className="overflow-x-auto rounded-lg bg-[#0f1119] p-3 text-xs text-[#e5e4e2]/70">
+              {`const urls = await uploadOptimizedImage(file, 'folder');
 // urls.desktop  - 2200px
 // urls.mobile   - 800px
 // urls.thumbnail - 400px`}
@@ -223,9 +221,9 @@ export default function ImageUploadExample() {
           </div>
 
           <div>
-            <h4 className="text-[#d3bb73] font-medium mb-2">2. Wyświetlanie:</h4>
-            <pre className="bg-[#0f1119] rounded-lg p-3 text-[#e5e4e2]/70 overflow-x-auto text-xs">
-{`<ResponsiveImage
+            <h4 className="mb-2 font-medium text-[#d3bb73]">2. Wyświetlanie:</h4>
+            <pre className="overflow-x-auto rounded-lg bg-[#0f1119] p-3 text-xs text-[#e5e4e2]/70">
+              {`<ResponsiveImage
   desktop={urls.desktop}
   mobile={urls.mobile}
   thumbnail={urls.thumbnail}
@@ -235,9 +233,9 @@ export default function ImageUploadExample() {
           </div>
 
           <div>
-            <h4 className="text-[#d3bb73] font-medium mb-2">3. Zapis do bazy:</h4>
-            <pre className="bg-[#0f1119] rounded-lg p-3 text-[#e5e4e2]/70 overflow-x-auto text-xs">
-{`await supabase.from('portfolio').insert({
+            <h4 className="mb-2 font-medium text-[#d3bb73]">3. Zapis do bazy:</h4>
+            <pre className="overflow-x-auto rounded-lg bg-[#0f1119] p-3 text-xs text-[#e5e4e2]/70">
+              {`await supabase.from('portfolio').insert({
   image_desktop: urls.desktop,
   image_mobile: urls.mobile,
   image_thumbnail: urls.thumbnail,
@@ -246,8 +244,8 @@ export default function ImageUploadExample() {
           </div>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-[#d3bb73]/10">
-          <p className="text-[#e5e4e2]/60 text-xs">
+        <div className="mt-6 border-t border-[#d3bb73]/10 pt-6">
+          <p className="text-xs text-[#e5e4e2]/60">
             Pełna dokumentacja: <code className="text-[#d3bb73]">IMAGE_OPTIMIZATION_GUIDE.md</code>
           </p>
         </div>

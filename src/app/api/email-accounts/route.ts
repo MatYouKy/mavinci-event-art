@@ -8,22 +8,17 @@ export async function POST(request: NextRequest) {
     // Get auth token from header
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Missing authorization header' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
     }
 
     // Verify user is authenticated
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Use raw SQL query as workaround for schema cache issue
@@ -44,23 +39,17 @@ export async function POST(request: NextRequest) {
       p_smtp_use_tls: body.smtp_use_tls,
       p_signature: body.signature || null,
       p_is_default: body.is_default || false,
-      p_is_active: body.is_active !== false
+      p_is_active: body.is_active !== false,
     });
 
     if (error) {
       console.error('Error adding email account:', error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

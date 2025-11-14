@@ -56,30 +56,32 @@ export default function EventsPage() {
     }
 
     setEvents([
-    {
-      id: '1',
-      name: 'Konferencja Tech Summit 2025',
-      client: 'Tech Corp',
-      event_date: '2025-10-15',
-      location: 'Warszawa',
-      status: 'in_preparation' as const,
-      budget: 50000,
-    },
-    {
-      id: '2',
-      name: 'Integracja firmowa ABC',
-      client: 'ABC Corporation',
-      event_date: '2025-10-08',
-      location: 'Gdańsk',
-      status: 'offer_accepted' as const,
-      budget: 25000,
-    },
-  ]);
+      {
+        id: '1',
+        name: 'Konferencja Tech Summit 2025',
+        client: 'Tech Corp',
+        event_date: '2025-10-15',
+        location: 'Warszawa',
+        status: 'in_preparation' as const,
+        budget: 50000,
+      },
+      {
+        id: '2',
+        name: 'Integracja firmowa ABC',
+        client: 'ABC Corporation',
+        event_date: '2025-10-08',
+        location: 'Gdańsk',
+        status: 'offer_accepted' as const,
+        budget: 25000,
+      },
+    ]);
   };
 
   const handleSaveEvent = async (eventData: any) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       const { data, error } = await supabase
         .from('events')
@@ -108,13 +110,13 @@ export default function EventsPage() {
 
       // Automatycznie dodaj autora do zespołu wydarzenia
       if (data && data[0] && session?.user?.id) {
-        const { error: assignmentError } = await supabase
-          .from('employee_assignments')
-          .insert([{
+        const { error: assignmentError } = await supabase.from('employee_assignments').insert([
+          {
             event_id: data[0].id,
             employee_id: session.user.id,
-            role: 'Autor/Koordynator'
-          }]);
+            role: 'Autor/Koordynator',
+          },
+        ]);
 
         if (assignmentError) {
           console.error('Error adding creator to team:', assignmentError);
@@ -138,16 +140,16 @@ export default function EventsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/crm/event-categories')}
-            className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] border border-[#d3bb73]/20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
           >
-            <Tag className="w-4 h-4" />
+            <Tag className="h-4 w-4" />
             Kategorie
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Nowy event
           </button>
         </div>
@@ -158,40 +160,39 @@ export default function EventsPage() {
           <div
             key={event.id}
             onClick={() => router.push(`/crm/events/${event.id}`)}
-            className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+            className="cursor-pointer rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30"
           >
-            <div className="flex items-start justify-between mb-4">
+            <div className="mb-4 flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-medium text-[#e5e4e2] mb-2">
-                  {event.name}
-                </h3>
+                <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">{event.name}</h3>
                 <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/70">
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4" />
+                    <Building2 className="h-4 w-4" />
                     {event.client_id || 'Brak klienta'}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
+                    <Calendar className="h-4 w-4" />
                     {new Date(event.event_date).toLocaleDateString('pl-PL')}
                   </div>
                   <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
+                    <MapPin className="h-4 w-4" />
                     {event.location}
                   </div>
                 </div>
               </div>
               <span
-                className={`px-3 py-1 rounded-full text-xs border ${
-                  statusColors[event.status]
-                }`}
+                className={`rounded-full border px-3 py-1 text-xs ${statusColors[event.status]}`}
               >
                 {statusLabels[event.status]}
               </span>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#d3bb73]/10">
+            <div className="flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
               <div className="text-sm text-[#e5e4e2]/70">
-                Budżet: <span className="text-[#d3bb73] font-medium">{event.budget ? event.budget.toLocaleString() : '0'} zł</span>
+                Budżet:{' '}
+                <span className="font-medium text-[#d3bb73]">
+                  {event.budget ? event.budget.toLocaleString() : '0'} zł
+                </span>
               </div>
             </div>
           </div>

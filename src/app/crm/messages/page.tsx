@@ -2,13 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import {
-  Mail,
-  RefreshCw,
-  Search,
-  Plus,
-  Inbox,
-} from 'lucide-react';
+import { Mail, RefreshCw, Search, Plus, Inbox } from 'lucide-react';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
@@ -56,7 +50,11 @@ export default function MessagesPage() {
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
+  const [messageToAssign, setMessageToAssign] = useState<{
+    id: string;
+    type: 'contact_form' | 'received';
+    assignedTo: string | null;
+  } | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<UnifiedMessage | null>(null);
   const [forwardMessage, setForwardMessage] = useState<UnifiedMessage | null>(null);
   const [pageSize] = useState(50);
@@ -107,7 +105,7 @@ export default function MessagesPage() {
           setOffset(0);
           setMessages([]);
           fetchMessages(true);
-        }
+        },
       )
       .subscribe();
 
@@ -127,7 +125,7 @@ export default function MessagesPage() {
             setMessages([]);
             fetchMessages(true);
           }
-        }
+        },
       )
       .subscribe();
 
@@ -147,7 +145,7 @@ export default function MessagesPage() {
             setMessages([]);
             fetchMessages(true);
           }
-        }
+        },
       )
       .subscribe();
 
@@ -194,10 +192,12 @@ export default function MessagesPage() {
       if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
         const { data: contactMessages } = await supabase
           .from('contact_messages')
-          .select(`
+          .select(
+            `
             *,
             assigned_employee:employees(name, surname)
-          `)
+          `,
+          )
           .order('created_at', { ascending: false })
           .range(currentOffset, currentOffset + pageSize - 1);
 
@@ -221,7 +221,7 @@ export default function MessagesPage() {
               assigned_to: msg.assigned_to,
               assigned_employee: msg.assigned_employee,
               originalData: msg,
-            }))
+            })),
           );
         }
       }
@@ -252,16 +252,18 @@ export default function MessagesPage() {
                 isStarred: false,
                 originalData: msg,
               };
-            })
+            }),
           );
         }
 
         const { data: receivedEmails } = await supabase
           .from('received_emails')
-          .select(`
+          .select(
+            `
             *,
             assigned_employee:employees(name, surname)
-          `)
+          `,
+          )
           .eq('email_account_id', selectedAccount)
           .order('received_date', { ascending: false })
           .range(currentOffset, currentOffset + pageSize - 1);
@@ -282,7 +284,7 @@ export default function MessagesPage() {
               assigned_to: msg.assigned_to,
               assigned_employee: msg.assigned_employee,
               originalData: msg,
-            }))
+            })),
           );
         }
       }
@@ -292,7 +294,7 @@ export default function MessagesPage() {
       if (reset) {
         setMessages(allMessages);
       } else {
-        setMessages(prev => [...prev, ...allMessages]);
+        setMessages((prev) => [...prev, ...allMessages]);
       }
 
       setHasMore(allMessages.length >= pageSize);
@@ -309,10 +311,7 @@ export default function MessagesPage() {
         .update({ status: 'read', read_at: new Date().toISOString() })
         .eq('id', message.id);
     } else if (message.type === 'received' && !message.isRead) {
-      await supabase
-        .from('received_emails')
-        .update({ is_read: true })
-        .eq('id', message.id);
+      await supabase.from('received_emails').update({ is_read: true }).eq('id', message.id);
     }
   };
 
@@ -339,10 +338,7 @@ export default function MessagesPage() {
 
       if (error) throw error;
 
-      showSnackbar(
-        message.isStarred ? 'Usunięto gwiazdkę' : 'Oznaczono gwiazdką',
-        'success'
-      );
+      showSnackbar(message.isStarred ? 'Usunięto gwiazdkę' : 'Oznaczono gwiazdką', 'success');
       fetchMessages();
     } catch (error) {
       console.error('Error toggling star:', error);
@@ -356,7 +352,11 @@ export default function MessagesPage() {
     showSnackbar('Funkcja archiwizacji będzie wkrótce dostępna', 'info');
   };
 
-  const handleAssign = (messageId: string, messageType: 'contact_form' | 'received', assignedTo: string | null) => {
+  const handleAssign = (
+    messageId: string,
+    messageType: 'contact_form' | 'received',
+    assignedTo: string | null,
+  ) => {
     setMessageToAssign({ id: messageId, type: messageType, assignedTo });
     setShowAssignModal(true);
   };
@@ -372,14 +372,14 @@ export default function MessagesPage() {
     if (!confirmed) return;
 
     try {
-      const tableName = messageType === 'contact_form' ? 'contact_messages'
-                      : messageType === 'received' ? 'received_emails'
-                      : 'sent_emails';
+      const tableName =
+        messageType === 'contact_form'
+          ? 'contact_messages'
+          : messageType === 'received'
+            ? 'received_emails'
+            : 'sent_emails';
 
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('id', messageId);
+      const { error } = await supabase.from(tableName).delete().eq('id', messageId);
 
       if (error) throw error;
 
@@ -412,7 +412,9 @@ export default function MessagesPage() {
     try {
       showSnackbar('Pobieranie wiadomości z serwera...', 'info');
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) return;
 
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-emails`;
@@ -420,7 +422,7 @@ export default function MessagesPage() {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -444,14 +446,22 @@ export default function MessagesPage() {
     }
   };
 
-  const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string; attachments?: File[] }) => {
+  const handleSendNewMessage = async (data: {
+    to: string;
+    subject: string;
+    body: string;
+    bodyHtml: string;
+    attachments?: File[];
+  }) => {
     if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
       showSnackbar('Wybierz konto email do wysłania', 'warning');
       return;
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) {
         showSnackbar('Musisz być zalogowany', 'error');
         return;
@@ -462,7 +472,7 @@ export default function MessagesPage() {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -523,40 +533,44 @@ export default function MessagesPage() {
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'contact_form': return { label: 'Formularz', color: 'bg-blue-500' };
-      case 'sent': return { label: 'Wysłane', color: 'bg-green-500' };
-      case 'received': return { label: 'Odebrane', color: 'bg-purple-500' };
-      default: return { label: type, color: 'bg-gray-500' };
+      case 'contact_form':
+        return { label: 'Formularz', color: 'bg-blue-500' };
+      case 'sent':
+        return { label: 'Wysłane', color: 'bg-green-500' };
+      case 'received':
+        return { label: 'Odebrane', color: 'bg-purple-500' };
+      default:
+        return { label: type, color: 'bg-gray-500' };
     }
   };
 
   return (
     <div className="min-h-screen bg-[#0f1119]">
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="bg-[#1c1f33] rounded-lg shadow-xl border border-[#d3bb73]/20 overflow-hidden">
-          <div className="p-6 border-b border-[#d3bb73]/20">
-            <div className="flex items-center justify-between mb-6">
+      <div className="mx-auto max-w-7xl p-6">
+        <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+          <div className="border-b border-[#d3bb73]/20 p-6">
+            <div className="mb-6 flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Wiadomości</h1>
+                <h1 className="mb-2 text-3xl font-bold text-white">Wiadomości</h1>
                 <p className="text-[#e5e4e2]/60">Zarządzaj komunikacją z klientami</p>
               </div>
               <button
                 onClick={() => setShowNewMessageModal(true)}
                 disabled={selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#c5ad65] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="h-5 w-5" />
                 Nowa Wiadomość
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Konto Email</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Konto Email</label>
                 <select
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   {emailAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
@@ -567,11 +581,11 @@ export default function MessagesPage() {
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Filtruj po typie</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Filtruj po typie</label>
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value as any)}
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   <option value="all">Wszystkie</option>
                   <option value="contact_form">Formularz</option>
@@ -582,56 +596,58 @@ export default function MessagesPage() {
             </div>
 
             <div className="mt-4 flex items-center gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Szukaj wiadomości..."
-                  className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-4 text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={fetchEmailsFromServer}
-                  disabled={loading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                  className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  disabled={
+                    loading || selectedAccount === 'all' || selectedAccount === 'contact_form'
+                  }
+                  className="flex items-center gap-2 rounded-lg bg-blue-500/20 px-4 py-3 text-blue-400 transition-colors hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Pobierz nowe wiadomości z serwera email"
                 >
-                  <Inbox className="w-5 h-5" />
+                  <Inbox className="h-5 w-5" />
                   <span className="hidden sm:inline">Pobierz z serwera</span>
                 </button>
                 <button
                   onClick={fetchMessages}
                   disabled={loading}
-                  className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                  className="rounded-lg bg-[#d3bb73]/20 px-6 py-3 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 divide-x divide-[#d3bb73]/10">
+          <div className="grid grid-cols-1 divide-x divide-[#d3bb73]/10 lg:grid-cols-5">
             <div
-              className="lg:col-span-2 overflow-y-auto max-h-[600px] relative"
+              className="relative max-h-[600px] overflow-y-auto lg:col-span-2"
               onScroll={(e) => {
                 const target = e.target as HTMLDivElement;
                 const bottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
                 if (bottom && !loading && hasMore) {
-                  setOffset(prev => prev + pageSize);
+                  setOffset((prev) => prev + pageSize);
                 }
               }}
             >
               {loading ? (
                 <div className="p-8 text-center text-[#e5e4e2]/60">
-                  <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
+                  <RefreshCw className="mx-auto mb-2 h-8 w-8 animate-spin" />
                   Ładowanie wiadomości...
                 </div>
               ) : filteredMessages.length === 0 ? (
                 <div className="p-8 text-center">
-                  <Inbox className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                  <Inbox className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak wiadomości</p>
                 </div>
               ) : (
@@ -641,28 +657,28 @@ export default function MessagesPage() {
                     return (
                       <div
                         key={message.id}
-                        className={`p-4 hover:bg-[#d3bb73]/5 transition-colors ${
+                        className={`p-4 transition-colors hover:bg-[#d3bb73]/5 ${
                           selectedMessage?.id === message.id ? 'bg-[#d3bb73]/10' : ''
                         } ${!message.isRead ? 'font-semibold' : ''}`}
                       >
-                        <div className="flex items-start justify-between mb-2">
+                        <div className="mb-2 flex items-start justify-between">
                           <div
-                            className="flex-1 min-w-0 cursor-pointer"
+                            className="min-w-0 flex-1 cursor-pointer"
                             onClick={() => {
                               setSelectedMessage(message);
                               markAsRead(message);
                             }}
                           >
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-white truncate">{message.from}</span>
+                            <div className="mb-1 flex items-center gap-2">
+                              <span className="truncate text-white">{message.from}</span>
                               {!message.isRead && (
-                                <span className="w-2 h-2 rounded-full bg-[#d3bb73]"></span>
+                                <span className="h-2 w-2 rounded-full bg-[#d3bb73]"></span>
                               )}
                             </div>
-                            <p className="text-sm text-[#e5e4e2]/70 truncate">{message.subject}</p>
+                            <p className="truncate text-sm text-[#e5e4e2]/70">{message.subject}</p>
                           </div>
-                          <div className="flex items-center gap-2 ml-2">
-                            <span className="text-xs text-[#e5e4e2]/50 whitespace-nowrap">
+                          <div className="ml-2 flex items-center gap-2">
+                            <span className="whitespace-nowrap text-xs text-[#e5e4e2]/50">
                               {formatDate(message.date)}
                             </span>
                             {(message.type === 'contact_form' || message.type === 'received') && (
@@ -671,38 +687,61 @@ export default function MessagesPage() {
                                 messageType={message.type}
                                 isStarred={message.isStarred}
                                 onReply={() => handleReply(message)}
-                                onForward={message.type === 'received' ? () => handleForward(message) : undefined}
-                                onAssign={() => handleAssign(message.id, message.type, message.assigned_to || null)}
+                                onForward={
+                                  message.type === 'received'
+                                    ? () => handleForward(message)
+                                    : undefined
+                                }
+                                onAssign={() =>
+                                  handleAssign(
+                                    message.id,
+                                    message.type,
+                                    message.assigned_to || null,
+                                  )
+                                }
                                 onDelete={() => handleDelete(message.id, message.type)}
                                 onMove={() => handleMove(message.id)}
-                                onStar={message.type === 'received' ? () => handleStar(message) : undefined}
-                                onArchive={message.type === 'received' ? () => handleArchive(message) : undefined}
+                                onStar={
+                                  message.type === 'received'
+                                    ? () => handleStar(message)
+                                    : undefined
+                                }
+                                onArchive={
+                                  message.type === 'received'
+                                    ? () => handleArchive(message)
+                                    : undefined
+                                }
                                 canManage={canManage}
                               />
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-xs px-2 py-1 rounded ${typeInfo.color} text-white`}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded px-2 py-1 text-xs ${typeInfo.color} text-white`}
+                          >
                             {typeInfo.label}
                           </span>
                           {message.assigned_employee && (
-                            <span className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                              Przypisano: {message.assigned_employee.name} {message.assigned_employee.surname}
+                            <span className="rounded border border-purple-500/30 bg-purple-500/20 px-2 py-1 text-xs text-purple-300">
+                              Przypisano: {message.assigned_employee.name}{' '}
+                              {message.assigned_employee.surname}
                             </span>
                           )}
-                          <p className="text-sm text-[#e5e4e2]/50 truncate flex-1">{message.body}</p>
+                          <p className="flex-1 truncate text-sm text-[#e5e4e2]/50">
+                            {message.body}
+                          </p>
                         </div>
                       </div>
                     );
                   })}
                   {loading && messages.length > 0 && (
                     <div className="p-4 text-center text-[#e5e4e2]/60">
-                      <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
+                      <RefreshCw className="mx-auto h-5 w-5 animate-spin" />
                     </div>
                   )}
                   {!hasMore && messages.length > 0 && (
-                    <div className="p-4 text-center text-[#e5e4e2]/40 text-sm">
+                    <div className="p-4 text-center text-sm text-[#e5e4e2]/40">
                       Koniec listy wiadomości
                     </div>
                   )}
@@ -710,20 +749,30 @@ export default function MessagesPage() {
               )}
             </div>
 
-            <div className="lg:col-span-3 p-6">
+            <div className="p-6 lg:col-span-3">
               {selectedMessage ? (
                 <div>
-                  <div className="mb-6 pb-6 border-b border-[#d3bb73]/20">
-                    <div className="flex items-start justify-between mb-4">
+                  <div className="mb-6 border-b border-[#d3bb73]/20 pb-6">
+                    <div className="mb-4 flex items-start justify-between">
                       <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-white mb-2">{selectedMessage.subject}</h2>
+                        <h2 className="mb-2 text-2xl font-bold text-white">
+                          {selectedMessage.subject}
+                        </h2>
                         <div className="space-y-1 text-sm text-[#e5e4e2]/70">
-                          <p><strong>Od:</strong> {selectedMessage.from}</p>
-                          <p><strong>Do:</strong> {selectedMessage.to}</p>
-                          <p><strong>Data:</strong> {selectedMessage.date.toLocaleString('pl-PL')}</p>
+                          <p>
+                            <strong>Od:</strong> {selectedMessage.from}
+                          </p>
+                          <p>
+                            <strong>Do:</strong> {selectedMessage.to}
+                          </p>
+                          <p>
+                            <strong>Data:</strong> {selectedMessage.date.toLocaleString('pl-PL')}
+                          </p>
                         </div>
                       </div>
-                      <span className={`text-xs px-3 py-1 rounded ${getTypeLabel(selectedMessage.type).color} text-white`}>
+                      <span
+                        className={`rounded px-3 py-1 text-xs ${getTypeLabel(selectedMessage.type).color} text-white`}
+                      >
                         {getTypeLabel(selectedMessage.type).label}
                       </span>
                     </div>
@@ -737,13 +786,15 @@ export default function MessagesPage() {
                     )}
                   </div>
 
-                  {(selectedMessage.type === 'contact_form' || selectedMessage.type === 'received') && (
-                    <div className="mt-6 pt-6 border-t border-[#d3bb73]/20">
+                  {(selectedMessage.type === 'contact_form' ||
+                    selectedMessage.type === 'received') && (
+                    <div className="mt-6 border-t border-[#d3bb73]/20 pt-6">
                       <button
                         onClick={() => {
-                          const email = selectedMessage.type === 'contact_form'
-                            ? selectedMessage.originalData.email
-                            : selectedMessage.from;
+                          const email =
+                            selectedMessage.type === 'contact_form'
+                              ? selectedMessage.originalData.email
+                              : selectedMessage.from;
                           setNewMessage({
                             to: email,
                             subject: `Re: ${selectedMessage.subject}`,
@@ -752,7 +803,7 @@ export default function MessagesPage() {
                           setShowNewMessageModal(true);
                         }}
                         disabled={selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                        className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50"
+                        className="rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#c5ad65] disabled:opacity-50"
                       >
                         Odpowiedz
                       </button>
@@ -760,9 +811,9 @@ export default function MessagesPage() {
                   )}
                 </div>
               ) : (
-                <div className="h-full flex items-center justify-center text-[#e5e4e2]/40">
+                <div className="flex h-full items-center justify-center text-[#e5e4e2]/40">
                   <div className="text-center">
-                    <Mail className="w-16 h-16 mx-auto mb-4" />
+                    <Mail className="mx-auto mb-4 h-16 w-16" />
                     <p>Wybierz wiadomość, aby zobaczyć szczegóły</p>
                   </div>
                 </div>
@@ -782,12 +833,20 @@ export default function MessagesPage() {
         onSend={handleSendNewMessage}
         initialTo={replyToMessage?.from || ''}
         initialSubject={
-          replyToMessage ? `Re: ${replyToMessage.subject}` :
-          forwardMessage ? `Fwd: ${forwardMessage.subject}` :
-          newMessage.subject
+          replyToMessage
+            ? `Re: ${replyToMessage.subject}`
+            : forwardMessage
+              ? `Fwd: ${forwardMessage.subject}`
+              : newMessage.subject
         }
-        initialBody={replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.body}` : ''}
-        forwardedBody={forwardMessage ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${forwardMessage.date.toLocaleString('pl-PL')}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.body}` : ''}
+        initialBody={
+          replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.body}` : ''
+        }
+        forwardedBody={
+          forwardMessage
+            ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${forwardMessage.date.toLocaleString('pl-PL')}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.body}`
+            : ''
+        }
         selectedAccountId={selectedAccount}
       />
 

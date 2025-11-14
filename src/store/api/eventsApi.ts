@@ -140,11 +140,7 @@ export const eventsApi = createApi({
     createEvent: builder.mutation<CalendarEvent, Partial<CalendarEvent>>({
       async queryFn(newEvent) {
         try {
-          const { data, error } = await supabase
-            .from('events')
-            .insert(newEvent)
-            .select()
-            .single();
+          const { data, error } = await supabase.from('events').insert(newEvent).select().single();
 
           if (error) {
             return { error: { status: 'CUSTOM_ERROR', error: error.message } };

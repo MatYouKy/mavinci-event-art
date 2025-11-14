@@ -101,7 +101,7 @@ export default function Hero() {
   };
 
   return (
-    <header className="relative min-h-screen flex items-center" role="banner">
+    <header className="relative flex min-h-screen items-center" role="banner">
       {isEditMode ? (
         <Formik
           initialValues={{
@@ -131,7 +131,10 @@ export default function Hero() {
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 />
               </div>
-              <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90 pointer-events-none" style={{ zIndex: 2 }}></div>
+              <div
+                className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90"
+                style={{ zIndex: 2 }}
+              ></div>
             </Form>
           )}
         </Formik>
@@ -145,47 +148,54 @@ export default function Hero() {
                 : 'url(https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg)',
             }}
             role="img"
-            aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
+            aria-label={heroImage?.alt_text || 'Profesjonalna organizacja eventów biznesowych'}
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90"></div>
         </>
       )}
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-32 lg:px-8">
         <div className="max-w-3xl">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-light text-white mb-6 md:mb-8 leading-tight">
+          <h1 className="mb-6 text-4xl font-light leading-tight text-white sm:text-5xl md:mb-8 md:text-6xl lg:text-7xl">
             Kompleksowa Obsługa
             <br />
             <span className="text-[#d3bb73]">Eventów</span>
           </h1>
 
-          <p className="text-base sm:text-lg md:text-xl text-white/80 font-light mb-8 md:mb-12 max-w-2xl leading-relaxed">
-            Od DJ-ów i nagłośnienia po oświetlenie sceniczne i streamingi. Realizujemy eventy w północnej i centralnej Polsce.
+          <p className="mb-8 max-w-2xl text-base font-light leading-relaxed text-white/80 sm:text-lg md:mb-12 md:text-xl">
+            Od DJ-ów i nagłośnienia po oświetlenie sceniczne i streamingi. Realizujemy eventy w
+            północnej i centralnej Polsce.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4" role="group" aria-label="Akcje główne">
+          <div className="flex flex-col gap-4 sm:flex-row" role="group" aria-label="Akcje główne">
             <a
               href="#portfolio"
-              className="bg-[#d3bb73] text-[#1c1f33] px-8 py-3 md:py-4 rounded-full text-sm md:text-base font-medium hover:bg-[#d3bb73]/90 transition-all duration-200 hover:scale-105 shadow-lg text-center"
+              className="rounded-full bg-[#d3bb73] px-8 py-3 text-center text-sm font-medium text-[#1c1f33] shadow-lg transition-all duration-200 hover:scale-105 hover:bg-[#d3bb73]/90 md:py-4 md:text-base"
               aria-label="Zobacz nasze realizacje eventowe"
             >
               Zobacz Nasze Realizacje
             </a>
             <a
               href="#kontakt"
-              className="bg-white/10 backdrop-blur-md border border-[#d3bb73]/40 text-white px-8 py-3 md:py-4 rounded-full text-sm md:text-base font-light hover:bg-white/20 transition-all duration-200 flex items-center justify-center gap-2 group"
+              className="group flex items-center justify-center gap-2 rounded-full border border-[#d3bb73]/40 bg-white/10 px-8 py-3 text-sm font-light text-white backdrop-blur-md transition-all duration-200 hover:bg-white/20 md:py-4 md:text-base"
               aria-label="Skontaktuj się z agencją eventową"
             >
               Bezpłatna Wycena
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" aria-hidden="true" />
+              <ArrowRight
+                className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
+                aria-hidden="true"
+              />
             </a>
           </div>
         </div>
       </div>
 
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 animate-bounce hidden md:block" aria-hidden="true">
-        <div className="w-6 h-10 border-2 border-white/40 rounded-full flex items-start justify-center p-2">
-          <div className="w-1.5 h-1.5 bg-white/60 rounded-full"></div>
+      <div
+        className="absolute bottom-8 left-1/2 z-10 hidden -translate-x-1/2 transform animate-bounce md:block"
+        aria-hidden="true"
+      >
+        <div className="flex h-10 w-6 items-start justify-center rounded-full border-2 border-white/40 p-2">
+          <div className="h-1.5 w-1.5 rounded-full bg-white/60"></div>
         </div>
       </div>
     </header>

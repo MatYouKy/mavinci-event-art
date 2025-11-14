@@ -124,14 +124,16 @@ export default function EditVehiclePage() {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => {
     const { name, value } = e.target;
 
     if (name === 'vehicle_type') {
       setFormData((prev) => ({
         ...prev,
         [name]: value,
-        category: value === 'trailer' ? 'plandeka' : 'van'
+        category: value === 'trailer' ? 'plandeka' : 'van',
       }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
@@ -152,30 +154,53 @@ export default function EditVehiclePage() {
       const vehicleData = {
         ...formData,
         year: formData.year ? parseInt(formData.year.toString()) : null,
-        engine_capacity: formData.engine_capacity ? parseInt(formData.engine_capacity.toString()) : null,
+        engine_capacity: formData.engine_capacity
+          ? parseInt(formData.engine_capacity.toString())
+          : null,
         power_hp: formData.power_hp ? parseInt(formData.power_hp.toString()) : null,
         power_kw: formData.power_kw ? parseInt(formData.power_kw.toString()) : null,
-        number_of_seats: formData.number_of_seats ? parseInt(formData.number_of_seats.toString()) : null,
+        number_of_seats: formData.number_of_seats
+          ? parseInt(formData.number_of_seats.toString())
+          : null,
         max_load_kg: formData.max_load_kg ? parseInt(formData.max_load_kg.toString()) : null,
-        cargo_length_cm: formData.cargo_length_cm ? parseInt(formData.cargo_length_cm.toString()) : null,
-        cargo_width_cm: formData.cargo_width_cm ? parseInt(formData.cargo_width_cm.toString()) : null,
-        cargo_height_cm: formData.cargo_height_cm ? parseInt(formData.cargo_height_cm.toString()) : null,
-        total_length_cm: formData.total_length_cm ? parseInt(formData.total_length_cm.toString()) : null,
-        total_width_cm: formData.total_width_cm ? parseInt(formData.total_width_cm.toString()) : null,
-        total_height_cm: formData.total_height_cm ? parseInt(formData.total_height_cm.toString()) : null,
-        purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price.toString()) : null,
-        current_value: formData.current_value ? parseFloat(formData.current_value.toString()) : null,
-        leasing_monthly_cost: formData.leasing_monthly_cost ? parseFloat(formData.leasing_monthly_cost.toString()) : null,
-        initial_mileage: formData.initial_mileage ? parseInt(formData.initial_mileage.toString()) : 0,
-        current_mileage: formData.current_mileage ? parseInt(formData.current_mileage.toString()) : 0,
+        cargo_length_cm: formData.cargo_length_cm
+          ? parseInt(formData.cargo_length_cm.toString())
+          : null,
+        cargo_width_cm: formData.cargo_width_cm
+          ? parseInt(formData.cargo_width_cm.toString())
+          : null,
+        cargo_height_cm: formData.cargo_height_cm
+          ? parseInt(formData.cargo_height_cm.toString())
+          : null,
+        total_length_cm: formData.total_length_cm
+          ? parseInt(formData.total_length_cm.toString())
+          : null,
+        total_width_cm: formData.total_width_cm
+          ? parseInt(formData.total_width_cm.toString())
+          : null,
+        total_height_cm: formData.total_height_cm
+          ? parseInt(formData.total_height_cm.toString())
+          : null,
+        purchase_price: formData.purchase_price
+          ? parseFloat(formData.purchase_price.toString())
+          : null,
+        current_value: formData.current_value
+          ? parseFloat(formData.current_value.toString())
+          : null,
+        leasing_monthly_cost: formData.leasing_monthly_cost
+          ? parseFloat(formData.leasing_monthly_cost.toString())
+          : null,
+        initial_mileage: formData.initial_mileage
+          ? parseInt(formData.initial_mileage.toString())
+          : 0,
+        current_mileage: formData.current_mileage
+          ? parseInt(formData.current_mileage.toString())
+          : 0,
         purchase_date: formData.purchase_date || null,
         leasing_end_date: formData.leasing_end_date || null,
       };
 
-      const { error } = await supabase
-        .from('vehicles')
-        .update(vehicleData)
-        .eq('id', vehicleId);
+      const { error } = await supabase.from('vehicles').update(vehicleData).eq('id', vehicleId);
 
       if (error) throw error;
 
@@ -191,35 +216,35 @@ export default function EditVehiclePage() {
 
   if (fetching) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d3bb73]"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-5xl p-6">
       <div className="mb-6">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] mb-4"
+          className="mb-4 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="h-4 w-4" />
           Powrót
         </button>
-        <h1 className="text-3xl font-bold text-[#e5e4e2] flex items-center gap-3">
-          <Car className="w-8 h-8 text-[#d3bb73]" />
+        <h1 className="flex items-center gap-3 text-3xl font-bold text-[#e5e4e2]">
+          <Car className="h-8 w-8 text-[#d3bb73]" />
           Edytuj pojazd
         </h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Dane podstawowe */}
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane podstawowe</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Dane podstawowe</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Nazwa pojazdu <span className="text-red-400">*</span>
               </label>
               <input
@@ -228,13 +253,13 @@ export default function EditVehiclePage() {
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="np. Bus Eventowy Główny"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Marka <span className="text-red-400">*</span>
               </label>
               <input
@@ -243,13 +268,13 @@ export default function EditVehiclePage() {
                 value={formData.brand}
                 onChange={handleChange}
                 placeholder="np. Mercedes-Benz"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Model <span className="text-red-400">*</span>
               </label>
               <input
@@ -258,13 +283,13 @@ export default function EditVehiclePage() {
                 value={formData.model}
                 onChange={handleChange}
                 placeholder="np. Sprinter 519 CDI"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Numer rejestracyjny
               </label>
               <input
@@ -273,26 +298,24 @@ export default function EditVehiclePage() {
                 value={formData.registration_number}
                 onChange={handleChange}
                 placeholder="np. KR 12345"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">VIN</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">VIN</label>
               <input
                 type="text"
                 name="vin"
                 value={formData.vin}
                 onChange={handleChange}
                 placeholder="17-znakowy numer VIN"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Rok produkcji
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Rok produkcji</label>
               <input
                 type="number"
                 name="year"
@@ -300,29 +323,29 @@ export default function EditVehiclePage() {
                 onChange={handleChange}
                 min="1900"
                 max={new Date().getFullYear() + 1}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Kolor</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Kolor</label>
               <input
                 type="text"
                 name="color"
                 value={formData.color}
                 onChange={handleChange}
                 placeholder="np. Biały"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Kategoria</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Kategoria</label>
               <select
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               >
                 {formData.vehicle_type === 'trailer' ? (
                   <>
@@ -346,12 +369,12 @@ export default function EditVehiclePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Status</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Status</label>
               <select
                 name="status"
                 value={formData.status}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="active">Aktywny</option>
                 <option value="inactive">Nieaktywny</option>
@@ -362,14 +385,12 @@ export default function EditVehiclePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Typ własności
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Typ własności</label>
               <select
                 name="ownership_type"
                 value={formData.ownership_type}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="owned">Własny</option>
                 <option value="leased">Leasing</option>
@@ -381,147 +402,145 @@ export default function EditVehiclePage() {
 
         {/* Dane techniczne - tylko dla samochodów */}
         {formData.vehicle_type !== 'trailer' && (
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-            <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dane techniczne</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Dane techniczne</h2>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                  Typ silnika
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Typ silnika</label>
+                <input
+                  type="text"
+                  name="engine_type"
+                  value={formData.engine_type}
+                  onChange={handleChange}
+                  placeholder="np. diesel"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Pojemność (cm³)
                 </label>
-              <input
-                type="text"
-                name="engine_type"
-                value={formData.engine_type}
-                onChange={handleChange}
-                placeholder="np. diesel"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+                <input
+                  type="number"
+                  name="engine_capacity"
+                  value={formData.engine_capacity}
+                  onChange={handleChange}
+                  placeholder="np. 2143"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Pojemność (cm³)
-              </label>
-              <input
-                type="number"
-                name="engine_capacity"
-                value={formData.engine_capacity}
-                onChange={handleChange}
-                placeholder="np. 2143"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Moc (KM)</label>
+                <input
+                  type="number"
+                  name="power_hp"
+                  value={formData.power_hp}
+                  onChange={handleChange}
+                  placeholder="np. 190"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Moc (KM)</label>
-              <input
-                type="number"
-                name="power_hp"
-                value={formData.power_hp}
-                onChange={handleChange}
-                placeholder="np. 190"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Moc (kW)</label>
+                <input
+                  type="number"
+                  name="power_kw"
+                  value={formData.power_kw}
+                  onChange={handleChange}
+                  placeholder="np. 140"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Moc (kW)</label>
-              <input
-                type="number"
-                name="power_kw"
-                value={formData.power_kw}
-                onChange={handleChange}
-                placeholder="np. 140"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Typ paliwa</label>
+                <select
+                  name="fuel_type"
+                  value={formData.fuel_type}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                >
+                  <option value="benzyna95">Benzyna 95</option>
+                  <option value="benzyna98">Benzyna 98</option>
+                  <option value="diesel">Diesel</option>
+                  <option value="LPG">LPG</option>
+                  <option value="elektryczny">Elektryczny</option>
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Typ paliwa
-              </label>
-              <select
-                name="fuel_type"
-                value={formData.fuel_type}
-                onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="benzyna95">Benzyna 95</option>
-                <option value="benzyna98">Benzyna 98</option>
-                <option value="diesel">Diesel</option>
-                <option value="LPG">LPG</option>
-                <option value="elektryczny">Elektryczny</option>
-              </select>
-            </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Skrzynia biegów
+                </label>
+                <select
+                  name="transmission"
+                  value={formData.transmission}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                >
+                  <option value="manualna">Manualna</option>
+                  <option value="automatyczna">Automatyczna</option>
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Skrzynia biegów
-              </label>
-              <select
-                name="transmission"
-                value={formData.transmission}
-                onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              >
-                <option value="manualna">Manualna</option>
-                <option value="automatyczna">Automatyczna</option>
-              </select>
-            </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Napęd</label>
+                <input
+                  type="text"
+                  name="drive_type"
+                  value={formData.drive_type}
+                  onChange={handleChange}
+                  placeholder="np. przedni, tylny, 4x4"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Napęd</label>
-              <input
-                type="text"
-                name="drive_type"
-                value={formData.drive_type}
-                onChange={handleChange}
-                placeholder="np. przedni, tylny, 4x4"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Liczba miejsc
+                </label>
+                <input
+                  type="number"
+                  name="number_of_seats"
+                  value={formData.number_of_seats}
+                  onChange={handleChange}
+                  placeholder="np. 9"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Liczba miejsc
-              </label>
-              <input
-                type="number"
-                name="number_of_seats"
-                value={formData.number_of_seats}
-                onChange={handleChange}
-                placeholder="np. 9"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Maks. ładowność (kg)
-              </label>
-              <input
-                type="number"
-                name="max_load_kg"
-                value={formData.max_load_kg}
-                onChange={handleChange}
-                placeholder="np. 1500"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Maks. ładowność (kg)
+                </label>
+                <input
+                  type="number"
+                  name="max_load_kg"
+                  value={formData.max_load_kg}
+                  onChange={handleChange}
+                  placeholder="np. 1500"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
             </div>
           </div>
-        </div>
         )}
 
         {/* Wymiary i ładowność - dla przyczep */}
         {formData.vehicle_type === 'trailer' && (
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-            <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Wymiary i ładowność</h2>
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Wymiary i ładowność</h2>
             <div className="space-y-6">
               <div>
-                <h3 className="text-md font-medium mb-3 text-[#d3bb73]">Wymiary części załadunkowej</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <h3 className="text-md mb-3 font-medium text-[#d3bb73]">
+                  Wymiary części załadunkowej
+                </h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Długość (cm)
                     </label>
                     <input
@@ -530,12 +549,12 @@ export default function EditVehiclePage() {
                       value={formData.cargo_length_cm}
                       onChange={handleChange}
                       placeholder="np. 600"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Szerokość (cm)
                     </label>
                     <input
@@ -544,12 +563,12 @@ export default function EditVehiclePage() {
                       value={formData.cargo_width_cm}
                       onChange={handleChange}
                       placeholder="np. 240"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Wysokość (cm)
                     </label>
                     <input
@@ -558,17 +577,19 @@ export default function EditVehiclePage() {
                       value={formData.cargo_height_cm}
                       onChange={handleChange}
                       placeholder="np. 280"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     />
                   </div>
                 </div>
               </div>
 
               <div>
-                <h3 className="text-md font-medium mb-3 text-[#d3bb73]">Wymiary całkowite (bezwzględne)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <h3 className="text-md mb-3 font-medium text-[#d3bb73]">
+                  Wymiary całkowite (bezwzględne)
+                </h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Długość całkowita (cm)
                     </label>
                     <input
@@ -577,12 +598,12 @@ export default function EditVehiclePage() {
                       value={formData.total_length_cm}
                       onChange={handleChange}
                       placeholder="np. 720"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Szerokość całkowita (cm)
                     </label>
                     <input
@@ -591,12 +612,12 @@ export default function EditVehiclePage() {
                       value={formData.total_width_cm}
                       onChange={handleChange}
                       placeholder="np. 255"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Wysokość całkowita (cm)
                     </label>
                     <input
@@ -605,15 +626,15 @@ export default function EditVehiclePage() {
                       value={formData.total_height_cm}
                       onChange={handleChange}
                       placeholder="np. 300"
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Maks. ładowność (kg)
                   </label>
                   <input
@@ -622,7 +643,7 @@ export default function EditVehiclePage() {
                     value={formData.max_load_kg}
                     onChange={handleChange}
                     placeholder="np. 1500"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   />
                 </div>
               </div>
@@ -632,46 +653,46 @@ export default function EditVehiclePage() {
 
         {/* Przebieg - tylko dla samochodów */}
         {formData.vehicle_type !== 'trailer' && (
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Przebieg</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Przebieg początkowy (km)
-              </label>
-              <input
-                type="number"
-                name="initial_mileage"
-                value={formData.initial_mileage}
-                onChange={handleChange}
-                placeholder="0"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Przebieg</h2>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Przebieg początkowy (km)
+                </label>
+                <input
+                  type="number"
+                  name="initial_mileage"
+                  value={formData.initial_mileage}
+                  onChange={handleChange}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Przebieg aktualny (km)
-              </label>
-              <input
-                type="number"
-                name="current_mileage"
-                value={formData.current_mileage}
-                onChange={handleChange}
-                placeholder="0"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Przebieg aktualny (km)
+                </label>
+                <input
+                  type="number"
+                  name="current_mileage"
+                  value={formData.current_mileage}
+                  onChange={handleChange}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </div>
             </div>
           </div>
-        </div>
         )}
 
         {/* Koszty */}
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Koszty i wartość</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Koszty i wartość</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Cena zakupu (zł)
               </label>
               <input
@@ -681,25 +702,23 @@ export default function EditVehiclePage() {
                 onChange={handleChange}
                 placeholder="0"
                 step="0.01"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Data zakupu
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Data zakupu</label>
               <input
                 type="date"
                 name="purchase_date"
                 value={formData.purchase_date}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Wartość bieżąca (zł)
               </label>
               <input
@@ -709,14 +728,14 @@ export default function EditVehiclePage() {
                 onChange={handleChange}
                 placeholder="0"
                 step="0.01"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             {formData.ownership_type === 'leased' && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Firma leasingowa
                   </label>
                   <input
@@ -724,12 +743,12 @@ export default function EditVehiclePage() {
                     name="leasing_company"
                     value={formData.leasing_company}
                     onChange={handleChange}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Rata leasingowa (zł/mies.)
                   </label>
                   <input
@@ -739,12 +758,12 @@ export default function EditVehiclePage() {
                     onChange={handleChange}
                     placeholder="0"
                     step="0.01"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Koniec leasingu
                   </label>
                   <input
@@ -752,7 +771,7 @@ export default function EditVehiclePage() {
                     name="leasing_end_date"
                     value={formData.leasing_end_date}
                     onChange={handleChange}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   />
                 </div>
               </>
@@ -761,11 +780,11 @@ export default function EditVehiclePage() {
         </div>
 
         {/* Lokalizacja */}
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Lokalizacja</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Lokalizacja</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Aktualna lokalizacja
               </label>
               <input
@@ -774,12 +793,12 @@ export default function EditVehiclePage() {
                 value={formData.current_location}
                 onChange={handleChange}
                 placeholder="np. Magazyn Kraków"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Miejsce parkowania
               </label>
               <input
@@ -788,62 +807,60 @@ export default function EditVehiclePage() {
                 value={formData.parking_location}
                 onChange={handleChange}
                 placeholder="np. Parking A, miejsce 12"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Garaż/Baza
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Garaż/Baza</label>
               <input
                 type="text"
                 name="garage_location"
                 value={formData.garage_location}
                 onChange={handleChange}
                 placeholder="np. Baza główna"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
           </div>
         </div>
 
         {/* Opis i notatki */}
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-6">
-          <h2 className="text-xl font-semibold text-[#e5e4e2] mb-4">Dodatkowe informacje</h2>
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h2 className="mb-4 text-xl font-semibold text-[#e5e4e2]">Dodatkowe informacje</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Opis</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Opis</label>
               <textarea
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
                 rows={3}
                 placeholder="Krótki opis pojazdu..."
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Notatki</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Notatki</label>
               <textarea
                 name="notes"
                 value={formData.notes}
                 onChange={handleChange}
                 rows={4}
                 placeholder="Dodatkowe notatki, uwagi..."
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
           </div>
         </div>
 
         {/* Przyciski */}
-        <div className="flex gap-4 justify-end">
+        <div className="flex justify-end gap-4">
           <button
             type="button"
             onClick={() => router.back()}
-            className="px-6 py-3 bg-[#0f1119] text-[#e5e4e2] rounded-lg hover:bg-[#0f1119]/80 transition-colors"
+            className="rounded-lg bg-[#0f1119] px-6 py-3 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
             disabled={loading}
           >
             Anuluj
@@ -851,16 +868,16 @@ export default function EditVehiclePage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin" />
                 Zapisywanie...
               </>
             ) : (
               <>
-                <Save className="w-5 h-5" />
+                <Save className="h-5 w-5" />
                 Zapisz zmiany
               </>
             )}

@@ -9,7 +9,9 @@ System atrakcji został zaprojektowany do kompleksowego zarządzania ofertą us�
 ### Główne tabele
 
 #### 1. `attractions` - Katalog atrakcji
+
 Główna tabela przechowująca informacje o dostępnych atrakcjach:
+
 - `name` - Nazwa atrakcji (np. "DJ + Nagłośnienie")
 - `description` - Szczegółowy opis
 - `category` - Kategoria (sound_system, dj_services, casino, itd.)
@@ -21,7 +23,9 @@ Główna tabela przechowująca informacje o dostępnych atrakcjach:
 - `breakdown_time_minutes` - Czas demontażu
 
 #### 2. `attraction_required_equipment` - Sprzęt wymagany
+
 Definicja sprzętu niezbędnego do realizacji atrakcji:
+
 - `attraction_id` - ID atrakcji
 - `equipment_id` - ID sprzętu z tabeli `equipment`
 - `quantity` - Wymagana ilość
@@ -29,12 +33,15 @@ Definicja sprzętu niezbędnego do realizacji atrakcji:
 - `notes` - Notatki
 
 **Funkcjonalność:**
+
 - Automatycznie rezerwuje sprzęt przy dodaniu atrakcji do eventu
 - Blokuje możliwość sprzedaży gdy brak sprzętu
 - Generuje listę do załadunku
 
 #### 3. `equipment_accessories` - Akcesoria sprzętu
+
 Automatycznie dołączane elementy do sprzętu:
+
 - `parent_equipment_id` - ID głównego sprzętu
 - `accessory_name` - Nazwa akcesorium (np. "Kabel HDMI")
 - `accessory_description` - Opis
@@ -43,6 +50,7 @@ Automatycznie dołączane elementy do sprzętu:
 - `category` - Kategoria (cables, power, control, adapters, transport)
 
 **Przykład:**
+
 ```sql
 Rzutnik Epson:
   - Kabel HDMI 5m (wymagany)
@@ -53,7 +61,9 @@ Rzutnik Epson:
 ```
 
 #### 4. `attraction_required_staff` - Wymagany personel
+
 Definicja personelu potrzebnego do obsługi:
+
 - `attraction_id` - ID atrakcji
 - `role` - Rola (np. "DJ", "Technik audio", "Operator")
 - `count` - Ilość osób
@@ -61,7 +71,9 @@ Definicja personelu potrzebnego do obsługi:
 - `notes` - Dodatkowe wymagania
 
 #### 5. `attraction_costs` - Kosztorys
+
 Szczegółowy rozkład kosztów:
+
 - `attraction_id` - ID atrakcji
 - `cost_type` - Typ kosztu (equipment, labor, transport, materials, other)
 - `description` - Opis pozycji
@@ -69,6 +81,7 @@ Szczegółowy rozkład kosztów:
 - `notes` - Notatki
 
 **Typ kosztu:**
+
 - `equipment` - Amortyzacja sprzętu
 - `labor` - Koszty pracy
 - `transport` - Transport
@@ -76,7 +89,9 @@ Szczegółowy rozkład kosztów:
 - `other` - Inne koszty
 
 #### 6. `attraction_checklist_templates` - Szablon checklisty
+
 Automatycznie generowane zadania przy dodaniu do eventu:
+
 - `attraction_id` - ID atrakcji
 - `title` - Tytuł zadania
 - `description` - Opis
@@ -87,12 +102,14 @@ Automatycznie generowane zadania przy dodaniu do eventu:
 ## Funkcje systemu
 
 ### 1. Zarządzanie katalogiem atrakcji
+
 - **Przeglądanie** - Lista wszystkich atrakcji z filtrowaniem po kategorii
 - **Szczegóły** - Pełny widok z zakładkami (Przegląd, Sprzęt, Personel, Kosztorys, Checklist)
 - **Edycja** - Możliwość edycji wszystkich parametrów
 - **Aktywacja/Dezaktywacja** - Kontrola dostępności w ofercie
 
 ### 2. Sprzęt i akcesoria
+
 - **Przypisanie sprzętu** - Wybór wymaganego sprzętu z magazynu
 - **Automatyczne akcesoria** - System automatycznie dodaje akcesoria do sprzętu
 - **Przykład workflow:**
@@ -106,18 +123,22 @@ Automatycznie generowane zadania przy dodaniu do eventu:
   ```
 
 ### 3. Rezerwacja zasobów
+
 - **Blokowanie sprzętu** - Automatyczne przy akceptacji oferty
 - **Kontrola dostępności** - System sprawdza czy sprzęt jest dostępny w danych datach
 - **Maksymalna sprzedaż** - Limit ilości atrakcji dziennie (max_daily_capacity)
 
 ### 4. Generowanie checklisty
+
 Po podpisaniu umowy (status: offer_accepted), system automatycznie:
+
 1. Tworzy checklistę dla eventu z szablonu atrakcji
 2. Dodaje wszystkie punkty z `attraction_checklist_templates`
 3. Dołącza listę sprzętu ze szczegółami i akcesoriami
 4. Przypisuje odpowiedzialność do pracowników
 
 **Przykład checklisty:**
+
 ```
 [ ] MONTAŻ
   [ ] Załaduj rzutnik Epson + akcesoria:
@@ -137,6 +158,7 @@ Po podpisaniu umowy (status: offer_accepted), system automatycznie:
 ```
 
 ### 5. Kosztorys i rentowność
+
 - **Suma kosztów** - Automatyczne podsumowanie wszystkich pozycji
 - **Marża** - Różnica między ceną bazową a kosztami
 - **Analiza** - Raport rentowności atrakcji
@@ -144,12 +166,14 @@ Po podpisaniu umowy (status: offer_accepted), system automatycznie:
 ## Integracja z ofertami
 
 ### Dodawanie atrakcji do oferty
+
 1. Wybierasz atrakcję z katalogu
 2. System sprawdza dostępność sprzętu i personelu
 3. Dodaje pozycję do oferty z ceną bazową
 4. Możesz edytować cenę końcową i rabat
 
 ### Akceptacja oferty
+
 1. Klient akceptuje ofertę
 2. System automatycznie:
    - Rezerwuje wszystkie wymagane sprzęty
@@ -158,6 +182,7 @@ Po podpisaniu umowy (status: offer_accepted), system automatycznie:
    - Tworzy zadania dla zespołu
 
 ### Odwołanie/Anulowanie
+
 - Automatyczne zwolnienie zarezerwowanych zasobów
 - Sprzęt wraca do puli dostępnej
 - Usunięcie checklisty
@@ -181,35 +206,39 @@ other            - Inne
 ## Bezpieczeństwo
 
 ### Row Level Security (RLS)
+
 Wszystkie tabele mają włączone RLS z politykami:
+
 - Authenticated users - mogą czytać i zarządzać danymi
 - Separacja danych między klientami (przygotowane na multi-tenant)
 
 ## API Endpoints (via Supabase)
 
 ### Pobieranie atrakcji
+
 ```typescript
-const { data } = await supabase
-  .from('attractions')
-  .select('*')
-  .eq('is_active', true);
+const { data } = await supabase.from('attractions').select('*').eq('is_active', true);
 ```
 
 ### Pobieranie z wymaganym sprzętem
+
 ```typescript
 const { data } = await supabase
   .from('attractions')
-  .select(`
+  .select(
+    `
     *,
     required_equipment:attraction_required_equipment(
       *,
       equipment:equipment_id(*)
     )
-  `)
+  `,
+  )
   .eq('id', attractionId);
 ```
 
 ### Generowanie checklisty
+
 ```typescript
 // 1. Pobierz szablon
 const { data: templates } = await supabase
@@ -218,38 +247,40 @@ const { data: templates } = await supabase
   .eq('attraction_id', attractionId);
 
 // 2. Utwórz checklistę dla eventu
-const { data } = await supabase
-  .from('event_checklists')
-  .insert(
-    templates.map(t => ({
-      event_id: eventId,
-      task: t.title,
-      description: t.description,
-      priority: t.is_required ? 'high' : 'medium',
-      completed: false
-    }))
-  );
+const { data } = await supabase.from('event_checklists').insert(
+  templates.map((t) => ({
+    event_id: eventId,
+    task: t.title,
+    description: t.description,
+    priority: t.is_required ? 'high' : 'medium',
+    completed: false,
+  })),
+);
 ```
 
 ## Najlepsze praktyki
 
 ### 1. Definiowanie atrakcji
+
 - Zawsze dodaj sprzęt wymagany
 - Określ maksymalną dzienna sprzedaż
 - Dodaj szczegółowy kosztorys
 - Utwórz kompletną checklistę
 
 ### 2. Akcesoria sprzętu
+
 - Zdefiniuj wszystkie niezbędne elementy
 - Oznacz co jest wymagane vs opcjonalne
 - Kategoryzuj (cables, power, control, etc.)
 
 ### 3. Personel
+
 - Określ wymagane umiejętności
 - Podaj liczbę osób
 - Dodaj specjalne wymagania w notatkach
 
 ### 4. Kosztorys
+
 - Rozbij na kategorie (sprzęt, praca, transport)
 - Aktualizuj regularnie
 - Uwzględnij amortyzację sprzętu
@@ -257,6 +288,7 @@ const { data } = await supabase
 ## Przykładowy workflow
 
 ### Konfiguracja atrakcji "DJ + Nagłośnienie"
+
 ```typescript
 1. Utworzenie atrakcji:
    - Nazwa: "DJ + Pełne nagłośnienie"
@@ -316,6 +348,7 @@ const { data } = await supabase
 ## Rozbudowa systemu
 
 ### Planowane funkcje:
+
 - [ ] Automatyczne kalkulacje marży
 - [ ] Sugestie cenowe na podstawie kosztów
 - [ ] Pakiety atrakcji (bundle)
@@ -327,6 +360,7 @@ const { data } = await supabase
 ## Pomoc techniczna
 
 W razie problemów:
+
 1. Sprawdź logi w konsoli przeglądarki
 2. Zweryfikuj polityki RLS w Supabase
 3. Upewnij się że migracja została zastosowana

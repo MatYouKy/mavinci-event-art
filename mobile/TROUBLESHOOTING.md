@@ -5,6 +5,7 @@
 ### ❌ Błąd: "Project is incompatible with this version of Expo Go"
 
 **Problem:**
+
 ```
 ERROR Project is incompatible with this version of Expo Go
 • The installed version of Expo Go is for SDK 54.0.0.
@@ -21,6 +22,7 @@ Aplikacja wymaga **Expo SDK 54**. Upewnij się że:
    - [iOS](https://apps.apple.com/app/expo-go/id982107779)
 
 2. **Projekt jest zaktualizowany do SDK 54**
+
    ```bash
    cd mobile
    cat package.json | grep "expo"
@@ -39,6 +41,7 @@ Aplikacja wymaga **Expo SDK 54**. Upewnij się że:
 ### ❌ Błąd: "The engine node is incompatible with this module"
 
 **Problem:**
+
 ```
 error metro-core@0.83.1: The engine "node" is incompatible with this module.
 Expected version ">=20.19.4". Got "20.18.1"
@@ -47,6 +50,7 @@ Expected version ">=20.19.4". Got "20.18.1"
 **Rozwiązanie:**
 
 **1. Najprostsze rozwiązanie - używaj npm zamiast yarn:**
+
 ```bash
 cd mobile
 
@@ -59,11 +63,13 @@ yarn install  # Wyrzuci błąd engine!
 ```
 
 **2. Dlaczego to działa?**
+
 - Plik `.npmrc` zawiera `engine-strict=false`
 - `package.json` ma `overrides` dla Metro 0.80.x (działa z Node 18+)
 - Expo SDK 54 oficjalnie wspiera Node 18+
 
 **3. Jeśli MUSISZ używać yarn:**
+
 ```bash
 # Zignoruj engine warnings
 yarn install --ignore-engines
@@ -73,6 +79,7 @@ echo '--ignore-engines true' > .yarnrc
 ```
 
 **4. Zaktualizuj Node (opcjonalnie):**
+
 ```bash
 # Sprawdź wersję
 node -v
@@ -93,12 +100,14 @@ nvm use 22
 ### ❌ Błąd: "EACCES: permission denied" w npm cache
 
 **Problem:**
+
 ```
 npm error EACCES: permission denied, rename '/Users/.../.npm/_cacache/tmp/...'
 npm error File exists: /Users/.../.npm/_cacache/content-v2/sha512/...
 ```
 
 **Przyczyna:**
+
 - Uszkodzony npm cache
 - Konflikt uprawnień w cache
 - Poprzednia instalacja przerwana
@@ -106,6 +115,7 @@ npm error File exists: /Users/.../.npm/_cacache/content-v2/sha512/...
 **Rozwiązanie:**
 
 **1. Wyczyść wszystko i zainstaluj od nowa (NAJPEWNIEJSZE):**
+
 ```bash
 # Usuń node_modules i cache:
 rm -rf node_modules
@@ -117,6 +127,7 @@ npm install
 ```
 
 **2. Wyczyść tylko npm cache (szybsze):**
+
 ```bash
 npm cache clean --force
 rm -rf node_modules
@@ -124,6 +135,7 @@ npm install
 ```
 
 **3. Jeśli nadal błąd - usuń cache ręcznie:**
+
 ```bash
 # macOS/Linux:
 rm -rf ~/.npm/_cacache
@@ -143,6 +155,7 @@ npm install
 ```
 
 **4. Sprawdź uprawnienia npm:**
+
 ```bash
 # macOS/Linux:
 ls -la ~/.npm
@@ -157,12 +170,14 @@ npm install
 ```
 
 **5. Użyj innego cache location (tymczasowo):**
+
 ```bash
 rm -rf node_modules
 npm install --cache /tmp/npm-cache
 ```
 
 **6. Ostateczność - reinstall npm:**
+
 ```bash
 # Z nvm (zalecane):
 nvm reinstall-packages current
@@ -176,6 +191,7 @@ npm install -g npm@latest
 ### ❌ Błąd: "Cannot find module 'metro/private/lib/TerminalReporter'"
 
 **Problem:**
+
 ```
 Error: Cannot find module 'metro/private/lib/TerminalReporter'
 Require stack:
@@ -183,6 +199,7 @@ Require stack:
 ```
 
 **Przyczyna:**
+
 - Poprzedni `npm install` zakończył się błędem EACCES
 - node_modules są **niepełne** - część pakietów nie zainstalowała się
 - Metro nie ma wszystkich zależności
@@ -203,6 +220,7 @@ npm start
 ```
 
 **WAŻNE:**
+
 - `npm install` **MUSI** zakończyć się sukcesem (bez błędów EACCES)
 - Jeśli nadal widzisz EACCES - najpierw napraw cache (patrz sekcja wyżej)
 - NIE uruchamiaj `npm start` dopóki `npm install` nie przejdzie bez błędów!
@@ -212,6 +230,7 @@ npm start
 ### ⚠️ Warningi "EBADENGINE" - IGNORUJ!
 
 **Widzisz:**
+
 ```
 npm warn EBADENGINE Unsupported engine {
 npm warn EBADENGINE   package: 'metro-babel-transformer@0.83.1',
@@ -234,6 +253,7 @@ npm warn EBADENGINE   current: { node: 'v20.18.1', npm: '10.8.2' }
 ### ❌ Błąd: "Unable to resolve asset"
 
 **Problem:**
+
 ```
 Unable to resolve asset "./assets/icon.png" from "icon" in your app.json
 ```
@@ -255,6 +275,7 @@ mkdir -p mobile/assets
 ```
 
 Następnie odkomentuj w `app.json`:
+
 ```json
 {
   "expo": {
@@ -312,6 +333,7 @@ Nie można się zalogować mimo poprawnych danych.
 **Rozwiązanie:**
 
 1. **Sprawdź `.env`**
+
    ```bash
    cat mobile/.env
    ```
@@ -341,6 +363,7 @@ Expo Go zamyka się zaraz po otwarciu.
 **Rozwiązanie:**
 
 1. **Wyczyść cache Expo**
+
    ```bash
    npm start -- --clear
    ```
@@ -364,12 +387,14 @@ Po `npm start` nie widać kodu QR.
 **Rozwiązanie:**
 
 1. **Sprawdź czy port jest wolny**
+
    ```bash
    lsof -i :8081
    # Jeśli coś używa portu, zabij proces
    ```
 
 2. **Użyj tunnel mode**
+
    ```bash
    npm start -- --tunnel
    ```
@@ -390,6 +415,7 @@ Aplikacja nie może połączyć się z Supabase.
    - Telefon i komputer muszą mieć internet
 
 2. **Sprawdź URL Supabase**
+
    ```bash
    # Powinna zwrócić status 200
    curl -I https://twoj-projekt.supabase.co
@@ -406,6 +432,7 @@ Aplikacja nie może połączyć się z Supabase.
 ### ❌ TypeScript errors
 
 **Problem:**
+
 ```
 Type error: Cannot find module '@/contexts/AuthContext'
 ```

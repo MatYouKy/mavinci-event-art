@@ -78,9 +78,7 @@ export default function ContractTemplateEditor({
   ];
 
   const handleLogoMove = (id: string, x: number, y: number) => {
-    setLogoElements((prev) =>
-      prev.map((logo) => (logo.id === id ? { ...logo, x, y } : logo))
-    );
+    setLogoElements((prev) => prev.map((logo) => (logo.id === id ? { ...logo, x, y } : logo)));
   };
 
   const handleLogoDelete = (id: string) => {
@@ -89,20 +87,16 @@ export default function ContractTemplateEditor({
   };
 
   const handleLogoResize = (id: string, height: number) => {
-    setLogoElements((prev) =>
-      prev.map((logo) => (logo.id === id ? { ...logo, height } : logo))
-    );
+    setLogoElements((prev) => prev.map((logo) => (logo.id === id ? { ...logo, height } : logo)));
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <h3 className="text-lg font-light text-[#e5e4e2] mb-4">
-          Edytor treści (format A4)
-        </h3>
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Edytor treści (format A4)</h3>
 
         <div
-          className="relative bg-white mx-auto shadow-2xl overflow-hidden"
+          className="relative mx-auto overflow-hidden bg-white shadow-2xl"
           style={{
             width: `${A4_WIDTH}px`,
             minHeight: `${A4_HEIGHT}px`,
@@ -117,7 +111,7 @@ export default function ContractTemplateEditor({
               bounds="parent"
             >
               <div
-                className={`absolute cursor-move group ${
+                className={`group absolute cursor-move ${
                   selectedLogo === logo.id ? 'ring-2 ring-blue-500' : ''
                 }`}
                 onClick={() => setSelectedLogo(logo.id)}
@@ -127,10 +121,10 @@ export default function ContractTemplateEditor({
                   src={logo.url}
                   alt="Logo"
                   style={{ height: `${logo.height}px` }}
-                  className="object-contain pointer-events-none"
+                  className="pointer-events-none object-contain"
                   draggable={false}
                 />
-                <div className="absolute -top-8 left-0 hidden group-hover:flex gap-1 bg-black/80 rounded px-2 py-1">
+                <div className="absolute -top-8 left-0 hidden gap-1 rounded bg-black/80 px-2 py-1 group-hover:flex">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -165,8 +159,8 @@ export default function ContractTemplateEditor({
       </div>
 
       {selectedLogo && (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4">
-          <h4 className="text-[#e5e4e2] mb-3">Ustawienia wybranego logo</h4>
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <h4 className="mb-3 text-[#e5e4e2]">Ustawienia wybranego logo</h4>
           <div className="space-y-2">
             <div>
               <label className="text-sm text-[#e5e4e2]/60">

@@ -1,13 +1,12 @@
-import { EquipmentUnit } from '@/store/slices/equipmentSlice';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  CreditCard as Edit, X, Plus, Trash2, Upload, Package, History, Copy,
-} from 'lucide-react';
+import { CreditCard as Edit, X, Plus, Trash2, Upload, Package, History, Copy } from 'lucide-react';
 import { uploadImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { UpdateCableQuantityModal } from '../modals/UpdateCableQuantityModal';
 import { UnitEventsModal } from '../modals/UnitEventsModal';
-import { useUpdateCableQuantityMutation } from '../../store/equipmentApi';
+import { IEquipmentUnit, IEquipmentUnitEvent } from '../../types/equipment.types';
+import { ThumbnailHoverPopper } from '@/components/UI/ThumbnailPopover';
+
 
 /** ---------- flag types ---------- */
 type Flags = {
@@ -34,49 +33,8 @@ type CategoryLite = {
   special_properties?: SpecialProperty[];
 };
 
-function getPropState(props: SpecialProperty[] | undefined, key: string): boolean | null {
-  const p = props?.find((x) => x.name === key);
-  return typeof p?.value === 'boolean' ? p.value : null;
-}
-
-/** Child overrides parent; fallback defaultValue if missing everywhere */
-function getCategoryFlagFromHierarchy(
-  currentCategory: CategoryLite | undefined,
-  allCategories: CategoryLite[] | undefined,
-  flag: string,
-  defaultValue = false
-): boolean {
-  if (!currentCategory) return defaultValue;
-
-  const childVal = getPropState(currentCategory.special_properties, flag);
-  if (childVal !== null) return childVal;
-
-  if (currentCategory.parent_id && allCategories?.length) {
-    const parent = allCategories.find((c) => c.id === currentCategory.parent_id);
-    const parentVal = getPropState(parent?.special_properties, flag);
-    if (parentVal !== null) return parentVal;
-  }
-  return defaultValue;
-}
-
-function resolveCategoryFlags(equipment: any): Flags {
-  const cur = equipment?.warehouse_categories as CategoryLite | undefined;
-  const all = (equipment?.all_warehouse_categories as CategoryLite[]) || [];
-  return {
-    simple_quantity: getCategoryFlagFromHierarchy(cur, all, 'simple_quantity', false),
-    requires_serial: getCategoryFlagFromHierarchy(cur, all, 'requires_serial', false),
-    hide_events: getCategoryFlagFromHierarchy(cur, all, 'hide_events', false),
-    disable_units: getCategoryFlagFromHierarchy(cur, all, 'disable_units', false),
-    read_only: getCategoryFlagFromHierarchy(cur, all, 'read_only', false),
-  };
-}
-
-/** Merge helpers (rightmost wins) */
 function mergeFlags(...parts: Array<Partial<Flags> | undefined>): Flags {
-  return parts.reduce<Flags>(
-    (acc, p) => ({ ...acc, ...(p || {}) }),
-    { ...DEFAULT_FLAGS }
-  );
+  return parts.reduce<Flags>((acc, p) => ({ ...acc, ...(p || {}) }), { ...DEFAULT_FLAGS });
 }
 
 /** Optional: keep ephemeral flags per equipment in localStorage */
@@ -86,7 +44,7 @@ function useEphemeralFlags(equipmentId?: string, initial?: Partial<Flags>) {
     if (!storageKey) return initial || {};
     try {
       const raw = localStorage.getItem(storageKey);
-      return raw ? { ...(JSON.parse(raw) as Partial<Flags>) } : (initial || {});
+      return raw ? { ...(JSON.parse(raw) as Partial<Flags>) } : initial || {};
     } catch {
       return initial || {};
     }
@@ -114,20 +72,18 @@ export function UnitsTab({
   customFlags,
 }: any & { customFlags?: Partial<Flags> }) {
   /** 1) flags from category (inherited) */
-  const categoryFlags = useMemo(() => resolveCategoryFlags(equipment), [
-    equipment?.warehouse_categories,
-    equipment?.all_warehouse_categories,
-  ]);
-
-  console.log(categoryFlags, 'categoryFlags');
+  // const categoryFlags = useMemo(() => resolveCategoryFlags(equipment), [
+  //   equipment?.warehouse_categories,
+  //   equipment?.all_warehouse_categories,
+  // ]);
 
   /** 2) ephemeral flags stored per-equipment in localStorage (optional UI toggles) */
   const [savedEphemeralFlags, setSavedEphemeralFlags] = useEphemeralFlags(equipment?.id);
 
   /** 3) final flags used by the tab (DEFAULT → category → ephemeral → props.custom) */
   const flags = useMemo(
-    () => mergeFlags(DEFAULT_FLAGS, categoryFlags, savedEphemeralFlags, customFlags),
-    [categoryFlags, savedEphemeralFlags, customFlags]
+    () => mergeFlags(DEFAULT_FLAGS, savedEphemeralFlags, customFlags),
+    [savedEphemeralFlags, customFlags],
   );
 
   // Quantity-only mode if cable OR final simple_quantity flag
@@ -136,7 +92,6 @@ export function UnitsTab({
   // Final edit permission for this tab (respect global canEdit + read_only flag)
   const canEditHere = Boolean(canEdit) && !flags.read_only;
 
-  const [updateCableQty, { isLoading: savingQty }] = useUpdateCableQuantityMutation();
 
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [qty, setQty] = useState<number>(equipment?.cable_stock_quantity || 0);
@@ -147,32 +102,32 @@ export function UnitsTab({
 
   const [showModal, setShowModal] = useState(false);
   const [newQuantity, setNewQuantity] = useState(
-    isSimpleStock ? (equipment?.cable_stock_quantity || 0) : units.length
+    isSimpleStock ? equipment?.cable_stock_quantity || 0 : units.length,
   );
 
-  const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
-  const [unitForm, setUnitForm] = useState<EquipmentUnit>({
-    id: '',
-    equipment_id: '',
-    location: '',
-    created_at: '',
-    updated_at: '',
+  const [editingUnit, setEditingUnit] = useState<IEquipmentUnit | null>(null);
+  const [unitForm, setUnitForm] = useState<IEquipmentUnit>({
     unit_serial_number: '',
-    status: 'available' as const,
+    status: 'available',
     location_id: '',
-    condition_notes: '',
     purchase_date: '',
     last_service_date: '',
-    estimated_repair_date: '',
     thumbnail_url: '',
+    // Provide default values for missing IEquipmentUnit fields to fix the type error.
+    events: [],
+    created_at: '',
+    updated_at: '',
+    total_quantity: 0,
+    available_quantity: 0,
   });
   const [saving, setSaving] = useState(false);
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
 
+
   const [showEventModal, setShowEventModal] = useState(false);
-  const [selectedUnit, setSelectedUnit] = useState<EquipmentUnit | null>(null);
-  const [unitEvents, setUnitEvents] = useState<EquipmentUnit[]>([]);
+  const [selectedUnit, setSelectedUnit] = useState<IEquipmentUnit | null>(null);
+  const [unitEvents, setUnitEvents] = useState<IEquipmentUnitEvent[]>([]);
   const [showEventsHistory, setShowEventsHistory] = useState(false);
 
   useEffect(() => {
@@ -200,43 +155,15 @@ export function UnitsTab({
     retired: 'Wycofany',
   };
 
-  const handleOpenModal = (unit?: EquipmentUnit) => {
+  const handleOpenModal = (unit?: IEquipmentUnit) => {
     if (!canEditHere || flags.disable_units) return;
 
     if (unit) {
       setEditingUnit(unit);
-      setUnitForm({
-        id: unit.id,
-        equipment_id: unit.equipment_id,
-        location: unit.location,
-        created_at: unit.created_at,
-        updated_at: unit.updated_at,
-        unit_serial_number: unit.unit_serial_number || '',
-        status: unit.status,
-        location_id: unit.location_id || '',
-        condition_notes: unit.condition_notes || '',
-        purchase_date: unit.purchase_date || '',
-        last_service_date: unit.last_service_date || '',
-        estimated_repair_date: unit.estimated_repair_date || '',
-        thumbnail_url: unit.thumbnail_url || '',
-      });
+
     } else {
       setEditingUnit(null);
-      setUnitForm({
-        id: '',
-        equipment_id: '',
-        location: '',
-        created_at: '',
-        updated_at: '',
-        unit_serial_number: '',
-        status: 'available',
-        location_id: '',
-        condition_notes: '',
-        purchase_date: '',
-        last_service_date: '',
-        estimated_repair_date: '',
-        thumbnail_url: '',
-      });
+
     }
     setShowModal(true);
   };
@@ -268,29 +195,23 @@ export function UnitsTab({
             unit_serial_number: unitForm.unit_serial_number || null,
             status: unitForm.status,
             location_id: unitForm.location_id || null,
-            condition_notes: unitForm.condition_notes || null,
             purchase_date: unitForm.purchase_date || null,
             last_service_date: unitForm.last_service_date || null,
-            estimated_repair_date: unitForm.estimated_repair_date || null,
             thumbnail_url: unitForm.thumbnail_url || null,
           })
-          .eq('id', editingUnit.id);
+          .eq('_id', editingUnit._id);
 
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('equipment_units')
-          .insert({
-            equipment_id: equipment.id,
-            unit_serial_number: unitForm.unit_serial_number || null,
-            status: unitForm.status,
-            location_id: unitForm.location_id || null,
-            condition_notes: unitForm.condition_notes || null,
-            purchase_date: unitForm.purchase_date || null,
-            last_service_date: unitForm.last_service_date || null,
-            estimated_repair_date: unitForm.estimated_repair_date || null,
-            thumbnail_url: unitForm.thumbnail_url || null,
-          });
+        const { error } = await supabase.from('equipment_units').insert({
+          equipment_id: equipment.id,
+          unit_serial_number: unitForm.unit_serial_number || null,
+          status: unitForm.status,
+          location_id: unitForm.location_id || null,
+          purchase_date: unitForm.purchase_date || null,
+          last_service_date: unitForm.last_service_date || null,
+          thumbnail_url: unitForm.thumbnail_url || null,
+        });
 
         if (error) throw error;
       }
@@ -319,7 +240,7 @@ export function UnitsTab({
     }
   };
 
-  const handleDuplicateUnit = async (unit: EquipmentUnit) => {
+  const handleDuplicateUnit = async (unit: IEquipmentUnit) => {
     if (!canEditHere || flags.disable_units) return;
     if (!confirm('Czy na pewno chcesz zduplikować tę jednostkę?')) return;
 
@@ -329,16 +250,12 @@ export function UnitsTab({
         : null;
 
       const { error } = await supabase.from('equipment_units').insert({
-        equipment_id: unit.equipment_id,
+
         unit_serial_number: newSerialNumber,
         status: unit.status,
         location_id: unit.location_id,
-        condition_notes: unit.condition_notes
-          ? `${unit.condition_notes} [DUPLIKAT]`
-          : 'Duplikat jednostki',
         purchase_date: unit.purchase_date,
         last_service_date: unit.last_service_date,
-        estimated_repair_date: unit.estimated_repair_date,
         thumbnail_url: unit.thumbnail_url,
       });
 
@@ -358,7 +275,7 @@ export function UnitsTab({
         `
         *,
         employees(name, surname)
-      `
+      `,
       )
       .eq('unit_id', unitId)
       .order('created_at', { ascending: false });
@@ -366,50 +283,42 @@ export function UnitsTab({
     if (data) setUnitEvents(data);
   };
 
-  const handleShowEvents = async (unit: EquipmentUnit) => {
+  const handleShowEvents = async (unit: IEquipmentUnit) => {
     setSelectedUnit(unit);
-    await fetchUnitEvents(unit.id);
+    await fetchUnitEvents(unit._id);
     setShowEventsHistory(true);
   };
 
   const groupedUnits = {
-    available: units.filter((u: EquipmentUnit) => u.status === 'available'),
-    damaged: units.filter((u: EquipmentUnit) => u.status === 'damaged'),
-    in_service: units.filter((u: EquipmentUnit) => u.status === 'in_service'),
-    retired: units.filter((u: EquipmentUnit) => u.status === 'retired'),
+    available: equipment?.quantity.units?.filter((u: IEquipmentUnit) => u.status === 'available'),
+    damaged: equipment?.quantity.units?.filter((u: IEquipmentUnit) => u.status === 'damaged'),
+    in_service: equipment?.quantity.units?.filter((u: IEquipmentUnit) => u.status === 'in_service'),
+    retired: equipment?.quantity.units?.filter((u: IEquipmentUnit) => u.status === 'retired'),
   };
 
-  const handleUpdateCableQuantity = async () => {
-    if (!canEditHere) return;
-    try {
-      await updateCableQty({ equipmentId: equipment.id, quantity: qty }).unwrap();
-      setShowQuantityModal(false);
-      showSnackbar?.('Ilość zaktualizowana pomyślnie', 'success');
-    } catch (err) {
-      console.error(err);
-      showSnackbar?.('Błąd podczas aktualizacji ilości', 'error');
-    }
-  };
+  const handleUpdateCableQuantity = async () => {}
+  //   if (!canEditHere) return;
+  //   try {
+  //     await updateCableQty({ _id: equipment._id, quantity: qty }).unwrap();
+  //     setShowQuantityModal(false);
+  //     showSnackbar?.('Ilość zaktualizowana pomyślnie', 'success');
+  //   } catch (err) {
+  //     console.error(err);
+  //     showSnackbar?.('Błąd podczas aktualizacji ilości', 'error');
+  //   }
+  // };
 
   /** ---- quick “Tab flags” toolbar (ephemeral toggles) ---- */
-  const FlagChip = ({
-    k,
-    label,
-  }: {
-    k: keyof Flags;
-    label: string;
-  }) => {
+  const FlagChip = ({ k, label }: { k: keyof Flags; label: string }) => {
     const enabled = !!flags[k];
     return (
       <button
         type="button"
-        onClick={() =>
-          setSavedEphemeralFlags((prev) => ({ ...(prev || {}), [k]: !enabled }))
-        }
-        className={`px-2 py-1 rounded text-xs border ${
+        onClick={() => setSavedEphemeralFlags((prev) => ({ ...(prev || {}), [k]: !enabled }))}
+        className={`rounded border px-2 py-1 text-xs ${
           enabled
-            ? 'bg-[#d3bb73] text-[#1c1f33] border-[#d3bb73]'
-            : 'bg-[#0f1119] text-[#e5e4e2]/70 border-[#d3bb73]/20'
+            ? 'border-[#d3bb73] bg-[#d3bb73] text-[#1c1f33]'
+            : 'border-[#d3bb73]/20 bg-[#0f1119] text-[#e5e4e2]/70'
         }`}
         title="Ephemeral (not saved to DB)"
       >
@@ -424,25 +333,23 @@ export function UnitsTab({
       <div className="space-y-6">
         {/* Ephemeral toolbar */}
         <div className="flex flex-wrap gap-2">
-          <FlagChip k="simple_quantity" label="simple_quantity" />
-          <FlagChip k="requires_serial" label="requires_serial" />
-          <FlagChip k="hide_events" label="hide_events" />
-          <FlagChip k="disable_units" label="disable_units" />
-          <FlagChip k="read_only" label="read_only" />
+          {customFlags?.map((flag: any) => (
+            <FlagChip k={flag.name} label={flag.name} />
+          ))}
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
           <div className="text-center">
-            <div className="text-6xl font-light text-[#d3bb73] mb-4">
+            <div className="mb-4 text-6xl font-light text-[#d3bb73]">
               {equipment?.cable_stock_quantity || 0}
             </div>
-            <div className="text-lg text-[#e5e4e2]/60 mb-4">Ilość na stanie (szt.)</div>
+            <div className="mb-4 text-lg text-[#e5e4e2]/60">Ilość na stanie (szt.)</div>
             {canEditHere && (
               <button
                 onClick={() => setShowQuantityModal(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors mx-auto"
+                className="mx-auto flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 Ustaw ilość
               </button>
             )}
@@ -454,7 +361,7 @@ export function UnitsTab({
           onChange={(v) => setQty(v)}
           onClose={() => setShowQuantityModal(false)}
           onSave={handleUpdateCableQuantity}
-          saving={savingQty}
+          saving={saving}
         />
       </div>
     );
@@ -464,111 +371,93 @@ export function UnitsTab({
     <div className="space-y-6">
       {/* Ephemeral toolbar */}
       <div className="flex flex-wrap gap-2">
-        <FlagChip k="simple_quantity" label="simple_quantity" />
-        <FlagChip k="requires_serial" label="requires_serial" />
-        <FlagChip k="hide_events" label="hide_events" />
-        <FlagChip k="disable_units" label="disable_units" />
-        <FlagChip k="read_only" label="read_only" />
+        {customFlags?.map((flag: any) => (
+          <FlagChip k={flag.name} label={flag.name} />
+        ))}
       </div>
 
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium text-[#e5e4e2]">Zarządzanie jednostkami</h3>
         {canEditHere && !flags.disable_units && (
           <button
             onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Dodaj jednostkę
           </button>
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-[#1c1f33] border border-green-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Dostępne</div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-green-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Dostępne</div>
           <div className="text-2xl font-light text-green-400">{groupedUnits.available.length}</div>
         </div>
-        <div className="bg-[#1c1f33] border border-red-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Uszkodzone</div>
+        <div className="rounded-xl border border-red-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Uszkodzone</div>
           <div className="text-2xl font-light text-red-400">{groupedUnits.damaged.length}</div>
         </div>
-        <div className="bg-[#1c1f33] border border-orange-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Serwis</div>
-          <div className="text-2xl font-light text-orange-400">{groupedUnits.in_service.length}</div>
+        <div className="rounded-xl border border-orange-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Serwis</div>
+          <div className="text-2xl font-light text-orange-400">
+            {groupedUnits.in_service.length}
+          </div>
         </div>
-        <div className="bg-[#1c1f33] border border-gray-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Wycofane</div>
+        <div className="rounded-xl border border-gray-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Wycofane</div>
           <div className="text-2xl font-light text-gray-400">{groupedUnits.retired.length}</div>
         </div>
       </div>
 
-      {units.length === 0 ? (
-        <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-          <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 mb-2">Brak jednostek</p>
+      {equipment?.quantity.units?.length === 0 ? (
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
+          <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="mb-2 text-[#e5e4e2]/60">Brak jednostek</p>
           <p className="text-sm text-[#e5e4e2]/40">Dodaj pierwszą jednostkę sprzętu</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {units.map((unit: EquipmentUnit) => {
+          {equipment?.quantity.units?.map((unit: IEquipmentUnit) => {
             const isUnavailable = unit.status === 'damaged' || unit.status === 'in_service';
             return (
               <div
-                key={unit.id}
-                className={`bg-[#1c1f33] border rounded-xl p-4 ${
+                key={unit._id}
+                className={`rounded-xl border bg-[#1c1f33] p-4 ${
                   isUnavailable ? 'border-red-500/20 opacity-60' : 'border-[#d3bb73]/10'
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  {unit.thumbnail_url && (
-                    <img
-                      src={unit.thumbnail_url}
-                      alt="Miniaturka"
-                      className="w-20 h-20 object-cover rounded-lg border border-[#d3bb73]/20"
-                    />
-                  )}
+                  {unit.thumbnail_url && <ThumbnailHoverPopper src={unit.thumbnail_url} />}
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <div className="mb-2 flex flex-wrap items-center gap-3">
                       {flags.requires_serial ? (
                         unit.unit_serial_number ? (
-                          <span className="font-mono text-[#e5e4e2] font-medium">
+                          <span className="font-mono font-medium text-[#e5e4e2]">
                             SN: {unit.unit_serial_number}
                           </span>
                         ) : (
-                          <span className="text-[#e5e4e2]/60 italic">Brak numeru seryjnego</span>
+                          <span className="italic text-[#e5e4e2]/60">Brak numeru seryjnego</span>
                         )
                       ) : unit.unit_serial_number ? (
-                        <span className="font-mono text-[#e5e4e2] font-medium">
+                        <span className="font-mono font-medium text-[#e5e4e2]">
                           SN: {unit.unit_serial_number}
                         </span>
                       ) : null}
 
-                      <span className={`px-2 py-1 rounded text-xs ${statusColors[unit.status]}`}>
+                      <span className={`rounded px-2 py-1 text-xs ${statusColors[unit.status]}`}>
                         {statusLabels[unit.status]}
                       </span>
 
                       {isUnavailable && (
-                        <span className="px-2 py-1 rounded text-xs bg-red-500/20 text-red-300 border border-red-500/30">
+                        <span className="rounded border border-red-500/30 bg-red-500/20 px-2 py-1 text-xs text-red-300">
                           Niedostępny
                         </span>
                       )}
 
-                      {unit.estimated_repair_date && isUnavailable && (
-                        <span className="text-xs text-[#e5e4e2]/60">
-                          Szac. dostępność:{' '}
-                          {new Date(unit.estimated_repair_date).toLocaleDateString('pl-PL')}
-                        </span>
-                      )}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      {unit.storage_locations && (
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Lokalizacja:</span>{' '}
-                          <span className="text-[#e5e4e2]">{unit.storage_locations.name}</span>
-                        </div>
-                      )}
+                    <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                       {unit.purchase_date && (
                         <div>
                           <span className="text-[#e5e4e2]/60">Zakup:</span>{' '}
@@ -587,21 +476,16 @@ export function UnitsTab({
                       )}
                     </div>
 
-                    {unit.condition_notes && (
-                      <div className="mt-2 text-sm text-[#e5e4e2]/60">
-                        <span className="font-medium">Notatki:</span> {unit.condition_notes}
-                      </div>
-                    )}
                   </div>
 
-                  <div className="flex gap-2 ml-4">
+                  <div className="ml-4 flex gap-2">
                     {!flags.hide_events && (
                       <button
                         onClick={() => handleShowEvents(unit)}
-                        className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                        className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-500/10"
                         title="Historia zdarzeń"
                       >
-                        <History className="w-4 h-4" />
+                        <History className="h-4 w-4" />
                       </button>
                     )}
 
@@ -609,22 +493,22 @@ export function UnitsTab({
                       <>
                         <button
                           onClick={() => handleDuplicateUnit(unit)}
-                          className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                          className="rounded-lg p-2 text-purple-400 transition-colors hover:bg-purple-500/10"
                           title="Duplikuj jednostkę"
                         >
-                          <Copy className="w-4 h-4" />
+                          <Copy className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleOpenModal(unit)}
-                          className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                          className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                         >
-                          <Edit className="w-4 h-4" />
+                          <Edit className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteUnit(unit.id)}
-                          className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                          onClick={() => handleDeleteUnit(unit._id)}
+                          className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </>
                     )}
@@ -639,30 +523,30 @@ export function UnitsTab({
       {showModal &&
         (() => {
           return (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-                <h3 className="text-xl font-light text-[#e5e4e2] mb-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+                <h3 className="mb-4 text-xl font-light text-[#e5e4e2]">
                   {isSimpleStock
                     ? 'Ustaw ilość na stanie'
                     : editingUnit
-                    ? 'Edytuj jednostkę'
-                    : 'Dodaj nową jednostkę'}
+                      ? 'Edytuj jednostkę'
+                      : 'Dodaj nową jednostkę'}
                 </h3>
 
                 {isSimpleStock ? (
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość sztuk</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość sztuk</label>
                       <input
                         type="number"
                         value={newQuantity}
                         onChange={(e) => setNewQuantity(parseInt(e.target.value) || 0)}
                         min="0"
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] text-lg focus:outline-none focus:border-[#d3bb73]/30"
+                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-3 text-lg text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                         placeholder="np. 50"
                         autoFocus
                       />
-                      <p className="text-sm text-[#e5e4e2]/40 mt-2">
+                      <p className="mt-2 text-sm text-[#e5e4e2]/40">
                         Wprowadź łączną ilość sztuk tego sprzętu
                       </p>
                     </div>
@@ -673,18 +557,21 @@ export function UnitsTab({
                           setShowModal(false);
                           setNewQuantity(equipment?.cable_stock_quantity || 0);
                         }}
-                        className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                        className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                       >
                         Anuluj
                       </button>
                       {canEditHere && (
                         <button
                           onClick={async () => {
-                            await updateCableQty({ equipmentId: equipment.id, quantity: newQuantity }).unwrap();
-                            setShowModal(false);
-                            showSnackbar?.('Ilość zaktualizowana pomyślnie', 'success');
+                            // await updateCableQty({
+                            //   id: equipment.id,
+                            //   quantity: newQuantity,
+                            // }).unwrap();
+                            // setShowModal(false);
+                            // showSnackbar?.('Ilość zaktualizowana pomyślnie', 'success');
                           }}
-                          className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                          className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                         >
                           Zapisz
                         </button>
@@ -695,27 +582,23 @@ export function UnitsTab({
                   <>
                     <div className="space-y-4">
                       {unitForm.thumbnail_url && (
-                        <div className="relative w-32 h-32 mx-auto">
-                          <img
-                            src={unitForm.thumbnail_url}
-                            alt="Miniaturka"
-                            className="w-full h-full object-cover rounded-lg border border-[#d3bb73]/20"
-                          />
+                        <div className="relative mx-auto h-32 w-32">
+                          {unitForm.thumbnail_url && <ThumbnailHoverPopper src={unitForm.thumbnail_url as string} />}
                           {canEditHere && !flags.disable_units && (
                             <button
                               onClick={() =>
                                 setUnitForm((prev) => ({ ...prev, thumbnail_url: '' }))
                               }
-                              className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                              className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
                             >
-                              <X className="w-4 h-4" />
+                              <X className="h-4 w-4" />
                             </button>
                           )}
                         </div>
                       )}
 
                       <div>
-                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                        <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                           Miniaturka (opcjonalne)
                         </label>
                         <input
@@ -729,23 +612,23 @@ export function UnitsTab({
                         {canEditHere && !flags.disable_units && (
                           <label
                             htmlFor="unit-thumbnail-upload"
-                            className={`flex items-center justify-center gap-2 w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] cursor-pointer hover:border-[#d3bb73]/30 transition-colors ${
+                            className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30 ${
                               uploadingThumb ? 'opacity-50' : ''
                             }`}
                           >
-                            <Upload className="w-4 h-4" />
+                            <Upload className="h-4 w-4" />
                             {uploadingThumb
                               ? 'Przesyłanie...'
                               : unitForm.thumbnail_url
-                              ? 'Zmień zdjęcie'
-                              : 'Dodaj zdjęcie'}
+                                ? 'Zmień zdjęcie'
+                                : 'Dodaj zdjęcie'}
                           </label>
                         )}
                       </div>
 
                       {flags.requires_serial && (
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                             Numer seryjny (opcjonalny)
                           </label>
                           <input
@@ -758,18 +641,18 @@ export function UnitsTab({
                               }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                             placeholder="np. SN123456"
                           />
-                          <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                          <p className="mt-1 text-xs text-[#e5e4e2]/40">
                             Pozostaw puste dla sprzętu bez numeru seryjnego
                           </p>
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Status</label>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status</label>
                           <select
                             value={unitForm.status}
                             onChange={(e) =>
@@ -779,7 +662,7 @@ export function UnitsTab({
                               }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           >
                             <option value="available">Dostępny</option>
                             <option value="damaged">Uszkodzony</option>
@@ -789,14 +672,16 @@ export function UnitsTab({
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja</label>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Lokalizacja
+                          </label>
                           <select
                             value={unitForm.location_id}
                             onChange={(e) =>
                               setUnitForm((prev) => ({ ...prev, location_id: e.target.value }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           >
                             <option value="">Brak lokalizacji</option>
                             {locations.map((loc) => (
@@ -808,7 +693,9 @@ export function UnitsTab({
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data zakupu</label>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Data zakupu
+                          </label>
                           <input
                             type="date"
                             value={unitForm.purchase_date}
@@ -816,12 +703,12 @@ export function UnitsTab({
                               setUnitForm((prev) => ({ ...prev, purchase_date: e.target.value }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                             Ostatni serwis
                           </label>
                           <input
@@ -834,21 +721,19 @@ export function UnitsTab({
                               }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                             Szacowana dostępność
                           </label>
                           <input
                             type="date"
-                            value={unitForm.estimated_repair_date}
                             onChange={(e) =>
                               setUnitForm((prev) => ({
                                 ...prev,
-                                estimated_repair_date: e.target.value,
                               }))
                             }
                             disabled={
@@ -856,38 +741,36 @@ export function UnitsTab({
                               flags.disable_units ||
                               (unitForm.status !== 'damaged' && unitForm.status !== 'in_service')
                             }
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           />
-                          <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                          <p className="mt-1 text-xs text-[#e5e4e2]/40">
                             Dla jednostek uszkodzonych lub w serwisie
                           </p>
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                             Notatki o stanie
                           </label>
                           <textarea
-                            value={unitForm.condition_notes}
                             onChange={(e) =>
                               setUnitForm((prev) => ({
                                 ...prev,
-                                condition_notes: e.target.value,
                               }))
                             }
                             rows={3}
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                             placeholder="Notatki o stanie technicznym, usterki, naprawy..."
                           />
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex gap-3 mt-6">
+                    <div className="mt-6 flex gap-3">
                       <button
                         onClick={() => setShowModal(false)}
-                        className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                        className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                       >
                         Anuluj
                       </button>
@@ -895,7 +778,7 @@ export function UnitsTab({
                         <button
                           onClick={handleSaveUnit}
                           disabled={saving}
-                          className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                          className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                         >
                           {saving ? 'Zapisywanie...' : 'Zapisz'}
                         </button>
@@ -918,7 +801,7 @@ export function UnitsTab({
             onUpdate();
           }}
           onUpdate={() => {
-            fetchUnitEvents(selectedUnit.id);
+            fetchUnitEvents(selectedUnit._id);
             onUpdate();
           }}
         />

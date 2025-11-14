@@ -35,20 +35,20 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (employeeError || !employee) {
-      return new Response(
-        JSON.stringify({ error: 'Employee not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Employee not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Sprawdź czy użytkownik auth już istnieje
     const { data: existingUser } = await supabase.auth.admin.listUsers();
-    const userExists = existingUser?.users?.find(u => u.email === email);
+    const userExists = existingUser?.users?.find((u) => u.email === email);
 
     if (userExists) {
       return new Response(
         JSON.stringify({ error: 'Auth user already exists', user_id: userExists.id }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
@@ -60,33 +60,32 @@ Deno.serve(async (req: Request) => {
       user_metadata: {
         name: employee.name,
         surname: employee.surname,
-        employee_id: employee_id
-      }
+        employee_id: employee_id,
+      },
     });
 
     if (authError) {
-      return new Response(
-        JSON.stringify({ error: authError.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: authError.message }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         auth_user_id: authUser.user?.id,
         employee_id: employee_id,
         email: email,
-        message: 'Auth user created successfully. Employee can now login and reset password.'
+        message: 'Auth user created successfully. Employee can now login and reset password.',
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
-
   } catch (error) {
     console.error('Error creating auth user:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

@@ -9,9 +9,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <Provider store={store}>
       <SnackbarProvider>
-        <DialogProvider>
-          {children}
-        </DialogProvider>
+        <DialogProvider>{children}</DialogProvider>
       </SnackbarProvider>
     </Provider>
   );

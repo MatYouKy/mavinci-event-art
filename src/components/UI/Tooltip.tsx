@@ -70,10 +70,7 @@ export default function Popover({
     const vw = document.documentElement.clientWidth;
     const vh = document.documentElement.clientHeight;
 
-    let top =
-      placement === 'top'
-        ? r.top - pr.height - offset
-        : r.bottom + offset;
+    let top = placement === 'top' ? r.top - pr.height - offset : r.bottom + offset;
 
     let left = r.left + r.width / 2 - pr.width / 2;
 
@@ -176,7 +173,7 @@ export default function Popover({
         }}
       >
         <span
-          className="block w-0 h-0"
+          className="block h-0 w-0"
           style={{
             borderLeft: '8px solid transparent',
             borderRight: '8px solid transparent',
@@ -205,12 +202,7 @@ export default function Popover({
 
   return (
     <>
-      <div
-        ref={triggerRef}
-        className="inline-flex align-middle"
-        {...triggerProps}
-        tabIndex={0}
-      >
+      <div ref={triggerRef} className="inline-flex align-middle" {...triggerProps} tabIndex={0}>
         {trigger}
       </div>
       {open && rootRef.current && createPortal(node, rootRef.current)}

@@ -1,1 +1,4 @@
-'use client'; export default function Page() { return <div>admin/login</div>; }
+'use client';
+export default function Page() {
+  return <div>admin/login</div>;
+}

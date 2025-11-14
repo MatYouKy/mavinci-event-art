@@ -3,6 +3,7 @@
 ## 🎯 Jak działa nowy system
 
 ### Główne założenia:
+
 1. **Alert per TYP** - każdy typ ubezpieczenia (OC, AC, NNW) ma swój osobny alert
 2. **21 dni przed końcem** - alert pojawia się dokładnie 21 dni przed wygaśnięciem
 3. **Automatyczne czyszczenie** - dodanie nowego ubezpieczenia usuwa alert starego
@@ -10,6 +11,7 @@
 ## 📋 Scenariusze działania
 
 ### Scenariusz 1: OC kończy się za 10 dni, dodajesz nowe OC
+
 ```
 PRZED:
 - OC wygasa: 2025-10-31
@@ -26,6 +28,7 @@ PO:
 ```
 
 ### Scenariusz 2: Masz OC i AC, oba wygasają
+
 ```
 PRZED:
 - OC wygasa: 2025-10-25 (za 4 dni)
@@ -44,6 +47,7 @@ EFEKT:
 ```
 
 ### Scenariusz 3: Dodajesz ubezpieczenie wstecz (historyczne)
+
 ```
 OBECNE:
 - OC aktywne: 2025-01-01 do 2025-12-31 (brak alertu, wygasa za 71 dni)
@@ -59,6 +63,7 @@ TRIGGER:
 ```
 
 ### Scenariusz 4: Usuwasz ubezpieczenie
+
 ```
 PRZED:
 - OC: 2025-01-01 do 2025-10-25 (wygasa za 4 dni)
@@ -74,18 +79,21 @@ USUWASZ OC:
 ## 🔧 Zastosowanie
 
 ### 1. Zastosuj główny trigger (FIX_ALERTS_AFTER_INSPECTION_V2.sql):
+
 ```sql
 -- W Supabase Dashboard → SQL Editor
 -- Skopiuj i uruchom całą zawartość pliku
 ```
 
 ### 2. Wyczyść stare alerty i przelicz (FIX_INSURANCE_ALERTS_V3_CLEAN.sql):
+
 ```sql
 -- To opcjonalne - jeśli masz już polisy w bazie
 -- Czyści wszystkie stare alerty i tworzy nowe poprawnie
 ```
 
 ### 3. Testowanie:
+
 ```sql
 -- Sprawdź czy są duplikaty (powinno być 0 wierszy)
 SELECT
@@ -111,12 +119,14 @@ days_until_expiry > 21  → BRAK ALERTU
 ## ✨ Co się zmieniło od V2?
 
 ### V2 (stary):
+
 - ❌ Jeden alert dla całego pojazdu
 - ❌ Szukał "najnowszej" polisy globalnie
 - ❌ 60 dni przed końcem
 - ❌ Nie działało przy dodawaniu nowego OC
 
 ### V3 (nowy):
+
 - ✅ Alert per TYP ubezpieczenia (OC osobno, AC osobno)
 - ✅ Szuka najnowszej polisy TEGO TYPU
 - ✅ 21 dni przed końcem (jak chciałeś)
@@ -126,6 +136,7 @@ days_until_expiry > 21  → BRAK ALERTU
 ## 🚀 Realtime
 
 Alerty automatycznie pojawiają się i znikają w czasie rzeczywistym dzięki:
+
 ```typescript
 // W kodzie frontendu już jest subscription:
 .on('postgres_changes', {

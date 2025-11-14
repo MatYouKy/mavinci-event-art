@@ -2,7 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, CreditCard as Edit, Save, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  FileText,
+  Plus,
+  Trash2,
+  DollarSign,
+  Calendar,
+  Building2,
+  CreditCard as Edit,
+  Save,
+  X,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Offer {
@@ -66,11 +77,13 @@ export default function OfferDetailPage() {
 
       const { data, error } = await supabase
         .from('offers')
-        .select(`
+        .select(
+          `
           *,
           client:clients!client_id(company_name, first_name, last_name),
           event:events!event_id(name, event_date, location)
-        `)
+        `,
+        )
         .eq('id', offerId)
         .maybeSingle();
 
@@ -177,7 +190,7 @@ export default function OfferDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -185,11 +198,11 @@ export default function OfferDetailPage() {
 
   if (!offer) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen space-y-4">
-        <div className="text-[#e5e4e2] text-lg">Oferta nie została znaleziona</div>
+      <div className="flex h-screen flex-col items-center justify-center space-y-4">
+        <div className="text-lg text-[#e5e4e2]">Oferta nie została znaleziona</div>
         <button
           onClick={() => router.push('/crm/offers')}
-          className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+          className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
         >
           Wróć do listy
         </button>
@@ -203,20 +216,18 @@ export default function OfferDetailPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/offers')}
-            className="p-2 text-[#e5e4e2] hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-light text-[#e5e4e2]">
-              {offer.offer_number || 'Oferta'}
-            </h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">Szczegóły oferty</p>
+            <h1 className="text-2xl font-light text-[#e5e4e2]">{offer.offer_number || 'Oferta'}</h1>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">Szczegóły oferty</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <span
-            className={`px-4 py-2 rounded-lg text-sm border ${
+            className={`rounded-lg border px-4 py-2 text-sm ${
               statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
             }`}
           >
@@ -225,17 +236,15 @@ export default function OfferDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Informacje podstawowe
-            </h2>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
-                <FileText className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                <FileText className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                 <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="mb-1 flex items-center justify-between">
                     <p className="text-sm text-[#e5e4e2]/60">Numer oferty</p>
                     {!isEditingNumber && (
                       <button
@@ -243,9 +252,9 @@ export default function OfferDetailPage() {
                           setEditedNumber(offer.offer_number || '');
                           setIsEditingNumber(true);
                         }}
-                        className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+                        className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="h-4 w-4" />
                       </button>
                     )}
                   </div>
@@ -255,20 +264,20 @@ export default function OfferDetailPage() {
                         type="text"
                         value={editedNumber}
                         onChange={(e) => setEditedNumber(e.target.value)}
-                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                         placeholder="np. OF/2025/10/001"
                       />
                       <div className="flex gap-2">
                         <button
                           onClick={handleSaveNumber}
-                          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+                          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                         >
-                          <Save className="w-3 h-3" />
+                          <Save className="h-3 w-3" />
                           Zapisz
                         </button>
                         <button
                           onClick={() => setIsEditingNumber(false)}
-                          className="px-3 py-1.5 rounded-lg text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+                          className="rounded-lg px-3 py-1.5 text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
                         >
                           Anuluj
                         </button>
@@ -281,7 +290,7 @@ export default function OfferDetailPage() {
               </div>
 
               <div className="flex items-start gap-3">
-                <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                 <div>
                   <p className="text-sm text-[#e5e4e2]/60">Klient</p>
                   <p className="text-[#e5e4e2]">{getClientName(offer)}</p>
@@ -290,11 +299,11 @@ export default function OfferDetailPage() {
 
               {offer.event && (
                 <div className="flex items-start gap-3">
-                  <Calendar className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                  <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                   <div>
                     <p className="text-sm text-[#e5e4e2]/60">Event</p>
                     <p className="text-[#e5e4e2]">{offer.event.name}</p>
-                    <p className="text-sm text-[#e5e4e2]/40 mt-1">
+                    <p className="mt-1 text-sm text-[#e5e4e2]/40">
                       {new Date(offer.event.event_date).toLocaleString('pl-PL', {
                         dateStyle: 'full',
                         timeStyle: 'short',
@@ -305,21 +314,18 @@ export default function OfferDetailPage() {
               )}
 
               <div className="flex items-start gap-3">
-                <DollarSign className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                <DollarSign className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                 <div>
                   <p className="text-sm text-[#e5e4e2]/60">Wartość oferty</p>
                   <p className="text-2xl font-light text-[#d3bb73]">
-                    {offer.total_amount
-                      ? offer.total_amount.toLocaleString('pl-PL')
-                      : '0'}{' '}
-                    zł
+                    {offer.total_amount ? offer.total_amount.toLocaleString('pl-PL') : '0'} zł
                   </p>
                 </div>
               </div>
 
               {offer.valid_until && (
                 <div className="flex items-start gap-3">
-                  <Calendar className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                  <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                   <div>
                     <p className="text-sm text-[#e5e4e2]/60">Ważna do</p>
                     <p className="text-[#e5e4e2]">
@@ -331,8 +337,8 @@ export default function OfferDetailPage() {
             </div>
           </div>
 
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-light text-[#e5e4e2]">Notatki</h2>
               {!isEditingNotes && (
                 <button
@@ -340,9 +346,9 @@ export default function OfferDetailPage() {
                     setEditedNotes(offer.notes || '');
                     setIsEditingNotes(true);
                   }}
-                  className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+                  className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
                 >
-                  <Edit className="w-4 h-4" />
+                  <Edit className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -351,43 +357,37 @@ export default function OfferDetailPage() {
                 <textarea
                   value={editedNotes}
                   onChange={(e) => setEditedNotes(e.target.value)}
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-3 text-[#e5e4e2] min-h-[120px] focus:outline-none focus:border-[#d3bb73]"
+                  className="min-h-[120px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Dodaj notatki..."
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={handleSaveNotes}
-                    className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                   >
-                    <Save className="w-4 h-4" />
+                    <Save className="h-4 w-4" />
                     Zapisz
                   </button>
                   <button
                     onClick={() => setIsEditingNotes(false)}
-                    className="px-4 py-2 rounded-lg text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+                    className="rounded-lg px-4 py-2 text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
                   >
                     Anuluj
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="text-[#e5e4e2]/80 leading-relaxed">
-                {offer.notes || 'Brak notatek'}
-              </p>
+              <p className="leading-relaxed text-[#e5e4e2]/80">{offer.notes || 'Brak notatek'}</p>
             )}
           </div>
 
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Pozycje oferty
-            </h2>
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-              <p className="text-[#e5e4e2]/60 mb-4">
-                Brak pozycji w ofercie
-              </p>
-              <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 mx-auto">
-                <Plus className="w-4 h-4" />
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Pozycje oferty</h2>
+            <div className="py-12 text-center">
+              <FileText className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
+              <p className="mb-4 text-[#e5e4e2]/60">Brak pozycji w ofercie</p>
+              <button className="mx-auto flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90">
+                <Plus className="h-4 w-4" />
                 Dodaj pozycję
               </button>
             </div>
@@ -395,18 +395,16 @@ export default function OfferDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Zmień status
-            </h2>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Zmień status</h2>
             <div className="space-y-2">
               {Object.entries(statusLabels).map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => handleStatusChange(key)}
-                  className={`w-full text-left px-4 py-2 rounded-lg text-sm transition-colors ${
+                  className={`w-full rounded-lg px-4 py-2 text-left text-sm transition-colors ${
                     offer.status === key
-                      ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30'
+                      ? 'border border-[#d3bb73]/30 bg-[#d3bb73]/20 text-[#d3bb73]'
                       : 'text-[#e5e4e2]/60 hover:bg-[#0a0d1a]'
                   }`}
                 >
@@ -416,10 +414,8 @@ export default function OfferDetailPage() {
             </div>
           </div>
 
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Informacje
-            </h2>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje</h2>
             <div className="space-y-3 text-sm">
               <div>
                 <p className="text-[#e5e4e2]/60">Utworzona</p>
@@ -430,10 +426,8 @@ export default function OfferDetailPage() {
             </div>
           </div>
 
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Akcje
-            </h2>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
             <div className="space-y-2">
               <button
                 onClick={() => {
@@ -442,16 +436,16 @@ export default function OfferDetailPage() {
                   }
                 }}
                 disabled={!offer.event_id}
-                className="w-full flex items-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-4 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Calendar className="w-4 h-4" />
+                <Calendar className="h-4 w-4" />
                 Przejdź do eventu
               </button>
               <button
                 onClick={() => alert('Funkcja generowania PDF w przygotowaniu')}
-                className="w-full flex items-center gap-2 bg-blue-500/10 text-blue-400 px-4 py-2 rounded-lg text-sm hover:bg-blue-500/20 transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20"
               >
-                <FileText className="w-4 h-4" />
+                <FileText className="h-4 w-4" />
                 Generuj PDF
               </button>
             </div>

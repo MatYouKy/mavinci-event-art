@@ -1,12 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, Event, Task } from '../lib/supabase';
@@ -56,19 +49,27 @@ export default function DashboardScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'todo': return colors.text.tertiary;
-      case 'in_progress': return colors.status.info;
-      case 'done': return colors.status.success;
-      default: return colors.text.secondary;
+      case 'todo':
+        return colors.text.tertiary;
+      case 'in_progress':
+        return colors.status.info;
+      case 'done':
+        return colors.status.success;
+      default:
+        return colors.text.secondary;
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'urgent': return colors.status.error;
-      case 'high': return colors.status.warning;
-      case 'medium': return colors.status.info;
-      default: return colors.text.tertiary;
+      case 'urgent':
+        return colors.status.error;
+      case 'high':
+        return colors.status.warning;
+      case 'medium':
+        return colors.status.info;
+      default:
+        return colors.text.tertiary;
     }
   };
 
@@ -152,7 +153,9 @@ export default function DashboardScreen() {
             <TouchableOpacity key={task.id} style={styles.card}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>{task.title}</Text>
-                <View style={[styles.priorityBadge, { borderColor: getPriorityColor(task.priority) }]}>
+                <View
+                  style={[styles.priorityBadge, { borderColor: getPriorityColor(task.priority) }]}
+                >
                   <Feather name="alert-circle" color={getPriorityColor(task.priority)} size={12} />
                 </View>
               </View>
@@ -162,7 +165,9 @@ export default function DashboardScreen() {
                 </Text>
               )}
               <View style={styles.cardFooter}>
-                <View style={[styles.statusDot, { backgroundColor: getStatusColor(task.status) }]} />
+                <View
+                  style={[styles.statusDot, { backgroundColor: getStatusColor(task.status) }]}
+                />
                 <Text style={styles.cardMeta}>{task.status}</Text>
                 {task.due_date && (
                   <>

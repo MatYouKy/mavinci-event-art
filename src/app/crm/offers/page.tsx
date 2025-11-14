@@ -2,7 +2,25 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload } from 'lucide-react';
+import {
+  Plus,
+  FileText,
+  Search,
+  DollarSign,
+  Calendar,
+  Building2,
+  User,
+  Package,
+  FileType,
+  Edit,
+  Trash2,
+  Eye,
+  Grid3x3,
+  List,
+  Settings,
+  X,
+  Upload,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -147,12 +165,14 @@ export default function OffersPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('offers')
-        .select(`
+        .select(
+          `
           *,
           client:clients!client_id(company_name, first_name, last_name),
           event:events!event_id(name, event_date),
           creator:employees!created_by(name, surname)
-        `)
+        `,
+        )
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -184,10 +204,12 @@ export default function OffersPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('offer_products')
-        .select(`
+        .select(
+          `
           *,
           category:offer_product_categories(id, name, icon)
-        `)
+        `,
+        )
         .order('display_order');
 
       if (error) throw error;
@@ -225,7 +247,7 @@ export default function OffersPage() {
         (offer) =>
           offer.offer_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           offer.client?.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          offer.event?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+          offer.event?.name?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -244,7 +266,7 @@ export default function OffersPage() {
         (product) =>
           product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
           product.description?.toLowerCase().includes(productSearch.toLowerCase()) ||
-          product.tags?.some(tag => tag.toLowerCase().includes(productSearch.toLowerCase()))
+          product.tags?.some((tag) => tag.toLowerCase().includes(productSearch.toLowerCase())),
       );
     }
 
@@ -265,7 +287,7 @@ export default function OffersPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -276,7 +298,7 @@ export default function OffersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-light text-[#e5e4e2]">Oferty i Katalog</h1>
-          <p className="text-sm text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Zarządzaj ofertami, katalogiem produktów i szablonami
           </p>
         </div>
@@ -286,16 +308,14 @@ export default function OffersPage() {
       <div className="flex space-x-1 border-b border-[#d3bb73]/10">
         <button
           onClick={() => handleTabChange('offers')}
-          className={`px-6 py-3 font-medium transition-colors relative ${
-            activeTab === 'offers'
-              ? 'text-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          className={`relative px-6 py-3 font-medium transition-colors ${
+            activeTab === 'offers' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
           }`}
         >
           <div className="flex items-center space-x-2">
-            <FileText className="w-5 h-5" />
+            <FileText className="h-5 w-5" />
             <span>Oferty</span>
-            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
+            <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
               {offers.length}
             </span>
           </div>
@@ -306,16 +326,14 @@ export default function OffersPage() {
 
         <button
           onClick={() => handleTabChange('catalog')}
-          className={`px-6 py-3 font-medium transition-colors relative ${
-            activeTab === 'catalog'
-              ? 'text-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          className={`relative px-6 py-3 font-medium transition-colors ${
+            activeTab === 'catalog' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
           }`}
         >
           <div className="flex items-center space-x-2">
-            <Package className="w-5 h-5" />
+            <Package className="h-5 w-5" />
             <span>Katalog produktów</span>
-            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
+            <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
               {products.length}
             </span>
           </div>
@@ -326,16 +344,14 @@ export default function OffersPage() {
 
         <button
           onClick={() => handleTabChange('templates')}
-          className={`px-6 py-3 font-medium transition-colors relative ${
-            activeTab === 'templates'
-              ? 'text-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          className={`relative px-6 py-3 font-medium transition-colors ${
+            activeTab === 'templates' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
           }`}
         >
           <div className="flex items-center space-x-2">
-            <FileType className="w-5 h-5" />
+            <FileType className="h-5 w-5" />
             <span>Szablony</span>
-            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
+            <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
               {templates.length}
             </span>
           </div>
@@ -410,22 +426,32 @@ export default function OffersPage() {
 }
 
 // Offers Tab Component
-function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilter, setStatusFilter, getClientName, router, onRefresh }: any) {
+function OffersTab({
+  offers,
+  allOffers,
+  searchQuery,
+  setSearchQuery,
+  statusFilter,
+  setStatusFilter,
+  getClientName,
+  router,
+  onRefresh,
+}: any) {
   return (
     <>
       {/* Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <FileText className="w-5 h-5 text-[#d3bb73]" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <FileText className="h-5 w-5 text-[#d3bb73]" />
             <span className="text-2xl font-light text-[#e5e4e2]">{allOffers.length}</span>
           </div>
           <p className="text-sm text-[#e5e4e2]/60">Wszystkie</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <FileText className="w-5 h-5 text-gray-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <FileText className="h-5 w-5 text-gray-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
               {allOffers.filter((o: any) => o.status === 'draft').length}
             </span>
@@ -433,9 +459,9 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
           <p className="text-sm text-[#e5e4e2]/60">Szkice</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <FileText className="w-5 h-5 text-blue-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <FileText className="h-5 w-5 text-blue-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
               {allOffers.filter((o: any) => o.status === 'sent').length}
             </span>
@@ -443,9 +469,9 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
           <p className="text-sm text-[#e5e4e2]/60">Wysłane</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <FileText className="w-5 h-5 text-green-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <FileText className="h-5 w-5 text-green-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
               {allOffers.filter((o: any) => o.status === 'accepted').length}
             </span>
@@ -453,9 +479,9 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
           <p className="text-sm text-[#e5e4e2]/60">Zaakceptowane</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-yellow-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-yellow-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
               {allOffers
                 .reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0)
@@ -468,23 +494,23 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
       </div>
 
       {/* Filters and List */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Szukaj oferty..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
 
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           >
             <option value="all">Wszystkie statusy</option>
             <option value="draft">Szkice</option>
@@ -495,16 +521,16 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
 
           <button
             onClick={onRefresh}
-            className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
+            className="flex items-center space-x-2 whitespace-nowrap rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             <span>Nowa oferta</span>
           </button>
         </div>
 
         {offers.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <div className="py-12 text-center">
+            <FileText className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
             <p className="text-[#e5e4e2]/60">
               {searchQuery || statusFilter !== 'all'
                 ? 'Brak ofert spełniających kryteria'
@@ -516,21 +542,21 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
             {offers.map((offer: any) => (
               <div
                 key={offer.id}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+                className="cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-6 transition-all hover:border-[#d3bb73]/30"
                 onClick={() => router.push(`/crm/offers/${offer.id}`)}
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-[#d3bb73]" />
+                  <div className="flex flex-1 items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/20">
+                      <FileText className="h-6 w-6 text-[#d3bb73]" />
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="mb-2 flex items-center gap-3">
                         <h3 className="text-lg font-medium text-[#e5e4e2]">
                           {offer.offer_number || 'Brak numeru'}
                         </h3>
                         <span
-                          className={`px-2 py-1 rounded text-xs border ${
+                          className={`rounded border px-2 py-1 text-xs ${
                             statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
                           }`}
                         >
@@ -540,12 +566,12 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
                       <div className="space-y-1">
                         {offer.event && (
                           <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
-                            <Calendar className="w-4 h-4" />
+                            <Calendar className="h-4 w-4" />
                             <span>{offer.event.name}</span>
                           </div>
                         )}
                         <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                          <Building2 className="w-4 h-4" />
+                          <Building2 className="h-4 w-4" />
                           <span>{getClientName(offer)}</span>
                         </div>
                       </div>
@@ -553,7 +579,7 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
                   </div>
 
                   <div className="text-right">
-                    <div className="text-2xl font-light text-[#d3bb73] mb-1">
+                    <div className="mb-1 text-2xl font-light text-[#d3bb73]">
                       {offer.total_amount ? offer.total_amount.toLocaleString('pl-PL') : '0'} zł
                     </div>
                     {offer.valid_until && (
@@ -573,26 +599,37 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
 }
 
 // Catalog Tab Component
-function CatalogTab({ products, categories, productSearch, setProductSearch, categoryFilter, setCategoryFilter, viewMode, setViewMode, router, onRefresh }: any) {
+function CatalogTab({
+  products,
+  categories,
+  productSearch,
+  setProductSearch,
+  categoryFilter,
+  setCategoryFilter,
+  viewMode,
+  setViewMode,
+  router,
+  onRefresh,
+}: any) {
   return (
     <>
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
             <input
               type="text"
               value={productSearch}
               onChange={(e) => setProductSearch(e.target.value)}
               placeholder="Szukaj produktu..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
 
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           >
             <option value="all">Wszystkie kategorie</option>
             {categories.map((cat: any) => (
@@ -602,70 +639,74 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
             ))}
           </select>
 
-          <div className="flex items-center gap-2 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-1">
+          <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-1">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 rounded transition-colors ${
-                viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              className={`rounded p-2 transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
               }`}
             >
-              <Grid3x3 className="w-4 h-4" />
+              <Grid3x3 className="h-4 w-4" />
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`p-2 rounded transition-colors ${
-                viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              className={`rounded p-2 transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
               }`}
             >
-              <List className="w-4 h-4" />
+              <List className="h-4 w-4" />
             </button>
           </div>
 
           <button
             onClick={() => router.push('/crm/offers/categories')}
-            className="px-4 py-2 bg-[#0a0d1a] text-[#e5e4e2] border border-[#d3bb73]/20 rounded-lg hover:bg-[#1c1f33] transition-colors flex items-center space-x-2 whitespace-nowrap"
+            className="flex items-center space-x-2 whitespace-nowrap rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
             title="Zarządzaj kategoriami"
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="h-4 w-4" />
             <span>Kategorie</span>
           </button>
 
           <button
             onClick={onRefresh}
-            className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
+            className="flex items-center space-x-2 whitespace-nowrap rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             <span>Nowy produkt</span>
           </button>
         </div>
 
         {products.length === 0 ? (
-          <div className="text-center py-12">
-            <Package className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <div className="py-12 text-center">
+            <Package className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
             <p className="text-[#e5e4e2]/60">Brak produktów w katalogu</p>
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {products.map((product: any) => (
               <div
                 key={product.id}
                 onClick={() => router.push(`/crm/offers/products/${product.id}`)}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-5 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+                className="cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-5 transition-all hover:border-[#d3bb73]/30"
               >
-                <div className="flex items-start justify-between mb-3">
+                <div className="mb-3 flex items-start justify-between">
                   <div>
-                    <h3 className="font-semibold text-[#e5e4e2] mb-1">{product.name}</h3>
+                    <h3 className="mb-1 font-semibold text-[#e5e4e2]">{product.name}</h3>
                     <p className="text-xs text-[#d3bb73]">{product.category?.name}</p>
                   </div>
                   {!product.is_active && (
-                    <span className="px-2 py-1 text-xs bg-gray-500/20 text-gray-400 rounded">
+                    <span className="rounded bg-gray-500/20 px-2 py-1 text-xs text-gray-400">
                       Nieaktywny
                     </span>
                   )}
                 </div>
 
                 {product.description && (
-                  <p className="text-sm text-[#e5e4e2]/60 mb-4 line-clamp-2">
+                  <p className="mb-4 line-clamp-2 text-sm text-[#e5e4e2]/60">
                     {product.description}
                   </p>
                 )}
@@ -673,7 +714,7 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-[#e5e4e2]/60">Cena:</span>
-                    <span className="text-[#d3bb73] font-medium">
+                    <span className="font-medium text-[#d3bb73]">
                       {product.base_price.toLocaleString('pl-PL')} zł/{product.unit}
                     </span>
                   </div>
@@ -685,16 +726,23 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#e5e4e2]/60">Marża:</span>
-                    <span className="text-green-400 font-medium">
-                      {((product.base_price - product.cost_price) / product.base_price * 100).toFixed(0)}%
+                    <span className="font-medium text-green-400">
+                      {(
+                        ((product.base_price - product.cost_price) / product.base_price) *
+                        100
+                      ).toFixed(0)}
+                      %
                     </span>
                   </div>
                 </div>
 
                 {product.tags && product.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-4">
+                  <div className="mt-4 flex flex-wrap gap-1">
                     {product.tags.slice(0, 3).map((tag: string, idx: number) => (
-                      <span key={idx} className="text-xs px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                      <span
+                        key={idx}
+                        className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]"
+                      >
                         {tag}
                       </span>
                     ))}
@@ -709,18 +757,18 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
               <div
                 key={product.id}
                 onClick={() => router.push(`/crm/offers/products/${product.id}`)}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+                className="cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-all hover:border-[#d3bb73]/30"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-10 h-10 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
-                      <Package className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="flex flex-1 items-center gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#d3bb73]/20">
+                      <Package className="h-5 w-5 text-[#d3bb73]" />
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-1">
+                      <div className="mb-1 flex items-center gap-3">
                         <h3 className="font-medium text-[#e5e4e2]">{product.name}</h3>
                         {!product.is_active && (
-                          <span className="px-2 py-0.5 text-xs bg-gray-500/20 text-gray-400 rounded">
+                          <span className="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
                             Nieaktywny
                           </span>
                         )}
@@ -735,21 +783,25 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
                   </div>
                   <div className="flex items-center gap-6 text-sm">
                     <div className="text-right">
-                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Cena</div>
-                      <div className="text-[#d3bb73] font-medium">
+                      <div className="mb-1 text-xs text-[#e5e4e2]/60">Cena</div>
+                      <div className="font-medium text-[#d3bb73]">
                         {product.base_price.toLocaleString('pl-PL')} zł
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Koszt</div>
+                      <div className="mb-1 text-xs text-[#e5e4e2]/60">Koszt</div>
                       <div className="text-[#e5e4e2]/80">
                         {product.cost_price.toLocaleString('pl-PL')} zł
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-[#e5e4e2]/60 mb-1">Marża</div>
-                      <div className="text-green-400 font-medium">
-                        {((product.base_price - product.cost_price) / product.base_price * 100).toFixed(0)}%
+                      <div className="mb-1 text-xs text-[#e5e4e2]/60">Marża</div>
+                      <div className="font-medium text-green-400">
+                        {(
+                          ((product.base_price - product.cost_price) / product.base_price) *
+                          100
+                        ).toFixed(0)}
+                        %
                       </div>
                     </div>
                   </div>
@@ -767,21 +819,21 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
 function TemplatesTab({ templates, onRefresh, onNew, onEdit }: any) {
   return (
     <>
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex justify-between items-center mb-6">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-6 flex items-center justify-between">
           <h2 className="text-lg font-medium text-[#e5e4e2]">Szablony ofert PDF</h2>
           <button
             onClick={onNew}
-            className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2"
+            className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             <span>Nowy szablon</span>
           </button>
         </div>
 
         {templates.length === 0 ? (
-          <div className="text-center py-12">
-            <FileType className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <div className="py-12 text-center">
+            <FileType className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
             <p className="text-[#e5e4e2]/60">Brak szablonów ofert</p>
           </div>
         ) : (
@@ -789,19 +841,19 @@ function TemplatesTab({ templates, onRefresh, onNew, onEdit }: any) {
             {templates.map((template: any) => (
               <div
                 key={template.id}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-5 hover:border-[#d3bb73]/30 transition-all"
+                className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-5 transition-all hover:border-[#d3bb73]/30"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="mb-2 flex items-center gap-3">
                       <h3 className="font-semibold text-[#e5e4e2]">{template.name}</h3>
                       {template.is_default && (
-                        <span className="px-2 py-1 text-xs bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                        <span className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
                           Domyślny
                         </span>
                       )}
                       {!template.is_active && (
-                        <span className="px-2 py-1 text-xs bg-gray-500/20 text-gray-400 rounded">
+                        <span className="rounded bg-gray-500/20 px-2 py-1 text-xs text-gray-400">
                           Nieaktywny
                         </span>
                       )}
@@ -813,9 +865,9 @@ function TemplatesTab({ templates, onRefresh, onNew, onEdit }: any) {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => onEdit(template)}
-                      className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+                      className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
                     >
-                      <Edit className="w-4 h-4 text-[#e5e4e2]/60" />
+                      <Edit className="h-4 w-4 text-[#e5e4e2]/60" />
                     </button>
                   </div>
                 </div>
@@ -828,23 +880,30 @@ function TemplatesTab({ templates, onRefresh, onNew, onEdit }: any) {
   );
 }
 
-
-function TemplateEditorModal({ template, onClose, onSuccess }: { template: Template | null; onClose: () => void; onSuccess: () => void }) {
+function TemplateEditorModal({
+  template,
+  onClose,
+  onSuccess,
+}: {
+  template: Template | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [formData, setFormData] = useState({
-    name: template?.name || "",
-    description: template?.description || "",
-    logo_url: "",
-    show_logo: template ? (template as any).show_logo ?? true : true,
-    show_company_details: template ? (template as any).show_company_details ?? true : true,
-    show_client_details: template ? (template as any).show_client_details ?? true : true,
-    show_terms: template ? (template as any).show_terms ?? true : true,
-    show_payment_info: template ? (template as any).show_payment_info ?? true : true,
-    terms_text: (template as any)?.terms_text || "",
-    payment_info_text: (template as any)?.payment_info_text || "",
-    footer_text: (template as any)?.footer_text || "",
+    name: template?.name || '',
+    description: template?.description || '',
+    logo_url: '',
+    show_logo: template ? ((template as any).show_logo ?? true) : true,
+    show_company_details: template ? ((template as any).show_company_details ?? true) : true,
+    show_client_details: template ? ((template as any).show_client_details ?? true) : true,
+    show_terms: template ? ((template as any).show_terms ?? true) : true,
+    show_payment_info: template ? ((template as any).show_payment_info ?? true) : true,
+    terms_text: (template as any)?.terms_text || '',
+    payment_info_text: (template as any)?.payment_info_text || '',
+    footer_text: (template as any)?.footer_text || '',
     is_default: template?.is_default || false,
     is_active: template?.is_active ?? true,
   });
@@ -854,80 +913,129 @@ function TemplateEditorModal({ template, onClose, onSuccess }: { template: Templ
     if (!file) return;
     setUploadingLogo(true);
     try {
-      const fileExt = file.name.split(".").pop();
+      const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
       const filePath = `offer-logos/${fileName}`;
-      const { error: uploadError } = await supabase.storage.from("site-images").upload(filePath, file);
+      const { error: uploadError } = await supabase.storage
+        .from('site-images')
+        .upload(filePath, file);
       if (uploadError) throw uploadError;
-      const { data: { publicUrl } } = supabase.storage.from("site-images").getPublicUrl(filePath);
-      setFormData(prev => ({ ...prev, logo_url: publicUrl }));
-      showSnackbar("Logo przesłane", "success");
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('site-images').getPublicUrl(filePath);
+      setFormData((prev) => ({ ...prev, logo_url: publicUrl }));
+      showSnackbar('Logo przesłane', 'success');
     } catch (error) {
-      showSnackbar("Błąd przesyłania logo", "error");
+      showSnackbar('Błąd przesyłania logo', 'error');
     } finally {
       setUploadingLogo(false);
     }
   };
 
   const handleSubmit = async () => {
-    if (!formData.name) { showSnackbar("Podaj nazwę szablonu", "error"); return; }
+    if (!formData.name) {
+      showSnackbar('Podaj nazwę szablonu', 'error');
+      return;
+    }
     setLoading(true);
     try {
       if (template) {
-        const { error } = await supabase.from("offer_templates").update(formData).eq("id", template.id);
+        const { error } = await supabase
+          .from('offer_templates')
+          .update(formData)
+          .eq('id', template.id);
         if (error) throw error;
-        showSnackbar("Szablon zaktualizowany", "success");
+        showSnackbar('Szablon zaktualizowany', 'success');
       } else {
-        const { error } = await supabase.from("offer_templates").insert(formData);
+        const { error } = await supabase.from('offer_templates').insert(formData);
         if (error) throw error;
-        showSnackbar("Szablon utworzony", "success");
+        showSnackbar('Szablon utworzony', 'success');
       }
       onSuccess();
     } catch (error) {
-      showSnackbar("Błąd zapisu szablonu", "error");
+      showSnackbar('Błąd zapisu szablonu', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
-          <h3 className="text-xl font-light text-[#e5e4e2]">{template ? "Edytuj szablon" : "Nowy szablon"}</h3>
-          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h3 className="text-xl font-light text-[#e5e4e2]">
+            {template ? 'Edytuj szablon' : 'Nowy szablon'}
+          </h3>
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <div className="p-6 space-y-6">
+        <div className="space-y-6 p-6">
           <div>
-            <h4 className="text-sm font-medium text-[#e5e4e2] mb-4">Podstawowe informacje</h4>
+            <h4 className="mb-4 text-sm font-medium text-[#e5e4e2]">Podstawowe informacje</h4>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa szablonu *</label>
-                <input type="text" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]" />
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa szablonu *</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
-                <textarea value={formData.description} onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))} rows={2} className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]" />
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, description: e.target.value }))
+                  }
+                  rows={2}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                />
               </div>
             </div>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-[#e5e4e2] mb-4">Logo firmy</h4>
+            <h4 className="mb-4 text-sm font-medium text-[#e5e4e2]">Logo firmy</h4>
             <div className="space-y-4">
-              <label className="flex items-center gap-2 px-4 py-2 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg cursor-pointer hover:bg-[#0a0d1a]/70 transition-colors w-fit">
-                <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
-                <Upload className="w-5 h-5 text-[#d3bb73]" />
-                <span className="text-[#e5e4e2]">{uploadingLogo ? "Przesyłanie..." : "Prześlij logo"}</span>
+              <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 transition-colors hover:bg-[#0a0d1a]/70">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                  disabled={uploadingLogo}
+                />
+                <Upload className="h-5 w-5 text-[#d3bb73]" />
+                <span className="text-[#e5e4e2]">
+                  {uploadingLogo ? 'Przesyłanie...' : 'Prześlij logo'}
+                </span>
               </label>
-              {formData.logo_url && <img src={formData.logo_url} alt="Logo" className="w-32 h-32 object-contain" />}
+              {formData.logo_url && (
+                <img src={formData.logo_url} alt="Logo" className="h-32 w-32 object-contain" />
+              )}
             </div>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-[#e5e4e2] mb-4">Widoczne elementy</h4>
+            <h4 className="mb-4 text-sm font-medium text-[#e5e4e2]">Widoczne elementy</h4>
             <div className="space-y-2">
-              {[{ key: "show_logo", label: "Pokaż logo" }, { key: "show_company_details", label: "Pokaż dane firmy" }, { key: "show_client_details", label: "Pokaż dane klienta" }, { key: "show_terms", label: "Pokaż warunki oferty" }, { key: "show_payment_info", label: "Pokaż informacje o płatności" }].map((item) => (
-                <label key={item.key} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formData[item.key as keyof typeof formData] as boolean} onChange={(e) => setFormData(prev => ({ ...prev, [item.key]: e.target.checked }))} className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]" />
+              {[
+                { key: 'show_logo', label: 'Pokaż logo' },
+                { key: 'show_company_details', label: 'Pokaż dane firmy' },
+                { key: 'show_client_details', label: 'Pokaż dane klienta' },
+                { key: 'show_terms', label: 'Pokaż warunki oferty' },
+                { key: 'show_payment_info', label: 'Pokaż informacje o płatności' },
+              ].map((item) => (
+                <label key={item.key} className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData[item.key as keyof typeof formData] as boolean}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, [item.key]: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+                  />
                   <span className="text-sm text-[#e5e4e2]">{item.label}</span>
                 </label>
               ))}
@@ -935,32 +1043,73 @@ function TemplateEditorModal({ template, onClose, onSuccess }: { template: Templ
           </div>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Warunki oferty</label>
-              <textarea value={formData.terms_text} onChange={(e) => setFormData(prev => ({ ...prev, terms_text: e.target.value }))} rows={4} placeholder="WARUNKI OFERTY..." className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] font-mono text-sm" />
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Warunki oferty</label>
+              <textarea
+                value={formData.terms_text}
+                onChange={(e) => setFormData((prev) => ({ ...prev, terms_text: e.target.value }))}
+                rows={4}
+                placeholder="WARUNKI OFERTY..."
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 font-mono text-sm text-[#e5e4e2]"
+              />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Informacje o płatności</label>
-              <textarea value={formData.payment_info_text} onChange={(e) => setFormData(prev => ({ ...prev, payment_info_text: e.target.value }))} rows={4} placeholder="DANE DO PRZELEWU..." className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] font-mono text-sm" />
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Informacje o płatności</label>
+              <textarea
+                value={formData.payment_info_text}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, payment_info_text: e.target.value }))
+                }
+                rows={4}
+                placeholder="DANE DO PRZELEWU..."
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 font-mono text-sm text-[#e5e4e2]"
+              />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stopka</label>
-              <textarea value={formData.footer_text} onChange={(e) => setFormData(prev => ({ ...prev, footer_text: e.target.value }))} rows={2} placeholder="Dziękujemy za zainteresowanie..." className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]" />
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stopka</label>
+              <textarea
+                value={formData.footer_text}
+                onChange={(e) => setFormData((prev) => ({ ...prev, footer_text: e.target.value }))}
+                rows={2}
+                placeholder="Dziękujemy za zainteresowanie..."
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+              />
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={formData.is_default} onChange={(e) => setFormData(prev => ({ ...prev, is_default: e.target.checked }))} className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]" />
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.is_default}
+                onChange={(e) => setFormData((prev) => ({ ...prev, is_default: e.target.checked }))}
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+              />
               <span className="text-sm text-[#e5e4e2]">Szablon domyślny</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={formData.is_active} onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))} className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]" />
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.is_active}
+                onChange={(e) => setFormData((prev) => ({ ...prev, is_active: e.target.checked }))}
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+              />
               <span className="text-sm text-[#e5e4e2]">Aktywny</span>
             </label>
           </div>
         </div>
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end sticky bottom-0 bg-[#1c1f33]">
-          <button onClick={onClose} className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20">Anuluj</button>
-          <button onClick={handleSubmit} disabled={loading} className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50">{loading ? "Zapisuję..." : "Zapisz"}</button>
+        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] hover:bg-[#e5e4e2]/20"
+          >
+            Anuluj
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            {loading ? 'Zapisuję...' : 'Zapisz'}
+          </button>
         </div>
       </div>
     </div>

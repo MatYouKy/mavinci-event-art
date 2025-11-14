@@ -50,16 +50,16 @@ export function PageHeroImage({
 
     // Mapowanie dla stron usług według rzeczywistych nazw tabel w bazie
     const serviceMapping: Record<string, string> = {
-      'konferencje': 'konferencje_page_images',
-      'streaming': 'streaming_page_images',
-      'integracje': 'integracje_page_images',
-      'kasyno': 'kasyno_page_images',
+      konferencje: 'konferencje_page_images',
+      streaming: 'streaming_page_images',
+      integracje: 'integracje_page_images',
+      kasyno: 'kasyno_page_images',
       'symulatory-vr': 'symulatory-vr_page_images',
-      'naglosnienie': 'naglosnienie_page_images',
+      naglosnienie: 'naglosnienie_page_images',
       'quizy-teleturnieje': 'quizy-teleturnieje_page_images',
       'technika-sceniczna': 'technika-sceniczna_page_images',
       'wieczory-tematyczne': 'wieczory-tematyczne_page_images',
-      'zespol': 'team_page_images',
+      zespol: 'team_page_images',
     };
 
     return serviceMapping[cleanSection] || `${cleanSection}_page_images`;
@@ -135,7 +135,12 @@ export function PageHeroImage({
     setSaving(true);
     try {
       const pageTableName = getTableName(section);
-      console.log('[PageHeroImage] handleSavePosition - section:', section, 'tableName:', pageTableName);
+      console.log(
+        '[PageHeroImage] handleSavePosition - section:',
+        section,
+        'tableName:',
+        pageTableName,
+      );
 
       // Sprawdź czy używamy nowego systemu
       try {
@@ -150,34 +155,32 @@ export function PageHeroImage({
         if (existing || section.includes('zespol') || section.includes('team')) {
           // Użyj nowej tabeli
           if (!existing) {
-            const { error } = await supabase
-              .from(pageTableName)
-              .insert({
-                section: 'hero',
-                name: `Hero ${section}`,
-                description: `Hero image for ${section} page`,
-                image_url: defaultImage,
-                alt_text: section,
-                opacity: editState.opacity,
-                image_metadata: {
-                  desktop: {
-                    position: {
-                      posX: editState.posX,
-                      posY: editState.posY,
-                      scale: editState.scale,
-                    },
-                    objectFit: 'cover',
+            const { error } = await supabase.from(pageTableName).insert({
+              section: 'hero',
+              name: `Hero ${section}`,
+              description: `Hero image for ${section} page`,
+              image_url: defaultImage,
+              alt_text: section,
+              opacity: editState.opacity,
+              image_metadata: {
+                desktop: {
+                  position: {
+                    posX: editState.posX,
+                    posY: editState.posY,
+                    scale: editState.scale,
                   },
-                  mobile: {
-                    position: {
-                      posX: editState.posX,
-                      posY: editState.posY,
-                      scale: editState.scale,
-                    },
-                    objectFit: 'cover',
-                  },
+                  objectFit: 'cover',
                 },
-              });
+                mobile: {
+                  position: {
+                    posX: editState.posX,
+                    posY: editState.posY,
+                    scale: editState.scale,
+                  },
+                  objectFit: 'cover',
+                },
+              },
+            });
             if (error) throw error;
           } else {
             console.log('[PageHeroImage] Updating position for existing record');
@@ -304,7 +307,14 @@ export function PageHeroImage({
     setSaving(true);
     try {
       const pageTableName = getTableName(section);
-      console.log('[PageHeroImage] handleSaveOpacity - section:', section, 'tableName:', pageTableName, 'opacity:', editState.opacity);
+      console.log(
+        '[PageHeroImage] handleSaveOpacity - section:',
+        section,
+        'tableName:',
+        pageTableName,
+        'opacity:',
+        editState.opacity,
+      );
 
       // Sprawdź czy używamy nowego systemu
       try {
@@ -319,26 +329,24 @@ export function PageHeroImage({
         if (existing || section.includes('zespol') || section.includes('team')) {
           // Użyj nowej tabeli
           if (!existing) {
-            const { error } = await supabase
-              .from(pageTableName)
-              .insert({
-                section: 'hero',
-                name: `Hero ${section}`,
-                description: `Hero image for ${section} page`,
-                image_url: defaultImage,
-                alt_text: section,
-                opacity: editState.opacity,
-                image_metadata: {
-                  desktop: {
-                    position: { posX: 0, posY: 0, scale: 1 },
-                    objectFit: 'cover',
-                  },
-                  mobile: {
-                    position: { posX: 0, posY: 0, scale: 1 },
-                    objectFit: 'cover',
-                  },
+            const { error } = await supabase.from(pageTableName).insert({
+              section: 'hero',
+              name: `Hero ${section}`,
+              description: `Hero image for ${section} page`,
+              image_url: defaultImage,
+              alt_text: section,
+              opacity: editState.opacity,
+              image_metadata: {
+                desktop: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
                 },
-              });
+                mobile: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
+                },
+              },
+            });
             if (error) throw error;
           } else {
             console.log('[PageHeroImage] Updating opacity for existing record');
@@ -442,26 +450,24 @@ export function PageHeroImage({
               .eq('section', 'hero');
             if (error) throw error;
           } else {
-            const { error } = await supabase
-              .from(pageTableName)
-              .insert({
-                section: 'hero',
-                name: `Hero ${section}`,
-                description: `Hero image for ${section} page`,
-                image_url: url,
-                alt_text: section,
-                opacity: defaultOpacity,
-                image_metadata: {
-                  desktop: {
-                    position: { posX: 0, posY: 0, scale: 1 },
-                    objectFit: 'cover',
-                  },
-                  mobile: {
-                    position: { posX: 0, posY: 0, scale: 1 },
-                    objectFit: 'cover',
-                  },
+            const { error } = await supabase.from(pageTableName).insert({
+              section: 'hero',
+              name: `Hero ${section}`,
+              description: `Hero image for ${section} page`,
+              image_url: url,
+              alt_text: section,
+              opacity: defaultOpacity,
+              image_metadata: {
+                desktop: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
                 },
-              });
+                mobile: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
+                },
+              },
+            });
             if (error) throw error;
           }
 
@@ -538,7 +544,7 @@ export function PageHeroImage({
     setIsEditingPosition(false);
     setPositionSubMenu(false);
     if (siteImage) {
-      setEditState(s => ({
+      setEditState((s) => ({
         ...s,
         posX: siteImage.image_metadata?.desktop?.position?.posX || 0,
         posY: siteImage.image_metadata?.desktop?.position?.posY || 0,
@@ -551,7 +557,7 @@ export function PageHeroImage({
     setIsEditingOpacity(false);
     setOpacitySubMenu(false);
     if (siteImage) {
-      setEditState(s => ({
+      setEditState((s) => ({
         ...s,
         opacity: siteImage.opacity || defaultOpacity,
       }));
@@ -559,7 +565,7 @@ export function PageHeroImage({
   };
 
   const handleResetPosition = async () => {
-    setEditState(s => ({ ...s, posX: 0, posY: 0, scale: 1 }));
+    setEditState((s) => ({ ...s, posX: 0, posY: 0, scale: 1 }));
 
     if (siteImage) {
       setSaving(true);
@@ -621,14 +627,18 @@ export function PageHeroImage({
   ];
 
   const imageUrl = siteImage?.desktop_url || defaultImage;
-  const displayOpacity = isEditingOpacity ? editState.opacity : (siteImage?.opacity || defaultOpacity);
-  const displayPosition = isEditingPosition ? editState : (siteImage?.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 });
+  const displayOpacity = isEditingOpacity
+    ? editState.opacity
+    : siteImage?.opacity || defaultOpacity;
+  const displayPosition = isEditingPosition
+    ? editState
+    : siteImage?.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
 
   return (
     <div className={`relative ${className}`}>
       <div className="absolute inset-0 overflow-hidden">
         <div
-          className="w-full h-full"
+          className="h-full w-full"
           style={{
             position: 'relative',
             opacity: displayOpacity,
@@ -674,20 +684,20 @@ export function PageHeroImage({
                 <button
                   onClick={positionSubMenu ? handleSavePosition : handleSaveOpacity}
                   disabled={saving}
-                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? (
-                    <div className="w-5 h-5 border-2 border-[#1c1f33] border-t-transparent rounded-full animate-spin" />
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1c1f33] border-t-transparent" />
                   ) : (
-                    <Save className="w-5 h-5" />
+                    <Save className="h-5 w-5" />
                   )}
                 </button>
                 <button
                   onClick={positionSubMenu ? handleCancelPosition : handleCancelOpacity}
                   disabled={saving}
-                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-[#800020]/20 p-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             }
@@ -703,21 +713,21 @@ export function PageHeroImage({
               min={-100}
               max={100}
               step={0.1}
-              onChange={(_, v) => setEditState(s => ({ ...s, posX: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, posX: v as number }))}
             />
             <SliderY
               value={editState.posY}
               min={-100}
               max={100}
               step={0.1}
-              onChange={(_, v) => setEditState(s => ({ ...s, posY: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, posY: v as number }))}
             />
             <SliderScale
               value={editState.scale}
               min={0.1}
               max={3}
               step={0.01}
-              onChange={(_, v) => setEditState(s => ({ ...s, scale: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, scale: v as number }))}
             />
           </div>
         </div>
@@ -731,7 +741,7 @@ export function PageHeroImage({
               min={0}
               max={1}
               step={0.01}
-              onChange={(_, v) => setEditState(s => ({ ...s, opacity: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, opacity: v as number }))}
               style={{ bottom: 70, top: 'auto' }}
             />
           </div>
@@ -739,8 +749,8 @@ export function PageHeroImage({
       )}
 
       {uploading && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="w-16 h-16 border-4 border-[#d3bb73] border-t-transparent rounded-full animate-spin" />
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="h-16 w-16 animate-spin rounded-full border-4 border-[#d3bb73] border-t-transparent" />
         </div>
       )}
 

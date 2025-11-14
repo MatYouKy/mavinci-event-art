@@ -47,23 +47,15 @@ export default function ResponsiveImage({
   return (
     <div className={`relative ${className}`}>
       {!imageLoaded && !imageError && (
-        <div className="absolute inset-0 bg-[#1c1f33]/20 animate-pulse" />
+        <div className="absolute inset-0 animate-pulse bg-[#1c1f33]/20" />
       )}
 
       <picture>
         {/* Mobile version - shown on screens < 768px */}
-        <source
-          media="(max-width: 767px)"
-          srcSet={mobileUrl}
-          type="image/webp"
-        />
+        <source media="(max-width: 767px)" srcSet={mobileUrl} type="image/webp" />
 
         {/* Desktop version - shown on screens >= 768px */}
-        <source
-          media="(min-width: 768px)"
-          srcSet={desktop}
-          type="image/webp"
-        />
+        <source media="(min-width: 768px)" srcSet={desktop} type="image/webp" />
 
         {/* Fallback img tag */}
         <img
@@ -72,7 +64,7 @@ export default function ResponsiveImage({
           loading={priority ? 'eager' : loading}
           onLoad={handleLoad}
           onError={handleError}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
+          className={`h-full w-full object-cover transition-opacity duration-300 ${
             imageLoaded ? 'opacity-100' : 'opacity-0'
           }`}
         />
@@ -80,7 +72,7 @@ export default function ResponsiveImage({
 
       {imageError && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#1c1f33]/80">
-          <span className="text-[#e5e4e2]/60 text-sm">Nie udało się załadować obrazu</span>
+          <span className="text-sm text-[#e5e4e2]/60">Nie udało się załadować obrazu</span>
         </div>
       )}
     </div>
@@ -91,7 +83,7 @@ export default function ResponsiveImage({
  * Helper function to check if URLs object has responsive versions
  */
 export function hasResponsiveVersions(
-  url: string | { desktop: string; mobile: string; thumbnail: string }
+  url: string | { desktop: string; mobile: string; thumbnail: string },
 ): url is { desktop: string; mobile: string; thumbnail: string } {
   return typeof url === 'object' && 'desktop' in url && 'mobile' in url;
 }
@@ -101,7 +93,7 @@ export function hasResponsiveVersions(
  */
 export function getImageUrl(
   url: string | { desktop: string; mobile: string; thumbnail: string },
-  size: 'desktop' | 'mobile' | 'thumbnail' = 'desktop'
+  size: 'desktop' | 'mobile' | 'thumbnail' = 'desktop',
 ): string {
   if (typeof url === 'string') {
     return url;

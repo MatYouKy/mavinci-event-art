@@ -2,7 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Upload, Image as ImageIcon, Save, Trash2, Eye, EyeOff, Plus, CreditCard as Edit2, X } from 'lucide-react';
+import {
+  Upload,
+  Image as ImageIcon,
+  Save,
+  Trash2,
+  Eye,
+  EyeOff,
+  Plus,
+  CreditCard as Edit2,
+  X,
+} from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
 
 interface SiteImage {
@@ -60,11 +70,7 @@ export default function AdminSiteImagesPanel() {
   const fetchImages = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('site_images')
-        .select('*')
-        .order('section')
-        .order('order_index');
+      let query = supabase.from('site_images').select('*').order('section').order('order_index');
 
       if (selectedSection !== 'all') {
         query = query.eq('section', selectedSection);
@@ -116,19 +122,17 @@ export default function AdminSiteImagesPanel() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('site_images')
-        .insert({
-          section: editingImage.section,
-          name: editingImage.name,
-          description: editingImage.description,
-          desktop_url: editingImage.desktop_url,
-          mobile_url: editingImage.mobile_url,
-          alt_text: editingImage.alt_text,
-          position: editingImage.position,
-          order_index: editingImage.order_index,
-          is_active: editingImage.is_active,
-        });
+      const { error } = await supabase.from('site_images').insert({
+        section: editingImage.section,
+        name: editingImage.name,
+        description: editingImage.description,
+        desktop_url: editingImage.desktop_url,
+        mobile_url: editingImage.mobile_url,
+        alt_text: editingImage.alt_text,
+        position: editingImage.position,
+        order_index: editingImage.order_index,
+        is_active: editingImage.is_active,
+      });
 
       if (error) throw error;
 
@@ -147,10 +151,7 @@ export default function AdminSiteImagesPanel() {
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('site_images')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('site_images').delete().eq('id', id);
 
       if (error) throw error;
       await fetchImages();
@@ -201,27 +202,31 @@ export default function AdminSiteImagesPanel() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] text-[#e5e4e2]">
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="flex items-center justify-between mb-8">
+      <div className="mx-auto max-w-7xl p-6">
+        <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-light text-[#e5e4e2] mb-2">Zarządzanie Obrazami Strony</h1>
-            <p className="text-[#e5e4e2]/60">Edytuj obrazy wyświetlane na stronie głównej i podstronach</p>
+            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Zarządzanie Obrazami Strony</h1>
+            <p className="text-[#e5e4e2]/60">
+              Edytuj obrazy wyświetlane na stronie głównej i podstronach
+            </p>
           </div>
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             Dodaj Obraz
           </button>
         </div>
 
         <div className="mb-6">
-          <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Filtruj po sekcji:</label>
+          <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+            Filtruj po sekcji:
+          </label>
           <select
             value={selectedSection}
             onChange={(e) => setSelectedSection(e.target.value)}
-            className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full max-w-md focus:outline-none focus:border-[#d3bb73]"
+            className="w-full max-w-md rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           >
             {sections.map((section) => (
               <option key={section.value} value={section.value}>
@@ -236,22 +241,22 @@ export default function AdminSiteImagesPanel() {
             <div className="text-[#d3bb73]">Ładowanie...</div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredImages.map((image) => (
               <div
                 key={image.id}
-                className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg overflow-hidden"
+                className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]"
               >
                 <div className="relative aspect-video bg-[#0f1119]">
                   <img
                     src={image.desktop_url}
                     alt={image.alt_text}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                   />
-                  <div className="absolute top-2 right-2 flex gap-2">
+                  <div className="absolute right-2 top-2 flex gap-2">
                     <button
                       onClick={() => toggleActive(image)}
-                      className={`p-2 rounded-lg backdrop-blur-sm ${
+                      className={`rounded-lg p-2 backdrop-blur-sm ${
                         image.is_active
                           ? 'bg-green-500/80 hover:bg-green-500'
                           : 'bg-gray-500/80 hover:bg-gray-500'
@@ -259,44 +264,46 @@ export default function AdminSiteImagesPanel() {
                       title={image.is_active ? 'Aktywny' : 'Nieaktywny'}
                     >
                       {image.is_active ? (
-                        <Eye className="w-4 h-4 text-white" />
+                        <Eye className="h-4 w-4 text-white" />
                       ) : (
-                        <EyeOff className="w-4 h-4 text-white" />
+                        <EyeOff className="h-4 w-4 text-white" />
                       )}
                     </button>
                   </div>
                 </div>
                 <div className="p-4">
-                  <div className="flex items-start justify-between mb-2">
+                  <div className="mb-2 flex items-start justify-between">
                     <div>
                       <h3 className="text-lg font-medium text-[#e5e4e2]">{image.name}</h3>
-                      <p className="text-xs text-[#d3bb73]">{sections.find(s => s.value === image.section)?.label || image.section}</p>
+                      <p className="text-xs text-[#d3bb73]">
+                        {sections.find((s) => s.value === image.section)?.label || image.section}
+                      </p>
                     </div>
                   </div>
                   {image.description && (
-                    <p className="text-sm text-[#e5e4e2]/60 mb-3">{image.description}</p>
+                    <p className="mb-3 text-sm text-[#e5e4e2]/60">{image.description}</p>
                   )}
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs bg-[#d3bb73]/20 text-[#d3bb73] px-2 py-1 rounded">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
                       Desktop: {image.desktop_url ? 'Tak' : 'Brak'}
                     </span>
-                    <span className="text-xs bg-[#d3bb73]/20 text-[#d3bb73] px-2 py-1 rounded">
+                    <span className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
                       Mobile: {image.mobile_url ? 'Tak' : 'Brak'}
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => openEditModal(image)}
-                      className="flex-1 flex items-center justify-center gap-2 bg-[#d3bb73]/20 text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/20 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="h-4 w-4" />
                       Edytuj
                     </button>
                     <button
                       onClick={() => handleDelete(image.id)}
-                      className="flex items-center justify-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-500/30 transition-colors"
+                      className="flex items-center justify-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-red-400 transition-colors hover:bg-red-500/30"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -306,16 +313,14 @@ export default function AdminSiteImagesPanel() {
         )}
 
         {!loading && filteredImages.length === 0 && (
-          <div className="text-center py-12 text-[#e5e4e2]/60">
-            Brak obrazów w tej sekcji
-          </div>
+          <div className="py-12 text-center text-[#e5e4e2]/60">Brak obrazów w tej sekcji</div>
         )}
       </div>
 
       {isModalOpen && editingImage && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-6 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-[#1c1f33]">
+            <div className="sticky top-0 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
               <h2 className="text-2xl font-light text-[#e5e4e2]">
                 {editingImage.id ? 'Edytuj Obraz' : 'Dodaj Nowy Obraz'}
               </h2>
@@ -326,17 +331,17 @@ export default function AdminSiteImagesPanel() {
                 }}
                 className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
               >
-                <X className="w-6 h-6" />
+                <X className="h-6 w-6" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="space-y-4 p-6">
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Sekcja</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Sekcja</label>
                 <select
                   value={editingImage.section}
                   onChange={(e) => setEditingImage({ ...editingImage, section: e.target.value })}
-                  className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 >
                   {sections.slice(1).map((section) => (
                     <option key={section.value} value={section.value}>
@@ -347,66 +352,74 @@ export default function AdminSiteImagesPanel() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Nazwa</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Nazwa</label>
                 <input
                   type="text"
                   value={editingImage.name}
                   onChange={(e) => setEditingImage({ ...editingImage, name: e.target.value })}
-                  className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Np. Hero Background"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Opis</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Opis</label>
                 <textarea
                   value={editingImage.description}
-                  onChange={(e) => setEditingImage({ ...editingImage, description: e.target.value })}
-                  className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73] min-h-20"
+                  onChange={(e) =>
+                    setEditingImage({ ...editingImage, description: e.target.value })
+                  }
+                  className="min-h-20 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Opis użycia obrazu"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">URL Desktop</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">URL Desktop</label>
                 <input
                   type="text"
                   value={editingImage.desktop_url}
-                  onChange={(e) => setEditingImage({ ...editingImage, desktop_url: e.target.value })}
-                  className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
+                  onChange={(e) =>
+                    setEditingImage({ ...editingImage, desktop_url: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="https://images.pexels.com/..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">URL Mobile (opcjonalnie)</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  URL Mobile (opcjonalnie)
+                </label>
                 <input
                   type="text"
                   value={editingImage.mobile_url || ''}
                   onChange={(e) => setEditingImage({ ...editingImage, mobile_url: e.target.value })}
-                  className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="https://images.pexels.com/..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Tekst alternatywny (ALT)</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Tekst alternatywny (ALT)
+                </label>
                 <input
                   type="text"
                   value={editingImage.alt_text}
                   onChange={(e) => setEditingImage({ ...editingImage, alt_text: e.target.value })}
-                  className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Opis obrazu dla dostępności"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Pozycja</label>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Pozycja</label>
                   <select
                     value={editingImage.position}
                     onChange={(e) => setEditingImage({ ...editingImage, position: e.target.value })}
-                    className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   >
                     <option value="center">Center</option>
                     <option value="top">Top</option>
@@ -418,12 +431,14 @@ export default function AdminSiteImagesPanel() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Kolejność</label>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Kolejność</label>
                   <input
                     type="number"
                     value={editingImage.order_index}
-                    onChange={(e) => setEditingImage({ ...editingImage, order_index: parseInt(e.target.value) })}
-                    className="bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg px-4 py-2 w-full focus:outline-none focus:border-[#d3bb73]"
+                    onChange={(e) =>
+                      setEditingImage({ ...editingImage, order_index: parseInt(e.target.value) })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
               </div>
@@ -433,8 +448,10 @@ export default function AdminSiteImagesPanel() {
                   type="checkbox"
                   id="is_active"
                   checked={editingImage.is_active}
-                  onChange={(e) => setEditingImage({ ...editingImage, is_active: e.target.checked })}
-                  className="w-4 h-4 text-[#d3bb73] bg-[#0f1119] border-[#d3bb73]/20 rounded focus:ring-[#d3bb73]"
+                  onChange={(e) =>
+                    setEditingImage({ ...editingImage, is_active: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]"
                 />
                 <label htmlFor="is_active" className="text-sm text-[#e5e4e2]">
                   Aktywny (widoczny na stronie)
@@ -443,12 +460,14 @@ export default function AdminSiteImagesPanel() {
 
               {editingImage.desktop_url && (
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Podgląd Desktop</label>
-                  <div className="aspect-video bg-[#0f1119] rounded-lg overflow-hidden">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Podgląd Desktop
+                  </label>
+                  <div className="aspect-video overflow-hidden rounded-lg bg-[#0f1119]">
                     <img
                       src={editingImage.desktop_url}
                       alt="Preview"
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
                   </div>
                 </div>
@@ -456,38 +475,40 @@ export default function AdminSiteImagesPanel() {
 
               {editingImage.mobile_url && (
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Podgląd Mobile</label>
-                  <div className="aspect-video bg-[#0f1119] rounded-lg overflow-hidden max-w-xs">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Podgląd Mobile
+                  </label>
+                  <div className="aspect-video max-w-xs overflow-hidden rounded-lg bg-[#0f1119]">
                     <img
                       src={editingImage.mobile_url}
                       alt="Preview Mobile"
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="sticky bottom-0 bg-[#1c1f33] border-t border-[#d3bb73]/20 p-6 flex gap-3">
+            <div className="sticky bottom-0 flex gap-3 border-t border-[#d3bb73]/20 bg-[#1c1f33] p-6">
               <button
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingImage(null);
                 }}
-                className="flex-1 px-6 py-3 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-6 py-3 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
               >
                 Anuluj
               </button>
               <button
                 onClick={editingImage.id ? handleSave : handleCreate}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 {saving ? (
                   'Zapisywanie...'
                 ) : (
                   <>
-                    <Save className="w-5 h-5" />
+                    <Save className="h-5 w-5" />
                     {editingImage.id ? 'Zapisz Zmiany' : 'Utwórz Obraz'}
                   </>
                 )}

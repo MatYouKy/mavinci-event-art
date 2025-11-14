@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { logout } from '../store/slices/authSlice';
+import { logout } from '@/features/auth/authSlice';
+
 
 interface AuthContextType {
   user: any;
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user_token && storeUser) {
       setUser(storeUser);
     } else if (user_token) {
-      const savedUser = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+      const savedUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
       if (savedUser) {
         try {
           setUser(JSON.parse(savedUser));
@@ -53,12 +54,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

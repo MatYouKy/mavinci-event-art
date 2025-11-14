@@ -3,6 +3,7 @@
 ## 🎯 Jak działa nowy system
 
 ### Główne założenia:
+
 1. **Alert per TYP** - każdy typ ubezpieczenia (OC, AC, NNW) ma swój osobny alert
 2. **21 dni przed końcem** - alert pojawia się dokładnie 21 dni przed wygaśnięciem
 3. **Sprawdzanie ciągłości** - jeśli jest nowa polisa która PRZEJMUJE ochronę, BRAK alertu
@@ -11,6 +12,7 @@
 ## 🔍 Kluczowa zmiana V4:
 
 ### Problem który rozwiązaliśmy:
+
 ```
 Masz:
 - Stare OC: 22.10.2025 → 23.10.2025 (wygasa za 1 dzień)
@@ -21,6 +23,7 @@ V4 pokazuje: ✅ BRAK ALERTU (jest ciągłość ochrony!)
 ```
 
 ### Jak to działa:
+
 1. System znajduje polisę która wygasa (stare OC: 23.10.2025)
 2. Sprawdza: czy jest polisa która **przejmuje ochronę**?
    - Szuka polisy która zaczyna się ≤ koniec starej + 1 dzień
@@ -31,6 +34,7 @@ V4 pokazuje: ✅ BRAK ALERTU (jest ciągłość ochrony!)
 ## 📋 Scenariusze działania
 
 ### Scenariusz 1: Ciągła ochrona (Twój przypadek)
+
 ```
 Stare OC: 22.10.2025 → 23.10.2025
 Nowe OC:  23.10.2025 → 23.10.2026
@@ -46,6 +50,7 @@ EFEKT: ✅ Alert znika automatycznie
 ```
 
 ### Scenariusz 2: Luka w ochronie (1 dzień przerwy)
+
 ```
 Stare OC: 22.10.2025 → 23.10.2025
 Nowe OC:  25.10.2025 → 25.10.2026 (zaczyna się 2 dni później!)
@@ -61,6 +66,7 @@ EFEKT: 🔴 Alert "OC - wygasa za 1 dzień" (POPRAWNIE - jest luka!)
 ```
 
 ### Scenariusz 3: Nakładające się polisy
+
 ```
 Stare OC: 22.10.2025 → 23.10.2025
 Nowe OC:  20.10.2025 → 20.10.2026 (zaczęło się wcześniej!)
@@ -75,6 +81,7 @@ EFEKT: ✅ Brak alertu (poprawnie - pokrycie do 2026)
 ```
 
 ### Scenariusz 4: Tylko stara polisa, brak nowej
+
 ```
 Stare OC: 22.10.2025 → 23.10.2025
 
@@ -88,6 +95,7 @@ EFEKT: 🔴 Alert "OC - wygasa za 1 dzień" (POPRAWNIE!)
 ```
 
 ### Scenariusz 5: Usunięcie nowej polisy
+
 ```
 PRZED:
 - Stare OC: kończy się jutro
@@ -108,6 +116,7 @@ EFEKT: 🔴 Alert pojawia się natychmiast!
 ## 🔧 Zastosowanie
 
 ### 1. Zastosuj trigger (FIX_ALERTS_AFTER_INSPECTION_V2.sql):
+
 ```sql
 -- W Supabase Dashboard → SQL Editor
 -- Skopiuj i uruchom całą zawartość pliku
@@ -115,6 +124,7 @@ EFEKT: 🔴 Alert pojawia się natychmiast!
 ```
 
 ### 2. Wyczyść stare alerty (FIX_INSURANCE_ALERTS_V3_CLEAN.sql):
+
 ```sql
 -- Opcjonalne - czyści stare alerty i przelicza nowe
 -- Po zastosowaniu triggera możesz uruchomić UPDATE:
@@ -141,16 +151,19 @@ days > 21   → ⚪ BRAK ALERTU
 ## ✨ Różnice między wersjami
 
 ### V2:
+
 - ❌ Szukał "najnowszej" polisy globalnie
 - ❌ Nie sprawdzał ciągłości ochrony
 - ❌ 60 dni przed końcem
 
 ### V3:
+
 - ✅ Alert per TYP (OC/AC/NNW osobno)
 - ✅ 21 dni przed końcem
 - ❌ NIE sprawdzał ciągłości (pokazywał alert mimo nowej polisy)
 
 ### V4 (FINAL):
+
 - ✅ Alert per TYP (OC/AC/NNW osobno)
 - ✅ 21 dni przed końcem
 - ✅ **Sprawdza ciągłość ochrony** ← NOWE!
@@ -173,6 +186,7 @@ WHERE start_date <= expiring.end_date + 1 day
 ```
 
 ### Tolerancja 1 dzień:
+
 System akceptuje 1 dzień przerwy jako "ciągłość" - jeśli nowa polisa zaczyna się dzień po końcu starej, to jest OK.
 
 Możesz zmienić na `+ INTERVAL '0 day'` jeśli chcesz ZERO tolerancji.

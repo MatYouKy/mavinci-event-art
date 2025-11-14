@@ -104,7 +104,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         },
         () => {
           fetchComments();
-        }
+        },
       )
       .subscribe();
 
@@ -116,11 +116,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const fetchTask = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', taskId)
-        .single();
+      const { data, error } = await supabase.from('tasks').select('*').eq('id', taskId).single();
 
       if (error) throw error;
       setTask(data);
@@ -136,7 +132,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     try {
       const { data: commentsData, error } = await supabase
         .from('task_comments')
-        .select(`
+        .select(
+          `
           id,
           content,
           created_at,
@@ -144,7 +141,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
             name,
             surname
           )
-        `)
+        `,
+        )
         .eq('task_id', taskId)
         .order('created_at', { ascending: true });
 
@@ -159,7 +157,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     try {
       const { data, error } = await supabase
         .from('task_attachments')
-        .select(`
+        .select(
+          `
           id,
           file_name,
           file_type,
@@ -170,7 +169,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
             name,
             surname
           )
-        `)
+        `,
+        )
         .eq('task_id', taskId)
         .order('created_at', { ascending: false });
 
@@ -185,13 +185,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     if (!newComment.trim() || !employee) return;
 
     try {
-      const { error } = await supabase
-        .from('task_comments')
-        .insert({
-          task_id: taskId,
-          employee_id: employee.id,
-          content: newComment.trim(),
-        });
+      const { error } = await supabase.from('task_comments').insert({
+        task_id: taskId,
+        employee_id: employee.id,
+        content: newComment.trim(),
+      });
 
       if (error) throw error;
 
@@ -264,7 +262,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           style={[styles.tab, activeTab === 'details' && styles.tabActive]}
           onPress={() => setActiveTab('details')}
         >
-          <Feather name="info" size={16} color={activeTab === 'details' ? colors.primary.gold : colors.text.tertiary} />
+          <Feather
+            name="info"
+            size={16}
+            color={activeTab === 'details' ? colors.primary.gold : colors.text.tertiary}
+          />
           <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
             Szczegóły
           </Text>
@@ -273,7 +275,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           style={[styles.tab, activeTab === 'comments' && styles.tabActive]}
           onPress={() => setActiveTab('comments')}
         >
-          <Feather name="message-square" size={16} color={activeTab === 'comments' ? colors.primary.gold : colors.text.tertiary} />
+          <Feather
+            name="message-square"
+            size={16}
+            color={activeTab === 'comments' ? colors.primary.gold : colors.text.tertiary}
+          />
           <Text style={[styles.tabText, activeTab === 'comments' && styles.tabTextActive]}>
             Czat ({comments.length})
           </Text>
@@ -282,7 +288,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           style={[styles.tab, activeTab === 'files' && styles.tabActive]}
           onPress={() => setActiveTab('files')}
         >
-          <Feather name="file" size={16} color={activeTab === 'files' ? colors.primary.gold : colors.text.tertiary} />
+          <Feather
+            name="file"
+            size={16}
+            color={activeTab === 'files' ? colors.primary.gold : colors.text.tertiary}
+          />
           <Text style={[styles.tabText, activeTab === 'files' && styles.tabTextActive]}>
             Pliki ({attachments.length})
           </Text>
@@ -292,7 +302,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
       <ScrollView
         style={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary.gold} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary.gold}
+          />
         }
       >
         {activeTab === 'details' && (
@@ -302,8 +316,15 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
 
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Priorytet:</Text>
-                <View style={[styles.priorityBadge, { backgroundColor: priorityColors[task.priority].bg }]}>
-                  <Text style={[styles.priorityText, { color: priorityColors[task.priority].text }]}>
+                <View
+                  style={[
+                    styles.priorityBadge,
+                    { backgroundColor: priorityColors[task.priority].bg },
+                  ]}
+                >
+                  <Text
+                    style={[styles.priorityText, { color: priorityColors[task.priority].text }]}
+                  >
                     {priorityLabels[task.priority]}
                   </Text>
                 </View>

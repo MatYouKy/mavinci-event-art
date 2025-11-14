@@ -3,7 +3,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, FileText, Building2, Calendar, User, Download, CreditCard as Edit, Send, CheckCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  FileText,
+  Building2,
+  Calendar,
+  User,
+  Download,
+  CreditCard as Edit,
+  Send,
+  CheckCircle,
+} from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export default function ContractDetailsPage() {
@@ -24,12 +34,14 @@ export default function ContractDetailsPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('contracts')
-        .select(`
+        .select(
+          `
           *,
           client:clients!client_id(company_name, first_name, last_name),
           event:events!event_id(name, event_date),
           template:contract_templates!template_id(name)
-        `)
+        `,
+        )
         .eq('id', contractId)
         .maybeSingle();
 
@@ -50,7 +62,8 @@ export default function ContractDetailsPage() {
         return;
       }
 
-      const clientName = contract.client?.company_name ||
+      const clientName =
+        contract.client?.company_name ||
         `${contract.client?.first_name} ${contract.client?.last_name}`;
 
       printWindow.document.write(`
@@ -101,10 +114,7 @@ export default function ContractDetailsPage() {
         updates.signed_at = new Date().toISOString();
       }
 
-      const { error } = await supabase
-        .from('contracts')
-        .update(updates)
-        .eq('id', contractId);
+      const { error } = await supabase.from('contracts').update(updates).eq('id', contractId);
 
       if (error) throw error;
       fetchContract();
@@ -136,7 +146,7 @@ export default function ContractDetailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0d1a] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -144,7 +154,7 @@ export default function ContractDetailsPage() {
 
   if (!contract) {
     return (
-      <div className="min-h-screen bg-[#0a0d1a] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
         <div className="text-[#e5e4e2]">Umowa nie została znaleziona</div>
       </div>
     );
@@ -152,49 +162,39 @@ export default function ContractDetailsPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/contracts')}
-            className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+            className="p-2 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft className="h-6 w-6" />
           </button>
           <div className="flex-1">
-            <h1 className="text-3xl font-light text-[#e5e4e2] mb-2">
-              {contract.contract_number}
-            </h1>
+            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">{contract.contract_number}</h1>
             <p className="text-[#e5e4e2]/60">{contract.title}</p>
           </div>
-          <span
-            className={`px-4 py-2 rounded-lg text-sm ${
-              statusColors[contract.status]
-            }`}
-          >
+          <span className={`rounded-lg px-4 py-2 text-sm ${statusColors[contract.status]}`}>
             {statusLabels[contract.status]}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-                Informacje podstawowe
-              </h2>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
 
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
-                  <FileText className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                  <FileText className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                   <div>
                     <p className="text-sm text-[#e5e4e2]/60">Szablon</p>
-                    <p className="text-[#e5e4e2]">
-                      {contract.template?.name || 'Brak szablonu'}
-                    </p>
+                    <p className="text-[#e5e4e2]">{contract.template?.name || 'Brak szablonu'}</p>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                  <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                   <div>
                     <p className="text-sm text-[#e5e4e2]/60">Klient</p>
                     <p className="text-[#e5e4e2]">{getClientName()}</p>
@@ -203,7 +203,7 @@ export default function ContractDetailsPage() {
 
                 {contract.event && (
                   <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                    <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Event</p>
                       <p className="text-[#e5e4e2]">{contract.event.name}</p>
@@ -213,12 +213,11 @@ export default function ContractDetailsPage() {
 
                 {contract.valid_from && (
                   <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                    <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Okres ważności</p>
                       <p className="text-[#e5e4e2]">
-                        {new Date(contract.valid_from).toLocaleDateString('pl-PL')}{' '}
-                        -{' '}
+                        {new Date(contract.valid_from).toLocaleDateString('pl-PL')} -{' '}
                         {contract.valid_until
                           ? new Date(contract.valid_until).toLocaleDateString('pl-PL')
                           : 'bezterminowo'}
@@ -229,7 +228,7 @@ export default function ContractDetailsPage() {
 
                 {contract.signed_at && (
                   <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
+                    <CheckCircle className="mt-0.5 h-5 w-5 text-green-400" />
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Data podpisania</p>
                       <p className="text-[#e5e4e2]">
@@ -241,14 +240,12 @@ export default function ContractDetailsPage() {
               </div>
             </div>
 
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-                Treść umowy
-              </h2>
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Treść umowy</h2>
 
-              <div className="bg-white text-black rounded-lg p-8 max-h-[600px] overflow-y-auto">
+              <div className="max-h-[600px] overflow-y-auto rounded-lg bg-white p-8 text-black">
                 {contract.show_header_logo && contract.header_logo_url && (
-                  <div className="mb-6 pb-4 border-b border-gray-300">
+                  <div className="mb-6 border-b border-gray-300 pb-4">
                     <img
                       src={contract.header_logo_url}
                       alt="Logo"
@@ -264,38 +261,39 @@ export default function ContractDetailsPage() {
                       src={contract.center_logo_url}
                       alt="Logo"
                       style={{ height: `${contract.center_logo_height || 100}px` }}
-                      className="object-contain mx-auto"
+                      className="mx-auto object-contain"
                     />
                   </div>
                 )}
 
-                <div className="whitespace-pre-wrap font-mono text-sm" style={{ whiteSpace: 'pre-wrap' }}>
+                <div
+                  className="whitespace-pre-wrap font-mono text-sm"
+                  style={{ whiteSpace: 'pre-wrap' }}
+                >
                   {contract.content}
                 </div>
               </div>
             </div>
 
             {contract.notes && (
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-                <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Notatki</h2>
-                <p className="text-[#e5e4e2]/80 whitespace-pre-wrap">
-                  {contract.notes}
-                </p>
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+                <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Notatki</h2>
+                <p className="whitespace-pre-wrap text-[#e5e4e2]/80">{contract.notes}</p>
               </div>
             )}
           </div>
 
           <div className="space-y-6">
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Akcje</h2>
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
 
               <div className="space-y-3">
                 {contract.status === 'draft' && (
                   <button
                     onClick={() => updateStatus('sent')}
-                    className="w-full flex items-center justify-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-white transition-colors hover:bg-blue-600"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="h-4 w-4" />
                     Wyślij umowę
                   </button>
                 )}
@@ -303,33 +301,33 @@ export default function ContractDetailsPage() {
                 {contract.status === 'sent' && (
                   <button
                     onClick={() => updateStatus('signed')}
-                    className="w-full flex items-center justify-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-white transition-colors hover:bg-green-600"
                   >
-                    <CheckCircle className="w-4 h-4" />
+                    <CheckCircle className="h-4 w-4" />
                     Oznacz jako podpisaną
                   </button>
                 )}
 
                 <button
                   onClick={() => router.push(`/crm/contracts/${contractId}/edit`)}
-                  className="w-full flex items-center justify-center gap-2 bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 px-4 py-2 rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                 >
-                  <Edit className="w-4 h-4" />
+                  <Edit className="h-4 w-4" />
                   Edytuj umowę
                 </button>
 
                 <button
                   onClick={downloadPDF}
-                  className="w-full flex items-center justify-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="h-4 w-4" />
                   Pobierz PDF
                 </button>
 
                 {contract.status !== 'cancelled' && (
                   <button
                     onClick={() => updateStatus('cancelled')}
-                    className="w-full flex items-center justify-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-500/30 transition-colors"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-red-400 transition-colors hover:bg-red-500/30"
                   >
                     Anuluj umowę
                   </button>
@@ -337,10 +335,8 @@ export default function ContractDetailsPage() {
               </div>
             </div>
 
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-                Informacje systemowe
-              </h2>
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje systemowe</h2>
 
               <div className="space-y-3 text-sm">
                 <div>

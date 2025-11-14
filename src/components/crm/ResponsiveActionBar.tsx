@@ -16,7 +16,7 @@ interface ResponsiveActionBarProps {
   mobileBreakpoint?: number;
 }
 
-export default function ResponsiveActionBar({
+export function ResponsiveActionBar({
   actions,
   mobileBreakpoint = 768
 }: ResponsiveActionBarProps) {
@@ -132,3 +132,6 @@ export default function ResponsiveActionBar({
     </div>
   );
 }
+
+
+export default ResponsiveActionBar;

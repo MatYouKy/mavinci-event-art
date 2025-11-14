@@ -1,83 +1,92 @@
+// src/app/crm/auth/CRMLoginPage.tsx
 'use client';
 
-import { useState } from 'react';
+import { useTransition, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Mail } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { useAppDispatch } from '@/store/hooks';
+import { setCredentials } from '@/features/auth/authSlice';
+import {
+  useLoginUserMutation,
+  useRecoverPasswordMutation,
+  useResetPasswordMutation, // opcjonalne – patrz api.ts
+} from '@/features/auth/api/auth.api';
 
 export default function CRMLoginPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const [isPending, startTransition] = useTransition();
+
+  // formularz logowania
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+
+  // reset hasła (wysyłka maila)
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSuccess, setResetSuccess] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
+
+  // błędy / loading
+  const [error, setError] = useState('');
+
+  // RTK Query mutations
+  const [loginUser, { isLoading: loginLoading, data: loginData }] = useLoginUserMutation();
+  const [recoverPassword, { isLoading: resetLoading }] = useRecoverPasswordMutation();
+  console.log('loginData', loginData);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await loginUser({ user_email: email, user_password: password }).unwrap();
+console.log('res', res);
+console.log('--------------------------------');
+console.log('token', res.token);
+console.log('user', res.user);
+console.log('snackbar', res.snackbar);
+console.log('--------------------------------');
+      // spodziewamy się w payloadzie tokenu i usera (jak w Twoim controllerze)
+      // jeśli masz redux slice do auth (setCredentials), tutaj możesz go zawołać
+      // dispatch(setCredentials(res)); // jeśli używasz
+      dispatch(setCredentials({
+        token: res.token, user: res.user,
+        snackbar: res.snackbar
+      }));
+      startTransition(() => {
+        console.log('powinno się wywołać replace');
+        router.replace('/crm');
       });
-
-      if (signInError) {
-        setError(signInError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (data.session) {
-        router.push('/crm');
-      }
     } catch (err: any) {
-      setError(err.message || 'Wystąpił błąd podczas logowania');
-      setLoading(false);
+      setError(err?.data?.message || 'Wystąpił błąd podczas logowania');
     }
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setResetLoading(true);
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/crm/reset-password`,
-      });
-
-      if (resetError) {
-        setError(resetError.message);
-        setResetLoading(false);
-        return;
-      }
-
+      await recoverPassword({ user_email: resetEmail }).unwrap();
       setResetSuccess(true);
-      setResetLoading(false);
     } catch (err: any) {
-      setError(err.message || 'Wystąpił błąd podczas resetowania hasła');
-      setResetLoading(false);
+      setResetSuccess(false);
+      setError(err?.data?.message || 'Wystąpił błąd podczas resetowania hasła');
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0f1119] flex items-center justify-center px-4">
-      <div className="max-w-md w-full">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-2xl p-8 shadow-2xl">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#d3bb73]/10 mb-4">
-              <Lock className="w-8 h-8 text-[#d3bb73]" />
+    <div className="flex min-h-screen items-center justify-center bg-[#0f1119] px-4">
+      <div className="w-full max-w-md">
+        <div className="rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] p-8 shadow-2xl">
+          <div className="mb-8 text-center">
+            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]/10">
+              <Lock className="h-8 w-8 text-[#d3bb73]" />
             </div>
-            <h2 className="text-3xl font-light text-[#e5e4e2] mb-2">
+            <h2 className="mb-2 text-3xl font-light text-[#e5e4e2]">
               {showResetPassword ? 'Resetuj hasło' : 'Panel CRM Mavinci'}
             </h2>
-            <p className="text-[#e5e4e2]/60 font-light">
+            <p className="font-light text-[#e5e4e2]/60">
               {showResetPassword
                 ? 'Podaj adres email aby otrzymać link do zmiany hasła'
                 : 'Zaloguj się aby zarządzać systemem'}
@@ -86,94 +95,86 @@ export default function CRMLoginPage() {
 
           {!showResetPassword ? (
             <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-light text-[#e5e4e2] mb-2"
-              >
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#d3bb73]/60" />
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="twoj@email.pl"
-                  required
-                  className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none transition-colors"
-                />
+              <div>
+                <label htmlFor="email" className="mb-2 block text-sm font-light text-[#e5e4e2]">
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#d3bb73]/60" />
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="twoj@email.pl"
+                    required
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-4 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-light text-[#e5e4e2] mb-2"
-              >
-                Hasło
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#d3bb73]/60" />
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none transition-colors"
-                />
+              <div>
+                <label htmlFor="password" className="mb-2 block text-sm font-light text-[#e5e4e2]">
+                  Hasło
+                </label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#d3bb73]/60" />
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-4 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none"
+                  />
+                </div>
               </div>
-            </div>
 
-            {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                <p className="text-red-400 text-sm text-center">{error}</p>
-              </div>
-            )}
+              {error && (
+                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                  <p className="text-center text-sm text-red-400">{error}</p>
+                </div>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Logowanie...' : 'Zaloguj się'}
-            </button>
-
-            <div className="text-center">
               <button
-                type="button"
-                onClick={() => {
-                  setShowResetPassword(true);
-                  setResetEmail(email);
-                  setError('');
-                }}
-                className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+                type="submit"
+                disabled={loginLoading || isPending}
+                className="w-full rounded-lg bg-[#d3bb73] py-3 font-medium text-[#1c1f33] transition-all duration-300 hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Nie pamiętasz hasła?
+                {loginLoading || isPending ? 'Logowanie...' : 'Zaloguj się'}
               </button>
-            </div>
-          </form>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResetPassword(true);
+                    setResetEmail(email);
+                  }}
+                  className="text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+                >
+                  Nie pamiętasz hasła?
+                </button>
+              </div>
+            </form>
           ) : resetSuccess ? (
             <div className="space-y-6">
-              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                <p className="text-green-400 text-sm text-center">
+              <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+                <p className="text-center text-sm text-green-400">
                   Link do resetowania hasła został wysłany na adres <strong>{resetEmail}</strong>
                 </p>
-                <p className="text-green-400/80 text-xs text-center mt-2">
-                  Sprawdź swoją skrzynkę odbiorczą (w tym folder spam)
+                <p className="mt-2 text-center text-xs text-green-400/80">
+                  Sprawdź skrzynkę odbiorczą (w tym spam).
                 </p>
               </div>
 
               <button
                 onClick={() => {
                   setShowResetPassword(false);
-                  setResetSuccess(false);
                   setResetEmail('');
                 }}
-                className="w-full py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all duration-300"
+                className="w-full rounded-lg bg-[#d3bb73] py-3 font-medium text-[#1c1f33] transition-all duration-300 hover:bg-[#d3bb73]/90"
               >
                 Powrót do logowania
               </button>
@@ -181,14 +182,11 @@ export default function CRMLoginPage() {
           ) : (
             <form onSubmit={handleResetPassword} className="space-y-6">
               <div>
-                <label
-                  htmlFor="resetEmail"
-                  className="block text-sm font-light text-[#e5e4e2] mb-2"
-                >
+                <label htmlFor="resetEmail" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                   Email
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#d3bb73]/60" />
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#d3bb73]/60" />
                   <input
                     id="resetEmail"
                     type="email"
@@ -196,14 +194,14 @@ export default function CRMLoginPage() {
                     onChange={(e) => setResetEmail(e.target.value)}
                     placeholder="twoj@email.pl"
                     required
-                    className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none transition-colors"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-4 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
               </div>
 
               {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                  <p className="text-red-400 text-sm text-center">{error}</p>
+                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                  <p className="text-center text-sm text-red-400">{error}</p>
                 </div>
               )}
 
@@ -211,7 +209,7 @@ export default function CRMLoginPage() {
                 <button
                   type="submit"
                   disabled={resetLoading}
-                  className="w-full py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg bg-[#d3bb73] py-3 font-medium text-[#1c1f33] transition-all duration-300 hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {resetLoading ? 'Wysyłanie...' : 'Wyślij link resetujący'}
                 </button>
@@ -221,9 +219,8 @@ export default function CRMLoginPage() {
                   onClick={() => {
                     setShowResetPassword(false);
                     setResetEmail('');
-                    setError('');
                   }}
-                  className="w-full py-3 bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg font-medium hover:bg-[#1c1f33] transition-all duration-300"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 font-medium text-[#e5e4e2] transition-all duration-300 hover:bg-[#1c1f33]"
                 >
                   Powrót do logowania
                 </button>
@@ -233,9 +230,7 @@ export default function CRMLoginPage() {
 
           {!showResetPassword && (
             <div className="mt-6 text-center text-sm text-[#e5e4e2]/60">
-              <p>
-                Skontaktuj się z administratorem aby uzyskać dostęp
-              </p>
+              <p>Skontaktuj się z administratorem aby uzyskać dostęp</p>
             </div>
           )}
         </div>

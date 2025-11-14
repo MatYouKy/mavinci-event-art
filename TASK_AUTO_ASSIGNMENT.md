@@ -28,6 +28,7 @@ Od teraz wszystkie nowo utworzone zadania automatycznie przypisują autora do li
 ## Gdzie działa?
 
 System działa we wszystkich miejscach tworzenia zadań:
+
 - ✅ Strona główna zadań (`/crm/tasks`)
 - ✅ Prywatne zadania (tablica Kanban)
 - ✅ Zadania w wydarzeniach (`/crm/events/[id]`)

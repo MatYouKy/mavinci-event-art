@@ -3,6 +3,7 @@
 ## Czym jest Mavinci Mobile?
 
 Aplikacja mobilna React Native pozwalająca pracownikom na:
+
 - 📊 Przeglądanie nadchodzących wydarzeń
 - ✅ Zarządzanie zadaniami w terenie
 - 👥 Dostęp do informacji o klientach
@@ -61,12 +62,15 @@ Zainstaluj **Expo Go** na swoim telefonie:
 ## 🎯 Testowanie
 
 ### 1. Zeskanuj QR code
+
 Po uruchomieniu `npm start` zobaczysz QR code w terminalu.
 
 ### 2. Zaloguj się
+
 Użyj **tych samych danych** co do CRM webowego!
 
 ### 3. Sprawdź Dashboard
+
 Powinieneś zobaczyć swoje wydarzenia i zadania.
 
 ## 🏗️ Struktura mobile/
@@ -126,6 +130,7 @@ Mobile korzysta z **tych samych tabel** co web:
 ## 🚧 Status funkcjonalności
 
 ### ✅ Gotowe:
+
 - Logowanie (Supabase Auth)
 - Dashboard z wydarzeniami i zadaniami
 - Pull-to-refresh
@@ -133,6 +138,7 @@ Mobile korzysta z **tych samych tabel** co web:
 - Bottom Tab Navigation
 
 ### 🏗️ W przygotowaniu:
+
 - Kalendarz wydarzeń
 - Pełna lista zadań z filtrowaniem
 - Lista klientów
@@ -156,11 +162,13 @@ eas build --platform ios        # Build IPA
 ## 🆘 Rozwiązywanie problemów
 
 ### "Cannot connect to Metro"
+
 ```bash
 npm start -- --clear
 ```
 
 ### "Module not found"
+
 ```bash
 rm -rf node_modules
 npm install
@@ -168,11 +176,13 @@ npm start
 ```
 
 ### "Expo Go crashes"
+
 1. Sprawdź czy `.env` ma poprawne dane Supabase
 2. Upewnij się że używasz najnowszej wersji Expo Go
 3. Restartuj Expo server (`npm start -- --clear`)
 
 ### "Cannot sign in"
+
 1. Sprawdź czy `EXPO_PUBLIC_SUPABASE_URL` jest prawidłowy
 2. Sprawdź czy `EXPO_PUBLIC_SUPABASE_ANON_KEY` jest prawidłowy
 3. Sprawdź czy masz konto w CRM (zarejestrowane przez admina)

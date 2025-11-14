@@ -68,15 +68,14 @@ export default function OfferCategoriesPage() {
   };
 
   const handleDeleteCategory = async (id: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tę kategorię? Produkty w niej zostaną bez kategorii.')) {
+    if (
+      !confirm('Czy na pewno chcesz usunąć tę kategorię? Produkty w niej zostaną bez kategorii.')
+    ) {
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from('offer_product_categories')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('offer_product_categories').delete().eq('id', id);
 
       if (error) throw error;
       showSnackbar('Kategoria usunięta', 'success');
@@ -92,9 +91,9 @@ export default function OfferCategoriesPage() {
 
     const categoryData = {
       name: formData.get('name') as string,
-      description: formData.get('description') as string || null,
+      description: (formData.get('description') as string) || null,
       parent_id: parentId,
-      icon: formData.get('icon') as string || null,
+      icon: (formData.get('icon') as string) || null,
       display_order: parseInt(formData.get('display_order') as string) || 0,
       is_active: formData.get('is_active') === 'on',
     };
@@ -109,9 +108,7 @@ export default function OfferCategoriesPage() {
         if (error) throw error;
         showSnackbar('Kategoria zaktualizowana', 'success');
       } else {
-        const { error } = await supabase
-          .from('offer_product_categories')
-          .insert([categoryData]);
+        const { error } = await supabase.from('offer_product_categories').insert([categoryData]);
 
         if (error) throw error;
         showSnackbar('Kategoria dodana', 'success');
@@ -132,13 +129,13 @@ export default function OfferCategoriesPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/offers?tab=catalog')}
-            className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
           >
-            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+            <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
           </button>
           <div>
             <h1 className="text-2xl font-light text-[#e5e4e2]">Kategorie produktów</h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">
               Zarządzaj kategoriami i podkategoriami produktów ofertowych
             </p>
           </div>
@@ -146,16 +143,16 @@ export default function OfferCategoriesPage() {
         {canManage && (
           <button
             onClick={() => handleAddCategory(null)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Dodaj kategorię główną
           </button>
         )}
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-[#e5e4e2]/60">Ładowanie...</div>
+        <div className="py-12 text-center text-[#e5e4e2]/60">Ładowanie...</div>
       ) : (
         <div className="space-y-4">
           {mainCategories.map((mainCat) => (
@@ -171,13 +168,13 @@ export default function OfferCategoriesPage() {
           ))}
 
           {mainCategories.length === 0 && (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-12 text-center">
-              <FolderTree className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+              <FolderTree className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak kategorii</p>
               {canManage && (
                 <button
                   onClick={() => handleAddCategory(null)}
-                  className="mt-4 px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                  className="mt-4 rounded-lg bg-[#d3bb73]/20 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                 >
                   Dodaj pierwszą kategorię
                 </button>
@@ -221,17 +218,17 @@ function CategoryCard({
   const subcategories = allCategories.filter((c) => c.parent_id === category.id);
 
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
       <div className="p-5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4 flex-1">
+          <div className="flex flex-1 items-center gap-4">
             {subcategories.length > 0 && (
               <button
                 onClick={() => setExpanded(!expanded)}
-                className="p-1 hover:bg-[#0a0d1a] rounded transition-colors"
+                className="rounded p-1 transition-colors hover:bg-[#0a0d1a]"
               >
                 <ChevronRight
-                  className={`w-5 h-5 text-[#e5e4e2]/60 transition-transform ${
+                  className={`h-5 w-5 text-[#e5e4e2]/60 transition-transform ${
                     expanded ? 'rotate-90' : ''
                   }`}
                 />
@@ -239,11 +236,11 @@ function CategoryCard({
             )}
             {!subcategories.length && <div className="w-7" />}
 
-            <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/20">
               {category.icon ? (
                 <span className="text-2xl">{category.icon}</span>
               ) : (
-                <FolderTree className="w-6 h-6 text-[#d3bb73]" />
+                <FolderTree className="h-6 w-6 text-[#d3bb73]" />
               )}
             </div>
 
@@ -251,22 +248,22 @@ function CategoryCard({
               <div className="flex items-center gap-3">
                 <h3 className="text-lg font-medium text-[#e5e4e2]">{category.name}</h3>
                 {!category.is_active && (
-                  <span className="px-2 py-0.5 text-xs bg-gray-500/20 text-gray-400 rounded">
+                  <span className="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
                     Nieaktywna
                   </span>
                 )}
               </div>
               {category.description && (
-                <p className="text-sm text-[#e5e4e2]/60 mt-1">{category.description}</p>
+                <p className="mt-1 text-sm text-[#e5e4e2]/60">{category.description}</p>
               )}
-              <div className="flex items-center gap-4 mt-2 text-xs text-[#e5e4e2]/60">
+              <div className="mt-2 flex items-center gap-4 text-xs text-[#e5e4e2]/60">
                 <span className="flex items-center gap-1">
-                  <Package className="w-3 h-3" />
+                  <Package className="h-3 w-3" />
                   {category.products_count || 0} produktów
                 </span>
                 {subcategories.length > 0 && (
                   <span className="flex items-center gap-1">
-                    <FolderTree className="w-3 h-3" />
+                    <FolderTree className="h-3 w-3" />
                     {subcategories.length} podkategorii
                   </span>
                 )}
@@ -278,22 +275,22 @@ function CategoryCard({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => onAddSubcategory(category.id)}
-                className="p-2 hover:bg-[#0a0d1a] rounded-lg transition-colors group"
+                className="group rounded-lg p-2 transition-colors hover:bg-[#0a0d1a]"
                 title="Dodaj podkategorię"
               >
-                <Plus className="w-4 h-4 text-[#e5e4e2]/60 group-hover:text-[#d3bb73]" />
+                <Plus className="h-4 w-4 text-[#e5e4e2]/60 group-hover:text-[#d3bb73]" />
               </button>
               <button
                 onClick={() => onEdit(category)}
-                className="p-2 hover:bg-[#0a0d1a] rounded-lg transition-colors group"
+                className="group rounded-lg p-2 transition-colors hover:bg-[#0a0d1a]"
               >
-                <Edit className="w-4 h-4 text-[#e5e4e2]/60 group-hover:text-[#d3bb73]" />
+                <Edit className="h-4 w-4 text-[#e5e4e2]/60 group-hover:text-[#d3bb73]" />
               </button>
               <button
                 onClick={() => onDelete(category.id)}
-                className="p-2 hover:bg-[#0a0d1a] rounded-lg transition-colors group"
+                className="group rounded-lg p-2 transition-colors hover:bg-[#0a0d1a]"
               >
-                <Trash2 className="w-4 h-4 text-[#e5e4e2]/60 group-hover:text-red-400" />
+                <Trash2 className="h-4 w-4 text-[#e5e4e2]/60 group-hover:text-red-400" />
               </button>
             </div>
           )}
@@ -301,31 +298,31 @@ function CategoryCard({
       </div>
 
       {expanded && subcategories.length > 0 && (
-        <div className="border-t border-[#d3bb73]/10 bg-[#0a0d1a]/50 px-5 py-3 space-y-2">
+        <div className="space-y-2 border-t border-[#d3bb73]/10 bg-[#0a0d1a]/50 px-5 py-3">
           {subcategories.map((subcat) => (
             <div
               key={subcat.id}
-              className="flex items-center justify-between p-3 bg-[#1c1f33] rounded-lg hover:bg-[#1c1f33]/80 transition-colors"
+              className="flex items-center justify-between rounded-lg bg-[#1c1f33] p-3 transition-colors hover:bg-[#1c1f33]/80"
             >
-              <div className="flex items-center gap-3 flex-1">
-                <div className="w-8 h-8 bg-[#d3bb73]/10 rounded flex items-center justify-center">
+              <div className="flex flex-1 items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded bg-[#d3bb73]/10">
                   {subcat.icon ? (
                     <span className="text-lg">{subcat.icon}</span>
                   ) : (
-                    <FolderTree className="w-4 h-4 text-[#d3bb73]/60" />
+                    <FolderTree className="h-4 w-4 text-[#d3bb73]/60" />
                   )}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-[#e5e4e2]">{subcat.name}</span>
                     {!subcat.is_active && (
-                      <span className="px-2 py-0.5 text-xs bg-gray-500/20 text-gray-400 rounded">
+                      <span className="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
                         Nieaktywna
                       </span>
                     )}
                   </div>
                   {subcat.description && (
-                    <p className="text-xs text-[#e5e4e2]/60 mt-0.5">{subcat.description}</p>
+                    <p className="mt-0.5 text-xs text-[#e5e4e2]/60">{subcat.description}</p>
                   )}
                 </div>
                 <span className="text-xs text-[#e5e4e2]/60">
@@ -334,18 +331,18 @@ function CategoryCard({
               </div>
 
               {canManage && (
-                <div className="flex items-center gap-1 ml-4">
+                <div className="ml-4 flex items-center gap-1">
                   <button
                     onClick={() => onEdit(subcat)}
-                    className="p-1.5 hover:bg-[#0a0d1a] rounded transition-colors group"
+                    className="group rounded p-1.5 transition-colors hover:bg-[#0a0d1a]"
                   >
-                    <Edit className="w-3.5 h-3.5 text-[#e5e4e2]/60 group-hover:text-[#d3bb73]" />
+                    <Edit className="h-3.5 w-3.5 text-[#e5e4e2]/60 group-hover:text-[#d3bb73]" />
                   </button>
                   <button
                     onClick={() => onDelete(subcat.id)}
-                    className="p-1.5 hover:bg-[#0a0d1a] rounded transition-colors group"
+                    className="group rounded p-1.5 transition-colors hover:bg-[#0a0d1a]"
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-[#e5e4e2]/60 group-hover:text-red-400" />
+                    <Trash2 className="h-3.5 w-3.5 text-[#e5e4e2]/60 group-hover:text-red-400" />
                   </button>
                 </div>
               )}
@@ -370,37 +367,43 @@ function CategoryModal({ category, parentId, categories, onClose, onSave }: Cate
   const mainCategories = categories.filter((c) => c.level === 0);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-[#1c1f33] rounded-xl p-6 w-full max-w-md border border-[#d3bb73]/10">
-        <h2 className="text-xl font-medium text-[#e5e4e2] mb-4">
-          {category ? 'Edytuj kategorię' : parentCategory ? `Dodaj podkategorię do "${parentCategory.name}"` : 'Dodaj kategorię główną'}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <h2 className="mb-4 text-xl font-medium text-[#e5e4e2]">
+          {category
+            ? 'Edytuj kategorię'
+            : parentCategory
+              ? `Dodaj podkategorię do "${parentCategory.name}"`
+              : 'Dodaj kategorię główną'}
         </h2>
 
         <form onSubmit={onSave} className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa</label>
             <input
               type="text"
               name="name"
               defaultValue={category?.name || ''}
               required
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               name="description"
               defaultValue={category?.description || ''}
               rows={3}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
           {!parentId && !category && (
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kategoria nadrzędna (opcjonalnie)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                Kategoria nadrzędna (opcjonalnie)
+              </label>
               <select
                 name="parent_category"
                 defaultValue=""
@@ -414,7 +417,7 @@ function CategoryModal({ category, parentId, categories, onClose, onSave }: Cate
                     form.appendChild(input);
                   }
                 }}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="">Kategoria główna</option>
                 {mainCategories.map((cat) => (
@@ -427,24 +430,24 @@ function CategoryModal({ category, parentId, categories, onClose, onSave }: Cate
           )}
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ikona (emoji)</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ikona (emoji)</label>
             <input
               type="text"
               name="icon"
               defaultValue={category?.icon || ''}
               placeholder="🎵 🎤 🎸"
               maxLength={2}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolejność wyświetlania</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kolejność wyświetlania</label>
             <input
               type="number"
               name="display_order"
               defaultValue={category?.display_order || 0}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
@@ -454,7 +457,7 @@ function CategoryModal({ category, parentId, categories, onClose, onSave }: Cate
               name="is_active"
               id="is_active"
               defaultChecked={category?.is_active !== false}
-              className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+              className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
             />
             <label htmlFor="is_active" className="text-sm text-[#e5e4e2]">
               Aktywna
@@ -465,13 +468,13 @@ function CategoryModal({ category, parentId, categories, onClose, onSave }: Cate
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-[#0a0d1a] text-[#e5e4e2] rounded-lg hover:bg-[#0a0d1a]/80 transition-colors"
+              className="flex-1 rounded-lg bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#0a0d1a]/80"
             >
               Anuluj
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
               {category ? 'Zapisz' : 'Dodaj'}
             </button>

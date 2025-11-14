@@ -34,6 +34,7 @@ npm install
 ```
 
 **⚠️ WAŻNE:**
+
 - Aplikacja używa **Expo SDK 54** - zaktualizuj **Expo Go** na telefonie!
 - **Używaj `npm`, NIE `yarn`!** (yarn tworzy `yarn.lock` który jest ignorowany przez Git)
 - **Ignoruj warningi EBADENGINE** - to normalne ostrzeżenia, npm je ignoruje
@@ -148,6 +149,7 @@ npm start -- --clear
 ## 🎨 Design
 
 Aplikacja używa **identycznej kolorystyki** co web:
+
 - 🟡 Złoty: `#d3bb73`
 - 🟥 Bordowy: `#800020`
 - ⬛ Tło: `#0f1119`
@@ -162,6 +164,7 @@ Aplikacja używa **identycznej kolorystyki** co web:
 ## 📚 Dalsze kroki
 
 Przeczytaj pełny [README.md](./README.md) aby dowiedzieć się więcej o:
+
 - Architekturze projektu
 - Buildach produkcyjnych
 - Deploymencie

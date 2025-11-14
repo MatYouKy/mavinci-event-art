@@ -125,7 +125,12 @@ const permissionCategories: PermissionCategory[] = [
   },
 ];
 
-export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmployeeRole, currentEmployeeId }: Props) {
+export default function EmployeePermissionsTab({
+  employeeId,
+  isAdmin,
+  targetEmployeeRole,
+  currentEmployeeId,
+}: Props) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -183,11 +188,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
     if (!canEditThisEmployee) return;
 
     setPermissions((prev) => {
-      const filtered = prev.filter(
-        (p) =>
-          p !== `${module}_view` &&
-          p !== `${module}_manage`
-      );
+      const filtered = prev.filter((p) => p !== `${module}_view` && p !== `${module}_manage`);
 
       if (level === 'view') {
         return [...filtered, `${module}_view`];
@@ -269,8 +270,8 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
     if (level === 'view') return 'Przeglądanie';
     if (level === 'manage') {
       if (category.extraPermissions) {
-        const extraCount = category.extraPermissions.filter(
-          (ep) => permissions.includes(ep.key)
+        const extraCount = category.extraPermissions.filter((ep) =>
+          permissions.includes(ep.key),
         ).length;
         if (extraCount > 0) {
           return `Zarządzanie + ${extraCount}`;
@@ -285,7 +286,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <RefreshCw className="w-6 h-6 text-[#d3bb73] animate-spin" />
+        <RefreshCw className="h-6 w-6 animate-spin text-[#d3bb73]" />
       </div>
     );
   }
@@ -294,25 +295,23 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Shield className="w-6 h-6 text-[#d3bb73]" />
-          <h3 className="text-xl font-light text-[#e5e4e2]">
-            Uprawnienia pracownika
-          </h3>
+          <Shield className="h-6 w-6 text-[#d3bb73]" />
+          <h3 className="text-xl font-light text-[#e5e4e2]">Uprawnienia pracownika</h3>
         </div>
         {canEditThisEmployee && (
           <button
             onClick={handleSave}
             disabled={!hasChanges || saving}
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            <Save className="h-4 w-4" />
             {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
           </button>
         )}
       </div>
 
       {!canEditThisEmployee && targetIsAdmin && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
           <p className="text-sm text-red-200">
             Nie możesz edytować uprawnień administratora. Tylko inny administrator może to zrobić.
           </p>
@@ -320,7 +319,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
       )}
 
       {!canEditThisEmployee && !targetIsAdmin && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+        <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
           <p className="text-sm text-yellow-200">
             Nie masz uprawnień do edycji uprawnień tego pracownika
           </p>
@@ -328,19 +327,19 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
       )}
 
       {canEditThisEmployee && (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]">Szybkie akcje</span>
             <div className="flex gap-2">
               <button
                 onClick={() => setAllPermissions(true)}
-                className="text-sm px-3 py-1 bg-green-500/20 text-green-300 rounded hover:bg-green-500/30 transition-colors"
+                className="rounded bg-green-500/20 px-3 py-1 text-sm text-green-300 transition-colors hover:bg-green-500/30"
               >
                 Zaznacz wszystko
               </button>
               <button
                 onClick={() => setAllPermissions(false)}
-                className="text-sm px-3 py-1 bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 transition-colors"
+                className="rounded bg-red-500/20 px-3 py-1 text-sm text-red-300 transition-colors hover:bg-red-500/30"
               >
                 Odznacz wszystko
               </button>
@@ -358,45 +357,39 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
           return (
             <div
               key={category.key}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden"
+              className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]"
             >
               <div
                 onClick={() => toggleCategory(category.key)}
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-[#0f1119]/50 transition-colors"
+                className="flex cursor-pointer items-center justify-between p-4 transition-colors hover:bg-[#0f1119]/50"
               >
                 <div className="flex items-center gap-3">
                   {isExpanded ? (
-                    <ChevronDown className="w-5 h-5 text-[#d3bb73]" />
+                    <ChevronDown className="h-5 w-5 text-[#d3bb73]" />
                   ) : (
-                    <ChevronRight className="w-5 h-5 text-[#d3bb73]" />
+                    <ChevronRight className="h-5 w-5 text-[#d3bb73]" />
                   )}
-                  <span className="font-medium text-[#e5e4e2]">
-                    {category.label}
-                  </span>
-                  <span className="text-sm text-[#e5e4e2]/60">
-                    {getCategoryStatus(category)}
-                  </span>
+                  <span className="font-medium text-[#e5e4e2]">{category.label}</span>
+                  <span className="text-sm text-[#e5e4e2]/60">{getCategoryStatus(category)}</span>
                 </div>
               </div>
 
               {isExpanded && (
-                <div className="border-t border-[#d3bb73]/10 p-4 space-y-4">
+                <div className="space-y-4 border-t border-[#d3bb73]/10 p-4">
                   <div>
-                    <label className="block mb-2">
-                      <span className="text-sm font-medium text-[#e5e4e2]/80">
-                        Poziom dostępu
-                      </span>
+                    <label className="mb-2 block">
+                      <span className="text-sm font-medium text-[#e5e4e2]/80">Poziom dostępu</span>
                     </label>
                     <select
                       value={level}
                       onChange={(e) =>
                         setPermissionLevel(
                           category.key,
-                          e.target.value as 'none' | 'view' | 'manage'
+                          e.target.value as 'none' | 'view' | 'manage',
                         )
                       }
                       disabled={!canEditThisEmployee}
-                      className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="none">Brak</option>
                       <option value="view">Przeglądanie</option>
@@ -404,35 +397,37 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
                     </select>
                   </div>
 
-                  {hasManageLevel && category.extraPermissions && category.extraPermissions.length > 0 && (
-                    <div className="pt-3 border-t border-[#d3bb73]/10 space-y-3">
-                      <div className="text-sm font-medium text-[#e5e4e2]/80 mb-2">
-                        Dodatkowe uprawnienia
+                  {hasManageLevel &&
+                    category.extraPermissions &&
+                    category.extraPermissions.length > 0 && (
+                      <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
+                        <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
+                          Dodatkowe uprawnienia
+                        </div>
+                        {category.extraPermissions.map((extra) => (
+                          <label
+                            key={extra.key}
+                            className="group flex cursor-pointer items-start gap-3"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={permissions.includes(extra.key)}
+                              onChange={() => toggleExtraPermission(extra.key)}
+                              disabled={!canEditThisEmployee}
+                              className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+                            />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                                {extra.label}
+                              </div>
+                              <div className="mt-0.5 text-xs text-[#e5e4e2]/60">
+                                {extra.description}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
                       </div>
-                      {category.extraPermissions.map((extra) => (
-                        <label
-                          key={extra.key}
-                          className="flex items-start gap-3 cursor-pointer group"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={permissions.includes(extra.key)}
-                            onChange={() => toggleExtraPermission(extra.key)}
-                            disabled={!canEditThisEmployee}
-                            className="mt-1 w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
-                              {extra.label}
-                            </div>
-                            <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
-                              {extra.description}
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  )}
+                    )}
                 </div>
               )}
             </div>
@@ -441,7 +436,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
       </div>
 
       {hasChanges && canEditThisEmployee && (
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
           <p className="text-sm text-blue-200">
             Masz niezapisane zmiany. Kliknij "Zapisz zmiany" aby je zachować.
           </p>

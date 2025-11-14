@@ -13,9 +13,8 @@ export interface IEmployeeBasic {
   region: string | null;
   is_active: boolean;
   skills: string[] | null;
-  
 }
 
 export interface IEmployeeCRM extends IEmployeeBasic {
-order_index: number;
+  order_index: number;
 }

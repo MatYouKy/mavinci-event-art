@@ -22,7 +22,7 @@ export default function MonthView({
   const maxVisibleEvents = 2;
 
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
       <div className="grid grid-cols-7 gap-px bg-[#d3bb73]/10">
         {DAYS_OF_WEEK.map((day) => (
           <div
@@ -37,7 +37,7 @@ export default function MonthView({
       <div className="grid grid-cols-7 gap-px bg-[#d3bb73]/10">
         {days.map((date, index) => {
           if (!date) {
-            return <div key={index} className="bg-[#1c1f33] h-[130px]" />;
+            return <div key={index} className="h-[130px] bg-[#1c1f33]" />;
           }
 
           const dayEvents = getEventsForDate(date, events);
@@ -47,14 +47,14 @@ export default function MonthView({
           return (
             <div
               key={index}
-              className={`bg-[#1c1f33] h-[130px] p-2 relative hover:bg-[#1c1f33]/50 cursor-pointer transition-colors flex flex-col`}
+              className={`relative flex h-[130px] cursor-pointer flex-col bg-[#1c1f33] p-2 transition-colors hover:bg-[#1c1f33]/50`}
               onClick={() => onDateClick(date)}
             >
-              <div className="flex items-start justify-between mb-2">
+              <div className="mb-2 flex items-start justify-between">
                 <div
                   className={`text-sm ${
                     today
-                      ? 'w-7 h-7 flex items-center justify-center bg-[#d3bb73] text-[#1c1f33] rounded-full font-medium'
+                      ? 'flex h-7 w-7 items-center justify-center rounded-full bg-[#d3bb73] font-medium text-[#1c1f33]'
                       : 'text-[#e5e4e2]/60'
                   }`}
                 >
@@ -67,23 +67,23 @@ export default function MonthView({
                       e.stopPropagation();
                       onShowAllEvents(date);
                     }}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 rounded-full transition-colors group"
+                    className="group flex items-center gap-1 rounded-full bg-[#d3bb73]/20 px-2 py-0.5 transition-colors hover:bg-[#d3bb73]/30"
                   >
-                    <Layers className="w-3 h-3 text-[#d3bb73]" />
+                    <Layers className="h-3 w-3 text-[#d3bb73]" />
                     <span className="text-xs font-medium text-[#d3bb73]">{eventCount}</span>
                   </button>
                 )}
               </div>
 
               {eventCount === 0 && (
-                <div className="flex items-center justify-center flex-1">
-                  <Plus className="w-6 h-6 text-[#e5e4e2]/20" />
+                <div className="flex flex-1 items-center justify-center">
+                  <Plus className="h-6 w-6 text-[#e5e4e2]/20" />
                 </div>
               )}
 
               {eventCount > 0 && (
-                <div className="relative flex-1 flex flex-col">
-                  <div className="space-y-1 flex-1 overflow-hidden">
+                <div className="relative flex flex-1 flex-col">
+                  <div className="flex-1 space-y-1 overflow-hidden">
                     {dayEvents.slice(0, maxVisibleEvents).map((event, idx) => {
                       const isLast = idx === maxVisibleEvents - 1;
                       const remainingCount = eventCount - maxVisibleEvents;
@@ -102,7 +102,7 @@ export default function MonthView({
                               {[...Array(Math.min(remainingCount, 2))].map((_, stackIdx) => (
                                 <div
                                   key={`stack-${stackIdx}`}
-                                  className="absolute inset-0 bg-[#0f1119] border border-[#d3bb73]/20 rounded"
+                                  className="absolute inset-0 rounded border border-[#d3bb73]/20 bg-[#0f1119]"
                                   style={{
                                     transform: `translateY(-${(stackIdx + 1) * 2}px)`,
                                     zIndex: -(stackIdx + 1),
@@ -114,7 +114,7 @@ export default function MonthView({
                           )}
 
                           <div
-                            className="text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity relative z-10 cursor-pointer font-medium"
+                            className="relative z-10 cursor-pointer truncate rounded border p-1.5 text-xs font-medium transition-opacity hover:opacity-80"
                             style={
                               event.category?.color
                                 ? {
@@ -141,8 +141,10 @@ export default function MonthView({
                             <span className="flex items-center gap-1">
                               {event.category?.custom_icon?.svg_code && (
                                 <span
-                                  className="inline-flex w-3 h-3 flex-shrink-0"
-                                  dangerouslySetInnerHTML={{ __html: event.category.custom_icon.svg_code }}
+                                  className="inline-flex h-3 w-3 flex-shrink-0"
+                                  dangerouslySetInnerHTML={{
+                                    __html: event.category.custom_icon.svg_code,
+                                  }}
                                   style={{ color: event.category.color }}
                                 />
                               )}
@@ -154,8 +156,8 @@ export default function MonthView({
                     })}
                   </div>
 
-                  <div className="flex items-center justify-center mt-auto pt-2">
-                    <Plus className="w-4 h-4 text-[#e5e4e2]/30 hover:text-[#e5e4e2]/50 transition-colors" />
+                  <div className="mt-auto flex items-center justify-center pt-2">
+                    <Plus className="h-4 w-4 text-[#e5e4e2]/30 transition-colors hover:text-[#e5e4e2]/50" />
                   </div>
                 </div>
               )}

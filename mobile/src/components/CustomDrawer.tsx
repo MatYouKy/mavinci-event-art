@@ -38,25 +38,21 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
   }, [visible]);
 
   const handleSignOut = () => {
-    Alert.alert(
-      'Wylogowanie',
-      'Czy na pewno chcesz się wylogować?',
-      [
-        { text: 'Anuluj', style: 'cancel' },
-        {
-          text: 'Wyloguj',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut();
-              onClose();
-            } catch (error) {
-              Alert.alert('Błąd', 'Nie udało się wylogować');
-            }
-          },
+    Alert.alert('Wylogowanie', 'Czy na pewno chcesz się wylogować?', [
+      { text: 'Anuluj', style: 'cancel' },
+      {
+        text: 'Wyloguj',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await signOut();
+            onClose();
+          } catch (error) {
+            Alert.alert('Błąd', 'Nie udało się wylogować');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const menuItems = [
@@ -72,14 +68,8 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
     navigation.navigate(screen);
   };
 
-
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <Animated.View
           style={[
@@ -117,21 +107,22 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
               {menuItems.map((item, index) => (
                 <TouchableOpacity
                   key={index}
-                  style={[
-                    styles.menuItem,
-                    currentScreen === item.screen && styles.menuItemActive,
-                  ]}
+                  style={[styles.menuItem, currentScreen === item.screen && styles.menuItemActive]}
                   onPress={() => handleNavigate(item.screen)}
                 >
                   <Feather
                     name={item.icon as any}
-                    color={currentScreen === item.screen ? colors.primary.gold : colors.text.secondary}
+                    color={
+                      currentScreen === item.screen ? colors.primary.gold : colors.text.secondary
+                    }
                     size={20}
                   />
-                  <Text style={[
-                    styles.menuItemText,
-                    currentScreen === item.screen && styles.menuItemTextActive,
-                  ]}>
+                  <Text
+                    style={[
+                      styles.menuItemText,
+                      currentScreen === item.screen && styles.menuItemTextActive,
+                    ]}
+                  >
                     {item.label}
                   </Text>
                 </TouchableOpacity>
@@ -149,11 +140,7 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
           </View>
         </Animated.View>
 
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={onClose}
-        />
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
       </View>
     </Modal>
   );

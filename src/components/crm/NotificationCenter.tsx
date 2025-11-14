@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle } from 'lucide-react';
+import {
+  Bell,
+  X,
+  Check,
+  ExternalLink,
+  Trash2,
+  CheckCheck,
+  CheckCircle,
+  XCircle,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -46,7 +55,7 @@ export default function NotificationCenter() {
         (payload) => {
           console.log('[NotificationCenter] Real-time event:', payload);
           fetchNotifications();
-        }
+        },
       )
       .subscribe((status) => {
         console.log('[NotificationCenter] Subscription status:', status);
@@ -59,12 +68,15 @@ export default function NotificationCenter() {
 
   const fetchNotifications = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await supabase
         .from('notification_recipients')
-        .select(`
+        .select(
+          `
           id,
           is_read,
           read_at,
@@ -80,7 +92,8 @@ export default function NotificationCenter() {
             related_entity_id,
             metadata
           )
-        `)
+        `,
+        )
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -108,14 +121,18 @@ export default function NotificationCenter() {
         .from('notification_recipients')
         .update({
           is_read: true,
-          read_at: new Date().toISOString()
+          read_at: new Date().toISOString(),
         })
         .eq('id', recipientId);
 
       if (error) throw error;
 
       setNotifications((prev) =>
-        prev.map((n) => (n.recipient_id === recipientId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n))
+        prev.map((n) =>
+          n.recipient_id === recipientId
+            ? { ...n, is_read: true, read_at: new Date().toISOString() }
+            : n,
+        ),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
@@ -126,12 +143,12 @@ export default function NotificationCenter() {
   const markAllAsRead = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      const unreadRecipientIds = notifications
-        .filter((n) => !n.is_read)
-        .map((n) => n.recipient_id);
+      const unreadRecipientIds = notifications.filter((n) => !n.is_read).map((n) => n.recipient_id);
 
       if (unreadRecipientIds.length === 0) return;
 
@@ -139,13 +156,15 @@ export default function NotificationCenter() {
         .from('notification_recipients')
         .update({
           is_read: true,
-          read_at: new Date().toISOString()
+          read_at: new Date().toISOString(),
         })
         .in('id', unreadRecipientIds);
 
       if (error) throw error;
 
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })));
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
+      );
       setUnreadCount(0);
     } catch (error) {
       console.error('Error marking all as read:', error);
@@ -156,7 +175,7 @@ export default function NotificationCenter() {
 
   const deleteNotification = async (recipientId: string) => {
     try {
-      const notificationToDelete = notifications.find(n => n.recipient_id === recipientId);
+      const notificationToDelete = notifications.find((n) => n.recipient_id === recipientId);
 
       const { error } = await supabase
         .from('notification_recipients')
@@ -186,7 +205,11 @@ export default function NotificationCenter() {
     }
   };
 
-  const handleAssignmentResponse = async (assignmentId: string, status: 'accepted' | 'rejected', recipientId: string) => {
+  const handleAssignmentResponse = async (
+    assignmentId: string,
+    status: 'accepted' | 'rejected',
+    recipientId: string,
+  ) => {
     try {
       const { error } = await supabase
         .from('employee_assignments')
@@ -197,7 +220,7 @@ export default function NotificationCenter() {
 
       showSnackbar(
         status === 'accepted' ? 'Zaproszenie zaakceptowane' : 'Zaproszenie odrzucone',
-        'success'
+        'success',
       );
 
       // Update the notification in state to hide buttons immediately
@@ -205,8 +228,8 @@ export default function NotificationCenter() {
         prev.map((n) =>
           n.recipient_id === recipientId
             ? { ...n, metadata: { ...n.metadata, requires_response: false } }
-            : n
-        )
+            : n,
+        ),
       );
 
       // Also fetch fresh data
@@ -244,19 +267,17 @@ export default function NotificationCenter() {
   };
 
   const filteredNotifications =
-    filter === 'unread'
-      ? notifications.filter((n) => !n.is_read)
-      : notifications;
+    filter === 'unread' ? notifications.filter((n) => !n.is_read) : notifications;
 
   return (
     <div className="relative">
       <button
         onClick={() => setShowPanel(!showPanel)}
-        className="relative p-1.5 md:p-2 rounded-lg hover:bg-[#1c1f33] transition-colors"
+        className="relative rounded-lg p-1.5 transition-colors hover:bg-[#1c1f33] md:p-2"
       >
-        <Bell className="w-5 h-5 md:w-6 md:h-6 text-[#e5e4e2]" />
+        <Bell className="h-5 w-5 text-[#e5e4e2] md:h-6 md:w-6" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -264,29 +285,24 @@ export default function NotificationCenter() {
 
       {showPanel && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setShowPanel(false)}
-          />
+          <div className="fixed inset-0 z-40" onClick={() => setShowPanel(false)} />
 
-          <div className="fixed md:absolute right-0 md:right-0 top-16 md:top-12 left-0 md:left-auto w-full md:w-96 max-h-[80vh] md:max-h-[600px] bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl z-50 flex flex-col mx-auto md:mx-0 max-w-md md:max-w-none">
-            <div className="p-4 border-b border-[#d3bb73]/20">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-[#e5e4e2]">
-                  Powiadomienia
-                </h3>
+          <div className="fixed left-0 right-0 top-16 z-50 mx-auto flex max-h-[80vh] w-full max-w-md flex-col rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl md:absolute md:left-auto md:right-0 md:top-12 md:mx-0 md:max-h-[600px] md:w-96 md:max-w-none">
+            <div className="border-b border-[#d3bb73]/20 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-[#e5e4e2]">Powiadomienia</h3>
                 <button
                   onClick={() => setShowPanel(false)}
-                  className="p-1 hover:bg-[#0f1119] rounded transition-colors"
+                  className="rounded p-1 transition-colors hover:bg-[#0f1119]"
                 >
-                  <X className="w-5 h-5 text-[#e5e4e2]" />
+                  <X className="h-5 w-5 text-[#e5e4e2]" />
                 </button>
               </div>
 
               <div className="flex gap-2">
                 <button
                   onClick={() => setFilter('all')}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     filter === 'all'
                       ? 'bg-[#d3bb73] text-[#1c1f33]'
                       : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
@@ -296,7 +312,7 @@ export default function NotificationCenter() {
                 </button>
                 <button
                   onClick={() => setFilter('unread')}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     filter === 'unread'
                       ? 'bg-[#d3bb73] text-[#1c1f33]'
                       : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
@@ -310,9 +326,9 @@ export default function NotificationCenter() {
                 <button
                   onClick={markAllAsRead}
                   disabled={loading}
-                  className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/20 px-3 py-1.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
                 >
-                  <CheckCheck className="w-4 h-4" />
+                  <CheckCheck className="h-4 w-4" />
                   Oznacz wszystkie jako przeczytane
                 </button>
               )}
@@ -321,11 +337,9 @@ export default function NotificationCenter() {
             <div className="flex-1 overflow-y-auto">
               {filteredNotifications.length === 0 ? (
                 <div className="p-8 text-center text-[#e5e4e2]/60">
-                  <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
                   <p>
-                    {filter === 'unread'
-                      ? 'Brak nieprzeczytanych powiadomień'
-                      : 'Brak powiadomień'}
+                    {filter === 'unread' ? 'Brak nieprzeczytanych powiadomień' : 'Brak powiadomień'}
                   </p>
                 </div>
               ) : (
@@ -338,54 +352,44 @@ export default function NotificationCenter() {
                           handleNotificationClick(notification);
                         }
                       }}
-                      className={`p-4 hover:bg-[#0f1119]/50 transition-colors ${
+                      className={`p-4 transition-colors hover:bg-[#0f1119]/50 ${
                         notification.action_url ? 'cursor-pointer' : ''
-                      } ${
-                        !notification.is_read ? 'bg-[#d3bb73]/5' : ''
-                      }`}
+                      } ${!notification.is_read ? 'bg-[#d3bb73]/5' : ''}`}
                     >
                       <div className="flex items-start gap-3">
                         <div
-                          className={`flex-shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${getTypeColor(
-                            notification.type
+                          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border ${getTypeColor(
+                            notification.type,
                           )}`}
                         >
-                          <span className="text-sm">
-                            {getTypeIcon(notification.type)}
-                          </span>
+                          <span className="text-sm">{getTypeIcon(notification.type)}</span>
                         </div>
 
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <h4
                               className={`font-medium ${
-                                notification.is_read
-                                  ? 'text-[#e5e4e2]/70'
-                                  : 'text-[#e5e4e2]'
+                                notification.is_read ? 'text-[#e5e4e2]/70' : 'text-[#e5e4e2]'
                               }`}
                             >
                               {notification.title}
                             </h4>
                             {!notification.is_read && (
-                              <div className="flex-shrink-0 w-2 h-2 bg-[#d3bb73] rounded-full" />
+                              <div className="h-2 w-2 flex-shrink-0 rounded-full bg-[#d3bb73]" />
                             )}
                           </div>
 
                           <p
-                            className={`text-sm mt-1 ${
-                              notification.is_read
-                                ? 'text-[#e5e4e2]/50'
-                                : 'text-[#e5e4e2]/70'
+                            className={`mt-1 text-sm ${
+                              notification.is_read ? 'text-[#e5e4e2]/50' : 'text-[#e5e4e2]/70'
                             }`}
                           >
                             {notification.message}
                           </p>
 
-                          <div className="flex items-center gap-2 mt-2">
+                          <div className="mt-2 flex items-center gap-2">
                             <span className="text-xs text-[#e5e4e2]/40">
-                              {new Date(
-                                notification.created_at
-                              ).toLocaleString('pl-PL', {
+                              {new Date(notification.created_at).toLocaleString('pl-PL', {
                                 day: '2-digit',
                                 month: '2-digit',
                                 year: 'numeric',
@@ -394,47 +398,55 @@ export default function NotificationCenter() {
                               })}
                             </span>
 
-
-                            <span className="text-xs px-2 py-0.5 bg-[#0f1119] text-[#e5e4e2]/60 rounded">
+                            <span className="rounded bg-[#0f1119] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
                               {notification.category}
                             </span>
                           </div>
 
-                          {notification.metadata?.requires_response && notification.metadata?.assignment_id && (
-                            <div className="flex items-center gap-2 mt-3">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAssignmentResponse(notification.metadata.assignment_id, 'accepted', notification.recipient_id);
-                                }}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-500/30 transition-colors"
-                              >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                Akceptuj
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAssignmentResponse(notification.metadata.assignment_id, 'rejected', notification.recipient_id);
-                                }}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/30 transition-colors"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                                Odrzuć
-                              </button>
-                            </div>
-                          )}
+                          {notification.metadata?.requires_response &&
+                            notification.metadata?.assignment_id && (
+                              <div className="mt-3 flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAssignmentResponse(
+                                      notification.metadata.assignment_id,
+                                      'accepted',
+                                      notification.recipient_id,
+                                    );
+                                  }}
+                                  className="flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/30"
+                                >
+                                  <CheckCircle className="h-3.5 w-3.5" />
+                                  Akceptuj
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAssignmentResponse(
+                                      notification.metadata.assignment_id,
+                                      'rejected',
+                                      notification.recipient_id,
+                                    );
+                                  }}
+                                  className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/30"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  Odrzuć
+                                </button>
+                              </div>
+                            )}
 
-                          <div className="flex items-center gap-2 mt-2">
+                          <div className="mt-2 flex items-center gap-2">
                             {notification.action_url && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleNotificationClick(notification);
                                 }}
-                                className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+                                className="flex items-center gap-1 text-xs text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
                               >
-                                <ExternalLink className="w-3 h-3" />
+                                <ExternalLink className="h-3 w-3" />
                                 Przejdź
                               </button>
                             )}
@@ -445,9 +457,9 @@ export default function NotificationCenter() {
                                   e.stopPropagation();
                                   markAsRead(notification.recipient_id);
                                 }}
-                                className="flex items-center gap-1 text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                                className="flex items-center gap-1 text-xs text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
                               >
-                                <Check className="w-3 h-3" />
+                                <Check className="h-3 w-3" />
                                 Oznacz jako przeczytane
                               </button>
                             )}
@@ -457,9 +469,9 @@ export default function NotificationCenter() {
                                 e.stopPropagation();
                                 deleteNotification(notification.recipient_id);
                               }}
-                              className="flex items-center gap-1 text-xs text-red-400/60 hover:text-red-400 transition-colors ml-auto"
+                              className="ml-auto flex items-center gap-1 text-xs text-red-400/60 transition-colors hover:text-red-400"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="h-3 w-3" />
                               Usuń
                             </button>
                           </div>

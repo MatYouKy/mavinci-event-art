@@ -15,23 +15,23 @@ export default function WeekView({
   const weekDays = getWeekDays(currentDate);
 
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
       <div className="grid grid-cols-8 border-b border-[#d3bb73]/10">
-        <div className="p-4 bg-[#0f1119]"></div>
+        <div className="bg-[#0f1119] p-4"></div>
         {weekDays.map((day, index) => {
           const today = isToday(day);
           return (
             <div
               key={index}
-              className={`p-4 text-center border-l border-[#d3bb73]/10 ${
+              className={`border-l border-[#d3bb73]/10 p-4 text-center ${
                 today ? 'bg-[#d3bb73]/5' : 'bg-[#1c1f33]'
               }`}
             >
-              <div className="text-xs text-[#e5e4e2]/60 mb-1">{DAYS_OF_WEEK_FULL[index]}</div>
+              <div className="mb-1 text-xs text-[#e5e4e2]/60">{DAYS_OF_WEEK_FULL[index]}</div>
               <div
                 className={`text-lg font-light ${
                   today
-                    ? 'w-8 h-8 mx-auto flex items-center justify-center bg-[#d3bb73] text-[#1c1f33] rounded-full'
+                    ? 'mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-[#d3bb73] text-[#1c1f33]'
                     : 'text-[#e5e4e2]'
                 }`}
               >
@@ -42,13 +42,13 @@ export default function WeekView({
         })}
       </div>
 
-      <div className="relative overflow-y-auto max-h-[600px]">
+      <div className="relative max-h-[600px] overflow-y-auto">
         <div className="grid grid-cols-8">
-          <div className="bg-[#0f1119] border-r border-[#d3bb73]/10">
+          <div className="border-r border-[#d3bb73]/10 bg-[#0f1119]">
             {HOURS.map((hour) => (
               <div
                 key={hour}
-                className="h-[60px] flex items-start justify-end pr-2 text-xs text-[#e5e4e2]/40 border-b border-[#d3bb73]/5"
+                className="flex h-[60px] items-start justify-end border-b border-[#d3bb73]/5 pr-2 text-xs text-[#e5e4e2]/40"
               >
                 {hour.toString().padStart(2, '0')}:00
               </div>
@@ -70,7 +70,7 @@ export default function WeekView({
                 {HOURS.map((hour) => (
                   <div
                     key={hour}
-                    className="h-[60px] border-b border-[#d3bb73]/5 hover:bg-[#d3bb73]/5 transition-colors cursor-pointer"
+                    className="h-[60px] cursor-pointer border-b border-[#d3bb73]/5 transition-colors hover:bg-[#d3bb73]/5"
                   />
                 ))}
 
@@ -79,7 +79,7 @@ export default function WeekView({
                   return (
                     <div
                       key={event.id}
-                      className="absolute left-1 right-1 rounded border p-2 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden z-10"
+                      className="absolute left-1 right-1 z-10 cursor-pointer overflow-hidden rounded border p-2 transition-opacity hover:opacity-80"
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,
@@ -105,11 +105,13 @@ export default function WeekView({
                         if (onEventHover) onEventHover(null);
                       }}
                     >
-                      <div className="text-xs font-medium truncate flex items-center gap-1">
+                      <div className="flex items-center gap-1 truncate text-xs font-medium">
                         {event.category?.custom_icon?.svg_code && (
                           <span
-                            className="inline-flex w-3 h-3 flex-shrink-0"
-                            dangerouslySetInnerHTML={{ __html: event.category.custom_icon.svg_code }}
+                            className="inline-flex h-3 w-3 flex-shrink-0"
+                            dangerouslySetInnerHTML={{
+                              __html: event.category.custom_icon.svg_code,
+                            }}
                             style={{ color: event.category.color }}
                           />
                         )}
@@ -117,13 +119,13 @@ export default function WeekView({
                       </div>
                       {height > 40 && (
                         <>
-                          <div className="flex items-center gap-1 text-[10px] mt-1 opacity-80">
-                            <Clock className="w-3 h-3" />
+                          <div className="mt-1 flex items-center gap-1 text-[10px] opacity-80">
+                            <Clock className="h-3 w-3" />
                             <span>{formatTime(event.event_date)}</span>
                           </div>
                           {height > 60 && event.location && (
-                            <div className="flex items-center gap-1 text-[10px] mt-0.5 opacity-80 truncate">
-                              <MapPin className="w-3 h-3" />
+                            <div className="mt-0.5 flex items-center gap-1 truncate text-[10px] opacity-80">
+                              <MapPin className="h-3 w-3" />
                               <span className="truncate">{event.location}</span>
                             </div>
                           )}

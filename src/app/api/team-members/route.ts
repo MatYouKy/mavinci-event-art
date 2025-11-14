@@ -13,7 +13,9 @@ export async function GET(request: Request) {
     // Fetch employees marked as show_on_website=true for public display
     const { data, error } = await supabase
       .from('employees')
-      .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level, created_at')
+      .select(
+        'id, name, surname, nickname, email, avatar_url, avatar_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level, created_at',
+      )
       .eq('show_on_website', true)
       .order('order_index', { ascending: true })
       .order('created_at', { ascending: true });

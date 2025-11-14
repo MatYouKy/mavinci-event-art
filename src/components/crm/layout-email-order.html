@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${title}</title>
+</head>
+<body style="margin:0;background:#0f0f0f;">
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#121212;border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.5);border:1px solid #2a2a2a;">
+
+    <!-- Header z czerwonym gradientem -->
+    <div style="background:linear-gradient(135deg,#DC143C 0%,#8B0000 100%);padding:50px 30px;text-align:center;position:relative;">
+      <div style="position:absolute;inset:0;background:url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIGlkPSJncmlkIiB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiPjxwYXRoIGQ9Ik0gNDAgMCBMIDAgMCAwIDQwIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==');opacity:.3;"></div>
+      ${LOGO_DATA_URL ? `<img src="${LOGO_DATA_URL}" alt="${BRAND}" style="max-width:160px;max-height:48px;margin:0 auto 18px;display:block;position:relative;z-index:1;" />` : ''}
+      <h1 style="color:#fff;margin:0;font-size:32px;font-weight:700;position:relative;z-index:1;text-shadow:0 2px 8px rgba(0,0,0,.3);">
+        ${isConfirmation ? '🎧 Dziękujemy za zamówienie!' : '🔔 Aktualizacja zamówienia'}
+      </h1>
+      <p style="color:rgba(255,255,255,.9);margin:10px 0 0;font-size:16px;position:relative;z-index:1;">
+        ${BRAND} — profesjonalny sprzęt DJ
+      </p>
+    </div>
+
+    <!-- Content -->
+    <div style="padding:40px 30px;background:#1a1a1a;">
+      <p style="font-size:18px;color:#e0e0e0;line-height:1.8;margin:0 0 18px;">
+        ${isConfirmation ? 'Dziękujemy za złożenie zamówienia!' : 'Status Twojego zamówienia został zaktualizowany.'}
+      </p>
+
+      <div style="background:#252525;border-left:4px solid #DC143C;padding:16px 20px;margin:20px 0;border-radius:6px;box-shadow:inset 0 1px 3px rgba(0,0,0,.2);">
+        <p style="margin:0;font-size:14px;color:#b0b0b0;line-height:1.8;">
+          <strong style="color:#e0e0e0;">Numer:</strong> ${data.order_number}<br/>
+          <strong style="color:#e0e0e0;">Status:</strong> <span style="color:#DC143C;">${statusText}</span><br/>
+          <strong style="color:#e0e0e0;">Suma:</strong> <span style="color:#e0e0e0;">${Number(data.total_amount).toFixed(2)} zł</span>
+        </p>
+      </div>
+
+      <h2 style="color:#fff;font-size:18px;margin:28px 0 12px;">Produkty</h2>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;background:#1b1b1b;">
+        <thead>
+          <tr style="background:#161616;">
+            <th style="padding:12px;color:#b0b0b0;text-align:left;border-bottom:1px solid #2a2a2a;">Produkt</th>
+            <th style="padding:12px;color:#b0b0b0;text-align:center;border-bottom:1px solid #2a2a2a;">Ilość</th>
+            <th style="padding:12px;color:#b0b0b0;text-align:right;border-bottom:1px solid #2a2a2a;">Cena</th>
+            <th style="padding:12px;color:#b0b0b0;text-align:right;border-bottom:1px solid #2a2a2a;">Suma</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHTML}
+          <tr>
+            <td colspan="3" style="padding:12px;text-align:right;color:#e0e0e0;font-weight:700;">Razem</td>
+            <td style="padding:12px;text-align:right;color:#DC143C;font-weight:700;font-size:18px;">${Number(data.total_amount).toFixed(2)} zł</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 style="color:#fff;font-size:18px;margin:28px 0 12px;">Adres dostawy</h2>
+      <div style="background:#202020;border:1px solid #2a2a2a;border-radius:8px;padding:18px;">
+        <p style="margin:0;color:#e0e0e0;line-height:1.7;">
+          ${data.shipping_address?.full_name ?? ''}<br/>
+          ${data.shipping_address?.street ?? ''}<br/>
+          ${data.shipping_address?.postal_code ?? ''} ${data.shipping_address?.city ?? ''}<br/>
+          ${data.shipping_address?.country ?? ''}
+        </p>
+      </div>
+
+      <!-- Button -->
+      <div style="text-align:center;margin:36px 0 6px;">
+        <a href="${ctaHref}"
+           style="display:inline-block;padding:16px 42px;background:linear-gradient(135deg,#DC143C 0%,#A30000 100%);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:.5px;box-shadow:0 6px 20px rgba(220,20,60,.4);">
+          Zobacz zamówienie
+        </a>
+      </div>
+
+      <!-- Alternative link -->
+      <p style="font-size:12px;color:#808080;line-height:1.6;margin:22px 0 0;padding:16px;background:#202020;border-radius:6px;">
+        Problemy z przyciskiem? Skopiuj i wklej ten link w przeglądarce:<br/>
+        <a href="${ctaHref}" style="color:#DC143C;text-decoration:none;word-break:break-all;">${ctaHref}</a>
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#0f0f0f;padding:28px 30px;text-align:center;border-top:1px solid #2a2a2a;">
+      <p style="margin:0 0 14px;color:#b0b0b0;font-size:15px;line-height:1.6;">
+        Z pasją do muzyki,<br/>
+        <strong style="color:#DC143C;font-size:17px;">Zespół ${BRAND}</strong>
+      </p>
+      <div style="margin:18px 0;padding:14px 0;border-top:1px solid #2a2a2a;border-bottom:1px solid #2a2a2a;">
+        <a href="${SITE}" style="color:#DC143C;text-decoration:none;font-weight:700;font-size:16px;">🌐 fordj.pl</a>
+      </div>
+      <p style="margin:12px 0 0;font-size:12px;color:#666;line-height:1.6;">
+        Kontrollery | Mikrofony | Oświetlenie | Akcesoria<br/>
+        Profesjonalny sprzęt dla DJ i producentów muzycznych
+      </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -34,10 +34,29 @@ export interface IImage {
   id?: string;
   alt?: string;
   image_metadata?: IImageMetadata;
+  file?: File;
+  is_main?: boolean;
+  order?: number;
 }
 
 export interface IUploadImage {
   file?: File;
   alt?: string;
   image_metadata?: IImageMetadataUpload;
+  is_main?: boolean;
+  order?: number;
 }
+
+export interface ISingleImage {
+  order?: number;
+  is_main?: boolean;
+  src: string;
+  alt: string;
+}
+
+
+export type FormGalleryItem = ISingleImage & {
+  file?: File | null;
+  preview_url?: string | null;
+  _tempId?: string;
+};

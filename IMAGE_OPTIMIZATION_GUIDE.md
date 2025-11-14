@@ -16,11 +16,11 @@ Automatyczny system kompresji i optymalizacji obrazów dla lepszej wydajności s
 
 ## 📐 Rozmiary
 
-| Wersja | Szerokość | Jakość | Użycie |
-|--------|-----------|--------|--------|
-| Desktop | 2200px | 85% | Komputery i tablety |
-| Mobile | 800px | 85% | Smartfony |
-| Thumbnail | 400px | 80% | Miniaturki i podglądy |
+| Wersja    | Szerokość | Jakość | Użycie                |
+| --------- | --------- | ------ | --------------------- |
+| Desktop   | 2200px    | 85%    | Komputery i tablety   |
+| Mobile    | 800px     | 85%    | Smartfony             |
+| Thumbnail | 400px     | 80%    | Miniaturki i podglądy |
 
 ---
 
@@ -36,9 +36,9 @@ import { uploadOptimizedImage } from '@/lib/storage';
 const handleUpload = async (file: File) => {
   const urls = await uploadOptimizedImage(file, 'portfolio');
 
-  console.log(urls.desktop);    // https://.../image-desktop.webp
-  console.log(urls.mobile);     // https://.../image-mobile.webp
-  console.log(urls.thumbnail);  // https://.../image-thumb.webp
+  console.log(urls.desktop); // https://.../image-desktop.webp
+  console.log(urls.mobile); // https://.../image-mobile.webp
+  console.log(urls.thumbnail); // https://.../image-thumb.webp
 
   // Zapisz URLs do bazy danych
   await supabase.from('portfolio').insert({
@@ -76,8 +76,8 @@ import { uploadImageToStorage } from '@/lib/storage';
 
 const result = await uploadImageToStorage(file);
 // Teraz automatycznie uploaduje wszystkie wersje!
-console.log(result.url);      // Desktop URL (backwards compatible)
-console.log(result.urls);     // { desktop, mobile, thumbnail }
+console.log(result.url); // Desktop URL (backwards compatible)
+console.log(result.urls); // { desktop, mobile, thumbnail }
 ```
 
 ---
@@ -98,7 +98,7 @@ import ResponsiveImage from '@/components/ResponsiveImage';
   alt="Opis obrazu"
   className="rounded-lg"
   loading="lazy"
-/>
+/>;
 ```
 
 ### Helper functions
@@ -122,12 +122,12 @@ const mobileUrl = getImageUrl(imageUrl, 'mobile');
 
 ### Przykład: Zdjęcie 3000x2000px, 4MB
 
-| Wersja | Rozmiar | Oszczędność |
-|--------|---------|-------------|
-| Oryginał | 4.0 MB | - |
-| Desktop (2200px) | ~350 KB | 91% |
-| Mobile (800px) | ~80 KB | 98% |
-| Thumbnail (400px) | ~30 KB | 99% |
+| Wersja            | Rozmiar | Oszczędność |
+| ----------------- | ------- | ----------- |
+| Oryginał          | 4.0 MB  | -           |
+| Desktop (2200px)  | ~350 KB | 91%         |
+| Mobile (800px)    | ~80 KB  | 98%         |
+| Thumbnail (400px) | ~30 KB  | 99%         |
 
 **Dla użytkownika mobile:** Zamiast 4MB pobiera tylko 80KB! ⚡
 
@@ -139,7 +139,7 @@ Zmień rozmiary w `src/lib/storage.ts`:
 
 ```typescript
 export const IMAGE_SIZES = {
-  desktop: { width: 2200, quality: 0.85 },   // Zmień tutaj
+  desktop: { width: 2200, quality: 0.85 }, // Zmień tutaj
   mobile: { width: 800, quality: 0.85 },
   thumbnail: { width: 400, quality: 0.8 },
 };
@@ -157,9 +157,7 @@ import { uploadOptimizedImage } from '@/lib/storage';
 
 async function optimizeExistingImages() {
   // 1. Pobierz wszystkie obrazy z bazy
-  const { data: items } = await supabase
-    .from('portfolio')
-    .select('id, image_url');
+  const { data: items } = await supabase.from('portfolio').select('id, image_url');
 
   for (const item of items) {
     if (!item.image_url) continue;
@@ -201,12 +199,14 @@ async function optimizeExistingImages() {
 ## 🎯 Best Practices
 
 ### ✅ DO:
+
 - Używaj `uploadOptimizedImage()` dla nowych uploadów
 - Używaj `ResponsiveImage` component do wyświetlania
 - Dodaj dobre alt texts dla SEO
 - Testuj na mobile devices
 
 ### ❌ DON'T:
+
 - Nie uploaduj obrazów > 10MB (kompresuj najpierw)
 - Nie używaj PNG dla zdjęć (tylko dla grafik z przezroczystością)
 - Nie zapomnij o alt text

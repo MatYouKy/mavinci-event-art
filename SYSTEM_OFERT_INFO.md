@@ -42,11 +42,13 @@
 ### 2. Panel Sprzedawcy (/seller)
 
 **Dashboard sprzedawcy:**
+
 - Statystyki: wszystkie oferty, oczekujące, zaakceptowane, przychód
 - Lista ostatnich ofert
 - Szybkie akcje (nowa oferta, kalendarz, klienci, katalog)
 
 **Nawigacja:**
+
 - ✅ Dashboard
 - 🔜 Moje oferty (lista + szczegóły)
 - 🔜 Kalendarz rezerwacji
@@ -63,13 +65,16 @@
 ### 4. Automatyzacje (Triggers)
 
 **`calculate_offer_item_subtotal`**
+
 - Auto-liczy subtotal = cena × ilość
 
 **`audit_price_change`**
+
 - AUTOMATYCZNIE zapisuje do audytu gdy sprzedawca zmienia cenę
 - Liczy różnicę i procent zmiany
 
 **`generate_offer_number`**
+
 - Auto-generuje numer oferty: OFF-20251003-0001
 
 ## 🚀 Jak to działa:
@@ -118,6 +123,7 @@
 ## 📊 Przykładowe dane:
 
 ✅ **40+ atrakcji** w katalogu:
+
 - Nagłośnienie basic → premium (800-3500 zł)
 - DJ pakiety (1200-3000 zł)
 - Oświetlenie LED, moving heads, lasery
@@ -129,11 +135,13 @@
 - Streaming (basic → pro)
 
 ✅ **1 sprzedawca testowy:**
+
 - Email: sprzedawca@mavinci.pl
 
 ## 🔧 Co pozostało do zrobienia:
 
 ### PRIORYTET 1:
+
 - [ ] **Kreator ofert** (/seller/offers/new)
   - Formularz wieloetapowy
   - Wybór klienta
@@ -154,6 +162,7 @@
   - Generowanie PDF
 
 ### PRIORYTET 2:
+
 - [ ] **Generator PDF ofert**
   - Biblioteka: react-pdf lub jsPDF
   - Template z logo Mavinci
@@ -168,6 +177,7 @@
   - Powiązanie z ofertami
 
 ### PRIORYTET 3:
+
 - [ ] **Panel audytu dla admina** (/crm/price-audit)
   - Tabela zmian cen
   - Filtry (sprzedawca, zakres dat, wielkość zmiany)
@@ -193,6 +203,7 @@
 4. **Zaloguj się** (zostaniesz automatycznie przekierowany)
 
 ### Lub:
+
 - Na stronie logowania kliknij link **"Zarejestruj się"** na dole
 
 ### Dodanie sprzedawcy:

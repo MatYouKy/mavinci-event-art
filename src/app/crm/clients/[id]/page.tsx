@@ -174,7 +174,8 @@ export default function ClientDetailPage() {
 
       const { data: allowedAttractionsData } = await supabase
         .from('client_allowed_attractions')
-        .select(`
+        .select(
+          `
           id,
           attraction_id,
           custom_price,
@@ -184,18 +185,20 @@ export default function ClientDetailPage() {
             category,
             base_price
           )
-        `)
+        `,
+        )
         .eq('client_id', clientId);
 
-      const formattedAttractions = allowedAttractionsData?.map((item: any) => ({
-        id: item.id,
-        attraction_id: item.attraction_id,
-        attraction_name: item.attractions.name,
-        category: item.attractions.category,
-        base_price: item.attractions.base_price,
-        custom_price: item.custom_price,
-        notes: item.notes,
-      })) || [];
+      const formattedAttractions =
+        allowedAttractionsData?.map((item: any) => ({
+          id: item.id,
+          attraction_id: item.attraction_id,
+          attraction_name: item.attractions.name,
+          category: item.attractions.category,
+          base_price: item.attractions.base_price,
+          custom_price: item.custom_price,
+          notes: item.notes,
+        })) || [];
 
       setAllowedAttractions(formattedAttractions);
     } catch (error) {
@@ -258,13 +261,15 @@ export default function ClientDetailPage() {
                 client_id: clientId,
                 user_type: 'client',
                 full_name: displayName,
-              }
-            }
+              },
+            },
           });
 
           if (signUpError) {
             if (signUpError.message.includes('already registered')) {
-              alert('Użytkownik z tym emailem już istnieje. Użyj innego emaila lub skontaktuj się z administratorem.');
+              alert(
+                'Użytkownik z tym emailem już istnieje. Użyj innego emaila lub skontaktuj się z administratorem.',
+              );
             } else {
               console.error('Error creating user:', signUpError);
               alert('Błąd podczas tworzenia użytkownika: ' + signUpError.message);
@@ -335,10 +340,7 @@ export default function ClientDetailPage() {
     try {
       setSaving(true);
 
-      const { error } = await supabase
-        .from('clients')
-        .update(editedClient)
-        .eq('id', clientId);
+      const { error } = await supabase.from('clients').update(editedClient).eq('id', clientId);
 
       if (error) throw error;
 
@@ -360,7 +362,7 @@ export default function ClientDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -368,15 +370,16 @@ export default function ClientDetailPage() {
 
   if (!client) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-red-400">Nie znaleziono klienta</div>
       </div>
     );
   }
 
-  const displayName = client.client_type === 'company'
-    ? client.company_name
-    : `${client.first_name} ${client.last_name}`;
+  const displayName =
+    client.client_type === 'company'
+      ? client.company_name
+      : `${client.first_name} ${client.last_name}`;
 
   const availableCategories = [
     'Nagłośnienie',
@@ -390,39 +393,39 @@ export default function ClientDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0b0f] p-6">
-      <div className="max-w-7xl mx-auto">
+      <div className="mx-auto max-w-7xl">
         <button
           onClick={() => router.push('/crm/clients')}
-          className="mb-6 flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+          className="mb-6 flex items-center gap-2 text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="h-5 w-5" />
           <span>Powrót do listy klientów</span>
         </button>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6 mb-6">
+        <div className="mb-6 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-[#d3bb73]/10 rounded-lg flex items-center justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[#d3bb73]/10">
                 {client.client_type === 'company' ? (
-                  <Building2 className="w-8 h-8 text-[#d3bb73]" />
+                  <Building2 className="h-8 w-8 text-[#d3bb73]" />
                 ) : (
-                  <User className="w-8 h-8 text-[#d3bb73]" />
+                  <User className="h-8 w-8 text-[#d3bb73]" />
                 )}
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-[#e5e4e2] mb-1">{displayName}</h1>
+                <h1 className="mb-1 text-2xl font-bold text-[#e5e4e2]">{displayName}</h1>
                 <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                   <span className="flex items-center gap-1">
-                    <Tag className="w-4 h-4" />
+                    <Tag className="h-4 w-4" />
                     {client.category}
                   </span>
                   <span className="flex items-center gap-1">
-                    <Calendar className="w-4 h-4" />
+                    <Calendar className="h-4 w-4" />
                     {client.total_events} wydarzeń
                   </span>
                   {client.total_revenue > 0 && (
                     <span className="flex items-center gap-1">
-                      <DollarSign className="w-4 h-4" />
+                      <DollarSign className="h-4 w-4" />
                       {client.total_revenue.toLocaleString('pl-PL')} PLN
                     </span>
                   )}
@@ -432,8 +435,8 @@ export default function ClientDetailPage() {
 
             <div className="flex items-center gap-3">
               {client.portal_access && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-lg">
-                  <Key className="w-4 h-4 text-green-400" />
+                <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-1">
+                  <Key className="h-4 w-4 text-green-400" />
                   <span className="text-sm text-green-400">Portal aktywny</span>
                 </div>
               )}
@@ -441,9 +444,9 @@ export default function ClientDetailPage() {
               {activeTab === 'details' && !editMode && (
                 <button
                   onClick={handleEdit}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Settings className="w-4 h-4" />
+                  <Settings className="h-4 w-4" />
                   Edytuj
                 </button>
               )}
@@ -453,15 +456,15 @@ export default function ClientDetailPage() {
                   <button
                     onClick={handleSaveClient}
                     disabled={saving}
-                    className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-white transition-colors hover:bg-green-600 disabled:opacity-50"
                   >
-                    <Save className="w-4 h-4" />
+                    <Save className="h-4 w-4" />
                     {saving ? 'Zapisywanie...' : 'Zapisz'}
                   </button>
                   <button
                     onClick={handleCancelEdit}
                     disabled={saving}
-                    className="flex items-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50"
                   >
                     Anuluj
                   </button>
@@ -471,10 +474,10 @@ export default function ClientDetailPage() {
           </div>
         </div>
 
-        <div className="flex gap-4 mb-6">
+        <div className="mb-6 flex gap-4">
           <button
             onClick={() => setActiveTab('details')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'details'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
@@ -484,7 +487,7 @@ export default function ClientDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab('events')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'events'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
@@ -494,7 +497,7 @@ export default function ClientDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab('offers')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'offers'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
@@ -504,71 +507,71 @@ export default function ClientDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab('portal')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'portal'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
             }`}
           >
             <div className="flex items-center gap-2">
-              <Settings className="w-4 h-4" />
+              <Settings className="h-4 w-4" />
               Portal klienta
             </div>
           </button>
         </div>
 
         {activeTab === 'details' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Informacje kontaktowe</h2>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Informacje kontaktowe</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Email</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Email</label>
                   {editMode ? (
                     <input
                       type="email"
                       value={editedClient.email || ''}
                       onChange={(e) => handleFieldChange('email', e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   ) : (
                     <div className="flex items-center gap-3">
-                      <Mail className="w-5 h-5 text-[#d3bb73]" />
+                      <Mail className="h-5 w-5 text-[#d3bb73]" />
                       <span className="text-[#e5e4e2]">{client.email || '-'}</span>
                     </div>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Telefon główny</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Telefon główny</label>
                   {editMode ? (
                     <input
                       type="text"
                       value={editedClient.phone_number || ''}
                       onChange={(e) => handleFieldChange('phone_number', e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   ) : (
                     <div className="flex items-center gap-3">
-                      <Phone className="w-5 h-5 text-[#d3bb73]" />
+                      <Phone className="h-5 w-5 text-[#d3bb73]" />
                       <span className="text-[#e5e4e2]">{client.phone_number || '-'}</span>
                     </div>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Telefon dodatkowy</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Telefon dodatkowy</label>
                   {editMode ? (
                     <input
                       type="text"
                       value={editedClient.phone_secondary || ''}
                       onChange={(e) => handleFieldChange('phone_secondary', e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   ) : (
                     client.phone_secondary && (
                       <div className="flex items-center gap-3">
-                        <Phone className="w-5 h-5 text-[#d3bb73]" />
+                        <Phone className="h-5 w-5 text-[#d3bb73]" />
                         <span className="text-[#e5e4e2]">{client.phone_secondary}</span>
                       </div>
                     )
@@ -576,18 +579,18 @@ export default function ClientDetailPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Strona WWW</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Strona WWW</label>
                   {editMode ? (
                     <input
                       type="url"
                       value={editedClient.website || ''}
                       onChange={(e) => handleFieldChange('website', e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   ) : (
                     client.website && (
                       <div className="flex items-center gap-3">
-                        <Globe className="w-5 h-5 text-[#d3bb73]" />
+                        <Globe className="h-5 w-5 text-[#d3bb73]" />
                         <a
                           href={client.website}
                           target="_blank"
@@ -603,17 +606,17 @@ export default function ClientDetailPage() {
               </div>
             </div>
 
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Adres</h2>
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Adres</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ulica</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ulica</label>
                   {editMode ? (
                     <input
                       type="text"
                       value={editedClient.address_street || ''}
                       onChange={(e) => handleFieldChange('address_street', e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   ) : (
                     <span className="text-[#e5e4e2]">{client.address_street || '-'}</span>
@@ -622,13 +625,13 @@ export default function ClientDetailPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kod pocztowy</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kod pocztowy</label>
                     {editMode ? (
                       <input
                         type="text"
                         value={editedClient.address_postal_code || ''}
                         onChange={(e) => handleFieldChange('address_postal_code', e.target.value)}
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     ) : (
                       <span className="text-[#e5e4e2]">{client.address_postal_code || '-'}</span>
@@ -636,13 +639,13 @@ export default function ClientDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Miasto</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miasto</label>
                     {editMode ? (
                       <input
                         type="text"
                         value={editedClient.address_city || ''}
                         onChange={(e) => handleFieldChange('address_city', e.target.value)}
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     ) : (
                       <span className="text-[#e5e4e2]">{client.address_city || '-'}</span>
@@ -651,13 +654,13 @@ export default function ClientDetailPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kraj</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kraj</label>
                   {editMode ? (
                     <input
                       type="text"
                       value={editedClient.address_country || ''}
                       onChange={(e) => handleFieldChange('address_country', e.target.value)}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   ) : (
                     <span className="text-[#e5e4e2]">{client.address_country || '-'}</span>
@@ -667,17 +670,17 @@ export default function ClientDetailPage() {
             </div>
 
             {client.client_type === 'company' && (
-              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-                <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Dane firmy</h2>
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+                <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Dane firmy</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa firmy</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa firmy</label>
                     {editMode ? (
                       <input
                         type="text"
                         value={editedClient.company_name || ''}
                         onChange={(e) => handleFieldChange('company_name', e.target.value)}
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     ) : (
                       <span className="text-[#e5e4e2]">{client.company_name || '-'}</span>
@@ -685,13 +688,13 @@ export default function ClientDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">NIP</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">NIP</label>
                     {editMode ? (
                       <input
                         type="text"
                         value={editedClient.company_nip || ''}
                         onChange={(e) => handleFieldChange('company_nip', e.target.value)}
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     ) : (
                       <span className="text-[#e5e4e2]">{client.company_nip || '-'}</span>
@@ -699,13 +702,13 @@ export default function ClientDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">REGON</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">REGON</label>
                     {editMode ? (
                       <input
                         type="text"
                         value={editedClient.company_regon || ''}
                         onChange={(e) => handleFieldChange('company_regon', e.target.value)}
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     ) : (
                       <span className="text-[#e5e4e2]">{client.company_regon || '-'}</span>
@@ -716,17 +719,17 @@ export default function ClientDetailPage() {
             )}
 
             {(client.client_type === 'individual' || editMode) && (
-              <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-                <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Dane osobowe</h2>
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+                <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Dane osobowe</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Imię</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Imię</label>
                     {editMode ? (
                       <input
                         type="text"
                         value={editedClient.first_name || ''}
                         onChange={(e) => handleFieldChange('first_name', e.target.value)}
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     ) : (
                       <span className="text-[#e5e4e2]">{client.first_name || '-'}</span>
@@ -734,13 +737,13 @@ export default function ClientDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwisko</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwisko</label>
                     {editMode ? (
                       <input
                         type="text"
                         value={editedClient.last_name || ''}
                         onChange={(e) => handleFieldChange('last_name', e.target.value)}
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     ) : (
                       <span className="text-[#e5e4e2]">{client.last_name || '-'}</span>
@@ -750,26 +753,28 @@ export default function ClientDetailPage() {
               </div>
             )}
 
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6 lg:col-span-2">
-              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Notatki</h2>
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6 lg:col-span-2">
+              <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Notatki</h2>
               {editMode ? (
                 <textarea
                   value={editedClient.notes || ''}
                   onChange={(e) => handleFieldChange('notes', e.target.value)}
                   rows={5}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+                  className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Dodaj notatki o kliencie..."
                 />
               ) : (
-                <p className="text-[#e5e4e2]/80 whitespace-pre-wrap">{client.notes || 'Brak notatek'}</p>
+                <p className="whitespace-pre-wrap text-[#e5e4e2]/80">
+                  {client.notes || 'Brak notatek'}
+                </p>
               )}
             </div>
           </div>
         )}
 
         {activeTab === 'events' && (
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-            <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Wydarzenia klienta</h2>
+          <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Wydarzenia klienta</h2>
             {events.length === 0 ? (
               <p className="text-[#e5e4e2]/60">Brak wydarzeń</p>
             ) : (
@@ -777,31 +782,36 @@ export default function ClientDetailPage() {
                 {events.map((event) => (
                   <div
                     key={event.id}
-                    className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-colors cursor-pointer"
+                    className="cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:border-[#d3bb73]/30"
                     onClick={() => router.push(`/crm/events/${event.id}`)}
                   >
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-[#e5e4e2] mb-1">{event.name}</h3>
+                        <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2]">{event.name}</h3>
                         <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                           <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
+                            <Calendar className="h-4 w-4" />
                             {new Date(event.event_date).toLocaleDateString('pl-PL')}
                           </span>
                           {event.location && (
                             <span className="flex items-center gap-1">
-                              <MapPin className="w-4 h-4" />
+                              <MapPin className="h-4 w-4" />
                               {event.location}
                             </span>
                           )}
                         </div>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-sm ${
-                        event.status === 'confirmed' ? 'bg-green-500/10 text-green-400' :
-                        event.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
-                        event.status === 'cancelled' ? 'bg-red-500/10 text-red-400' :
-                        'bg-[#d3bb73]/10 text-[#d3bb73]'
-                      }`}>
+                      <span
+                        className={`rounded-full px-3 py-1 text-sm ${
+                          event.status === 'confirmed'
+                            ? 'bg-green-500/10 text-green-400'
+                            : event.status === 'pending'
+                              ? 'bg-yellow-500/10 text-yellow-400'
+                              : event.status === 'cancelled'
+                                ? 'bg-red-500/10 text-red-400'
+                                : 'bg-[#d3bb73]/10 text-[#d3bb73]'
+                        }`}
+                      >
                         {event.status}
                       </span>
                     </div>
@@ -814,13 +824,14 @@ export default function ClientDetailPage() {
 
         {activeTab === 'offers' && (
           <div className="space-y-6">
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Ustawienia cenowe</h2>
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Ustawienia cenowe</h2>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Mnożnik ceny dla tego klienta: {portalSettings.custom_price_multiplier.toFixed(2)}x
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Mnożnik ceny dla tego klienta:{' '}
+                    {portalSettings.custom_price_multiplier.toFixed(2)}x
                   </label>
                   <input
                     type="range"
@@ -828,21 +839,26 @@ export default function ClientDetailPage() {
                     max="1.5"
                     step="0.05"
                     value={portalSettings.custom_price_multiplier}
-                    onChange={(e) => setPortalSettings({ ...portalSettings, custom_price_multiplier: parseFloat(e.target.value) })}
+                    onChange={(e) =>
+                      setPortalSettings({
+                        ...portalSettings,
+                        custom_price_multiplier: parseFloat(e.target.value),
+                      })
+                    }
                     className="w-full accent-[#d3bb73]"
                   />
-                  <div className="flex justify-between text-xs text-[#e5e4e2]/60 mt-1">
+                  <div className="mt-1 flex justify-between text-xs text-[#e5e4e2]/60">
                     <span>50% rabatu (0.5x)</span>
                     <span>Cena bazowa (1.0x)</span>
                     <span>50% drożej (1.5x)</span>
                   </div>
                 </div>
 
-                <div className="bg-[#0f1119] rounded-lg p-4">
-                  <div className="text-sm text-[#e5e4e2]/60 mb-2">Przykład:</div>
+                <div className="rounded-lg bg-[#0f1119] p-4">
+                  <div className="mb-2 text-sm text-[#e5e4e2]/60">Przykład:</div>
                   <div className="flex items-center justify-between">
                     <span className="text-[#e5e4e2]">Usługa za 1000 PLN</span>
-                    <span className="text-[#d3bb73] font-semibold">
+                    <span className="font-semibold text-[#d3bb73]">
                       = {(1000 * portalSettings.custom_price_multiplier).toFixed(2)} PLN
                     </span>
                   </div>
@@ -851,57 +867,62 @@ export default function ClientDetailPage() {
                 <button
                   onClick={handleSavePortalSettings}
                   disabled={saving}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-all hover:bg-[#d3bb73]/90 disabled:opacity-50"
                 >
-                  <Save className="w-5 h-5" />
+                  <Save className="h-5 w-5" />
                   {saving ? 'Zapisywanie...' : 'Zapisz mnożnik ceny'}
                 </button>
               </div>
             </div>
 
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Oferty dla klienta</h2>
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Oferty dla klienta</h2>
               {offers.length === 0 ? (
                 <p className="text-[#e5e4e2]/60">Brak ofert</p>
               ) : (
-              <div className="space-y-3">
-                {offers.map((offer) => (
-                  <div
-                    key={offer.id}
-                    className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-colors cursor-pointer"
-                    onClick={() => router.push(`/crm/offers/${offer.id}`)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-3 mb-1">
-                          <h3 className="text-lg font-semibold text-[#e5e4e2]">{offer.title}</h3>
-                          <span className="text-sm text-[#e5e4e2]/60">#{offer.offer_number}</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-                          {offer.event_date && (
+                <div className="space-y-3">
+                  {offers.map((offer) => (
+                    <div
+                      key={offer.id}
+                      className="cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:border-[#d3bb73]/30"
+                      onClick={() => router.push(`/crm/offers/${offer.id}`)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="mb-1 flex items-center gap-3">
+                            <h3 className="text-lg font-semibold text-[#e5e4e2]">{offer.title}</h3>
+                            <span className="text-sm text-[#e5e4e2]/60">#{offer.offer_number}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+                            {offer.event_date && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-4 w-4" />
+                                {new Date(offer.event_date).toLocaleDateString('pl-PL')}
+                              </span>
+                            )}
                             <span className="flex items-center gap-1">
-                              <Calendar className="w-4 h-4" />
-                              {new Date(offer.event_date).toLocaleDateString('pl-PL')}
+                              <DollarSign className="h-4 w-4" />
+                              {offer.total_final_price?.toLocaleString('pl-PL') || '0'} PLN
                             </span>
-                          )}
-                          <span className="flex items-center gap-1">
-                            <DollarSign className="w-4 h-4" />
-                            {offer.total_final_price?.toLocaleString('pl-PL') || '0'} PLN
-                          </span>
+                          </div>
                         </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-sm ${
+                            offer.status === 'accepted'
+                              ? 'bg-green-500/10 text-green-400'
+                              : offer.status === 'sent'
+                                ? 'bg-blue-500/10 text-blue-400'
+                                : offer.status === 'rejected'
+                                  ? 'bg-red-500/10 text-red-400'
+                                  : 'bg-yellow-500/10 text-yellow-400'
+                          }`}
+                        >
+                          {offer.status}
+                        </span>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-sm ${
-                        offer.status === 'accepted' ? 'bg-green-500/10 text-green-400' :
-                        offer.status === 'sent' ? 'bg-blue-500/10 text-blue-400' :
-                        offer.status === 'rejected' ? 'bg-red-500/10 text-red-400' :
-                        'bg-yellow-500/10 text-yellow-400'
-                      }`}>
-                        {offer.status}
-                      </span>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -909,28 +930,30 @@ export default function ClientDetailPage() {
 
         {activeTab === 'portal' && (
           <div className="space-y-6">
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-              <h2 className="text-xl font-bold text-[#e5e4e2] mb-4">Ustawienia portalu klienta</h2>
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Ustawienia portalu klienta</h2>
 
               <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-[#0f1119] rounded-lg">
+                <div className="flex items-center justify-between rounded-lg bg-[#0f1119] p-4">
                   <div className="flex items-center gap-3">
-                    <Key className="w-5 h-5 text-[#d3bb73]" />
+                    <Key className="h-5 w-5 text-[#d3bb73]" />
                     <div>
-                      <div className="text-[#e5e4e2] font-medium">Dostęp do portalu</div>
+                      <div className="font-medium text-[#e5e4e2]">Dostęp do portalu</div>
                       <div className="text-sm text-[#e5e4e2]/60">
                         Czy klient może logować się do portalu samoobsługowego
                       </div>
                     </div>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                  <label className="relative inline-flex cursor-pointer items-center">
                     <input
                       type="checkbox"
                       checked={portalSettings.portal_access}
-                      onChange={(e) => setPortalSettings({ ...portalSettings, portal_access: e.target.checked })}
-                      className="sr-only peer"
+                      onChange={(e) =>
+                        setPortalSettings({ ...portalSettings, portal_access: e.target.checked })
+                      }
+                      className="peer sr-only"
                     />
-                    <div className="w-14 h-7 bg-[#2a2d42] border-2 border-[#d3bb73]/30 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d3bb73]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-[#e5e4e2] after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#d3bb73] peer-checked:border-[#d3bb73]"></div>
+                    <div className="peer h-7 w-14 rounded-full border-2 border-[#d3bb73]/30 bg-[#2a2d42] after:absolute after:left-[3px] after:top-[3px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-[#e5e4e2] after:transition-all after:content-[''] peer-checked:border-[#d3bb73] peer-checked:bg-[#d3bb73] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d3bb73]/50"></div>
                   </label>
                 </div>
 
@@ -938,16 +961,18 @@ export default function ClientDetailPage() {
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                           Email logowania *
                         </label>
                         <input
                           type="email"
                           value={portalSettings.portal_email}
-                          onChange={(e) => setPortalSettings({ ...portalSettings, portal_email: e.target.value })}
+                          onChange={(e) =>
+                            setPortalSettings({ ...portalSettings, portal_email: e.target.value })
+                          }
                           placeholder="Email do logowania w portalu"
                           required
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]"
+                          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
                         />
                         <p className="mt-1 text-xs text-[#e5e4e2]/60">
                           Jeśli użytkownik nie istnieje, zostanie utworzony
@@ -955,15 +980,20 @@ export default function ClientDetailPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                        <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                           Hasło (opcjonalne)
                         </label>
                         <input
                           type="text"
                           value={portalSettings.portal_password}
-                          onChange={(e) => setPortalSettings({ ...portalSettings, portal_password: e.target.value })}
+                          onChange={(e) =>
+                            setPortalSettings({
+                              ...portalSettings,
+                              portal_password: e.target.value,
+                            })
+                          }
                           placeholder="Zostanie wygenerowane automatycznie"
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]"
+                          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
                         />
                         <p className="mt-1 text-xs text-[#e5e4e2]/60">
                           Pozostaw puste dla automatycznego hasła
@@ -972,15 +1002,20 @@ export default function ClientDetailPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                         Data wygaśnięcia dostępu
                       </label>
                       <input
                         type="date"
                         value={portalSettings.portal_active_until}
-                        onChange={(e) => setPortalSettings({ ...portalSettings, portal_active_until: e.target.value })}
+                        onChange={(e) =>
+                          setPortalSettings({
+                            ...portalSettings,
+                            portal_active_until: e.target.value,
+                          })
+                        }
                         min={new Date().toISOString().split('T')[0]}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] [color-scheme:dark]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] [color-scheme:dark] focus:border-[#d3bb73] focus:outline-none"
                       />
                       <p className="mt-1 text-xs text-[#e5e4e2]/60">
                         Pozostaw puste dla nieograniczonego dostępu
@@ -988,12 +1023,15 @@ export default function ClientDetailPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                         Dozwolone kategorie usług
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         {availableCategories.map((category) => (
-                          <label key={category} className="flex items-center gap-2 p-3 bg-[#0f1119] rounded-lg cursor-pointer hover:bg-[#0f1119]/80">
+                          <label
+                            key={category}
+                            className="flex cursor-pointer items-center gap-2 rounded-lg bg-[#0f1119] p-3 hover:bg-[#0f1119]/80"
+                          >
                             <input
                               type="checkbox"
                               checked={portalSettings.allowed_categories.includes(category)}
@@ -1001,16 +1039,21 @@ export default function ClientDetailPage() {
                                 if (e.target.checked) {
                                   setPortalSettings({
                                     ...portalSettings,
-                                    allowed_categories: [...portalSettings.allowed_categories, category]
+                                    allowed_categories: [
+                                      ...portalSettings.allowed_categories,
+                                      category,
+                                    ],
                                   });
                                 } else {
                                   setPortalSettings({
                                     ...portalSettings,
-                                    allowed_categories: portalSettings.allowed_categories.filter(c => c !== category)
+                                    allowed_categories: portalSettings.allowed_categories.filter(
+                                      (c) => c !== category,
+                                    ),
                                   });
                                 }
                               }}
-                              className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73]"
+                              className="h-4 w-4 rounded border-[#d3bb73]/30 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73]"
                             />
                             <span className="text-[#e5e4e2]">{category}</span>
                           </label>
@@ -1026,52 +1069,53 @@ export default function ClientDetailPage() {
                 <button
                   onClick={handleSavePortalSettings}
                   disabled={saving}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-all hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Save className="w-5 h-5" />
+                  <Save className="h-5 w-5" />
                   {saving ? 'Zapisywanie...' : 'Zapisz ustawienia'}
                 </button>
               </div>
             </div>
 
             {showEmailConfirmationNotice && pendingConfirmationEmail && (
-              <div className="bg-gradient-to-r from-blue-500/10 to-[#d3bb73]/10 rounded-lg border-2 border-[#d3bb73]/30 p-6">
+              <div className="rounded-lg border-2 border-[#d3bb73]/30 bg-gradient-to-r from-blue-500/10 to-[#d3bb73]/10 p-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-[#d3bb73]/20 rounded-full flex items-center justify-center">
-                    <Mail className="w-6 h-6 text-[#d3bb73]" />
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-[#d3bb73]/20">
+                    <Mail className="h-6 w-6 text-[#d3bb73]" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-bold text-[#e5e4e2] mb-2">
+                    <h3 className="mb-2 text-lg font-bold text-[#e5e4e2]">
                       📧 Potwierdzenie rejestracji wymagane
                     </h3>
-                    <p className="text-[#e5e4e2]/80 mb-3">
+                    <p className="mb-3 text-[#e5e4e2]/80">
                       Konto zostało utworzone pomyślnie! Klient otrzymał email na adres:
                     </p>
-                    <div className="bg-[#0f1119] rounded-lg p-3 mb-4 border border-[#d3bb73]/20">
-                      <p className="text-[#d3bb73] font-mono font-semibold text-center">
+                    <div className="mb-4 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-3">
+                      <p className="text-center font-mono font-semibold text-[#d3bb73]">
                         {pendingConfirmationEmail}
                       </p>
                     </div>
-                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-4">
-                      <p className="text-yellow-400 text-sm font-medium mb-2">
+                    <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
+                      <p className="mb-2 text-sm font-medium text-yellow-400">
                         ⚠️ Ważne: Klient musi potwierdzić rejestrację
                       </p>
-                      <p className="text-[#e5e4e2]/70 text-sm">
-                        Poproś klienta, aby wszedł na swoją skrzynkę email <strong>{pendingConfirmationEmail}</strong> i kliknął
-                        w link potwierdzający. Dopiero po potwierdzeniu będzie mógł się zalogować do portalu.
+                      <p className="text-sm text-[#e5e4e2]/70">
+                        Poproś klienta, aby wszedł na swoją skrzynkę email{' '}
+                        <strong>{pendingConfirmationEmail}</strong> i kliknął w link potwierdzający.
+                        Dopiero po potwierdzeniu będzie mógł się zalogować do portalu.
                       </p>
                     </div>
                     <div className="flex gap-3">
                       <button
                         onClick={handleResendConfirmationEmail}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all"
+                        className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-all hover:bg-[#d3bb73]/90"
                       >
-                        <Mail className="w-4 h-4" />
+                        <Mail className="h-4 w-4" />
                         Wyślij ponownie email
                       </button>
                       <button
                         onClick={() => setShowEmailConfirmationNotice(false)}
-                        className="px-4 py-2 bg-[#0f1119] text-[#e5e4e2] rounded-lg font-medium hover:bg-[#0f1119]/80 transition-all border border-[#d3bb73]/20"
+                        className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 font-medium text-[#e5e4e2] transition-all hover:bg-[#0f1119]/80"
                       >
                         Rozumiem
                       </button>
@@ -1081,26 +1125,24 @@ export default function ClientDetailPage() {
               </div>
             )}
 
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 p-6">
-              <div className="flex items-center justify-between mb-4">
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+              <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-[#e5e4e2]">
                   Przypisane atrakcje ({allowedAttractions.length})
                 </h2>
-                {(portalSettings.portal_access && portalSettings.portal_email) ? (
+                {portalSettings.portal_access && portalSettings.portal_email ? (
                   <ManageClientAttractions clientId={clientId} onUpdate={fetchClientData} />
                 ) : (
-                  <div className="text-sm text-orange-400 bg-orange-500/10 px-4 py-2 rounded-lg border border-orange-500/20">
+                  <div className="rounded-lg border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm text-orange-400">
                     💡 Najpierw włącz dostęp do portalu i podaj email
                   </div>
                 )}
               </div>
 
               {!(portalSettings.portal_access && portalSettings.portal_email) ? (
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 text-center">
-                  <p className="text-blue-400 mb-2">
-                    🔐 Aby przypisać atrakcje klientowi:
-                  </p>
-                  <ol className="text-sm text-[#e5e4e2]/60 text-left max-w-md mx-auto space-y-1">
+                <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-center">
+                  <p className="mb-2 text-blue-400">🔐 Aby przypisać atrakcje klientowi:</p>
+                  <ol className="mx-auto max-w-md space-y-1 text-left text-sm text-[#e5e4e2]/60">
                     <li>1. Włącz przełącznik "Dostęp do portalu"</li>
                     <li>2. Wpisz email logowania</li>
                     <li>3. Kliknij "Zapisz ustawienia"</li>
@@ -1108,7 +1150,7 @@ export default function ClientDetailPage() {
                   </ol>
                 </div>
               ) : allowedAttractions.length === 0 ? (
-                <p className="text-[#e5e4e2]/60 text-center py-4">
+                <p className="py-4 text-center text-[#e5e4e2]/60">
                   Brak przypisanych atrakcji. Kliknij "Zarządzaj atrakcjami" aby dodać.
                 </p>
               ) : (
@@ -1116,19 +1158,23 @@ export default function ClientDetailPage() {
                   {allowedAttractions.map((attraction) => (
                     <div
                       key={attraction.id}
-                      className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
+                      className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                     >
                       <div className="flex items-start justify-between">
                         <div>
-                          <h3 className="text-[#e5e4e2] font-medium mb-1">{attraction.attraction_name}</h3>
-                          <div className="text-sm text-[#e5e4e2]/60">Kategoria: {attraction.category}</div>
+                          <h3 className="mb-1 font-medium text-[#e5e4e2]">
+                            {attraction.attraction_name}
+                          </h3>
+                          <div className="text-sm text-[#e5e4e2]/60">
+                            Kategoria: {attraction.category}
+                          </div>
                         </div>
                         <div className="text-right">
                           <div className="text-[#e5e4e2]">
                             {attraction.custom_price
                               ? attraction.custom_price.toLocaleString('pl-PL')
-                              : attraction.base_price.toLocaleString('pl-PL')
-                            } PLN
+                              : attraction.base_price.toLocaleString('pl-PL')}{' '}
+                            PLN
                           </div>
                           {attraction.custom_price && (
                             <div className="text-xs text-[#d3bb73]">Cena custom</div>
@@ -1136,9 +1182,7 @@ export default function ClientDetailPage() {
                         </div>
                       </div>
                       {attraction.notes && (
-                        <div className="mt-2 text-sm text-[#e5e4e2]/60">
-                          {attraction.notes}
-                        </div>
+                        <div className="mt-2 text-sm text-[#e5e4e2]/60">{attraction.notes}</div>
                       )}
                     </div>
                   ))}
@@ -1150,39 +1194,43 @@ export default function ClientDetailPage() {
       </div>
 
       {showCredentialsPopup && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 max-w-md w-full p-6">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8 text-green-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
+                <CheckCircle className="h-8 w-8 text-green-400" />
               </div>
-              <h2 className="text-2xl font-bold text-[#e5e4e2] mb-2">Użytkownik utworzony!</h2>
+              <h2 className="mb-2 text-2xl font-bold text-[#e5e4e2]">Użytkownik utworzony!</h2>
               <p className="text-[#e5e4e2]/60">Poniżej znajdziesz dane do logowania</p>
             </div>
 
-            <div className="space-y-4 bg-[#0f1119] rounded-lg p-4 mb-6">
+            <div className="mb-6 space-y-4 rounded-lg bg-[#0f1119] p-4">
               <div>
-                <div className="text-sm text-[#e5e4e2]/60 mb-1">Email logowania:</div>
-                <div className="text-[#e5e4e2] font-mono font-semibold">{createdEmail}</div>
+                <div className="mb-1 text-sm text-[#e5e4e2]/60">Email logowania:</div>
+                <div className="font-mono font-semibold text-[#e5e4e2]">{createdEmail}</div>
               </div>
               <div>
-                <div className="text-sm text-[#e5e4e2]/60 mb-1">Hasło:</div>
-                <div className="text-[#d3bb73] font-mono font-semibold text-lg">{generatedPassword}</div>
+                <div className="mb-1 text-sm text-[#e5e4e2]/60">Hasło:</div>
+                <div className="font-mono text-lg font-semibold text-[#d3bb73]">
+                  {generatedPassword}
+                </div>
               </div>
             </div>
 
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 mb-6">
-              <p className="text-yellow-400 text-sm">
+            <div className="mb-6 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3">
+              <p className="text-sm text-yellow-400">
                 ⚠️ Zapisz te dane! Hasło nie będzie już wyświetlone ponownie.
               </p>
             </div>
 
             <button
               onClick={() => {
-                navigator.clipboard.writeText(`Email: ${createdEmail}\nHasło: ${generatedPassword}`);
+                navigator.clipboard.writeText(
+                  `Email: ${createdEmail}\nHasło: ${generatedPassword}`,
+                );
                 alert('Dane skopiowane do schowka!');
               }}
-              className="w-full mb-3 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-all"
+              className="mb-3 w-full rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-all hover:bg-[#d3bb73]/90"
             >
               Skopiuj dane do schowka
             </button>
@@ -1193,7 +1241,7 @@ export default function ClientDetailPage() {
                 setGeneratedPassword('');
                 setCreatedEmail('');
               }}
-              className="w-full px-6 py-3 bg-[#0f1119] text-[#e5e4e2] rounded-lg font-medium hover:bg-[#0f1119]/80 transition-all"
+              className="w-full rounded-lg bg-[#0f1119] px-6 py-3 font-medium text-[#e5e4e2] transition-all hover:bg-[#0f1119]/80"
             >
               Zamknij
             </button>

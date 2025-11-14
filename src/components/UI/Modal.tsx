@@ -13,14 +13,14 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, children, title }) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="relative bg-[#1c1f33] rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-6 flex items-center justify-between">
+      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-[#1c1f33] shadow-2xl">
+        <div className="sticky top-0 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           {title && <h2 className="text-2xl font-light text-[#e5e4e2]">{title}</h2>}
           <button
             onClick={onClose}
-            className="text-[#e5e4e2] hover:text-[#d3bb73] transition-colors"
+            className="text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
           >
-            <X className="w-6 h-6" />
+            <X className="h-6 w-6" />
           </button>
         </div>
         <div className="p-6">{children}</div>

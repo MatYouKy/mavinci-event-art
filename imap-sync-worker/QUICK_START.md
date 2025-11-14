@@ -46,6 +46,7 @@ MAX_MESSAGES_PER_SYNC=50
 ```
 
 Znajdziesz klucze w:
+
 - **Supabase Dashboard** → Settings → API
 - Użyj `service_role` key (nie `anon` key!)
 
@@ -78,6 +79,7 @@ Worker będzie działał w tle i co 5 minut synchronizował emaile.
 ### Problem: AUTHENTICATIONFAILED
 
 **Rozwiązanie:**
+
 - **Gmail:** Użyj [App Password](https://myaccount.google.com/apppasswords) zamiast hasła
 - **Outlook/Office365:** Włącz IMAP w ustawieniach konta
 - Sprawdź czy IMAP jest włączony w ustawieniach konta email
@@ -85,6 +87,7 @@ Worker będzie działał w tle i co 5 minut synchronizował emaile.
 ### Problem: ETIMEDOUT / ECONNREFUSED
 
 **Rozwiązanie:**
+
 - Sprawdź host i port IMAP
 - Standardowe porty:
   - **993** - IMAP z SSL (zalecane)
@@ -94,6 +97,7 @@ Worker będzie działał w tle i co 5 minut synchronizował emaile.
 ### Problem: No active email accounts found
 
 **Rozwiązanie:**
+
 - Dodaj konto email w CRM (patrz krok 1)
 - Upewnij się, że konto jest aktywne (`is_active = true`)
 
@@ -237,6 +241,7 @@ Użyj oficjalnych API zamiast IMAP (wymaga OAuth2).
 ### 3. Zapier / Make.com
 
 Automatyzacja no-code:
+
 - Trigger: "New Email" (Gmail/Outlook)
 - Action: "Create Row" w Supabase
 

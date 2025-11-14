@@ -1,13 +1,11 @@
 'use client';
 
-
 import { Presentation, Users, Mic, Globe, CheckCircle2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableContent } from '@/components/EditableContent';
-
 
 export default function KonferencjePage() {
   const features = [
@@ -29,18 +27,21 @@ export default function KonferencjePage() {
           section="konferencje-hero"
           defaultImage="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1920"
           defaultOpacity={0.2}
-          className="py-24 md:py-32 overflow-hidden"
+          className="overflow-hidden py-24 md:py-32"
         >
-          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <Link href="/#uslugi" className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8">
-              <ArrowLeft className="w-4 h-4" />
+          <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <Link
+              href="/#uslugi"
+              className="mb-8 inline-flex items-center gap-2 text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+            >
+              <ArrowLeft className="h-4 w-4" />
               Powrót do usług
             </Link>
 
-            <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div className="grid items-center gap-12 lg:grid-cols-2">
               <div>
-                <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
-                  <Presentation className="w-5 h-5 text-[#d3bb73]" />
+                <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2">
+                  <Presentation className="h-5 w-5 text-[#d3bb73]" />
                   <EditableContent
                     section="konferencje-hero-badge"
                     tableName="konferencje_content"
@@ -79,19 +80,25 @@ export default function KonferencjePage() {
                 />
 
                 <div className="flex flex-wrap gap-4">
-                  <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
+                  <a
+                    href="/#kontakt"
+                    className="inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                  >
                     Zapytaj o wycenę
                   </a>
-                  <Link href="/#uslugi" className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/20 transition-colors">
+                  <Link
+                    href="/#uslugi"
+                    className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-8 py-3 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                  >
                     Zobacz inne usługi
                   </Link>
                 </div>
               </div>
 
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
-                <div className="relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-3xl p-8">
-                  <Globe className="w-24 h-24 text-[#d3bb73] mb-6" />
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl"></div>
+                <div className="relative rounded-3xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-8 backdrop-blur-sm">
+                  <Globe className="mb-6 h-24 w-24 text-[#d3bb73]" />
                   <EditableContent
                     section="konferencje-hero-card"
                     tableName="konferencje_content"
@@ -110,34 +117,41 @@ export default function KonferencjePage() {
           </div>
         </PageHeroImage>
 
-        <section className="py-24 bg-[#0f1119]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">Co Oferujemy</h2>
-              <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
+        <section className="bg-[#0f1119] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-16 text-center">
+              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">Co Oferujemy</h2>
+              <div className="mx-auto h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               {features.map((feature, index) => (
-                <div key={index} className="flex items-start gap-3 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all duration-300">
-                  <CheckCircle2 className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                  <span className="text-[#e5e4e2]/90 font-light">{feature}</span>
+                <div
+                  key={index}
+                  className="flex items-start gap-3 rounded-xl border border-[#d3bb73]/10 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-6 backdrop-blur-sm transition-all duration-300 hover:border-[#d3bb73]/30"
+                >
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
+                  <span className="font-light text-[#e5e4e2]/90">{feature}</span>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="py-24 bg-gradient-to-br from-[#0f1119] to-[#1c1f33]">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <Presentation className="w-16 h-16 text-[#d3bb73] mx-auto mb-6" />
-            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6">
+        <section className="bg-gradient-to-br from-[#0f1119] to-[#1c1f33] py-24">
+          <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+            <Presentation className="mx-auto mb-6 h-16 w-16 text-[#d3bb73]" />
+            <h2 className="mb-6 text-3xl font-light text-[#e5e4e2] md:text-4xl">
               Zorganizujmy Twoją Konferencję!
             </h2>
-            <p className="text-[#e5e4e2]/70 text-lg font-light mb-8 max-w-2xl mx-auto">
-              Skontaktuj się z nami, aby omówić szczegóły Twojej konferencji. Zapewnimy profesjonalną organizację i obsługę.
+            <p className="mx-auto mb-8 max-w-2xl text-lg font-light text-[#e5e4e2]/70">
+              Skontaktuj się z nami, aby omówić szczegóły Twojej konferencji. Zapewnimy
+              profesjonalną organizację i obsługę.
             </p>
-            <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
+            <a
+              href="/#kontakt"
+              className="inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+            >
               Skontaktuj się z nami
             </a>
           </div>

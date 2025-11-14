@@ -38,7 +38,9 @@ export default function AddFuelEntryModal({
     notes: '',
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => {
     const { name, value, type } = e.target;
 
     if (type === 'checkbox') {
@@ -52,7 +54,12 @@ export default function AddFuelEntryModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.date || !formData.odometer_reading || !formData.liters || !formData.price_per_liter) {
+    if (
+      !formData.date ||
+      !formData.odometer_reading ||
+      !formData.liters ||
+      !formData.price_per_liter
+    ) {
       showSnackbar('Wypełnij wymagane pola', 'error');
       return;
     }
@@ -106,26 +113,26 @@ export default function AddFuelEntryModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-6 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="sticky top-0 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <div className="flex items-center gap-3">
-            <Fuel className="w-6 h-6 text-[#d3bb73]" />
+            <Fuel className="h-6 w-6 text-[#d3bb73]" />
             <div>
               <h2 className="text-xl font-bold text-[#e5e4e2]">Dodaj tankowanie</h2>
               <p className="text-sm text-[#e5e4e2]/60">{vehicleName}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
-            <X className="w-6 h-6" />
+            <X className="h-6 w-6" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6 p-6">
           {/* Data i godzina */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Data <span className="text-red-400">*</span>
               </label>
               <input
@@ -133,39 +140,39 @@ export default function AddFuelEntryModal({
                 name="date"
                 value={formData.date}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Godzina</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Godzina</label>
               <input
                 type="time"
                 name="time"
                 value={formData.time}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
           </div>
 
           {/* Stacja i przebieg */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Stacja paliw</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Stacja paliw</label>
               <input
                 type="text"
                 name="location"
                 value={formData.location}
                 onChange={handleChange}
                 placeholder="np. Orlen - Kraków Balice"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Przebieg (km) <span className="text-red-400">*</span>
               </label>
               <input
@@ -173,7 +180,7 @@ export default function AddFuelEntryModal({
                 name="odometer_reading"
                 value={formData.odometer_reading}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 required
               />
             </div>
@@ -181,14 +188,14 @@ export default function AddFuelEntryModal({
 
           {/* Typ paliwa */}
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Typ paliwa <span className="text-red-400">*</span>
             </label>
             <select
               name="fuel_type"
               value={formData.fuel_type}
               onChange={handleChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               required
             >
               <option value="benzyna95">Benzyna 95</option>
@@ -201,9 +208,9 @@ export default function AddFuelEntryModal({
           </div>
 
           {/* Ilość i cena */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Litry <span className="text-red-400">*</span>
               </label>
               <input
@@ -213,13 +220,13 @@ export default function AddFuelEntryModal({
                 onChange={handleChange}
                 step="0.01"
                 placeholder="np. 65.5"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Cena za litr (zł) <span className="text-red-400">*</span>
               </label>
               <input
@@ -229,14 +236,14 @@ export default function AddFuelEntryModal({
                 onChange={handleChange}
                 step="0.01"
                 placeholder="np. 6.89"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 required
               />
             </div>
           </div>
 
           {/* Koszt całkowity (obliczany) */}
-          <div className="bg-[#d3bb73]/10 border border-[#d3bb73]/20 rounded-lg p-4">
+          <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 p-4">
             <div className="flex items-center justify-between">
               <span className="text-[#e5e4e2]/80">Koszt całkowity:</span>
               <span className="text-2xl font-bold text-[#d3bb73]">{calculateTotal()} zł</span>
@@ -244,14 +251,16 @@ export default function AddFuelEntryModal({
           </div>
 
           {/* Płatność */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Metoda płatności</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Metoda płatności
+              </label>
               <select
                 name="payment_method"
                 value={formData.payment_method}
                 onChange={handleChange}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="">Wybierz...</option>
                 <option value="gotowka">Gotówka</option>
@@ -262,14 +271,16 @@ export default function AddFuelEntryModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Numer paragonu</label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Numer paragonu
+              </label>
               <input
                 type="text"
                 name="receipt_number"
                 value={formData.receipt_number}
                 onChange={handleChange}
                 placeholder="np. 123456789"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
           </div>
@@ -282,7 +293,7 @@ export default function AddFuelEntryModal({
               id="is_full_tank"
               checked={formData.is_full_tank}
               onChange={handleChange}
-              className="w-4 h-4 bg-[#0f1119] border border-[#d3bb73]/20 rounded"
+              className="h-4 w-4 rounded border border-[#d3bb73]/20 bg-[#0f1119]"
             />
             <label htmlFor="is_full_tank" className="text-sm text-[#e5e4e2]">
               Pełny bak (zaznacz aby obliczyć średnie zużycie)
@@ -291,23 +302,23 @@ export default function AddFuelEntryModal({
 
           {/* Notatki */}
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Notatki</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Notatki</label>
             <textarea
               name="notes"
               value={formData.notes}
               onChange={handleChange}
               rows={2}
               placeholder="Dodatkowe informacje..."
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
           {/* Przyciski */}
-          <div className="flex gap-4 justify-end pt-4">
+          <div className="flex justify-end gap-4 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 bg-[#0f1119] text-[#e5e4e2] rounded-lg hover:bg-[#0f1119]/80"
+              className="rounded-lg bg-[#0f1119] px-6 py-2 text-[#e5e4e2] hover:bg-[#0f1119]/80"
               disabled={loading}
             >
               Anuluj
@@ -315,11 +326,11 @@ export default function AddFuelEntryModal({
             <button
               type="submit"
               disabled={loading}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Dodawanie...
                 </>
               ) : (

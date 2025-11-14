@@ -1,10 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 async function checkAccounts() {
   console.log('\n=== Checking Email Accounts ===\n');
@@ -13,8 +10,12 @@ async function checkAccounts() {
   console.log('Service Role Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? '✓ Set' : '✗ Not set');
 
   // Check which key type is being used
-  const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')
-    ? (process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"') ? 'service_role' : 'anon')
+  const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes(
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+  )
+    ? process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"')
+      ? 'service_role'
+      : 'anon'
     : 'MISSING';
 
   console.log('Key Type:', keyType);
@@ -22,7 +23,9 @@ async function checkAccounts() {
     console.log('\n❌ CRITICAL ERROR: You are using ANON key instead of SERVICE_ROLE key!');
     console.log('   This is why the worker cannot see email accounts.');
     console.log('\n   Fix: Update your .env file with the SERVICE_ROLE key:');
-    console.log('   1. Go to: https://supabase.com/dashboard/project/fuuljhhuhfojtmmfmskq/settings/api');
+    console.log(
+      '   1. Go to: https://supabase.com/dashboard/project/fuuljhhuhfojtmmfmskq/settings/api',
+    );
     console.log('   2. Copy "service_role" key (NOT "anon" key!)');
     console.log('   3. Update SUPABASE_SERVICE_ROLE_KEY in .env');
     console.log('   4. Restart worker: pm2 restart mavinci-imap-sync\n');

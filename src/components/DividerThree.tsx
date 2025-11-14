@@ -96,7 +96,7 @@ export default function DividerThree() {
   };
 
   return (
-    <section className="relative h-[50vh] md:h-[60vh] overflow-hidden">
+    <section className="relative h-[50vh] overflow-hidden md:h-[60vh]">
       {isEditMode ? (
         <Formik
           initialValues={{
@@ -114,7 +114,10 @@ export default function DividerThree() {
         >
           {() => (
             <Form className="absolute inset-0">
-              <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/90 via-[#800020]/80 to-[#1c1f33]/90 pointer-events-none" style={{ zIndex: 1 }}></div>
+              <div
+                className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#1c1f33]/90 via-[#800020]/80 to-[#1c1f33]/90"
+                style={{ zIndex: 1 }}
+              ></div>
               <div className="absolute inset-0" style={{ zIndex: 50 }}>
                 <ImageEditorField
                   fieldName="dividerImage"
@@ -133,7 +136,7 @@ export default function DividerThree() {
       ) : (
         <>
           <div
-            className="absolute inset-0 bg-cover bg-center bg-fixed"
+            className="absolute inset-0 bg-cover bg-fixed bg-center"
             style={{
               backgroundImage: image
                 ? `url(${isMobile && image.mobile_url ? image.mobile_url : image.desktop_url})`
@@ -144,29 +147,29 @@ export default function DividerThree() {
         </>
       )}
 
-      <div className="relative z-10 h-full flex items-center justify-center px-4 sm:px-6 lg:px-8">
+      <div className="relative z-10 flex h-full items-center justify-center px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl text-center">
           <div className="mb-8 animate-[fadeIn_1s_ease-out]">
-            <div className="inline-flex items-center gap-3 mb-6">
+            <div className="mb-6 inline-flex items-center gap-3">
               <div className="h-px w-12 bg-gradient-to-r from-transparent to-[#d3bb73]"></div>
-              <span className="text-[#d3bb73] text-sm md:text-base font-light tracking-widest uppercase">
+              <span className="text-sm font-light uppercase tracking-widest text-[#d3bb73] md:text-base">
                 Sprawdzony Proces
               </span>
               <div className="h-px w-12 bg-gradient-to-l from-transparent to-[#d3bb73]"></div>
             </div>
           </div>
 
-          <h2 className="text-4xl sm:text-5xl md:text-6xl font-light text-[#e5e4e2] mb-6 leading-tight animate-[fadeIn_1.2s_ease-out]">
+          <h2 className="mb-6 animate-[fadeIn_1.2s_ease-out] text-4xl font-light leading-tight text-[#e5e4e2] sm:text-5xl md:text-6xl">
             Od wizji do realizacji
           </h2>
 
-          <p className="text-base md:text-lg text-[#e5e4e2]/90 font-light leading-relaxed max-w-2xl mx-auto animate-[fadeIn_1.4s_ease-out]">
+          <p className="mx-auto max-w-2xl animate-[fadeIn_1.4s_ease-out] text-base font-light leading-relaxed text-[#e5e4e2]/90 md:text-lg">
             Każdy etap starannie zaplanowany, każdy krok przemyślany
           </p>
         </div>
       </div>
 
-      <div className="absolute inset-0 pointer-events-none">
+      <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDM0djItaDJ2LTJoLTJ6bTAtNGgydjJoLTJ2LTJ6bS0yIDJoMnYyaC0ydi0yem0wLTJoMnYyaC0ydi0yem0wIDRoMnYyaC0ydi0yem0wIDRoMnYyaC0ydi0yem0yLTJoMnYyaC0ydi0yem0wIDJoMnYyaC0ydi0yem0yLTJoMnYyaC0ydi0yem0wIDJoMnYyaC0ydi0yem0yLTJoMnYyaC0ydi0yem0wIDJoMnYyaC0ydi0yem0yLTJoMnYyaC0ydi0yeiIvPjwvZz48L2c+PC9zdmc+')] opacity-20"></div>
       </div>
 

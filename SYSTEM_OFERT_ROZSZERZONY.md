@@ -3,6 +3,7 @@
 ## 📋 Przegląd
 
 Zaawansowany system zarządzania ofertami z:
+
 - **Katalogiem produktów/usług** z cenami, kosztami, wymaganiami
 - **Automatyczną kalkulacją** kosztów, marż, VAT
 - **Kreatorem ofert** - łączenie produktów w profesjonalne oferty
@@ -15,6 +16,7 @@ Zaawansowany system zarządzania ofertami z:
 ### 1. **Katalog produktów**
 
 #### `offer_product_categories` - Kategorie produktów
+
 ```sql
 - id (uuid)
 - name (text) - np. "DJ i prowadzenie", "Nagłośnienie"
@@ -25,6 +27,7 @@ Zaawansowany system zarządzania ofertami z:
 ```
 
 #### `offer_products` - Produkty/usługi
+
 ```sql
 - id (uuid)
 - category_id (uuid) → offer_product_categories
@@ -57,6 +60,7 @@ Zaawansowany system zarządzania ofertami z:
 ```
 
 #### `offer_product_equipment` - Wymagany sprzęt
+
 ```sql
 - id (uuid)
 - product_id (uuid) → offer_products
@@ -67,6 +71,7 @@ Zaawansowany system zarządzania ofertami z:
 ```
 
 #### `offer_product_staff` - Wymagani pracownicy
+
 ```sql
 - id (uuid)
 - product_id (uuid) → offer_products
@@ -84,6 +89,7 @@ Zaawansowany system zarządzania ofertami z:
 ### 2. **Oferty**
 
 #### `offers` - Oferty (rozszerzone)
+
 ```sql
 -- Istniejące pola
 - id (uuid)
@@ -109,6 +115,7 @@ Zaawansowany system zarządzania ofertami z:
 ```
 
 #### `offer_items` - Pozycje oferty
+
 ```sql
 - id (uuid)
 - offer_id (uuid) → offers
@@ -144,6 +151,7 @@ Zaawansowany system zarządzania ofertami z:
 ### 3. **Szablony PDF**
 
 #### `offer_templates` - Szablony ofert
+
 ```sql
 - id (uuid)
 - name (text) - np. "Szablon standardowy"
@@ -195,6 +203,7 @@ Funkcja `calculate_offer_totals(offer_uuid)` automatycznie przelicza:
 ### 2. **Wyliczenia na poziomie pozycji**
 
 Kolumny `subtotal` i `total` w `offer_items` są typu **GENERATED ALWAYS AS**:
+
 ```sql
 subtotal = (unit_price × quantity) - discount_amount
 total = subtotal + transport_cost + logistics_cost
@@ -205,6 +214,7 @@ total = subtotal + transport_cost + logistics_cost
 ## 📦 Przykładowe dane
 
 ### Kategorie:
+
 1. **DJ i prowadzenie** - Usługi DJ i konferansjerów
 2. **Nagłośnienie** - Systemy audio
 3. **Oświetlenie** - Reflektory, efekty świetlne
@@ -214,6 +224,7 @@ total = subtotal + transport_cost + logistics_cost
 ### Przykładowe produkty:
 
 #### DJ Standard
+
 - Cena: 2500 zł
 - Koszt: 800 zł
 - Transport: 200 zł
@@ -222,6 +233,7 @@ total = subtotal + transport_cost + logistics_cost
 - Wymaga pojazdu i kierowcy
 
 #### Nagłośnienie Standard
+
 - Cena: 2500 zł
 - Koszt: 1000 zł
 - Transport: 350 zł
@@ -233,6 +245,7 @@ total = subtotal + transport_cost + logistics_cost
 ## 🎯 Workflow tworzenia oferty
 
 ### Krok 1: Utwórz ofertę
+
 ```typescript
 const { data: offer } = await supabase
   .from('offers')
@@ -243,13 +256,14 @@ const { data: offer } = await supabase
     status: 'draft',
     valid_until: '2025-12-31',
     tax_percent: 23,
-    discount_percent: 0
+    discount_percent: 0,
   })
   .select()
   .single();
 ```
 
 ### Krok 2: Dodaj produkty z katalogu
+
 ```typescript
 // Pobierz produkt z katalogu
 const { data: product } = await supabase
@@ -259,39 +273,33 @@ const { data: product } = await supabase
   .single();
 
 // Dodaj jako pozycję oferty
-const { data: item } = await supabase
-  .from('offer_items')
-  .insert({
-    offer_id: offer.id,
-    product_id: product.id,
-    name: product.name,
-    description: product.description,
-    quantity: 1,
-    unit_price: product.base_price,
-    unit_cost: product.cost_price,
-    transport_cost: product.transport_cost,
-    logistics_cost: product.logistics_cost
-  });
+const { data: item } = await supabase.from('offer_items').insert({
+  offer_id: offer.id,
+  product_id: product.id,
+  name: product.name,
+  description: product.description,
+  quantity: 1,
+  unit_price: product.base_price,
+  unit_cost: product.cost_price,
+  transport_cost: product.transport_cost,
+  logistics_cost: product.logistics_cost,
+});
 
 // Sumy przeliczą się automatycznie!
 ```
 
 ### Krok 3: Zastosuj rabat
+
 ```typescript
 // Rabat na całą ofertę
-await supabase
-  .from('offers')
-  .update({ discount_percent: 10 })
-  .eq('id', offer.id);
+await supabase.from('offers').update({ discount_percent: 10 }).eq('id', offer.id);
 
 // Lub na pojedynczą pozycję
-await supabase
-  .from('offer_items')
-  .update({ discount_amount: 200 })
-  .eq('id', itemId);
+await supabase.from('offer_items').update({ discount_amount: 200 }).eq('id', itemId);
 ```
 
 ### Krok 4: Generuj PDF
+
 ```typescript
 // Wybierz szablon
 const { data: template } = await supabase
@@ -303,11 +311,13 @@ const { data: template } = await supabase
 // Pobierz pełne dane oferty
 const { data: offerData } = await supabase
   .from('offers')
-  .select(`
+  .select(
+    `
     *,
     client:clients(*),
     items:offer_items(*)
-  `)
+  `,
+  )
   .eq('id', offer.id)
   .single();
 
@@ -319,10 +329,12 @@ const { data: offerData } = await supabase
 ## 🔒 Bezpieczeństwo (RLS)
 
 ### Katalog produktów:
+
 - ✅ **Wszyscy pracownicy** mogą przeglądać
 - ✅ Tylko z uprawnieniem **`offers_manage`** mogą edytować
 
 ### Oferty i pozycje:
+
 - ✅ **Admini** widzą wszystkie
 - ✅ Pracownicy z **`offers_manage`** widzą wszystkie
 - ✅ **Twórca** widzi swoje oferty
@@ -330,6 +342,7 @@ const { data: offerData } = await supabase
 - ✅ **Admini** mogą edytować wszystkie statusy
 
 ### Szablony:
+
 - ✅ Wszyscy mogą przeglądać
 - ✅ Tylko **`offers_manage`** może zarządzać
 
@@ -338,6 +351,7 @@ const { data: offerData } = await supabase
 ## 📊 Przykładowe zapytania
 
 ### Produkty z wymaganym sprzętem
+
 ```sql
 SELECT
   p.*,
@@ -355,6 +369,7 @@ GROUP BY p.id;
 ```
 
 ### Oferta z pełnymi danymi
+
 ```sql
 SELECT
   o.*,
@@ -376,6 +391,7 @@ GROUP BY o.id, c.company_name;
 ```
 
 ### Marża produktu
+
 ```sql
 SELECT
   name,
@@ -393,6 +409,7 @@ ORDER BY margin_percent DESC;
 ## 🚀 Dalszy rozwój
 
 ### Do implementacji w UI:
+
 1. **Panel zarządzania produktami** - CRUD katalogu
 2. **Kreator ofert** - drag & drop produktów do oferty
 3. **Generator PDF** - rendering HTML→PDF z szablonem
@@ -401,6 +418,7 @@ ORDER BY margin_percent DESC;
 6. **Konwersja ofert** - oferta → wydarzenie (auto-rezerwacja sprzętu)
 
 ### Przyszłe rozszerzenia:
+
 - **Pakiety** - zestawy produktów (np. "Wesele Standard")
 - **Ceny sezonowe** - różne ceny w różnych miesiącach
 - **Rabaty quantity** - automatyczne rabaty przy większych ilościach
@@ -412,12 +430,14 @@ ORDER BY margin_percent DESC;
 ## 📝 Notatki implementacyjne
 
 ### Automatyzacje:
+
 - ✅ Przeliczanie sum przy zmianie pozycji
 - ✅ Kolumny GENERATED dla subtotal/total
 - ✅ Triggery updated_at
 - ✅ Walidacja RLS
 
 ### Do zrobienia:
+
 - [ ] UI dla zarządzania katalogiem
 - [ ] Kreator ofert z drag & drop
 - [ ] Generator PDF

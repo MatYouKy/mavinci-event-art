@@ -3,11 +3,8 @@
 import { FormImageInput, FormInput } from './formik';
 import { FormImageInputHandle } from './formik/FormImageInput';
 import { ElasticBoxComponent, Loader } from './UI';
-import {
-  ThreeDotMenu,
-  ThreeDotPosition,
-} from './UI/ThreeDotMenu/ThreeDotMenu';
-import { useMobile } from '../hooks/useMobile';
+import { ThreeDotMenu, ThreeDotPosition } from './UI/ThreeDotMenu/ThreeDotMenu';
+import { useMobile } from '../hooks/useScreenMode';
 import { Card, CardMedia, IconButton } from '@mui/material';
 import { useField, useFormikContext } from 'formik';
 import cloneDeep from 'lodash/cloneDeep';
@@ -36,16 +33,10 @@ interface ImageEditorFieldProps {
   menuPosition?: ThreeDotPosition;
   multiplier?: number;
   isLoading?: boolean;
-  onSave?: (args: {
-    file?: File;
-    image: IUploadImage | IImage;
-  }) => Promise<void> | void;
+  onSave?: (args: { file?: File; image: IUploadImage | IImage }) => Promise<void> | void;
 }
 
-export function mergeImagePayload(
-  base: IImage,
-  patch?: Partial<IImage>
-): IImage {
+export function mergeImagePayload(base: IImage, patch?: Partial<IImage>): IImage {
   if (!patch) return base;
 
   const baseClone = cloneDeep(base);
@@ -86,14 +77,13 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
   const uploadedImageFile = values?.[fieldName]?.file;
 
   const isScreenMetadataWithSrc = (
-    metadata: IScreenMetadata | IScreenMetadataUpload
+    metadata: IScreenMetadata | IScreenMetadataUpload,
   ): metadata is IScreenMetadata => {
     return 'src' in metadata && typeof metadata.src === 'string';
   };
 
   const screenMeta = image?.image_metadata?.[screenMode];
-  const positions = values?.[fieldName]?.image_metadata?.[screenMode]
-    ?.position ?? {
+  const positions = values?.[fieldName]?.image_metadata?.[screenMode]?.position ?? {
     posX: 0,
     posY: 0,
     scale: 1,
@@ -116,8 +106,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
         : '';
 
   const handleChange = (property: keyof IImagePosition, value: number) => {
-    const currentPosition = values?.[fieldName]?.image_metadata?.[screenMode]
-      ?.position ?? {
+    const currentPosition = values?.[fieldName]?.image_metadata?.[screenMode]?.position ?? {
       posX: 0,
       posY: 0,
       scale: 1,
@@ -204,10 +193,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
       scale: 1,
     };
 
-    setFieldValue(
-      `${fieldName}.image_metadata.${screenMode}.position`,
-      originalPosition
-    );
+    setFieldValue(`${fieldName}.image_metadata.${screenMode}.position`, originalPosition);
   };
 
   const handleCloseSubmenu = () => {
@@ -248,36 +234,38 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
     }
   };
 
-  const menuItems = isAdmin ? [
-    {
-      children: 'Wgraj Zdjęcie',
-      onClick: () => {
-        return handleUploadImage();
-      },
-    },
-    {
-      children: 'Ustaw Alt',
-      onClick: () => {
-        return handleSetAlt(true);
-      },
-    },
-    {
-      children: 'Ustaw Pozycję',
-      onClick: handleSetPosition.bind(null, true),
-    },
-    {
-      children: 'Ustaw Object Fit',
-      onClick: () => setSetObjectFit(true),
-    },
-    {
-      children: 'Resetuj pozycję',
-      onClick: () => {
-        handleChange('posX', 0);
-        handleChange('posY', 0);
-        handleChange('scale', 1);
-      },
-    },
-  ] : [];
+  const menuItems = isAdmin
+    ? [
+        {
+          children: 'Wgraj Zdjęcie',
+          onClick: () => {
+            return handleUploadImage();
+          },
+        },
+        {
+          children: 'Ustaw Alt',
+          onClick: () => {
+            return handleSetAlt(true);
+          },
+        },
+        {
+          children: 'Ustaw Pozycję',
+          onClick: handleSetPosition.bind(null, true),
+        },
+        {
+          children: 'Ustaw Object Fit',
+          onClick: () => setSetObjectFit(true),
+        },
+        {
+          children: 'Resetuj pozycję',
+          onClick: () => {
+            handleChange('posX', 0);
+            handleChange('posY', 0);
+            handleChange('scale', 1);
+          },
+        },
+      ]
+    : [];
 
   useEffect(() => {
     const uploadedImage = values?.[fieldName]?.file;
@@ -321,10 +309,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
               <SliderX
                 style={{
                   bottom:
-                    menuPosition === 'right-bottom' ||
-                    menuPosition === 'left-bottom'
-                      ? 60
-                      : 0,
+                    menuPosition === 'right-bottom' || menuPosition === 'left-bottom' ? 60 : 0,
                 }}
                 value={positions?.posX ?? 0}
                 min={-100}
@@ -345,10 +330,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
               />
               <SliderScale
                 style={{
-                  top:
-                    menuPosition === 'right-top' || menuPosition === 'left-top'
-                      ? 40
-                      : 0,
+                  top: menuPosition === 'right-top' || menuPosition === 'left-top' ? 40 : 0,
                 }}
                 value={positions?.scale ?? 1}
                 min={0.1}
@@ -421,9 +403,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
                       )}
                     </div>
                   )}
-                  <div
-                    style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}
-                  >
+                  <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}>
                     <IconButton
                       size="small"
                       sx={{
@@ -454,17 +434,10 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
             <div
               style={{
                 position: 'absolute',
-                top:
-                  menuPosition === 'right-top' || menuPosition === 'left-top'
-                    ? 50
-                    : 10,
+                top: menuPosition === 'right-top' || menuPosition === 'left-top' ? 50 : 10,
                 left: 50,
                 right: 50,
-                bottom:
-                  menuPosition === 'right-bottom' ||
-                  menuPosition === 'left-bottom'
-                    ? 50
-                    : 10,
+                bottom: menuPosition === 'right-bottom' || menuPosition === 'left-bottom' ? 50 : 10,
                 zIndex: 100,
               }}
             >
@@ -537,16 +510,16 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
       )}
       {setObjectFit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-xl font-semibold mb-4 text-gray-900">Wybierz Object Fit</h3>
+          <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6">
+            <h3 className="mb-4 text-xl font-semibold text-gray-900">Wybierz Object Fit</h3>
             <div className="space-y-2">
               {(['cover', 'contain', 'fill', 'none', 'scale-down'] as const).map((option) => (
                 <button
                   key={option}
                   onClick={() => handleChangeObjectFit(option)}
-                  className="w-full text-left px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-[#d3bb73] hover:bg-[#d3bb73]/10 transition-colors"
+                  className="w-full rounded-lg border-2 border-gray-200 px-4 py-3 text-left transition-colors hover:border-[#d3bb73] hover:bg-[#d3bb73]/10"
                 >
-                  <div className="font-medium text-gray-900 capitalize">{option}</div>
+                  <div className="font-medium capitalize text-gray-900">{option}</div>
                   <div className="text-sm text-gray-600">
                     {option === 'cover' && 'Wypełnia całą przestrzeń (może przyciąć obraz)'}
                     {option === 'contain' && 'Zmieści cały obraz w kontenerze'}
@@ -559,7 +532,7 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
             </div>
             <button
               onClick={() => setSetObjectFit(false)}
-              className="mt-4 w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
+              className="mt-4 w-full rounded-lg bg-gray-200 px-4 py-2 transition-colors hover:bg-gray-300"
             >
               Anuluj
             </button>

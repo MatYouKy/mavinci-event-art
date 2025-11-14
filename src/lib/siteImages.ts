@@ -92,7 +92,10 @@ export function getImageUrl(image: SiteImage | null, isMobile: boolean = false):
   return image.desktop_url;
 }
 
-export function getImageStyle(image: SiteImage | null, isMobile: boolean = false): React.CSSProperties {
+export function getImageStyle(
+  image: SiteImage | null,
+  isMobile: boolean = false,
+): React.CSSProperties {
   const url = getImageUrl(image, isMobile);
 
   if (!url) return {};

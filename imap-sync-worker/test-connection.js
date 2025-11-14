@@ -2,10 +2,7 @@ const imapSimple = require('imap-simple');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 async function testConnection() {
   console.log('\n' + '='.repeat(80));
@@ -53,11 +50,11 @@ async function testConnection() {
         tls: account.imap_use_ssl,
         tlsOptions: {
           rejectUnauthorized: false,
-          servername: account.imap_host
+          servername: account.imap_host,
         },
         authTimeout: 30000,
-        connTimeout: 30000
-      }
+        connTimeout: 30000,
+      },
     };
 
     console.log('   Connecting...');
@@ -71,7 +68,7 @@ async function testConnection() {
     console.log('   Fetching message count...');
     const messages = await connection.search(['ALL'], {
       bodies: ['HEADER'],
-      struct: true
+      struct: true,
     });
     console.log(`   ✓ Found ${messages.length} messages in INBOX`);
 
@@ -82,7 +79,6 @@ async function testConnection() {
     console.log('='.repeat(80));
     console.log('\nYour IMAP configuration is correct.');
     console.log('You can now run the sync worker with: node sync.js\n');
-
   } catch (error) {
     console.log('\n' + '='.repeat(80));
     console.log('✗ TEST FAILED');

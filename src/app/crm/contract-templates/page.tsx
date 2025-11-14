@@ -59,7 +59,7 @@ export default function ContractTemplatesPage() {
       filtered = filtered.filter(
         (t) =>
           t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.description?.toLowerCase().includes(searchQuery.toLowerCase())
+          t.description?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -74,10 +74,7 @@ export default function ContractTemplatesPage() {
     if (!confirm('Czy na pewno chcesz usunąć ten szablon?')) return;
 
     try {
-      const { error } = await supabase
-        .from('contract_templates')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('contract_templates').delete().eq('id', id);
 
       if (error) throw error;
       fetchTemplates();
@@ -111,7 +108,7 @@ export default function ContractTemplatesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0d1a] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -119,38 +116,38 @@ export default function ContractTemplatesPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-light text-[#e5e4e2] mb-2">Szablony umów</h1>
+            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Szablony umów</h1>
             <p className="text-[#e5e4e2]/60">Zarządzaj szablonami umów</p>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             Nowy szablon
           </button>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
               <input
                 type="text"
                 placeholder="Szukaj szablonów..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 pl-10 pr-4 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
 
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="all">Wszystkie kategorie</option>
               <option value="event">Event</option>
@@ -162,15 +159,15 @@ export default function ContractTemplatesPage() {
         </div>
 
         {filteredTemplates.length === 0 ? (
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-12 text-center">
-            <FileText className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-            <h3 className="text-xl font-light text-[#e5e4e2] mb-2">Brak szablonów</h3>
-            <p className="text-[#e5e4e2]/60 mb-6">Utwórz pierwszy szablon umowy</p>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+            <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+            <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">Brak szablonów</h3>
+            <p className="mb-6 text-[#e5e4e2]/60">Utwórz pierwszy szablon umowy</p>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="h-5 w-5" />
               Nowy szablon
             </button>
           </div>
@@ -179,16 +176,14 @@ export default function ContractTemplatesPage() {
             {filteredTemplates.map((template) => (
               <div
                 key={template.id}
-                className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-colors"
+                className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-colors hover:border-[#d3bb73]/30"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-light text-[#e5e4e2]">
-                        {template.name}
-                      </h3>
+                    <div className="mb-2 flex items-center gap-3">
+                      <h3 className="text-lg font-light text-[#e5e4e2]">{template.name}</h3>
                       <span
-                        className={`text-xs px-2 py-1 rounded ${
+                        className={`rounded px-2 py-1 text-xs ${
                           template.is_active
                             ? 'bg-green-500/20 text-green-400'
                             : 'bg-gray-500/20 text-gray-400'
@@ -196,22 +191,17 @@ export default function ContractTemplatesPage() {
                       >
                         {template.is_active ? 'Aktywny' : 'Nieaktywny'}
                       </span>
-                      <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">
+                      <span className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400">
                         {categoryLabels[template.category]}
                       </span>
                     </div>
                     {template.description && (
-                      <p className="text-sm text-[#e5e4e2]/60 mb-3">
-                        {template.description}
-                      </p>
+                      <p className="mb-3 text-sm text-[#e5e4e2]/60">{template.description}</p>
                     )}
                     <div className="flex items-center gap-4 text-xs text-[#e5e4e2]/40">
+                      <span>Placeholdery: {template.placeholders?.length || 0}</span>
                       <span>
-                        Placeholdery: {template.placeholders?.length || 0}
-                      </span>
-                      <span>
-                        Utworzono:{' '}
-                        {new Date(template.created_at).toLocaleDateString('pl-PL')}
+                        Utworzono: {new Date(template.created_at).toLocaleDateString('pl-PL')}
                       </span>
                     </div>
                   </div>
@@ -219,31 +209,33 @@ export default function ContractTemplatesPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => router.push(`/crm/contract-templates/${template.id}`)}
-                      className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                       title="Szczegóły"
                     >
-                      <Eye className="w-5 h-5" />
+                      <Eye className="h-5 w-5" />
                     </button>
                     <button
-                      onClick={() => router.push(`/crm/contract-templates/${template.id}/edit-wysiwyg`)}
-                      className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
+                      onClick={() =>
+                        router.push(`/crm/contract-templates/${template.id}/edit-wysiwyg`)
+                      }
+                      className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-400/10"
                       title="Edytor WYSIWYG"
                     >
-                      <Edit className="w-5 h-5" />
+                      <Edit className="h-5 w-5" />
                     </button>
                     <button
                       onClick={() => handleToggleActive(template.id, template.is_active)}
-                      className="p-2 text-yellow-400 hover:bg-yellow-400/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-yellow-400 transition-colors hover:bg-yellow-400/10"
                       title={template.is_active ? 'Dezaktywuj' : 'Aktywuj'}
                     >
-                      <Copy className="w-5 h-5" />
+                      <Copy className="h-5 w-5" />
                     </button>
                     <button
                       onClick={() => handleDelete(template.id)}
-                      className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-400/10"
                       title="Usuń"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="h-5 w-5" />
                     </button>
                   </div>
                 </div>
@@ -318,52 +310,43 @@ function CreateTemplateModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-lg w-full">
-        <div className="flex items-center justify-between mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-light text-[#e5e4e2]">Nowy szablon umowy</h2>
-          <button
-            onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-          >
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
             ✕
           </button>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Nazwa szablonu *
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa szablonu *</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               placeholder="np. Umowa na organizację eventu"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] h-24 resize-none"
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="h-24 w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               placeholder="Krótki opis szablonu"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Kategoria
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
             <select
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="event">Event</option>
               <option value="service">Usługa</option>
@@ -373,16 +356,16 @@ function CreateTemplateModal({
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="mt-6 flex gap-3">
           <button
             onClick={handleSubmit}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
             Utwórz i edytuj
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] transition-colors"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#1c1f33]"
           >
             Anuluj
           </button>

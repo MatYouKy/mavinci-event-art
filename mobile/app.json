@@ -9,9 +9,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#0f1119"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mavinci.crm"

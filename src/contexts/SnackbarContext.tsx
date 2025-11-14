@@ -11,7 +11,11 @@ interface Snackbar {
 }
 
 interface SnackbarContextType {
-  showSnackbar: (message: string, type?: 'success' | 'error' | 'info' | 'warning', duration?: number) => void;
+  showSnackbar: (
+    message: string,
+    type?: 'success' | 'error' | 'info' | 'warning',
+    duration?: number,
+  ) => void;
 }
 
 const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined);
@@ -19,22 +23,25 @@ const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined
 export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   const [snackbars, setSnackbars] = useState<Snackbar[]>([]);
 
-  const showSnackbar = useCallback((
-    message: string,
-    type: 'success' | 'error' | 'info' | 'warning' = 'info',
-    duration: number = 5000
-  ) => {
-    const id = Math.random().toString(36).substring(7);
-    const newSnackbar: Snackbar = { id, message, type, duration };
+  const showSnackbar = useCallback(
+    (
+      message: string,
+      type: 'success' | 'error' | 'info' | 'warning' = 'info',
+      duration: number = 5000,
+    ) => {
+      const id = Math.random().toString(36).substring(7);
+      const newSnackbar: Snackbar = { id, message, type, duration };
 
-    setSnackbars((prev) => [...prev, newSnackbar]);
+      setSnackbars((prev) => [...prev, newSnackbar]);
 
-    if (duration > 0) {
-      setTimeout(() => {
-        setSnackbars((prev) => prev.filter((s) => s.id !== id));
-      }, duration);
-    }
-  }, []);
+      if (duration > 0) {
+        setTimeout(() => {
+          setSnackbars((prev) => prev.filter((s) => s.id !== id));
+        }, duration);
+      }
+    },
+    [],
+  );
 
   const removeSnackbar = useCallback((id: string) => {
     setSnackbars((prev) => prev.filter((s) => s.id !== id));
@@ -43,13 +50,13 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   const getIcon = (type: string) => {
     switch (type) {
       case 'success':
-        return <CheckCircle className="w-5 h-5" />;
+        return <CheckCircle className="h-5 w-5" />;
       case 'error':
-        return <AlertCircle className="w-5 h-5" />;
+        return <AlertCircle className="h-5 w-5" />;
       case 'warning':
-        return <AlertTriangle className="w-5 h-5" />;
+        return <AlertTriangle className="h-5 w-5" />;
       default:
-        return <Info className="w-5 h-5" />;
+        return <Info className="h-5 w-5" />;
     }
   };
 
@@ -69,11 +76,11 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   return (
     <SnackbarContext.Provider value={{ showSnackbar }}>
       {children}
-      <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 max-w-md">
+      <div className="fixed bottom-6 right-6 z-[100] flex max-w-md flex-col gap-3">
         {snackbars.map((snackbar, index) => (
           <div
             key={snackbar.id}
-            className={`${getColors(snackbar.type)} rounded-lg shadow-2xl p-4 flex items-center gap-3 min-w-[320px] animate-slide-in-right`}
+            className={`${getColors(snackbar.type)} animate-slide-in-right flex min-w-[320px] items-center gap-3 rounded-lg p-4 shadow-2xl`}
             style={{
               animation: 'slideInRight 0.3s ease-out forwards',
               opacity: 0,
@@ -84,9 +91,9 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
             <p className="flex-1 text-sm font-medium">{snackbar.message}</p>
             <button
               onClick={() => removeSnackbar(snackbar.id)}
-              className="flex-shrink-0 hover:opacity-70 transition-opacity"
+              className="flex-shrink-0 transition-opacity hover:opacity-70"
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
           </div>
         ))}

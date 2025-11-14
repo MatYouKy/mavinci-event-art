@@ -3,14 +3,15 @@ const { simpleParser } = require('mailparser');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 // Debug: Check which key is being used
-const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')
-  ? (process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"') ? 'service_role' : 'anon')
+const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes(
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+)
+  ? process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"')
+    ? 'service_role'
+    : 'anon'
   : 'MISSING';
 
 console.log('\n⚠️  KEY TYPE DETECTED:', keyType);
@@ -37,11 +38,11 @@ async function syncAccount(account) {
         tls: account.imap_use_ssl,
         tlsOptions: {
           rejectUnauthorized: false,
-          servername: account.imap_host
+          servername: account.imap_host,
         },
         authTimeout: 30000,
-        connTimeout: 30000
-      }
+        connTimeout: 30000,
+      },
     };
 
     console.log(`  → Connecting to ${account.imap_host}:${account.imap_port}...`);
@@ -55,7 +56,7 @@ async function syncAccount(account) {
     const fetchOptions = {
       bodies: ['HEADER', 'TEXT', ''],
       markSeen: false,
-      struct: true
+      struct: true,
     };
 
     console.log('  → Searching for messages...');
@@ -68,7 +69,7 @@ async function syncAccount(account) {
     let errorCount = 0;
 
     for (const item of recentMessages) {
-      const all = item.parts.find(part => part.which === '');
+      const all = item.parts.find((part) => part.which === '');
       if (!all || !all.body) {
         errorCount++;
         continue;
@@ -100,16 +101,19 @@ async function syncAccount(account) {
           body_html: parsed.html || '',
           received_date: parsed.date || new Date(),
           has_attachments: parsed.attachments && parsed.attachments.length > 0,
-          raw_headers: parsed.headers ? Object.fromEntries(
-            Object.entries(parsed.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : v])
-          ) : {},
+          raw_headers: parsed.headers
+            ? Object.fromEntries(
+                Object.entries(parsed.headers).map(([k, v]) => [
+                  k,
+                  Array.isArray(v) ? v.join(', ') : v,
+                ]),
+              )
+            : {},
           is_read: false,
-          is_starred: false
+          is_starred: false,
         };
 
-        const { error: insertError } = await supabase
-          .from('received_emails')
-          .insert(emailData);
+        const { error: insertError } = await supabase.from('received_emails').insert(emailData);
 
         if (insertError) {
           if (insertError.code === '23505') {
@@ -139,7 +143,7 @@ async function syncAccount(account) {
       .from('employee_email_accounts')
       .update({
         last_sync_at: new Date().toISOString(),
-        last_sync_status: errorCount > 0 ? 'partial' : 'success'
+        last_sync_status: errorCount > 0 ? 'partial' : 'success',
       })
       .eq('id', account.id);
 
@@ -152,7 +156,7 @@ async function syncAccount(account) {
       .update({
         last_sync_at: new Date().toISOString(),
         last_sync_status: 'error',
-        last_sync_error: error.message
+        last_sync_error: error.message,
       })
       .eq('id', account.id);
 

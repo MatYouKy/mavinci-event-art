@@ -1,9 +1,5 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import {
-  LoginPayload,
-  LoginResponse,
-  ISnackbar,
-} from '../../types/auth.types';
+import { LoginPayload, LoginResponse, ISnackbar } from '../../types/auth.types';
 import { TeamMember, PortfolioProject } from '../../lib/supabase';
 
 export const api = createApi({
@@ -79,7 +75,10 @@ export const api = createApi({
       }),
       invalidatesTags: ['PortfolioProjects'],
     }),
-    updatePortfolioProject: builder.mutation<PortfolioProject, { id: string; data: Partial<PortfolioProject> }>({
+    updatePortfolioProject: builder.mutation<
+      PortfolioProject,
+      { id: string; data: Partial<PortfolioProject> }
+    >({
       query: ({ id, data }) => ({
         url: `/portfolio-projects/${id}`,
         method: 'PUT',

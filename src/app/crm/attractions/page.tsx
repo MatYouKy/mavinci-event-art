@@ -2,7 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Package, Users, DollarSign, Clock, Sparkles, CreditCard as Edit, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Package,
+  Users,
+  DollarSign,
+  Clock,
+  Sparkles,
+  CreditCard as Edit,
+  Trash2,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Attraction {
@@ -53,10 +63,7 @@ export default function AttractionsPage() {
   const fetchAttractions = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('attractions')
-        .select('*')
-        .order('name');
+      const { data, error } = await supabase.from('attractions').select('*').order('name');
 
       if (error) {
         console.error('Error fetching attractions:', error);
@@ -80,7 +87,7 @@ export default function AttractionsPage() {
       filtered = filtered.filter(
         (attr) =>
           attr.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          attr.description?.toLowerCase().includes(searchQuery.toLowerCase())
+          attr.description?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -112,7 +119,7 @@ export default function AttractionsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -123,31 +130,31 @@ export default function AttractionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-light text-[#e5e4e2]">Atrakcje i usługi</h1>
-          <p className="text-sm text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Zarządzaj katalogiem atrakcji, sprzętem i kosztorysami
           </p>
         </div>
         <button
           onClick={() => router.push('/crm/attractions/new')}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           Dodaj atrakcję
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Sparkles className="w-5 h-5 text-[#d3bb73]" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-[#d3bb73]" />
             <span className="text-2xl font-light text-[#e5e4e2]">{attractions.length}</span>
           </div>
           <p className="text-sm text-[#e5e4e2]/60">Wszystkie atrakcje</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Package className="w-5 h-5 text-blue-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <Package className="h-5 w-5 text-blue-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
               {attractions.filter((a) => a.is_active).length}
             </span>
@@ -155,9 +162,9 @@ export default function AttractionsPage() {
           <p className="text-sm text-[#e5e4e2]/60">Aktywne</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Users className="w-5 h-5 text-green-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <Users className="h-5 w-5 text-green-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
               {attractions.filter((a) => a.requires_operator).length}
             </span>
@@ -165,13 +172,11 @@ export default function AttractionsPage() {
           <p className="text-sm text-[#e5e4e2]/60">Wymaga operatora</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-yellow-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-yellow-400" />
             <span className="text-2xl font-light text-[#e5e4e2]">
-              {attractions
-                .reduce((sum, a) => sum + (a.base_price || 0), 0)
-                .toLocaleString('pl-PL')}
+              {attractions.reduce((sum, a) => sum + (a.base_price || 0), 0).toLocaleString('pl-PL')}
               zł
             </span>
           </div>
@@ -179,23 +184,23 @@ export default function AttractionsPage() {
         </div>
       </div>
 
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Szukaj atrakcji..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
 
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           >
             <option value="all">Wszystkie kategorie</option>
             {Object.entries(categoryLabels).map(([key, label]) => (
@@ -207,8 +212,8 @@ export default function AttractionsPage() {
         </div>
 
         {filteredAttractions.length === 0 ? (
-          <div className="text-center py-12">
-            <Sparkles className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <div className="py-12 text-center">
+            <Sparkles className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
             <p className="text-[#e5e4e2]/60">
               {searchQuery || selectedCategory !== 'all'
                 ? 'Brak atrakcji spełniających kryteria'
@@ -216,31 +221,29 @@ export default function AttractionsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredAttractions.map((attraction) => (
               <div
                 key={attraction.id}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-5 hover:border-[#d3bb73]/30 transition-colors cursor-pointer"
+                className="cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-5 transition-colors hover:border-[#d3bb73]/30"
                 onClick={() => router.push(`/crm/attractions/${attraction.id}`)}
               >
-                <div className="flex items-start justify-between mb-3">
+                <div className="mb-3 flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">
-                      {attraction.name}
-                    </h3>
-                    <span className="inline-block px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs">
+                    <h3 className="mb-1 text-lg font-medium text-[#e5e4e2]">{attraction.name}</h3>
+                    <span className="inline-block rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
                       {categoryLabels[attraction.category] || attraction.category}
                     </span>
                   </div>
                   {!attraction.is_active && (
-                    <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs">
+                    <span className="rounded bg-red-500/20 px-2 py-1 text-xs text-red-400">
                       Nieaktywna
                     </span>
                   )}
                 </div>
 
                 {attraction.description && (
-                  <p className="text-sm text-[#e5e4e2]/60 mb-4 line-clamp-2">
+                  <p className="mb-4 line-clamp-2 text-sm text-[#e5e4e2]/60">
                     {attraction.description}
                   </p>
                 )}
@@ -248,7 +251,7 @@ export default function AttractionsPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-[#e5e4e2]/60">Cena bazowa</span>
-                    <span className="text-[#d3bb73] font-medium">
+                    <span className="font-medium text-[#d3bb73]">
                       {attraction.base_price?.toLocaleString('pl-PL')} zł/{attraction.unit}
                     </span>
                   </div>
@@ -262,28 +265,28 @@ export default function AttractionsPage() {
 
                   {attraction.duration_hours && (
                     <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                      <Clock className="w-4 h-4" />
+                      <Clock className="h-4 w-4" />
                       <span>{attraction.duration_hours}h</span>
                     </div>
                   )}
 
                   {attraction.requires_operator && (
                     <div className="flex items-center gap-2 text-sm text-blue-400">
-                      <Users className="w-4 h-4" />
+                      <Users className="h-4 w-4" />
                       <span>Wymaga operatora</span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#d3bb73]/10">
+                <div className="mt-4 flex items-center gap-2 border-t border-[#d3bb73]/10 pt-4">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       router.push(`/crm/attractions/${attraction.id}`);
                     }}
-                    className="flex-1 flex items-center justify-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-3 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/20 transition-colors"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Edit className="h-4 w-4" />
                     Edytuj
                   </button>
                   <button
@@ -291,9 +294,9 @@ export default function AttractionsPage() {
                       e.stopPropagation();
                       handleDelete(attraction.id);
                     }}
-                    className="px-3 py-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                    className="rounded-lg px-3 py-2 text-red-400 transition-colors hover:bg-red-500/10"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>

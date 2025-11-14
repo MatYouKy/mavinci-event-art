@@ -145,15 +145,17 @@ export default function NewContactPage() {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .insert([{
-          contact_type: 'contact',
-          first_name: newContact.firstName,
-          last_name: newContact.lastName,
-          email: newContact.email || null,
-          phone: newContact.phone || null,
-          mobile: newContact.mobile || null,
-          status: 'active',
-        }])
+        .insert([
+          {
+            contact_type: 'contact',
+            first_name: newContact.firstName,
+            last_name: newContact.lastName,
+            email: newContact.email || null,
+            phone: newContact.phone || null,
+            mobile: newContact.mobile || null,
+            status: 'active',
+          },
+        ])
         .select()
         .single();
 
@@ -289,8 +291,10 @@ export default function NewContactPage() {
         if (contactError) throw contactError;
 
         showSnackbar(
-          contactType === 'contact' ? 'Kontakt dodany pomyślnie' : 'Osoba prywatna dodana pomyślnie',
-          'success'
+          contactType === 'contact'
+            ? 'Kontakt dodany pomyślnie'
+            : 'Osoba prywatna dodana pomyślnie',
+          'success',
         );
         router.push(`/crm/contacts/${contact.id}`);
       } else {
@@ -313,9 +317,10 @@ export default function NewContactPage() {
           notes: formData.notes || null,
           status: 'active' as const,
           specialization: contactType === 'subcontractor' ? formData.specialization : null,
-          hourly_rate: contactType === 'subcontractor' && formData.hourlyRate
-            ? parseFloat(formData.hourlyRate)
-            : null,
+          hourly_rate:
+            contactType === 'subcontractor' && formData.hourlyRate
+              ? parseFloat(formData.hourlyRate)
+              : null,
         };
 
         const { data: org, error: orgError } = await supabase
@@ -344,7 +349,7 @@ export default function NewContactPage() {
           contactType === 'organization'
             ? 'Organizacja dodana pomyślnie'
             : 'Podwykonawca dodany pomyślnie',
-          'success'
+          'success',
         );
         router.push(`/crm/contacts/${org.id}`);
       }
@@ -376,32 +381,33 @@ export default function NewContactPage() {
   const getBusinessTypeIcon = (type: BusinessType) => {
     switch (type) {
       case 'hotel':
-        return <Hotel className="w-5 h-5" />;
+        return <Hotel className="h-5 w-5" />;
       case 'restaurant':
-        return <UtensilsCrossed className="w-5 h-5" />;
+        return <UtensilsCrossed className="h-5 w-5" />;
       case 'venue':
-        return <Building2 className="w-5 h-5" />;
+        return <Building2 className="h-5 w-5" />;
       case 'freelancer':
-        return <User className="w-5 h-5" />;
+        return <User className="h-5 w-5" />;
       default:
-        return <Briefcase className="w-5 h-5" />;
+        return <Briefcase className="h-5 w-5" />;
     }
   };
 
-  const filteredContacts = availableContacts.filter((contact) =>
-    contact.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredContacts = availableContacts.filter(
+    (contact) =>
+      contact.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contact.email?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center space-x-4">
           <button
             onClick={() => router.back()}
-            className="p-2 hover:bg-[#1a1d2e] rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#1a1d2e]"
           >
-            <ArrowLeft className="w-6 h-6 text-gray-400" />
+            <ArrowLeft className="h-6 w-6 text-gray-400" />
           </button>
           <div>
             <h1 className="text-3xl font-bold text-[#d3bb73]">Dodaj kontakt</h1>
@@ -410,51 +416,56 @@ export default function NewContactPage() {
         </div>
 
         {!contactType ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <button
               onClick={() => setContactType('organization')}
-              className="bg-[#1a1d2e] border-2 border-gray-700 hover:border-[#d3bb73] rounded-lg p-8 transition-all group"
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
             >
-              <Building2 className="w-16 h-16 text-[#d3bb73] mx-auto mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="text-xl font-semibold text-white mb-2">Organizacja</h3>
-              <p className="text-gray-400 text-sm">Firma, hotel, restauracja, sala eventowa</p>
+              <Building2 className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Organizacja</h3>
+              <p className="text-sm text-gray-400">Firma, hotel, restauracja, sala eventowa</p>
             </button>
 
             <button
               onClick={() => setContactType('contact')}
-              className="bg-[#1a1d2e] border-2 border-gray-700 hover:border-[#d3bb73] rounded-lg p-8 transition-all group"
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
             >
-              <User className="w-16 h-16 text-[#d3bb73] mx-auto mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="text-xl font-semibold text-white mb-2">Kontakt</h3>
-              <p className="text-gray-400 text-sm">Osoba w organizacji lub niezależna</p>
+              <User className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Kontakt</h3>
+              <p className="text-sm text-gray-400">Osoba w organizacji lub niezależna</p>
             </button>
 
             <button
               onClick={() => setContactType('subcontractor')}
-              className="bg-[#1a1d2e] border-2 border-gray-700 hover:border-[#d3bb73] rounded-lg p-8 transition-all group"
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
             >
-              <UserCheck className="w-16 h-16 text-[#d3bb73] mx-auto mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="text-xl font-semibold text-white mb-2">Podwykonawca</h3>
-              <p className="text-gray-400 text-sm">Firma lub freelancer współpracujący</p>
+              <UserCheck className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Podwykonawca</h3>
+              <p className="text-sm text-gray-400">Firma lub freelancer współpracujący</p>
             </button>
 
             <button
               onClick={() => setContactType('individual')}
-              className="bg-[#1a1d2e] border-2 border-gray-700 hover:border-[#d3bb73] rounded-lg p-8 transition-all group"
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
             >
-              <User className="w-16 h-16 text-[#d3bb73] mx-auto mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="text-xl font-semibold text-white mb-2">Osoba prywatna</h3>
-              <p className="text-gray-400 text-sm">Klient indywidualny</p>
+              <User className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Osoba prywatna</h3>
+              <p className="text-sm text-gray-400">Klient indywidualny</p>
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-6">
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6"
+          >
+            <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                {contactType === 'organization' && <Building2 className="w-8 h-8 text-[#d3bb73]" />}
-                {contactType === 'contact' && <User className="w-8 h-8 text-[#d3bb73]" />}
-                {contactType === 'subcontractor' && <UserCheck className="w-8 h-8 text-[#d3bb73]" />}
-                {contactType === 'individual' && <User className="w-8 h-8 text-[#d3bb73]" />}
+                {contactType === 'organization' && <Building2 className="h-8 w-8 text-[#d3bb73]" />}
+                {contactType === 'contact' && <User className="h-8 w-8 text-[#d3bb73]" />}
+                {contactType === 'subcontractor' && (
+                  <UserCheck className="h-8 w-8 text-[#d3bb73]" />
+                )}
+                {contactType === 'individual' && <User className="h-8 w-8 text-[#d3bb73]" />}
                 <h2 className="text-2xl font-bold text-white">
                   {contactType === 'organization' && 'Nowa organizacja'}
                   {contactType === 'contact' && 'Nowy kontakt'}
@@ -465,7 +476,7 @@ export default function NewContactPage() {
               <button
                 type="button"
                 onClick={() => setContactType(null)}
-                className="text-gray-400 hover:text-white transition-colors text-sm"
+                className="text-sm text-gray-400 transition-colors hover:text-white"
               >
                 Zmień typ
               </button>
@@ -475,7 +486,7 @@ export default function NewContactPage() {
               {(contactType === 'organization' || contactType === 'subcontractor') && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
                       Nazwa pełna <span className="text-red-400">*</span>
                     </label>
                     <input
@@ -483,75 +494,79 @@ export default function NewContactPage() {
                       required
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                       placeholder="np. OMEGA HOTEL SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
                       Alias (krótka nazwa)
                     </label>
                     <input
                       type="text"
                       value={formData.alias}
                       onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                       placeholder="np. OMEGA HOTEL"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="mt-1 text-xs text-gray-500">
                       Krótka nazwa wyświetlana zamiast pełnej nazwy
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">NIP</label>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">NIP</label>
                       <div className="flex space-x-2">
                         <input
                           type="text"
                           value={formData.nip}
                           onChange={(e) => setFormData({ ...formData, nip: e.target.value })}
-                          className="flex-1 px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                           placeholder="0000000000"
                         />
                         <button
                           type="button"
                           onClick={handleFetchFromGUS}
                           disabled={loadingGUS}
-                          className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50"
+                          className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
                         >
                           {loadingGUS ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="h-5 w-5 animate-spin" />
                           ) : (
-                            <Search className="w-5 h-5" />
+                            <Search className="h-5 w-5" />
                           )}
                           <span>GUS</span>
                         </button>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">REGON</label>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">REGON</label>
                       <input
                         type="text"
                         value={formData.regon}
                         onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                         readOnly
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Typ działalności</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Typ działalności
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                       {contactType === 'organization'
                         ? ['company', 'hotel', 'restaurant', 'venue', 'other'].map((type) => (
                             <button
                               key={type}
                               type="button"
-                              onClick={() => setFormData({ ...formData, businessType: type as BusinessType })}
-                              className={`flex items-center space-x-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                              onClick={() =>
+                                setFormData({ ...formData, businessType: type as BusinessType })
+                              }
+                              className={`flex items-center space-x-2 rounded-lg border-2 px-4 py-2 transition-all ${
                                 formData.businessType === type
                                   ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
                                   : 'border-gray-700 text-gray-400 hover:border-gray-600'
@@ -571,8 +586,10 @@ export default function NewContactPage() {
                             <button
                               key={type}
                               type="button"
-                              onClick={() => setFormData({ ...formData, businessType: type as BusinessType })}
-                              className={`flex items-center space-x-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                              onClick={() =>
+                                setFormData({ ...formData, businessType: type as BusinessType })
+                              }
+                              className={`flex items-center space-x-2 rounded-lg border-2 px-4 py-2 transition-all ${
                                 formData.businessType === type
                                   ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
                                   : 'border-gray-700 text-gray-400 hover:border-gray-600'
@@ -586,12 +603,14 @@ export default function NewContactPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Strona WWW</label>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Strona WWW
+                    </label>
                     <input
                       type="url"
                       value={formData.website}
                       onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                       placeholder="https://"
                     />
                   </div>
@@ -600,79 +619,79 @@ export default function NewContactPage() {
 
               {(contactType === 'organization' || contactType === 'subcontractor') && (
                 <div className="border-t border-gray-700 pt-6">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                    <User className="w-5 h-5 text-[#d3bb73]" />
+                  <h3 className="mb-4 flex items-center space-x-2 text-lg font-semibold text-white">
+                    <User className="h-5 w-5 text-[#d3bb73]" />
                     <span>Osoby kontaktowe</span>
                     <span className="text-sm font-normal text-gray-400">(opcjonalne)</span>
                   </h3>
 
                   {loadingContacts ? (
-                    <div className="text-center py-8">
-                      <Loader2 className="w-8 h-8 animate-spin text-[#d3bb73] mx-auto" />
+                    <div className="py-8 text-center">
+                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#d3bb73]" />
                     </div>
                   ) : (
                     <>
                       <div className="mb-4">
                         <div className="relative">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" />
                           <input
                             type="text"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             placeholder="Szukaj kontaktu..."
-                            className="w-full pl-10 pr-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] py-2 pl-10 pr-4 text-white focus:border-[#d3bb73] focus:outline-none"
                           />
                         </div>
                       </div>
 
-                      <div className="max-h-64 overflow-y-auto space-y-2 mb-4">
+                      <div className="mb-4 max-h-64 space-y-2 overflow-y-auto">
                         {filteredContacts.map((contact) => (
                           <button
                             key={contact.id}
                             type="button"
                             onClick={() => toggleContactSelection(contact.id)}
-                            className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all ${
+                            className={`flex w-full items-center justify-between rounded-lg border-2 p-3 transition-all ${
                               selectedContactIds.includes(contact.id)
                                 ? 'border-[#d3bb73] bg-[#d3bb73]/10'
                                 : 'border-gray-700 hover:border-gray-600'
                             }`}
                           >
                             <div className="flex items-center space-x-3">
-                              <div className="w-10 h-10 bg-[#d3bb73]/10 rounded-full flex items-center justify-center">
-                                <User className="w-5 h-5 text-[#d3bb73]" />
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/10">
+                                <User className="h-5 w-5 text-[#d3bb73]" />
                               </div>
                               <div className="text-left">
-                                <p className="text-white font-medium">{contact.full_name}</p>
+                                <p className="font-medium text-white">{contact.full_name}</p>
                                 {contact.email && (
                                   <p className="text-sm text-gray-400">{contact.email}</p>
                                 )}
                               </div>
                             </div>
                             {selectedContactIds.includes(contact.id) && (
-                              <Check className="w-5 h-5 text-[#d3bb73]" />
+                              <Check className="h-5 w-5 text-[#d3bb73]" />
                             )}
                           </button>
                         ))}
                       </div>
 
                       {selectedContactIds.length > 0 && (
-                        <div className="mb-4 p-3 bg-[#0f1119] rounded-lg">
-                          <p className="text-sm text-gray-400 mb-2">Wybrane kontakty:</p>
+                        <div className="mb-4 rounded-lg bg-[#0f1119] p-3">
+                          <p className="mb-2 text-sm text-gray-400">Wybrane kontakty:</p>
                           <div className="flex flex-wrap gap-2">
                             {selectedContactIds.map((id) => {
                               const contact = availableContacts.find((c) => c.id === id);
                               return (
                                 <span
                                   key={id}
-                                  className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm flex items-center space-x-2"
+                                  className="flex items-center space-x-2 rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]"
                                 >
                                   <span>{contact?.full_name}</span>
                                   <button
                                     type="button"
                                     onClick={() => toggleContactSelection(id)}
-                                    className="hover:text-red-400 transition-colors"
+                                    className="transition-colors hover:text-red-400"
                                   >
-                                    <X className="w-3 h-3" />
+                                    <X className="h-3 w-3" />
                                   </button>
                                 </span>
                               );
@@ -685,63 +704,71 @@ export default function NewContactPage() {
                         <button
                           type="button"
                           onClick={() => setShowNewContactForm(true)}
-                          className="w-full px-4 py-2 border-2 border-dashed border-gray-700 rounded-lg text-gray-400 hover:border-[#d3bb73] hover:text-[#d3bb73] transition-colors flex items-center justify-center space-x-2"
+                          className="flex w-full items-center justify-center space-x-2 rounded-lg border-2 border-dashed border-gray-700 px-4 py-2 text-gray-400 transition-colors hover:border-[#d3bb73] hover:text-[#d3bb73]"
                         >
-                          <Plus className="w-5 h-5" />
+                          <Plus className="h-5 w-5" />
                           <span>Dodaj nowy kontakt</span>
                         </button>
                       ) : (
-                        <div className="bg-[#0f1119] border border-gray-700 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-4">
+                        <div className="rounded-lg border border-gray-700 bg-[#0f1119] p-4">
+                          <div className="mb-4 flex items-center justify-between">
                             <h4 className="font-medium text-white">Nowy kontakt</h4>
                             <button
                               type="button"
                               onClick={() => setShowNewContactForm(false)}
-                              className="text-gray-400 hover:text-white transition-colors"
+                              className="text-gray-400 transition-colors hover:text-white"
                             >
-                              <X className="w-5 h-5" />
+                              <X className="h-5 w-5" />
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div>
-                              <label className="block text-sm text-gray-400 mb-1">
+                              <label className="mb-1 block text-sm text-gray-400">
                                 Imię <span className="text-red-400">*</span>
                               </label>
                               <input
                                 type="text"
                                 value={newContact.firstName}
-                                onChange={(e) => setNewContact({ ...newContact, firstName: e.target.value })}
-                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, firstName: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm text-gray-400 mb-1">
+                              <label className="mb-1 block text-sm text-gray-400">
                                 Nazwisko <span className="text-red-400">*</span>
                               </label>
                               <input
                                 type="text"
                                 value={newContact.lastName}
-                                onChange={(e) => setNewContact({ ...newContact, lastName: e.target.value })}
-                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, lastName: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm text-gray-400 mb-1">Email</label>
+                              <label className="mb-1 block text-sm text-gray-400">Email</label>
                               <input
                                 type="email"
                                 value={newContact.email}
-                                onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, email: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm text-gray-400 mb-1">Telefon</label>
+                              <label className="mb-1 block text-sm text-gray-400">Telefon</label>
                               <input
                                 type="tel"
                                 value={newContact.phone}
-                                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                                className="w-full px-3 py-2 bg-[#1a1d2e] border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-[#d3bb73]"
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, phone: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                               />
                             </div>
                           </div>
@@ -749,9 +776,9 @@ export default function NewContactPage() {
                           <button
                             type="button"
                             onClick={handleAddNewContact}
-                            className="w-full px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center justify-center space-x-2"
+                            className="flex w-full items-center justify-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
                           >
-                            <Save className="w-5 h-5" />
+                            <Save className="h-5 w-5" />
                             <span>Zapisz kontakt</span>
                           </button>
                         </div>
@@ -763,59 +790,67 @@ export default function NewContactPage() {
 
               {(contactType === 'contact' || contactType === 'individual') && (
                 <div className="border-t border-gray-700 pt-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Dane osobowe</h3>
+                  <h3 className="mb-4 text-lg font-semibold text-white">Dane osobowe</h3>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="mb-1 block text-sm text-gray-400">
                           Imię <span className="text-red-400">*</span>
                         </label>
                         <input
                           type="text"
                           required
                           value={newContact.firstName}
-                          onChange={(e) => setNewContact({ ...newContact, firstName: e.target.value })}
-                          className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                          onChange={(e) =>
+                            setNewContact({ ...newContact, firstName: e.target.value })
+                          }
+                          className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="mb-1 block text-sm text-gray-400">
                           Nazwisko <span className="text-red-400">*</span>
                         </label>
                         <input
                           type="text"
                           required
                           value={newContact.lastName}
-                          onChange={(e) => setNewContact({ ...newContact, lastName: e.target.value })}
-                          className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                          onChange={(e) =>
+                            setNewContact({ ...newContact, lastName: e.target.value })
+                          }
+                          className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                         />
                       </div>
                     </div>
 
                     {contactType === 'contact' && (
                       <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                           <div>
-                            <label className="block text-sm text-gray-400 mb-1">
-                              Stanowisko <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              Stanowisko <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
                             <input
                               type="text"
                               value={newContact.position}
-                              onChange={(e) => setNewContact({ ...newContact, position: e.target.value })}
-                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, position: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                               placeholder="np. Kierownik sprzedaży"
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-gray-400 mb-1">
-                              NIP <span className="text-gray-500 text-xs">(dla JDG)</span>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              NIP <span className="text-xs text-gray-500">(dla JDG)</span>
                             </label>
                             <input
                               type="text"
                               value={newContact.nip}
-                              onChange={(e) => setNewContact({ ...newContact, nip: e.target.value })}
-                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, nip: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                               placeholder="0000000000"
                             />
                           </div>
@@ -825,45 +860,51 @@ export default function NewContactPage() {
 
                     {contactType === 'individual' && (
                       <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                           <div>
-                            <label className="block text-sm text-gray-400 mb-1">
-                              PESEL <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              PESEL <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
                             <input
                               type="text"
                               value={newContact.pesel}
-                              onChange={(e) => setNewContact({ ...newContact, pesel: e.target.value })}
-                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, pesel: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                               placeholder="00000000000"
                               maxLength={11}
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-gray-400 mb-1">
-                              Numer dowodu <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              Numer dowodu{' '}
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
                             <input
                               type="text"
                               value={newContact.idNumber}
-                              onChange={(e) => setNewContact({ ...newContact, idNumber: e.target.value })}
-                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, idNumber: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                               placeholder="ABC123456"
                             />
                           </div>
                         </div>
 
                         <div>
-                          <label className="block text-sm text-gray-400 mb-2">
-                            Rodzaj uroczystości <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                          <label className="mb-2 block text-sm text-gray-400">
+                            Rodzaj uroczystości{' '}
+                            <span className="text-xs text-gray-500">(opcjonalne)</span>
                           </label>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                             {['wesele', 'urodziny', 'dodatki', 'inne'].map((type) => (
                               <button
                                 key={type}
                                 type="button"
                                 onClick={() => setNewContact({ ...newContact, eventType: type })}
-                                className={`px-4 py-2 rounded-lg border-2 transition-all capitalize ${
+                                className={`rounded-lg border-2 px-4 py-2 capitalize transition-all ${
                                   newContact.eventType === type
                                     ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
                                     : 'border-gray-700 text-gray-400 hover:border-gray-600'
@@ -877,14 +918,17 @@ export default function NewContactPage() {
 
                         {newContact.eventType && (
                           <div>
-                            <label className="block text-sm text-gray-400 mb-1">
-                              Szczegóły uroczystości <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              Szczegóły uroczystości{' '}
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
                             <textarea
                               value={newContact.eventDetails}
-                              onChange={(e) => setNewContact({ ...newContact, eventDetails: e.target.value })}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, eventDetails: e.target.value })
+                              }
                               rows={3}
-                              className="w-full px-3 py-2 bg-[#0f1119] border border-gray-700 rounded text-white focus:outline-none focus:border-[#d3bb73]"
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                               placeholder="Dodatkowe informacje o uroczystości..."
                             />
                           </div>
@@ -896,45 +940,56 @@ export default function NewContactPage() {
               )}
 
               <div className="border-t border-gray-700 pt-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Dane kontaktowe</h3>
+                <h3 className="mb-4 text-lg font-semibold text-white">Dane kontaktowe</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
                     <input
                       type="email"
-                      value={(contactType === 'contact' || contactType === 'individual') ? newContact.email : formData.email}
-                      onChange={(e) => (contactType === 'contact' || contactType === 'individual')
-                        ? setNewContact({ ...newContact, email: e.target.value })
-                        : setFormData({ ...formData, email: e.target.value })
+                      value={
+                        contactType === 'contact' || contactType === 'individual'
+                          ? newContact.email
+                          : formData.email
                       }
-                      className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                      onChange={(e) =>
+                        contactType === 'contact' || contactType === 'individual'
+                          ? setNewContact({ ...newContact, email: e.target.value })
+                          : setFormData({ ...formData, email: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                     />
                   </div>
 
-                  {(contactType === 'contact' || contactType === 'individual') ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {contactType === 'contact' || contactType === 'individual' ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                          Telefon prywatny {contactType === 'individual' && <span className="text-gray-500 text-xs">(opcjonalne)</span>}
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Telefon prywatny{' '}
+                          {contactType === 'individual' && (
+                            <span className="text-xs text-gray-500">(opcjonalne)</span>
+                          )}
                         </label>
                         <input
                           type="tel"
                           value={newContact.phone}
                           onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                           placeholder="600 123 456"
                         />
                       </div>
                       {contactType === 'contact' && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-2">
-                            Telefon firmowy <span className="text-gray-500 text-xs">(opcjonalne)</span>
+                          <label className="mb-2 block text-sm font-medium text-gray-300">
+                            Telefon firmowy{' '}
+                            <span className="text-xs text-gray-500">(opcjonalne)</span>
                           </label>
                           <input
                             type="tel"
                             value={newContact.businessPhone}
-                            onChange={(e) => setNewContact({ ...newContact, businessPhone: e.target.value })}
-                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            onChange={(e) =>
+                              setNewContact({ ...newContact, businessPhone: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                             placeholder="22 123 4567"
                           />
                         </div>
@@ -942,88 +997,103 @@ export default function NewContactPage() {
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Telefon</label>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Telefon
+                      </label>
                       <input
                         type="tel"
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
                   )}
 
-                  {(contactType === 'contact' || contactType === 'individual') && formData.address && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Adres <span className="text-gray-500 text-xs">(opcjonalne)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                        placeholder="ul. Przykładowa 123"
-                      />
-                    </div>
-                  )}
+                  {(contactType === 'contact' || contactType === 'individual') &&
+                    formData.address && (
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Adres <span className="text-xs text-gray-500">(opcjonalne)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="ul. Przykładowa 123"
+                        />
+                      </div>
+                    )}
                 </div>
               </div>
 
               {(contactType === 'organization' || contactType === 'subcontractor') && (
                 <>
                   <div className="border-t border-gray-700 pt-6">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                      <MapPin className="w-5 h-5 text-[#d3bb73]" />
+                    <h3 className="mb-4 flex items-center space-x-2 text-lg font-semibold text-white">
+                      <MapPin className="h-5 w-5 text-[#d3bb73]" />
                       <span>Lokalizacja</span>
                     </h3>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">URL Google Maps</label>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          URL Google Maps
+                        </label>
                         <div className="flex space-x-2">
                           <input
                             type="url"
                             value={formData.googleMapsUrl}
-                            onChange={(e) => setFormData({ ...formData, googleMapsUrl: e.target.value })}
-                            className="flex-1 px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            onChange={(e) =>
+                              setFormData({ ...formData, googleMapsUrl: e.target.value })
+                            }
+                            className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                             placeholder="https://maps.google.com/..."
                           />
                           <button
                             type="button"
                             onClick={handleParseGoogleMaps}
-                            className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2"
+                            className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
                           >
-                            <MapPin className="w-5 h-5" />
+                            <MapPin className="h-5 w-5" />
                             <span>Pobierz</span>
                           </button>
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Ulica i numer</label>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Ulica i numer
+                        </label>
                         <input
                           type="text"
                           value={formData.address}
                           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                         />
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-2">Miasto</label>
+                          <label className="mb-2 block text-sm font-medium text-gray-300">
+                            Miasto
+                          </label>
                           <input
                             type="text"
                             value={formData.city}
                             onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-2">Kod pocztowy</label>
+                          <label className="mb-2 block text-sm font-medium text-gray-300">
+                            Kod pocztowy
+                          </label>
                           <input
                             type="text"
                             value={formData.postalCode}
-                            onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
-                            className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                            onChange={(e) =>
+                              setFormData({ ...formData, postalCode: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                             placeholder="00-000"
                           />
                         </div>
@@ -1035,33 +1105,41 @@ export default function NewContactPage() {
 
               {contactType === 'subcontractor' && (
                 <div className="border-t border-gray-700 pt-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Informacje dla podwykonawcy</h3>
+                  <h3 className="mb-4 text-lg font-semibold text-white">
+                    Informacje dla podwykonawcy
+                  </h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Stawka godzinowa (zł)</label>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Stawka godzinowa (zł)
+                      </label>
                       <input
                         type="number"
                         step="0.01"
                         value={formData.hourlyRate}
                         onChange={(e) => setFormData({ ...formData, hourlyRate: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Specjalizacje</label>
-                      <div className="flex space-x-2 mb-2">
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Specjalizacje
+                      </label>
+                      <div className="mb-2 flex space-x-2">
                         <input
                           type="text"
                           value={specializationInput}
                           onChange={(e) => setSpecializationInput(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSpecialization())}
-                          className="flex-1 px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                          onKeyPress={(e) =>
+                            e.key === 'Enter' && (e.preventDefault(), addSpecialization())
+                          }
+                          className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                           placeholder="Dodaj specjalizację i naciśnij Enter"
                         />
                         <button
                           type="button"
                           onClick={addSpecialization}
-                          className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors"
+                          className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
                         >
                           Dodaj
                         </button>
@@ -1071,13 +1149,13 @@ export default function NewContactPage() {
                           {formData.specialization.map((spec, index) => (
                             <span
                               key={index}
-                              className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm flex items-center space-x-2"
+                              className="flex items-center space-x-2 rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]"
                             >
                               <span>{spec}</span>
                               <button
                                 type="button"
                                 onClick={() => removeSpecialization(index)}
-                                className="hover:text-red-400 transition-colors"
+                                className="transition-colors hover:text-red-400"
                               >
                                 ×
                               </button>
@@ -1091,31 +1169,35 @@ export default function NewContactPage() {
               )}
 
               <div className="border-t border-gray-700 pt-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Notatki</label>
+                <label className="mb-2 block text-sm font-medium text-gray-300">Notatki</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={4}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
+                  className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Dodatkowe informacje..."
                 />
               </div>
             </div>
 
-            <div className="flex justify-end space-x-4 mt-6 pt-6 border-t border-gray-700">
+            <div className="mt-6 flex justify-end space-x-4 border-t border-gray-700 pt-6">
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="px-6 py-2 border border-gray-700 text-gray-300 rounded-lg hover:bg-[#0f1119] transition-colors"
+                className="rounded-lg border border-gray-700 px-6 py-2 text-gray-300 transition-colors hover:bg-[#0f1119]"
               >
                 Anuluj
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-6 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Save className="h-5 w-5" />
+                )}
                 <span>{loading ? 'Zapisywanie...' : 'Zapisz'}</span>
               </button>
             </div>

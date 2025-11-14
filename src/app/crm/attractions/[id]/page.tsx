@@ -2,7 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Package, Users, DollarSign, Clock, Plus, Trash2, CreditCard as Edit, Save, X, CheckSquare, Wrench } from 'lucide-react';
+import {
+  ArrowLeft,
+  Package,
+  Users,
+  DollarSign,
+  Clock,
+  Plus,
+  Trash2,
+  CreditCard as Edit,
+  Save,
+  X,
+  CheckSquare,
+  Wrench,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Attraction {
@@ -31,7 +44,9 @@ export default function AttractionDetailPage() {
   const [costs, setCosts] = useState<any[]>([]);
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'staff' | 'costs' | 'checklist'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'equipment' | 'staff' | 'costs' | 'checklist'
+  >('overview');
 
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
@@ -67,10 +82,12 @@ export default function AttractionDetailPage() {
 
       const { data: equipmentData } = await supabase
         .from('attraction_required_equipment')
-        .select(`
+        .select(
+          `
           *,
           equipment:equipment_id(id, name, category, status)
-        `)
+        `,
+        )
         .eq('attraction_id', attractionId);
 
       setRequiredEquipment(equipmentData || []);
@@ -106,7 +123,7 @@ export default function AttractionDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -114,11 +131,11 @@ export default function AttractionDetailPage() {
 
   if (!attraction && attractionId !== 'new') {
     return (
-      <div className="flex flex-col items-center justify-center h-screen space-y-4">
-        <div className="text-[#e5e4e2] text-lg">Atrakcja nie została znaleziona</div>
+      <div className="flex h-screen flex-col items-center justify-center space-y-4">
+        <div className="text-lg text-[#e5e4e2]">Atrakcja nie została znaleziona</div>
         <button
           onClick={() => router.push('/crm/attractions')}
-          className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+          className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
         >
           Wróć do listy
         </button>
@@ -132,17 +149,15 @@ export default function AttractionDetailPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/attractions')}
-            className="p-2 text-[#e5e4e2] hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
             <h1 className="text-2xl font-light text-[#e5e4e2]">
               {attraction?.name || 'Nowa atrakcja'}
             </h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              Szczegóły, wymagany sprzęt i personel
-            </p>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">Szczegóły, wymagany sprzęt i personel</p>
           </div>
         </div>
       </div>
@@ -162,13 +177,13 @@ export default function AttractionDetailPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                     activeTab === tab.id
                       ? 'border-[#d3bb73] text-[#d3bb73]'
                       : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="h-4 w-4" />
                   {tab.label}
                 </button>
               );
@@ -176,9 +191,9 @@ export default function AttractionDetailPage() {
           </div>
 
           {activeTab === 'overview' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-                <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Informacje podstawowe</h2>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 lg:col-span-2">
+                <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-[#e5e4e2]/60">Nazwa</p>
@@ -210,8 +225,8 @@ export default function AttractionDetailPage() {
               </div>
 
               <div className="space-y-6">
-                <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-                  <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Limity i czasy</h2>
+                <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+                  <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Limity i czasy</h2>
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Max dziennie</p>
@@ -225,15 +240,13 @@ export default function AttractionDetailPage() {
                     </div>
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Czas demontażu</p>
-                      <p className="text-[#e5e4e2]">
-                        {attraction.breakdown_time_minutes || 0} min
-                      </p>
+                      <p className="text-[#e5e4e2]">{attraction.breakdown_time_minutes || 0} min</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-                  <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Podsumowanie</h2>
+                <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+                  <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Podsumowanie</h2>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-[#e5e4e2]/60">Sprzęt</span>
@@ -258,21 +271,21 @@ export default function AttractionDetailPage() {
           )}
 
           {activeTab === 'equipment' && (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-6">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-lg font-light text-[#e5e4e2]">Wymagany sprzęt</h2>
                 <button
                   onClick={() => setShowAddEquipmentModal(true)}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj sprzęt
                 </button>
               </div>
 
               {requiredEquipment.length === 0 ? (
-                <div className="text-center py-12">
-                  <Wrench className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <div className="py-12 text-center">
+                  <Wrench className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak wymaganego sprzętu</p>
                 </div>
               ) : (
@@ -280,20 +293,18 @@ export default function AttractionDetailPage() {
                   {requiredEquipment.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
+                      className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                     >
                       <div className="flex-1">
-                        <h3 className="text-[#e5e4e2] font-medium">
+                        <h3 className="font-medium text-[#e5e4e2]">
                           {item.equipment?.name || 'Nieznany sprzęt'}
                         </h3>
-                        <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60 mt-1">
+                        <div className="mt-1 flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                           <span>Ilość: {item.quantity}</span>
-                          {item.is_primary && (
-                            <span className="text-[#d3bb73]">Główny</span>
-                          )}
+                          {item.is_primary && <span className="text-[#d3bb73]">Główny</span>}
                         </div>
                         {item.notes && (
-                          <p className="text-sm text-[#e5e4e2]/40 mt-2">{item.notes}</p>
+                          <p className="mt-2 text-sm text-[#e5e4e2]/40">{item.notes}</p>
                         )}
                       </div>
                       <button
@@ -308,7 +319,7 @@ export default function AttractionDetailPage() {
                         }}
                         className="text-red-400 hover:text-red-300"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   ))}
@@ -318,21 +329,21 @@ export default function AttractionDetailPage() {
           )}
 
           {activeTab === 'staff' && (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-6">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-lg font-light text-[#e5e4e2]">Wymagany personel</h2>
                 <button
                   onClick={() => setShowAddStaffModal(true)}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj personel
                 </button>
               </div>
 
               {requiredStaff.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <div className="py-12 text-center">
+                  <Users className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak wymaganego personelu</p>
                 </div>
               ) : (
@@ -340,17 +351,17 @@ export default function AttractionDetailPage() {
                   {requiredStaff.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
+                      className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                     >
                       <div className="flex-1">
-                        <h3 className="text-[#e5e4e2] font-medium">{item.role}</h3>
-                        <p className="text-sm text-[#e5e4e2]/60 mt-1">Ilość: {item.count}</p>
+                        <h3 className="font-medium text-[#e5e4e2]">{item.role}</h3>
+                        <p className="mt-1 text-sm text-[#e5e4e2]/60">Ilość: {item.count}</p>
                         {item.required_skills && item.required_skills.length > 0 && (
-                          <div className="flex gap-2 mt-2">
+                          <div className="mt-2 flex gap-2">
                             {item.required_skills.map((skill: string, idx: number) => (
                               <span
                                 key={idx}
-                                className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs"
+                                className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400"
                               >
                                 {skill}
                               </span>
@@ -358,7 +369,7 @@ export default function AttractionDetailPage() {
                           </div>
                         )}
                         {item.notes && (
-                          <p className="text-sm text-[#e5e4e2]/40 mt-2">{item.notes}</p>
+                          <p className="mt-2 text-sm text-[#e5e4e2]/40">{item.notes}</p>
                         )}
                       </div>
                       <button
@@ -373,7 +384,7 @@ export default function AttractionDetailPage() {
                         }}
                         className="text-red-400 hover:text-red-300"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   ))}
@@ -383,21 +394,21 @@ export default function AttractionDetailPage() {
           )}
 
           {activeTab === 'costs' && (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-6">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-lg font-light text-[#e5e4e2]">Kosztorys</h2>
                 <button
                   onClick={() => setShowAddCostModal(true)}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj koszt
                 </button>
               </div>
 
               {costs.length === 0 ? (
-                <div className="text-center py-12">
-                  <DollarSign className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <div className="py-12 text-center">
+                  <DollarSign className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak kosztów</p>
                 </div>
               ) : (
@@ -405,41 +416,38 @@ export default function AttractionDetailPage() {
                   {costs.map((cost) => (
                     <div
                       key={cost.id}
-                      className="flex items-center justify-between bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
+                      className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                     >
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="text-[#e5e4e2] font-medium">{cost.description}</h3>
-                          <span className="px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs">
+                          <h3 className="font-medium text-[#e5e4e2]">{cost.description}</h3>
+                          <span className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
                             {cost.cost_type}
                           </span>
                         </div>
                         {cost.notes && (
-                          <p className="text-sm text-[#e5e4e2]/40 mt-1">{cost.notes}</p>
+                          <p className="mt-1 text-sm text-[#e5e4e2]/40">{cost.notes}</p>
                         )}
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-[#d3bb73] font-medium">
+                        <span className="font-medium text-[#d3bb73]">
                           {cost.amount?.toLocaleString('pl-PL')} zł
                         </span>
                         <button
                           onClick={async () => {
                             if (confirm('Usunąć ten koszt?')) {
-                              await supabase
-                                .from('attraction_costs')
-                                .delete()
-                                .eq('id', cost.id);
+                              await supabase.from('attraction_costs').delete().eq('id', cost.id);
                               fetchAttractionDetails();
                             }
                           }}
                           className="text-red-400 hover:text-red-300"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
                   ))}
-                  <div className="bg-[#0f1119] border-2 border-[#d3bb73]/30 rounded-lg p-4">
+                  <div className="rounded-lg border-2 border-[#d3bb73]/30 bg-[#0f1119] p-4">
                     <div className="flex items-center justify-between">
                       <span className="text-lg font-medium text-[#e5e4e2]">Suma</span>
                       <span className="text-xl font-medium text-[#d3bb73]">
@@ -456,26 +464,26 @@ export default function AttractionDetailPage() {
           )}
 
           {activeTab === 'checklist' && (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-6">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <div className="mb-6 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-light text-[#e5e4e2]">Szablon checklisty</h2>
-                  <p className="text-sm text-[#e5e4e2]/60 mt-1">
+                  <p className="mt-1 text-sm text-[#e5e4e2]/60">
                     Automatycznie generowany przy dodaniu do eventu
                   </p>
                 </div>
                 <button
                   onClick={() => setShowAddChecklistModal(true)}
-                  className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj punkt
                 </button>
               </div>
 
               {checklistTemplates.length === 0 ? (
-                <div className="text-center py-12">
-                  <CheckSquare className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <div className="py-12 text-center">
+                  <CheckSquare className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak szablonu checklisty</p>
                 </div>
               ) : (
@@ -483,25 +491,25 @@ export default function AttractionDetailPage() {
                   {checklistTemplates.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-start gap-3 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4"
+                      className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                     >
-                      <CheckSquare className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                      <CheckSquare className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="text-[#e5e4e2] font-medium">{item.title}</h3>
+                          <h3 className="font-medium text-[#e5e4e2]">{item.title}</h3>
                           {item.is_required && (
-                            <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs">
+                            <span className="rounded bg-red-500/20 px-2 py-1 text-xs text-red-400">
                               Wymagane
                             </span>
                           )}
                           {item.category && (
-                            <span className="px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs">
+                            <span className="rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
                               {item.category}
                             </span>
                           )}
                         </div>
                         {item.description && (
-                          <p className="text-sm text-[#e5e4e2]/60 mt-1">{item.description}</p>
+                          <p className="mt-1 text-sm text-[#e5e4e2]/60">{item.description}</p>
                         )}
                       </div>
                       <button
@@ -516,7 +524,7 @@ export default function AttractionDetailPage() {
                         }}
                         className="text-red-400 hover:text-red-300"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   ))}

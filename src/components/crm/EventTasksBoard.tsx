@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Trash2, CreditCard as Edit, Calendar, User, GripVertical, UserPlus } from 'lucide-react';
+import {
+  Plus,
+  X,
+  Trash2,
+  CreditCard as Edit,
+  Calendar,
+  User,
+  GripVertical,
+  UserPlus,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -96,7 +105,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         },
         () => {
           fetchTasks();
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -107,7 +116,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         },
         () => {
           fetchTasks();
-        }
+        },
       )
       .subscribe();
 
@@ -123,9 +132,10 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     try {
       setLoading(true);
 
-      const { data, error} = await supabase
+      const { data, error } = await supabase
         .from('tasks')
-        .select(`
+        .select(
+          `
           *,
           assignees:task_assignees(
             employee:employees!task_assignees_employee_id_fkey(
@@ -137,7 +147,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               phone_number
             )
           )
-        `)
+        `,
+        )
         .eq('event_id', eventId)
         .order('order_index', { ascending: true });
 
@@ -155,7 +166,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             ...task,
             comments_count: count || 0,
           };
-        })
+        }),
       );
 
       setTasks(tasksWithCounts);
@@ -230,7 +241,12 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         description: formData.description.trim() || null,
         priority: formData.priority,
         board_column: formData.board_column,
-        status: formData.board_column as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
+        status: formData.board_column as
+          | 'todo'
+          | 'in_progress'
+          | 'review'
+          | 'completed'
+          | 'cancelled',
         due_date: formData.due_date || null,
         event_id: eventId,
         is_private: false,
@@ -239,10 +255,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       };
 
       if (editingTask) {
-        const { error } = await supabase
-          .from('tasks')
-          .update(taskData)
-          .eq('id', editingTask.id);
+        const { error } = await supabase.from('tasks').update(taskData).eq('id', editingTask.id);
 
         if (error) throw error;
         showSnackbar('Zadanie zaktualizowane', 'success');
@@ -278,10 +291,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     if (!confirm('Czy na pewno chcesz usunąć to zadanie?')) return;
 
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', taskId);
+      const { error } = await supabase.from('tasks').delete().eq('id', taskId);
 
       if (error) throw error;
       showSnackbar('Zadanie usunięte', 'success');
@@ -389,9 +399,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     if (!assigningTask) return;
 
     try {
-      const isAssigned = assigningTask.assignees?.some(
-        (a) => a.employee.id === employeeId
-      );
+      const isAssigned = assigningTask.assignees?.some((a) => a.employee.id === employeeId);
 
       if (isAssigned) {
         const { error } = await supabase
@@ -419,13 +427,13 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           .maybeSingle();
 
         if (!existing) {
-          const { error: teamError } = await supabase
-            .from('employee_assignments')
-            .insert([{
+          const { error: teamError } = await supabase.from('employee_assignments').insert([
+            {
               event_id: eventId,
               employee_id: employeeId,
-              role: 'Członek zespołu'
-            }]);
+              role: 'Członek zespołu',
+            },
+          ]);
 
           if (teamError) {
             console.error('Error adding to team:', teamError);
@@ -463,33 +471,33 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         {canManage && (
           <button
             onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Nowe zadanie
           </button>
         )}
       </div>
 
       <div className="overflow-x-auto pb-4" ref={scrollContainerRef}>
-        <div className="flex gap-4 min-w-max">
+        <div className="flex min-w-max gap-4">
           {columns.map((column) => {
             const columnTasks = getColumnTasks(column.id);
 
             return (
               <div
                 key={column.id}
-                className={`bg-[#1c1f33] border rounded-xl p-4 ${column.color} w-80 flex-shrink-0 transition-all ${
-                  dragOverColumn === column.id ? 'ring-2 ring-[#d3bb73]/50 scale-[1.02]' : ''
+                className={`rounded-xl border bg-[#1c1f33] p-4 ${column.color} w-80 flex-shrink-0 transition-all ${
+                  dragOverColumn === column.id ? 'scale-[1.02] ring-2 ring-[#d3bb73]/50' : ''
                 }`}
                 onDragOver={(e) => handleDragOver(e, column.id)}
                 onDrop={(e) => handleDrop(e, column.id)}
                 onDragLeave={() => setDragOverColumn(null)}
               >
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4 flex items-center justify-between">
                   <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#e5e4e2]/60 bg-[#0f1119] px-2 py-1 rounded">
+                    <span className="rounded bg-[#0f1119] px-2 py-1 text-xs text-[#e5e4e2]/60">
                       {columnTasks.length}
                     </span>
                     {canManage && (
@@ -498,16 +506,16 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                           setEditingTask(null);
                           setShowModal(true);
                         }}
-                        className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                        className="rounded p-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                         title="Dodaj zadanie"
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="h-4 w-4" />
                       </button>
                     )}
                   </div>
                 </div>
 
-                <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
+                <div className="max-h-[calc(100vh-300px)] space-y-3 overflow-y-auto pr-2">
                   {columnTasks.map((task) => (
                     <div
                       key={task.id}
@@ -529,9 +537,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                   ))}
 
                   {columnTasks.length === 0 && (
-                    <div className="text-center py-8 text-[#e5e4e2]/40 text-sm">
-                      Brak zadań
-                    </div>
+                    <div className="py-8 text-center text-sm text-[#e5e4e2]/40">Brak zadań</div>
                   )}
                 </div>
               </div>
@@ -541,56 +547,52 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] rounded-xl p-6 max-w-md w-full border border-[#d3bb73]/20">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <div className="mb-6 flex items-center justify-between">
               <h3 className="text-lg font-medium text-[#e5e4e2]">
                 {editingTask ? 'Edytuj zadanie' : 'Nowe zadanie'}
               </h3>
               <button
                 onClick={handleCloseModal}
-                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2]/80 mb-2">
-                  Tytuł *
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/80">Tytuł *</label>
                 <input
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
                   placeholder="Nazwa zadania"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2]/80 mb-2">
-                  Opis
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/80">Opis</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 resize-none"
+                  className="w-full resize-none rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
                   rows={3}
                   placeholder="Szczegóły zadania"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2]/80 mb-2">
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/80">
                   Priorytet
                 </label>
                 <select
                   value={formData.priority}
                   onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
                 >
                   <option value="low">Niski</option>
                   <option value="medium">Średni</option>
@@ -600,13 +602,11 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2]/80 mb-2">
-                  Kolumna
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/80">Kolumna</label>
                 <select
                   value={formData.board_column}
                   onChange={(e) => setFormData({ ...formData, board_column: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
                 >
                   {columns.map((col) => (
                     <option key={col.id} value={col.id}>
@@ -617,14 +617,12 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2]/80 mb-2">
-                  Termin
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/80">Termin</label>
                 <input
                   type="date"
                   value={formData.due_date}
                   onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
                 />
               </div>
 
@@ -632,13 +630,13 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 bg-[#0f1119] text-[#e5e4e2] rounded-lg hover:bg-[#0f1119]/80 transition-colors"
+                  className="flex-1 rounded-lg bg-[#0f1119] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
                 >
                   Anuluj
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+                  className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
                   {editingTask ? 'Zapisz' : 'Dodaj'}
                 </button>
@@ -649,55 +647,50 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       )}
 
       {showAssignModal && assigningTask && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] rounded-xl p-6 max-w-md w-full border border-[#d3bb73]/20">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-medium text-[#e5e4e2]">
-                Przypisz pracowników
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-lg font-medium text-[#e5e4e2]">Przypisz pracowników</h3>
               <button
                 onClick={handleCloseAssignModal}
-                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="mb-4">
-              <h4 className="text-sm font-medium text-[#e5e4e2] mb-2">
-                {assigningTask.title}
-              </h4>
-              <p className="text-xs text-[#e5e4e2]/60">
-                Wybierz pracowników do przypisania
-              </p>
+              <h4 className="mb-2 text-sm font-medium text-[#e5e4e2]">{assigningTask.title}</h4>
+              <p className="text-xs text-[#e5e4e2]/60">Wybierz pracowników do przypisania</p>
             </div>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="max-h-96 space-y-2 overflow-y-auto">
               {availableEmployees.map((employee) => {
                 const isAssigned = assigningTask.assignees?.some(
-                  (a) => a.employee.id === employee.id
+                  (a) => a.employee.id === employee.id,
                 );
 
                 return (
                   <button
                     key={employee.id}
                     onClick={() => handleToggleAssignee(employee.id)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                    className={`flex w-full items-center gap-3 rounded-lg border p-3 transition-all ${
                       isAssigned
-                        ? 'bg-[#d3bb73]/10 border-[#d3bb73]/50 hover:bg-[#d3bb73]/20'
-                        : 'bg-[#0f1119] border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
+                        ? 'border-[#d3bb73]/50 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20'
+                        : 'border-[#d3bb73]/10 bg-[#0f1119] hover:border-[#d3bb73]/30'
                     }`}
                   >
-                    <div className="w-10 h-10 rounded-full bg-[#d3bb73]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#d3bb73]/20">
                       {employee.avatar_url ? (
                         <img
                           src={employee.avatar_url}
                           alt=""
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-cover"
                         />
                       ) : (
                         <span className="text-sm text-[#e5e4e2]">
-                          {employee.name[0]}{employee.surname[0]}
+                          {employee.name[0]}
+                          {employee.surname[0]}
                         </span>
                       )}
                     </div>
@@ -707,9 +700,9 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                       </div>
                     </div>
                     {isAssigned && (
-                      <div className="w-5 h-5 rounded-full bg-[#d3bb73] flex items-center justify-center">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73]">
                         <svg
-                          className="w-3 h-3 text-[#1c1f33]"
+                          className="h-3 w-3 text-[#1c1f33]"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -731,7 +724,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             <div className="mt-6">
               <button
                 onClick={handleCloseAssignModal}
-                className="w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+                className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
                 Zamknij
               </button>

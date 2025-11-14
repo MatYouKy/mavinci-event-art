@@ -20,16 +20,8 @@ interface ResizeOptions {
  * Advanced image compression with multiple format support
  * Resizes and compresses images while maintaining aspect ratio
  */
-const compressAndResizeImage = async (
-  file: File,
-  options: ResizeOptions
-): Promise<Blob> => {
-  const {
-    maxWidth,
-    maxHeight = maxWidth,
-    quality = 0.85,
-    format = 'webp',
-  } = options;
+const compressAndResizeImage = async (file: File, options: ResizeOptions): Promise<Blob> => {
+  const { maxWidth, maxHeight = maxWidth, quality = 0.85, format = 'webp' } = options;
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -71,11 +63,8 @@ const compressAndResizeImage = async (
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
         // Convert to specified format
-        const mimeType = format === 'webp'
-          ? 'image/webp'
-          : format === 'png'
-          ? 'image/png'
-          : 'image/jpeg';
+        const mimeType =
+          format === 'webp' ? 'image/webp' : format === 'png' ? 'image/png' : 'image/jpeg';
 
         canvas.toBlob(
           (blob) => {
@@ -86,7 +75,7 @@ const compressAndResizeImage = async (
             resolve(blob);
           },
           mimeType,
-          quality
+          quality,
         );
       };
       img.onerror = () => reject(new Error('Image load failed'));
@@ -117,7 +106,7 @@ const compressImage = async (file: File, maxSizeMB: number = 2): Promise<File> =
  */
 export const uploadOptimizedImage = async (
   file: File,
-  folder: string = 'site-images'
+  folder: string = 'site-images',
 ): Promise<{
   desktop: string;
   mobile: string;
@@ -190,17 +179,14 @@ export const uploadOptimizedImage = async (
   // Get public URLs
   const [desktopData, mobileData, thumbnailData] = results.map((r) => r.data!);
 
-  const desktopUrl = supabase.storage
-    .from('site-images')
-    .getPublicUrl(desktopData.path).data.publicUrl;
+  const desktopUrl = supabase.storage.from('site-images').getPublicUrl(desktopData.path)
+    .data.publicUrl;
 
-  const mobileUrl = supabase.storage
-    .from('site-images')
-    .getPublicUrl(mobileData.path).data.publicUrl;
+  const mobileUrl = supabase.storage.from('site-images').getPublicUrl(mobileData.path)
+    .data.publicUrl;
 
-  const thumbnailUrl = supabase.storage
-    .from('site-images')
-    .getPublicUrl(thumbnailData.path).data.publicUrl;
+  const thumbnailUrl = supabase.storage.from('site-images').getPublicUrl(thumbnailData.path)
+    .data.publicUrl;
 
   console.log(`[uploadOptimizedImage] Upload complete!`);
   console.log(`  - Desktop: ${desktopUrl}`);
@@ -224,7 +210,9 @@ export const uploadImage = async (file: File, folder: string = 'site-images'): P
   if (file.size > 2 * 1024 * 1024) {
     console.log('Image too large, compressing...');
     fileToUpload = await compressImage(file, 2);
-    console.log(`Compressed from ${(file.size / 1024 / 1024).toFixed(2)}MB to ${(fileToUpload.size / 1024 / 1024).toFixed(2)}MB`);
+    console.log(
+      `Compressed from ${(file.size / 1024 / 1024).toFixed(2)}MB to ${(fileToUpload.size / 1024 / 1024).toFixed(2)}MB`,
+    );
   }
 
   const fileExt = 'jpg';
@@ -242,9 +230,7 @@ export const uploadImage = async (file: File, folder: string = 'site-images'): P
     throw new Error(`Upload failed: ${error.message}`);
   }
 
-  const { data: urlData } = supabase.storage
-    .from('site-images')
-    .getPublicUrl(data.path);
+  const { data: urlData } = supabase.storage.from('site-images').getPublicUrl(data.path);
 
   return urlData.publicUrl;
 };
@@ -254,9 +240,7 @@ export const deleteImage = async (url: string): Promise<void> => {
     const path = url.split('/site-images/').pop();
     if (!path) return;
 
-    const { error } = await supabase.storage
-      .from('site-images')
-      .remove([path]);
+    const { error } = await supabase.storage.from('site-images').remove([path]);
 
     if (error) {
       console.error('Delete error:', error);
@@ -272,7 +256,7 @@ export const deleteImage = async (url: string): Promise<void> => {
  */
 export const uploadImageToStorage = async (
   file: File,
-  folder: string = 'site-images'
+  folder: string = 'site-images',
 ): Promise<{
   success: boolean;
   url?: string;
@@ -303,7 +287,7 @@ export const uploadImageToStorage = async (
 export const uploadImageSimple = async (
   file: File,
   folder: string = 'site-images',
-  maxWidth: number = 2200
+  maxWidth: number = 2200,
 ): Promise<{ success: boolean; url?: string; error?: string }> => {
   try {
     console.log(`[uploadImageSimple] Uploading: ${file.name}`);
@@ -318,17 +302,13 @@ export const uploadImageSimple = async (
 
     console.log(`[uploadImageSimple] Optimized size: ${(blob.size / 1024).toFixed(0)}KB`);
 
-    const fileName = `${folder}/${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(7)}.webp`;
+    const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.webp`;
 
-    const { data, error } = await supabase.storage
-      .from('site-images')
-      .upload(fileName, blob, {
-        cacheControl: '31536000',
-        contentType: 'image/webp',
-        upsert: false,
-      });
+    const { data, error } = await supabase.storage.from('site-images').upload(fileName, blob, {
+      cacheControl: '31536000',
+      contentType: 'image/webp',
+      upsert: false,
+    });
 
     if (error) {
       console.error('[uploadImageSimple] Upload error:', error);
@@ -338,9 +318,7 @@ export const uploadImageSimple = async (
       };
     }
 
-    const { data: urlData } = supabase.storage
-      .from('site-images')
-      .getPublicUrl(data.path);
+    const { data: urlData } = supabase.storage.from('site-images').getPublicUrl(data.path);
 
     console.log(`[uploadImageSimple] Upload complete: ${urlData.publicUrl}`);
 

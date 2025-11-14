@@ -31,7 +31,9 @@ export function generateEmailSignature(data: SignatureData): string {
         <table role="presentation" cellpadding="0" cellspacing="0" align="center" width="100%" style="height: 100%; max-width:660px;">
           <tr>
             <td style="font-size:0;">
-              ${data.avatar_url ? `
+              ${
+                data.avatar_url
+                  ? `
               <div style="display:inline-block; width:142px; vertical-align: top;" class="stack-column">
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="142">
                   <tr>
@@ -46,7 +48,9 @@ export function generateEmailSignature(data: SignatureData): string {
                   </tr>
                 </table>
               </div>
-              ` : ''}
+              `
+                  : ''
+              }
 
               <div style="display:inline-block; margin: 0 -2px; min-width:320px; max-width:490px; vertical-align: top; padding-left: ${data.avatar_url ? '15px' : '0'};" class="stack-column">
                 <table dir="ltr" role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
@@ -58,11 +62,15 @@ export function generateEmailSignature(data: SignatureData): string {
                       <h1 style="color: #d2ba74; line-height: 1.2; text-transform: uppercase; font-weight: 900; letter-spacing: 2px; margin: 4px 0 8px 0; font-size: 18px;">
                         ${data.full_name.split(' ').slice(1).join(' ') || ''}
                       </h1>
-                      ${data.position ? `
+                      ${
+                        data.position
+                          ? `
                       <p style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; margin: 0 0 12px 0; color: inherit; font-style: italic; letter-spacing: 1px; font-size: 11px;">
                         ${data.position}
                       </p>
-                      ` : ''}
+                      `
+                          : ''
+                      }
                     </td>
                   </tr>
 
@@ -72,7 +80,9 @@ export function generateEmailSignature(data: SignatureData): string {
                     </td>
                   </tr>
 
-                  ${data.phone ? `
+                  ${
+                    data.phone
+                      ? `
                   <tr>
                     <td style="vertical-align:middle; padding: 4px 0;">
                       <table cellspacing="0" cellpadding="0" border="0">
@@ -91,7 +101,9 @@ export function generateEmailSignature(data: SignatureData): string {
                       </table>
                     </td>
                   </tr>
-                  ` : ''}
+                  `
+                      : ''
+                  }
 
                   <tr>
                     <td style="vertical-align:middle; padding: 4px 0;">
@@ -179,7 +191,7 @@ export function EmailSignaturePreview({ data }: { data: SignatureData }) {
   const html = generateEmailSignature(data);
 
   return (
-    <div className="bg-white rounded-lg p-6 overflow-auto">
+    <div className="overflow-auto rounded-lg bg-white p-6">
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );

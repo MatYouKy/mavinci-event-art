@@ -1,401 +1,538 @@
-// src/app/crm/equipment/store/equipmentApi.ts
-import { createApi } from '@reduxjs/toolkit/query/react';
-import { fakeBaseQuery } from '@reduxjs/toolkit/query';
-import { supabase } from '@/lib/supabase';
-import { WarehouseCategoryRow } from '../categories/page';
+import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import {
+  IEquipment,
+  IEquipmentHistory,
+  IEquipmentUnit,
+  IStorageLocation,
+} from '../types/equipment.types';
+import { ISingleImage } from '@/types/image';
+import { CreateConnectorBody, IConnectorType, UpdateConnectorBody } from '../connectors/connector.type';
 
-type FeedParams = {
-  q?: string;                // wyszukiwarka
-  categoryId?: string|null;  // filtr kategorii (opcjonalnie)
-  itemType?: 'all'|'equipment'|'kits';
-  page?: number;             // numer strony (0,1,2…)
-  limit?: number;            // ile rekordów na stronę
+type ID = string;
+
+export type FeedParams = {
+  q?: string;
+  category?: string | null;
+  page?: number;
+  limit?: number;
 };
+
+export const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
 
 export const equipmentApi = createApi({
   reducerPath: 'equipmentApi',
-  baseQuery: fakeBaseQuery(), // ← to chcieliśmy
-  tagTypes: ['Equipment', 'EquipmentList', 'Units', 'ConnectorTypes', 'StorageLocations', 'Categories'],
-
+  baseQuery: fetchBaseQuery({
+    baseUrl: `${baseUrl}/api/mavinci/crm`,
+    credentials: 'include',
+    prepareHeaders: (headers) => {
+      if (typeof window !== 'undefined') {
+        const token = localStorage.getItem('token');
+        if (token) headers.set('authorization', `Bearer ${token}`);
+      }
+      return headers;
+    },
+  }),
+  tagTypes: [
+    'Equipment',
+    'EquipmentList',
+    'Units',
+    'Gallery',
+    'History',
+    'Categories',
+    'StorageLocations',
+    'ConnectorTypes',
+  ],
   endpoints: (builder) => ({
+    getUnitsByEquipment: builder.query<IEquipmentUnit[], string>({
+      query: (eid) => `/equipment/${eid}/units`,
+      transformResponse: (res: { units?: IEquipmentUnit[] } | undefined) => res?.units ?? [],
+      providesTags: (_res, _err, eid) => [{ type: 'Units', id: eid }],
+    }),
+    /* ===================== LISTA / FEED ===================== */
 
-    // === LISTA (dla /crm/equipment) ===
-getEquipmentList: builder.query<{
-  equipment_items: any[];
-  equipment_kits: any[];
-  warehouse_categories: any[];
-}, void>({
-  async queryFn() {
-    const { data: categories, error: catErr } = await supabase
-      .from('warehouse_categories')
-      .select('*')
-      .order('level')
-      .order('name');
-    if (catErr) return { error: catErr as any };
+    getEquipmentList: builder.query<IEquipment[], void>({
+      query: () => `/equipment`,
+      transformResponse: (res: { equipment: IEquipment[] }) => res?.equipment ?? [],
+      providesTags: ['EquipmentList'],
+    }),
+    getEquipmentById: builder.query<IEquipment, string>({
+      query: (id) => `/equipment/${id}`,
+      transformResponse: (res: { equipment: IEquipment }) => res?.equipment,
+      providesTags: (_r, _e, id) => [{ type: 'Equipment', id }],
+    }),
 
-    const { data: items, error: itemsErr } = await supabase
-      .from('equipment_items')
-      .select(`
-        id, name, warehouse_category_id, brand, model, thumbnail_url, description,
-        warehouse_categories:warehouse_categories(*),
-        equipment_units:equipment_units(id, status)
-      `)
-      .order('name');
-    if (itemsErr) return { error: itemsErr as any };
-
-    // <-- tu wchodzi poprawiona wersja dla kits
-    const { data: kitsRaw, error: kitsErr } = await supabase
-      .from('equipment_kits')
-      .select(`
-        id,
-        name,
-        warehouse_category_id,
-        thumbnail_url,
-        description,
-        warehouse_categories:warehouse_categories(*)
-      `)
-      .order('name');
-    if (kitsErr) return { error: kitsErr as any };
-
-    const kits = (kitsRaw ?? []).map(k => ({ ...k, is_kit: true, equipment_units: [] }));
-
-    return {
-      data: {
-        equipment_items: items ?? [],
-        equipment_kits: kits,
-        warehouse_categories: categories ?? [],
+    getEquipmentFeed: builder.query<
+      { items: IEquipment[]; page: number; hasMore: boolean; total?: number },
+      FeedParams
+    >({
+      query: ({ q = '', category = null, page = 0, limit = 24 }) => {
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (category) params.set('category', category);
+        params.set('page', String(page));
+        params.set('limit', String(limit));
+        return `/equipment?${params.toString()}`;
       },
-    };
-  },
-  providesTags: ['EquipmentList'],
-}),
-getEquipmentFeed: builder.query<{
-      items: any[];                     // połączone items + kits
-      total?: number | null;            // jak chcesz, możesz zwrócić count
-      page: number;
-      hasMore: boolean;
-    }, FeedParams>({
-      // UWAGA: to nadal 2 zapytania i merge po stronie klienta.
-      // Docelowo najlepiej zrobić VIEW (opis pod koniec).
-      async queryFn({ q='', categoryId=null, itemType='all', page=0, limit=24 }) {
-        const from = page * limit;
-        const to   = from + limit - 1;
-
-        // --- sprzęty ---
-        let itemsQ = supabase
-          .from('equipment_items')
-          .select(`
-            id, name, warehouse_category_id, brand, model, thumbnail_url, description, created_at,
-            equipment_units:equipment_units(id, status)
-          `, { count: 'exact' })
-          .order('created_at', { ascending: false })
-          .range(from, to);
-
-        if (q) itemsQ = itemsQ.or(`name.ilike.%${q}%,brand.ilike.%${q}%`);
-        if (categoryId) itemsQ = itemsQ.eq('warehouse_category_id', categoryId);
-
-        // --- kity ---
-        let kitsQ = supabase
-          .from('equipment_kits')
-          .select(`
-            id, name, warehouse_category_id, thumbnail_url, description, created_at
-          `, { count: 'exact' })
-          .order('created_at', { ascending: false })
-          .range(from, to);
-
-        if (q) kitsQ = kitsQ.ilike('name', `%${q}%`);
-        if (categoryId) kitsQ = kitsQ.eq('warehouse_category_id', categoryId);
-
-        const [itemsRes, kitsRes] = await Promise.all([itemsQ, kitsQ]);
-
-        if (itemsRes.error) return { error: itemsRes.error as any };
-        if (kitsRes.error)  return { error: kitsRes.error as any };
-
-        // złącz i posortuj (po created_at DESC)
-        let merged = [
-          ...(itemsRes.data ?? []).map(i => ({ ...i, is_kit: false })),
-          ...(kitsRes.data  ?? []).map(k => ({ ...k, is_kit: true,  equipment_units: [] })),
-        ].sort((a,b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
-
-        // filtr typu (all/equipment/kits)
-        if (itemType === 'equipment') merged = merged.filter(i => !i.is_kit);
-        if (itemType === 'kits')      merged = merged.filter(i =>  i.is_kit);
-
-        // czy jest następna strona? (przy 2 zapytaniach „count” bywa mylący,
-        // ale do prostej heurystyki wystarczy)
-        const approxCount =
-          (itemType !== 'kits' ? (itemsRes.count ?? 0) : 0) +
-          (itemType !== 'equipment' ? (kitsRes.count ?? 0) : 0);
-
-        const hasMore = (from + merged.length) < approxCount;
-
-        return { data: { items: merged, total: approxCount, page, hasMore } };
-      },
-      // cache po parametrach
-      serializeQueryArgs: ({ endpointName, queryArgs }) => {
-        const { q='', categoryId=null, itemType='all' } = queryArgs ?? {};
-        return `${endpointName}|q:${q}|cat:${categoryId}|type:${itemType}`;
-      },
-      // po zmianie page nie chcemy nadpisać cache klucza — RTKQ wywoła merge
-      merge: (currentCache, newData) => {
-        if (newData.page === 0) {
-          currentCache.items = newData.items;
-        } else {
-          currentCache.items = [...currentCache.items, ...newData.items];
+      transformResponse: (res: any) => {
+        if (Array.isArray(res?.equipment)) {
+          return {
+            items: res.equipment,
+            page: 0,
+            hasMore: false,
+            total: res.equipment.length,
+          };
         }
+        return res;
+      },
+      serializeQueryArgs: ({ endpointName, queryArgs }) => {
+        const { q = '', category = '', page = 0, limit = 24 } = queryArgs || {};
+        return `${endpointName}|q:${q}|cat:${category}|p:${page}|l:${limit}`;
+      },
+      merge: (currentCache, newData) => {
+        if (newData.page === 0) currentCache.items = newData.items;
+        else currentCache.items = [...currentCache.items, ...newData.items];
         currentCache.page = newData.page;
         currentCache.hasMore = newData.hasMore;
         currentCache.total = newData.total;
       },
       forceRefetch({ currentArg, previousArg }) {
-        // reset, gdy zmieni się q/category/itemType
-        return JSON.stringify({ ...currentArg, page: 0 }) !== JSON.stringify({ ...previousArg, page: 0 });
+        if (!currentArg || !previousArg) return true;
+        const a = { ...currentArg, page: 0 };
+        const b = { ...previousArg, page: 0 };
+        return JSON.stringify(a) !== JSON.stringify(b);
       },
-      providesTags: (_r) => ['EquipmentList'],
-    }),
-    // equipmentApi.ts
-updateCableQuantity: builder.mutation<
-  void,
-  { equipmentId: string; quantity: number }
->({
-  async queryFn({ equipmentId, quantity }) {
-    const { error } = await supabase
-      .from('equipment_items')
-      .update({ cable_stock_quantity: quantity })
-      .eq('id', equipmentId);
-
-    if (error) return { error: error as any };
-    return { data: undefined };
-  },
-  // odświeży szczegóły konkretnego sprzętu oraz listing (jeśli tak tagujesz)
-  invalidatesTags: (_r, _e, { equipmentId }) => [
-    { type: 'Equipment', id: equipmentId },
-    'EquipmentList',
-  ],
-}),
-
-
-    // szczegóły – skoro mówisz, że działa, zostawiam przykładowo
-    getEquipmentDetails: builder.query<any, string>({
-      async queryFn(id) {
-        const { data, error } = await supabase
-          .from('equipment_items')
-          .select(`
-            *,
-            warehouse_categories:warehouse_categories(*),
-            equipment_stock:equipment_stock(*),
-            equipment_components:equipment_components(*),
-            equipment_images:equipment_images(*)
-          `)
-          .eq('id', id)
-          .single();
-        if (error) return { error: error as any };
-        return { data };
-      },
-      providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
+      providesTags: ['EquipmentList'],
     }),
 
-    // aktualizacja sprzętu
-    updateEquipmentItem: builder.mutation<
-      { success: true },
-      { id: string; payload: Record<string, any> }
+    /* ===================== SZCZEGÓŁY ===================== */
+
+    getEquipmentDetails: builder.query<
+      {
+        equipment: IEquipment;
+        gallery: ISingleImage[];
+        units: IEquipmentUnit[];
+        components: any[];
+        history: IEquipmentHistory[];
+      },
+      ID
     >({
-      async queryFn({ id, payload }) {
-        const { error } = await supabase
-          .from('equipment_items')
-          .update(payload)
-          .eq('id', id);
+      query: (eid) => `/equipment/${eid}`,
+      providesTags: (_r, _e, id) => [{ type: 'Equipment', id }],
+    }),
 
-        if (error) return { error: error as any };
-        return { data: { success: true } };
+    /* ===================== CRUD SPRZĘTU ===================== */
+
+    createEquipment: builder.mutation<{ equipment: IEquipment }, FormData>({
+      query: (payload) => {
+        console.log('payload', payload);
+        return {
+          url: `/equipment?page_type=mavinci/crm/equipment`,
+          method: 'POST',
+          body: payload,
+        };
       },
-      invalidatesTags: (_result, _error, { id }) => [
-        { type: 'Equipment', id },
-        'EquipmentList',
+      invalidatesTags: ['EquipmentList'],
+    }),
+
+    updateEquipment: builder.mutation<{ equipment: IEquipment }, { id: ID; patch: FormData }>({
+      query: ({ id, patch }) => ({
+        url: `/equipment/${id}?page_type=mavinci/crm/equipment`,
+        method: 'PATCH',
+        body: patch,
+      }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Equipment', id }, 'EquipmentList'],
+    }),
+
+    deleteEquipment: builder.mutation<{ id: ID }, ID>({
+      query: (id) => ({
+        url: `/equipment/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['EquipmentList'],
+    }),
+
+    /* ===================== UNITS ===================== */
+
+    addUnit: builder.mutation<
+      { unit: IEquipmentUnit },
+      { eid: ID; payload: Partial<IEquipmentUnit> }
+    >({
+      query: ({ eid, payload }) => ({
+        url: `/equipment/${eid}/units`,
+        method: 'POST',
+        body: payload,
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [
+        { type: 'Units', id: eid },
+        { type: 'Equipment', id: eid },
       ],
     }),
 
-    // kasowanie pojedynczego sprzętu (nie dotyczy kitów)
-deleteEquipment: builder.mutation<{ success: true }, string>({
-  async queryFn(id) {
-    // 1) spróbuj w equipment_items
-    const { error: delItemsErr } = await supabase
-      .from('equipment_items')
-      .delete()
-      .eq('id', id);
-
-    if (!delItemsErr) {
-      return { data: { success: true } };
-    }
-
-    // 2) jeśli błąd, spróbuj w equipment_kits
-    const { error: delKitsErr } = await supabase
-      .from('equipment_kits')
-      .delete()
-      .eq('id', id);
-
-    if (!delKitsErr) {
-      return { data: { success: true } };
-    }
-
-    // 3) zwróć pierwszy błąd (często bardziej informacyjny)
-    return { error: delItemsErr as any };
-  },
-  invalidatesTags: ['Equipment'],
-}),
-
-    // === JEDNOSTKI SPRZĘTU dla danego equipment_id ===
-    getUnitsByEquipment: builder.query<any[], string>({
-      async queryFn(equipmentId) {
-        const { data, error } = await supabase
-          .from('equipment_units')
-          .select(`
-            *,
-            storage_locations:storage_locations(id, name)
-          `)
-          .eq('equipment_id', equipmentId)
-          .order('created_at', { ascending: false });
-
-        if (error) return { error: error as any };
-        return { data: data ?? [] };
-      },
-      providesTags: (result, _err, id) => [
-        { type: 'Units', id },
-        ...((result ?? []).map((u: any) => ({ type: 'Units' as const, id: u.id }))),
+    deleteUnit: builder.mutation<{ id: ID }, { eid: ID; uid: ID }>({
+      query: ({ eid, uid }) => ({
+        url: `/equipment/${eid}/units/${uid}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [
+        { type: 'Units', id: eid },
+        { type: 'Equipment', id: eid },
       ],
     }),
 
-    // === SŁOWNIKI ===
-    getConnectorTypes: builder.query<any[], void>({
-      async queryFn() {
-        const { data, error } = await supabase
-          .from('connector_types')
-          .select('*')
-          .eq('is_active', true)
-          .order('name');
-        if (error) return { error: error as any };
-        return { data: data ?? [] };
-      },
-      providesTags: ['ConnectorTypes'],
+    /* ===================== GALERIA ===================== */
+
+    addGalleryItem: builder.mutation<
+      { item: ISingleImage[] | ISingleImage },
+      { eid: ID; payload: { image: { url: string; alt?: string }; is_main?: boolean } }
+    >({
+      query: ({ eid, payload }) => ({
+        url: `/equipment/${eid}/gallery`,
+        method: 'POST',
+        body: payload,
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [
+        { type: 'Gallery', id: eid },
+        { type: 'Equipment', id: eid },
+      ],
     }),
 
-    getStorageLocations: builder.query<any[], void>({
-      async queryFn() {
-        const { data, error } = await supabase
-          .from('storage_locations')
-          .select('id, name')
-          .eq('is_active', true)
-          .order('name');
-        if (error) return { error: error as any };
-        return { data: data ?? [] };
-      },
-      providesTags: ['StorageLocations'],
+    setMainGalleryItem: builder.mutation<{ ok: true }, { eid: ID; gid: ID }>({
+      query: ({ eid, gid }) => ({
+        url: `/equipment/${eid}/gallery/${gid}/main`,
+        method: 'PATCH',
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [
+        { type: 'Gallery', id: eid },
+        { type: 'Equipment', id: eid },
+      ],
     }),
-        getEquipmentCategories: builder.query<any[], void>({
-      async queryFn() {
-        const { data, error } = await supabase
-          .from('warehouse_categories')
-          .select('*')
-          .eq('is_active', true)
-          .order('level', { ascending: true })
-          .order('order_index', { ascending: true });
-        if (error) return { error: error as any };
-        return { data: data ?? [] };
-      },
+
+    /* ===================== HISTORIA ===================== */
+
+    addHistoryEntry: builder.mutation<
+      { entry: IEquipmentHistory },
+      {
+        eid: ID;
+        payload: Partial<IEquipmentHistory> & { quantity_change?: number; quantity_after?: number };
+      }
+    >({
+      query: ({ eid, payload }) => ({
+        url: `/equipment/${eid}/history`,
+        method: 'POST',
+        body: payload,
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [{ type: 'History', id: eid }],
+    }),
+
+    /* ===================== KATEGORIE ===================== */
+
+    getEquipmentCategories: builder.query<any[], void>({
+      query: () => `/equipment/categories`,
+      transformResponse: (res: { categories: any[] }) => res?.categories ?? [],
       providesTags: ['Categories'],
     }),
 
-    // equipmentApi.ts (only the 3 category mutations changed)
+    /* ===================== STORAGE LOCATIONS ===================== */
 
-// Return the inserted row so `data` is always defined
-createWarehouseCategory: builder.mutation<
-  WarehouseCategoryRow, // return type
-  {
-    name: string;
-    description: string | null;
-    level: 1 | 2;
-    parent_id: string | null;
-    order_index: number;
-    color?: string;
-    special_properties: { name: string; value: boolean }[];
-  }
->({
-  async queryFn(payload) {
-    const { data, error } = await supabase
-      .from('warehouse_categories')
-      .insert({
-        ...payload,
-        is_active: true,
-        color: payload.color ?? '#d3bb73',
-        created_at: new Date().toISOString(),
-      })
-      .select('*')      // 👈 ensure a row is returned
-      .single();        // 👈 single row
+    getStorageLocations: builder.query<IStorageLocation[], void>({
+      query: () => `/storage-locations`,
+      transformResponse: (res: { locations: IStorageLocation[] }) => res?.locations ?? [],
+      providesTags: ['StorageLocations'],
+    }),
 
-    if (error) return { error: error as any };
-    return { data: data as WarehouseCategoryRow };
-  },
-  invalidatesTags: ['Categories'],
-}),
+    getStorageLocationById: builder.query<IStorageLocation, ID>({
+      query: (id) => `/storage-locations/${id}`,
+      transformResponse: (res: { location: IStorageLocation }) => res.location,
+      providesTags: (_r, _e, id) => [{ type: 'StorageLocations', id }],
+    }),
 
-// Return the updated row (via .select().single())
-updateWarehouseCategory: builder.mutation<
-  WarehouseCategoryRow, // return the updated row
-  {
-    id: string;
-    name?: string;
-    description?: string | null;
-    special_properties?: { name: string; value: boolean }[];
-  }
->({
-  async queryFn({ id, ...patch }) {
-    const { data, error } = await supabase
-      .from('warehouse_categories')
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('*')      // 👈 return the updated row
-      .single();
+    createStorageLocation: builder.mutation<
+      { location: IStorageLocation },
+      Partial<IStorageLocation>
+    >({
+      query: (payload) => ({
+        url: `/storage-locations`,
+        method: 'POST',
+        body: payload,
+      }),
+      invalidatesTags: ['StorageLocations'],
+    }),
 
-    if (error) return { error: error as any };
-    return { data: data as WarehouseCategoryRow };
-  },
-  invalidatesTags: ['Categories'],
-}),
+    updateStorageLocation: builder.mutation<
+      { location: IStorageLocation },
+      { id: ID; patch: Partial<IStorageLocation> }
+    >({
+      query: ({ id, patch }) => ({
+        url: `/storage-locations/${id}`,
+        method: 'PATCH',
+        body: patch,
+      }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'StorageLocations', id }, 'StorageLocations'],
+    }),
 
-// Return a success object (not undefined)
-deleteWarehouseCategory: builder.mutation<
-  { success: true },            // explicit non-undefined payload
-  { id: string }
->({
-  async queryFn({ id }) {
-    const { error } = await supabase
-      .from('warehouse_categories')
-      .delete()
-      .eq('id', id);
+    deleteStorageLocation: builder.mutation<{ id: ID }, ID>({
+      query: (id) => ({
+        url: `/storage-locations/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['StorageLocations'],
+    }),
+    /* ===================== CONNECTOR TYPES ===================== */
 
-    if (error) return { error: error as any };
-    return { data: { success: true } };   // 👈 defined data
-  },
-  invalidatesTags: ['Categories'],
-}),
-   
+    getConnectors: builder.query<IConnectorType[], void>({
+      query: () => ({ url: 'connectors', method: 'GET' }),
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ _id }) => ({ type: 'ConnectorTypes' as const, id: _id })),
+              { type: 'ConnectorTypes', id: 'LIST' },
+            ]
+          : [{ type: 'ConnectorTypes', id: 'LIST' }],
+
+      transformResponse: (res: { connectors?: IConnectorType[] } | IConnectorType[]) => {
+        const list = Array.isArray(res) ? res : (res?.connectors ?? []);
+        return [...list].sort((a, b) => a.name.localeCompare(b.name));
+      },
+    }),
+    getConnectorsById: builder.query<IConnectorType, string>({
+      query: (id) => ({ url: `connectors/${id}`, method: 'GET' }),
+      providesTags: (_r, _e, id) => [{ type: 'ConnectorTypes', id }],
+      transformResponse: (res: { connector: IConnectorType }) => res?.connector,
+    }),
+
+    // multipart: body -> FormData
+    createConnector: builder.mutation<
+      IConnectorType,
+      { data: CreateConnectorBody; thumbnail?: File | null }
+    >({
+      query: ({ data, thumbnail }) => {
+        console.log('data', data);
+        console.log('thumbnail', thumbnail);
+        if (thumbnail) {
+          console.log('thumbnail jest aktywny');
+          const fd = new FormData();
+          fd.append('name', data.name);
+          if (data.description) fd.append('description', data.description);
+          if (data.common_uses) fd.append('common_uses', data.common_uses);
+          fd.append('is_active', String(data.is_active ?? true));
+          if (thumbnail) fd.append('thumbnail', thumbnail);
+          return {
+            url: 'connectors?page_type=mavinci/crm/connectors',
+            method: 'POST',
+            body: fd,
+          };
+        }
+        return {
+          url: 'connectors?page_type=mavinci/crm/connectors',
+          method: 'POST',
+          body: data,
+          headers: { 'Content-Type': 'application/json' },
+        };
+      },
+      invalidatesTags: [{ type: 'ConnectorTypes', id: 'LIST' }],
+    }),
+
+    updateConnector: builder.mutation<
+      IConnectorType,
+      { id: string; data: UpdateConnectorBody; thumbnail?: File | null }
+    >({
+      query: ({ id, data, thumbnail }) => {
+        if (thumbnail) {
+          const fd = new FormData();
+          fd.append('name', data.name);
+          if (data.description) fd.append('description', data.description);
+          if (data.common_uses) fd.append('common_uses', data.common_uses);
+          fd.append('is_active', String(data.is_active ?? true));
+          if (thumbnail) fd.append('thumbnail', thumbnail);
+          return {
+            url: `connectors/${id}?page_type=mavinci/crm/connectors`,
+            method: 'PATCH',
+            body: fd,
+          };
+        }
+        return {
+          url: `connectors/${id}?page_type=mavinci/crm/connectors`,
+          method: 'PATCH',
+          body: data,
+          headers: { 'Content-Type': 'application/json' },
+        };
+      },
+      invalidatesTags: (res, err, { id }) => [
+        { type: 'ConnectorTypes', id },
+        { type: 'ConnectorTypes', id: 'LIST' },
+      ],
+    }),
+
+    deleteConnector: builder.mutation<{ id: string }, string>({
+      query: (id) => ({ url: `connectors/${id}`, method: 'DELETE' }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: 'ConnectorTypes', id },
+        { type: 'ConnectorTypes', id: 'LIST' },
+      ],
+    }),
+    //Cables
+    // equipmentApi.ts (fragment: endpoints)
+    updateCableQuantity: builder.mutation<
+      { ok: true; equipmentId: string; quantity: number },
+      { id: string; quantity: number }
+    >({
+      query: ({ id, quantity }) => ({
+        url: `/equipment/${id}/cable/quantity`,
+        method: 'PATCH',
+        body: { quantity },
+      }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Equipment', id }, 'EquipmentList'],
+    }),
+
+    updateCableSpecs: builder.mutation<
+      {
+        ok: true;
+        equipmentId: string;
+        cable: { length_meters: string; connector_in: string; connector_out: string };
+      },
+      { id: string; cable: { length_meters: string; connector_in: string; connector_out: string } }
+    >({
+      query: ({ id, cable }) => ({
+        url: `/equipment/${id}/cable/specs`,
+        method: 'PATCH',
+        body: cable,
+      }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Equipment', id }],
+    }),
+
+    upsertUnit: builder.mutation<
+      { equipmentId: string; units: IEquipmentUnit[] },
+      { eid: string; unit: Partial<IEquipmentUnit> }
+    >({
+      query: ({ eid, unit }) => ({
+        url: `/equipment/${eid}/units`,
+        method: 'POST',
+        body: { unit },
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [{ type: 'Units', id: eid }],
+    }),
+
+    duplicateUnit: builder.mutation<
+      { equipmentId: string; newUnit: IEquipmentUnit },
+      { eid: string; uid: string }
+    >({
+      query: ({ eid, uid }) => ({
+        url: `/equipment/${eid}/units/${uid}/duplicate`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [{ type: 'Units', id: eid }],
+    }),
+
+    addUnitEvent: builder.mutation<
+      { equipmentId: string; unitId: string },
+      { eid: string; uid: string; event: any }
+    >({
+      query: ({ eid, uid, event }) => ({
+        url: `/equipment/${eid}/units/${uid}/events`,
+        method: 'POST',
+        body: { event },
+      }),
+      invalidatesTags: (_r, _e, { eid }) => [
+        { type: 'Units', id: eid },
+        { type: 'History', id: eid },
+      ],
+    }),
+
+    patchCableQuantity: builder.mutation<
+      { ok: true; equipmentId: string; quantity: number },
+      { id: string; quantity: number }
+    >({
+      query: ({ id, quantity }) => ({
+        url: `/equipment/${id}/cable/quantity`,
+        method: 'PATCH',
+        body: { quantity },
+      }),
+      invalidatesTags: (_r, _e, { id }) => [
+        {
+          type: 'Equipment',
+          id,
+        },
+      ],
+    }),
+
+    // PATCH /api/equipment/:id/cable/specs   body: { length_meters, connector_in, connector_out }
+    patchCableSpecs: builder.mutation<
+      {
+        ok: true;
+        equipmentId: string;
+        cable: {
+          length_meters: number;
+          connector_in: string;
+          connector_out: string;
+        };
+        equipment?: any;
+      },
+      {
+        id: string;
+        length_meters: number;
+        connector_in: string; // ObjectId (string)
+        connector_out: string; // ObjectId (string)
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/equipment/${id}/cable/specs`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Equipment', id }, 'EquipmentList'],
+    }),
   }),
 });
 
 export const {
-  useGetEquipmentCategoriesQuery,
-  useCreateWarehouseCategoryMutation,
-  useUpdateWarehouseCategoryMutation,
-  useDeleteWarehouseCategoryMutation,
-
+  /* EQUIPMENT */
   useGetEquipmentListQuery,
-  useGetEquipmentDetailsQuery,
-  useGetUnitsByEquipmentQuery,
-  useGetConnectorTypesQuery,
-  useGetStorageLocationsQuery,
-  useUpdateEquipmentItemMutation,
-  useDeleteEquipmentMutation,
   useGetEquipmentFeedQuery,
-  useLazyGetEquipmentFeedQuery,
-  useUpdateCableQuantityMutation,
+  useGetEquipmentDetailsQuery,
+  useCreateEquipmentMutation,
+  useUpdateEquipmentMutation,
+  useDeleteEquipmentMutation,
+  useGetEquipmentByIdQuery,
+
+  /* UNITS */
+  useAddUnitMutation,
+  useGetUnitsByEquipmentQuery,
+  useDeleteUnitMutation,
+  useUpsertUnitMutation,
+  useDuplicateUnitMutation,
+  useAddUnitEventMutation,
+
+  /* GALLERY */
+  useAddGalleryItemMutation,
+  useSetMainGalleryItemMutation,
+
+  /* HISTORY */
+  useAddHistoryEntryMutation,
+
+  /* CATEGORIES */
+  useGetEquipmentCategoriesQuery,
+
+  /* STORAGE LOCATIONS */
+  useGetStorageLocationsQuery,
+  useGetStorageLocationByIdQuery,
+  useCreateStorageLocationMutation,
+  useUpdateStorageLocationMutation,
+  useDeleteStorageLocationMutation,
+
+  /* CONNECTOR TYPES */
+  useGetConnectorsQuery,
+  useLazyGetConnectorsQuery,
+  useGetConnectorsByIdQuery,
+  useCreateConnectorMutation,
+  useUpdateConnectorMutation,
+  useDeleteConnectorMutation,
+
+  /* CABLES */
+  usePatchCableQuantityMutation,
+  usePatchCableSpecsMutation,
+} = equipmentApi;
+
+export const {
+  usePatchCableQuantityMutation: useUpdateCableQuantityMutation,
+  usePatchCableSpecsMutation: useUpdateCableSpecsMutation,
 } = equipmentApi;

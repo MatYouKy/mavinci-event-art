@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   MapPin,
@@ -14,432 +14,375 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Table as TableIcon,
+  LayoutGrid,
+  Search,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useSnackbar } from '@/contexts/SnackbarContext';
-import { parseGoogleMapsUrl } from '@/lib/gus';
 
-interface StorageLocation {
-  id: string;
-  name: string;
-  address: string | null;
-  access_info: string | null;
-  google_maps_url: string | null;
-  notes: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
+import { ResponsiveActionBar, Action } from '@/components/crm/ResponsiveActionBar';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { checkGoogleMapsUrl } from '@/lib/gus'; // upewnij się, że ścieżka poprawna
+import { IStorageLocation } from '../types/equipment.types';
+import { LocationsTable } from './LocationsTable';
+import {
+  useCreateStorageLocationMutation,
+  useDeleteStorageLocationMutation,
+  useGetStorageLocationsQuery,
+  useUpdateStorageLocationMutation,
+} from '../store/equipmentApi';
+import { StorageLocationModal } from './StorageLocationModal';
+import { CrmHeader } from '@/components/crm/Header/CrmHeader';
+
+/* ---------------------------------- helpers ---------------------------------- */
+
+type ViewMode = 'grid' | 'table';
+type SearchScope = 'all' | 'name' | 'address';
+
+const norm = (s: string) =>
+  (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+
+/* ---------------------------------- component ---------------------------------- */
 
 export default function StorageLocationsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+  const { canCreateInModule } = useCurrentEmployee();
+  const { isAdmin } = useAuth();
 
-  const [locations, setLocations] = useState<StorageLocation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchScope, setSearchScope] = useState<SearchScope>('all');
   const [showModal, setShowModal] = useState(false);
-  const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null);
+  const [editing, setEditing] = useState<IStorageLocation | null>(null);
 
-  const [formData, setFormData] = useState({
+  const { data, isLoading, isError, refetch } = useGetStorageLocationsQuery();
+  const [createLocation, { isLoading: creating }] = useCreateStorageLocationMutation();
+  const [updateLocation, { isLoading: updating }] = useUpdateStorageLocationMutation();
+  const [deleteLocation, { isLoading: deleting }] = useDeleteStorageLocationMutation();
+
+  const canManage = isAdmin || canCreateInModule('equipment');
+
+  // Ujednolicenie kształtu odpowiedzi
+  const items: IStorageLocation[] = useMemo(() => {
+    if (!data) return [];
+    if (Array.isArray((data as any)?.items)) return (data as any).items as IStorageLocation[];
+    return data as IStorageLocation[];
+  }, [data]);
+
+  // Search (Wszystko / Nazwa / Adres)
+  const displayed = useMemo(() => {
+    const q = norm(searchTerm.trim());
+    if (!q) return items;
+
+    return items.filter((loc) => {
+      const n = norm(loc.name || '');
+      const a = norm(loc.address || '');
+      switch (searchScope) {
+        case 'name':
+          return n.includes(q);
+        case 'address':
+          return a.includes(q);
+        default:
+          return n.includes(q) || a.includes(q);
+      }
+    });
+  }, [items, searchTerm, searchScope]);
+
+  /* ----------------------------- modal form state ---------------------------- */
+
+  const initialForm: IStorageLocation = {
     name: '',
     address: '',
     access_info: '',
     google_maps_url: '',
     notes: '',
     is_active: true,
-  });
-
-  useEffect(() => {
-    fetchLocations();
-  }, []);
-
-  const fetchLocations = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('storage_locations')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      setLocations(data || []);
-    } catch (error: any) {
-      showSnackbar(error.message || 'Błąd pobierania lokalizacji', 'error');
-    } finally {
-      setLoading(false);
-    }
   };
+  const [form, setForm] = useState(initialForm);
 
-  const handleOpenModal = (location?: StorageLocation) => {
-    if (location) {
-      setEditingLocation(location);
-      setFormData({
-        name: location.name,
-        address: location.address || '',
-        access_info: location.access_info || '',
-        google_maps_url: location.google_maps_url || '',
-        notes: location.notes || '',
-        is_active: location.is_active,
-      });
-    } else {
-      setEditingLocation(null);
-      setFormData({
-        name: '',
-        address: '',
-        access_info: '',
-        google_maps_url: '',
-        notes: '',
-        is_active: true,
-      });
-    }
+  const openForCreate = () => {
+    setEditing(null);
+    setForm(initialForm);
     setShowModal(true);
   };
 
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingLocation(null);
-    setFormData({
-      name: '',
-      address: '',
-      access_info: '',
-      google_maps_url: '',
-      notes: '',
-      is_active: true,
+  const openForEdit = (loc: IStorageLocation) => {
+    setEditing(loc);
+    setForm({
+      name: loc.name ?? '',
+      address: loc.address ?? '',
+      access_info: loc.access_info ?? '',
+      google_maps_url: loc.google_maps_url ?? '',
+      notes: loc.notes ?? '',
+      is_active: !!loc.is_active,
     });
+    setShowModal(true);
   };
 
-  const handleParseGoogleMaps = () => {
-    if (!formData.google_maps_url) {
+  const closeModal = () => {
+    setShowModal(false);
+    setEditing(null);
+    setForm(initialForm);
+  };
+
+  const handleSubmitModal = async (values: IStorageLocation) => {
+    try {
+      if (editing) {
+        await updateLocation({ id: editing._id, patch: values }).unwrap();
+        showSnackbar('Lokalizacja zaktualizowana', 'success');
+      } else {
+        await createLocation(values).unwrap();
+        showSnackbar('Lokalizacja dodana', 'success');
+      }
+      closeModal();
+      refetch();
+    } catch (err: any) {
+      showSnackbar(err?.data?.message || err?.message || 'Błąd zapisu', 'error');
+    }
+  };
+
+  const onDelete = async (row: IStorageLocation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const ok = await showConfirm(`Usunąć lokalizację "${row.name}"?`, 'Usuń');
+    if (!ok) return;
+    try {
+      await deleteLocation(row._id).unwrap();
+      showSnackbar('Lokalizacja usunięta', 'success');
+      refetch();
+    } catch (err: any) {
+      showSnackbar(err?.data?.message || err?.message || 'Błąd usuwania', 'error');
+    }
+  };
+
+  // ✅ Poprawiony handler testu linku (używa stanu `form`, nie `formData`)
+  const onParseMaps = () => {
+    const raw = form.google_maps_url?.trim();
+    if (!raw) {
       showSnackbar('Wprowadź URL Google Maps', 'error');
       return;
     }
-
     try {
-      const coords = parseGoogleMapsUrl(formData.google_maps_url);
-      if (coords) {
-        showSnackbar(`Współrzędne: ${coords.latitude}, ${coords.longitude}`, 'success');
+      const res = checkGoogleMapsUrl(raw);
+      if (!res) {
+        showSnackbar('To nie wygląda na prawidłowy link Google Maps.', 'error');
+        return;
+      }
+      if (res.kind === 'full') {
+        showSnackbar(`OK — współrzędne: ${res.lat}, ${res.lng}`, 'success');
       } else {
-        showSnackbar('Nie udało się odczytać współrzędnych. Sprawdź format linku.', 'error');
+        showSnackbar('OK — skrócony link wygląda poprawnie ✅', 'success');
       }
     } catch (error: any) {
-      showSnackbar(error.message || 'Błąd parsowania URL', 'error');
+      showSnackbar(error?.message || 'Błąd weryfikacji linku', 'error');
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /* ---------------------------------- actions --------------------------------- */
 
-    if (!formData.name.trim()) {
-      showSnackbar('Nazwa lokalizacji jest wymagana', 'error');
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      if (editingLocation) {
-        const { error } = await supabase
-          .from('storage_locations')
-          .update({
-            name: formData.name,
-            address: formData.address || null,
-            access_info: formData.access_info || null,
-            google_maps_url: formData.google_maps_url || null,
-            notes: formData.notes || null,
-            is_active: formData.is_active,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingLocation.id);
-
-        if (error) throw error;
-        showSnackbar('Lokalizacja zaktualizowana', 'success');
-      } else {
-        const { error } = await supabase
-          .from('storage_locations')
-          .insert([
+  const actions = useMemo<Action[]>(
+    () => [
+      {
+        label: 'Powrót',
+        onClick: () => router.push('/crm/equipment'),
+        icon: <ArrowLeft className="h-4 w-4" />,
+        variant: "default" as const,
+      },
+      ...(canManage
+        ? [
             {
-              name: formData.name,
-              address: formData.address || null,
-              access_info: formData.access_info || null,
-              google_maps_url: formData.google_maps_url || null,
-              notes: formData.notes || null,
-              is_active: formData.is_active,
+              label: 'Dodaj',
+              onClick: openForCreate,
+              icon: <Plus className="h-4 w-4" />,
+              variant: "primary" as const,
             },
-          ]);
+          ]
+        : []),
+    ],
+    [router, canManage],
+  );
 
-        if (error) throw error;
-        showSnackbar('Lokalizacja dodana', 'success');
-      }
-
-      handleCloseModal();
-      fetchLocations();
-    } catch (error: any) {
-      showSnackbar(error.message || 'Błąd zapisywania lokalizacji', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tę lokalizację?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('storage_locations')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      showSnackbar('Lokalizacja usunięta', 'success');
-      fetchLocations();
-    } catch (error: any) {
-      showSnackbar(error.message || 'Błąd usuwania lokalizacji', 'error');
-    }
-  };
+  /* ------------------------------------ UI ------------------------------------ */
 
   return (
-    <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => router.push('/crm/equipment')}
-              className="p-2 hover:bg-[#1a1d2e] rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-6 h-6 text-gray-400" />
-            </button>
-            <div>
-              <h1 className="text-3xl font-bold text-[#d3bb73] flex items-center space-x-3">
-                <MapPin className="w-8 h-8" />
-                <span>Lokalizacje magazynowe</span>
-              </h1>
-              <p className="text-gray-400">Zarządzaj lokalizacjami przechowywania sprzętu</p>
-            </div>
-          </div>
-          <button
-            onClick={() => handleOpenModal()}
-            className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 font-medium"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Dodaj lokalizację</span>
-          </button>
-        </div>
+    <div className="flex h-[calc(100vh-130px)] flex-col bg-[#0f1119]">
+      {/* HEADER */}
+      <CrmHeader title="Lokalizacje magazynowe" backButtonPath="/crm/equipment" actions={actions} />
 
-        {loading ? (
-          <div className="flex justify-center items-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-[#d3bb73]" />
+      {/* FILTRY */}
+      <div className="space-y-2 border-b border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2">
+        <div className="flex items-center gap-2">
+          {/* search */}
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
+            <input
+              type="text"
+              placeholder={
+                searchScope === 'name'
+                  ? 'Szukaj po nazwie…'
+                  : searchScope === 'address'
+                  ? 'Szukaj po adresie…'
+                  : 'Szukaj (nazwa, adres)…'
+              }
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] py-2 pl-9 pr-3 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+            />
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {locations.map((location) => (
-              <div
-                key={location.id}
-                className={`bg-[#1a1d2e] border rounded-lg p-4 ${
-                  location.is_active ? 'border-gray-700' : 'border-red-900 opacity-60'
+
+          {/* zakres wyszukiwania */}
+          <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-[#d3bb73]/20">
+            {(['all', 'name', 'address'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSearchScope(s)}
+                className={`px-2.5 py-2 text-xs ${
+                  searchScope === s ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#e5e4e2]'
                 }`}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <Building2 className="w-5 h-5 text-[#d3bb73]" />
-                    <h3 className="text-lg font-semibold text-white">{location.name}</h3>
+                {s === 'all' ? 'Wszystko' : s === 'name' ? 'Nazwa' : 'Adres'}
+              </button>
+            ))}
+          </div>
+
+          {/* tryb widoku */}
+          <div className="inline-flex overflow-hidden rounded-lg border border-[#d3bb73]/20">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-2.5 py-1.5 text-sm ${
+                viewMode === 'table' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#e5e4e2]'
+              }`}
+              title="Widok tabeli"
+            >
+              <TableIcon className="h-4 w-4 rotate-90" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-2.5 py-1.5 text-sm ${
+                viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#e5e4e2]'
+              }`}
+              title="Widok kafelków"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* TREŚĆ */}
+      <div className="flex-1 overflow-y-auto p-3">
+        {isError ? (
+          <div className="text-center text-[#e5e4e2]/70">
+            Błąd pobierania.{' '}
+            <button className="underline" onClick={() => refetch()}>
+              Spróbuj ponownie
+            </button>
+          </div>
+        ) : isLoading ? (
+          <div className="flex h-64 items-center justify-center text-[#e5e4e2]/60">
+            <Loader2 className="h-6 w-6 animate-spin text-[#d3bb73]" />
+          </div>
+        ) : items.length === 0 ? (
+          <div className="py-12 text-center">
+            <Building2 className="mx-auto mb-4 h-16 w-16 text-gray-600" />
+            <p className="mb-4 text-gray-400">Brak lokalizacji magazynowych</p>
+            {canManage && (
+              <button
+                onClick={openForCreate}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
+              >
+                <Plus className="h-5 w-5" />
+                <span>Dodaj pierwszą lokalizację</span>
+              </button>
+            )}
+          </div>
+        ) : viewMode === 'table' ? (
+          <LocationsTable rows={displayed} onEdit={openForEdit} onDelete={onDelete} />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {displayed.map((loc) => (
+              <div
+                key={loc._id}
+                className={`rounded-lg border bg-[#1a1d2e] p-4 ${
+                  loc.is_active ? 'border-[#d3bb73]/15' : 'border-red-900/50 opacity-90'
+                }`}
+              >
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-[#d3bb73]" />
+                    <h3 className="text-lg font-semibold text-white">{loc.name}</h3>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    {location.is_active ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
+                  <div className="flex items-center gap-1">
+                    {loc.is_active ? (
+                      <CheckCircle className="h-5 w-5 text-green-500" />
                     ) : (
-                      <XCircle className="w-5 h-5 text-red-500" />
+                      <XCircle className="h-5 w-5 text-red-500" />
                     )}
                   </div>
                 </div>
 
-                {location.address && (
-                  <p className="text-sm text-gray-400 mb-2">
-                    <MapPin className="w-4 h-4 inline mr-1" />
-                    {location.address}
+                {loc.address && (
+                  <p className="mb-2 text-sm text-gray-400">
+                    <MapPin className="mr-1 inline h-4 w-4" />
+                    {loc.address}
                   </p>
                 )}
 
-                {location.access_info && (
-                  <p className="text-sm text-gray-300 mb-2">
-                    <span className="font-medium">Dostęp:</span> {location.access_info}
+                {loc.access_info && (
+                  <p className="mb-2 text-sm text-gray-300">
+                    <span className="font-medium">Dostęp:</span> {loc.access_info}
                   </p>
                 )}
 
-                {location.google_maps_url && (
+                {loc.google_maps_url && (
                   <a
-                    href={location.google_maps_url}
+                    href={loc.google_maps_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-[#d3bb73] hover:underline block mb-2"
+                    className="mb-2 block text-sm text-[#d3bb73] hover:underline"
                   >
                     🗺️ Otwórz w Google Maps
                   </a>
                 )}
 
-                {location.notes && (
-                  <p className="text-xs text-gray-500 mb-3">{location.notes}</p>
-                )}
+                {loc.notes && <p className="mb-3 text-xs text-gray-500">{loc.notes}</p>}
 
-                <div className="flex items-center space-x-2 pt-3 border-t border-gray-700">
-                  <button
-                    onClick={() => handleOpenModal(location)}
-                    className="flex-1 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors flex items-center justify-center space-x-1 text-sm"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span>Edytuj</span>
-                  </button>
-                  <button
-                    onClick={() => handleDelete(location.id)}
-                    className="px-3 py-2 bg-red-900/20 text-red-400 rounded hover:bg-red-900/30 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {canManage && (
+                  <div className="flex items-center gap-2 border-t border-gray-700 pt-3">
+                    <button
+                      onClick={() => openForEdit(loc)}
+                      className="flex flex-1 items-center justify-center gap-1 rounded bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
+                    >
+                      <Edit className="h-4 w-4" />
+                      <span>Edytuj</span>
+                    </button>
+                    <button
+                      onClick={(e) => onDelete(loc, e as any)}
+                      className="rounded bg-red-900/20 px-3 py-2 text-red-400 transition-colors hover:bg-red-900/30"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
-
-        {!loading && locations.length === 0 && (
-          <div className="text-center py-12">
-            <Building2 className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-400 mb-4">Brak lokalizacji magazynowych</p>
-            <button
-              onClick={() => handleOpenModal()}
-              className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors inline-flex items-center space-x-2"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Dodaj pierwszą lokalizację</span>
-            </button>
-          </div>
-        )}
+        <StorageLocationModal
+          open={showModal}
+          title={editing ? 'Edytuj lokalizację' : 'Dodaj lokalizację'}
+          initialValues={form}
+          submitting={creating || updating}
+          onClose={closeModal}
+          onSubmit={handleSubmitModal}
+        />
       </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">
-                {editingLocation ? 'Edytuj lokalizację' : 'Nowa lokalizacja'}
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="p-2 hover:bg-[#0f1119] rounded-lg transition-colors"
-              >
-                <X className="w-6 h-6 text-gray-400" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Nazwa lokalizacji <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                  placeholder="np. Magazyn główny, Biuro, Sala eventowa"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Adres</label>
-                <input
-                  type="text"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                  placeholder="ul. Przykładowa 1, 00-000 Warszawa"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  URL Google Maps
-                </label>
-                <div className="flex space-x-2">
-                  <input
-                    type="url"
-                    value={formData.google_maps_url}
-                    onChange={(e) => setFormData({ ...formData, google_maps_url: e.target.value })}
-                    className="flex-1 px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                    placeholder="https://maps.google.com/..."
-                  />
-                  <button
-                    type="button"
-                    onClick={handleParseGoogleMaps}
-                    className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2"
-                  >
-                    <MapPin className="w-5 h-5" />
-                    <span>Test</span>
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Otwórz miejsce w Google Maps, skopiuj PEŁNY URL z paska adresu (nie skrócony link!)
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Informacje o dostępie
-                </label>
-                <textarea
-                  value={formData.access_info}
-                  onChange={(e) => setFormData({ ...formData, access_info: e.target.value })}
-                  rows={2}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                  placeholder="np. wejście od podwórka, kod do bramy: 1234"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Notatki</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-[#d3bb73]"
-                  placeholder="Dodatkowe informacje..."
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-700 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]"
-                />
-                <label htmlFor="is_active" className="text-sm text-gray-300 cursor-pointer">
-                  Lokalizacja aktywna
-                </label>
-              </div>
-
-              <div className="flex justify-end space-x-4 pt-4 border-t border-gray-700">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="px-6 py-2 border border-gray-700 text-gray-300 rounded-lg hover:bg-[#0f1119] transition-colors"
-                >
-                  Anuluj
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-6 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                >
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                  <span>{loading ? 'Zapisywanie...' : 'Zapisz'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

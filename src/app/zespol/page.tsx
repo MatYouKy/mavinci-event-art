@@ -26,7 +26,11 @@ interface ImageMetadata {
 export default function TeamPage() {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
-  const { employee: currentEmployee, canManageModule, loading: employeeLoading } = useCurrentEmployee();
+  const {
+    employee: currentEmployee,
+    canManageModule,
+    loading: employeeLoading,
+  } = useCurrentEmployee();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +50,9 @@ export default function TeamPage() {
 
       const { data, error } = await supabase
         .from('employees')
-        .select('id, name, surname, nickname, email, avatar_url, team_page_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index')
+        .select(
+          'id, name, surname, nickname, email, avatar_url, team_page_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index',
+        )
         .eq('show_on_website', true)
         .order('order_index', { ascending: true })
         .order('created_at', { ascending: true });
@@ -91,7 +97,7 @@ export default function TeamPage() {
   const handleEditImagePosition = (member: TeamMember) => {
     setEditingMemberId(member.id);
     setEditingImageUrl(member.image || '');
-    setEditingMetadata(member.image_metadata as ImageMetadata || null);
+    setEditingMetadata((member.image_metadata as ImageMetadata) || null);
   };
 
   const handleSavePosition = async (metadata: ImageMetadata) => {
@@ -126,47 +132,49 @@ export default function TeamPage() {
           section="team"
           defaultImage="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920"
           defaultOpacity={0.2}
-          className="py-24 md:py-32 overflow-hidden"
+          className="overflow-hidden py-24 md:py-32"
         >
-          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="text-center">
-              <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
-                <Users className="w-5 h-5 text-[#d3bb73]" />
-                <span className="text-[#d3bb73] text-sm font-medium">Poznaj Nasz Zespół</span>
+              <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2">
+                <Users className="h-5 w-5 text-[#d3bb73]" />
+                <span className="text-sm font-medium text-[#d3bb73]">Poznaj Nasz Zespół</span>
               </div>
 
-              <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
+              <h1 className="mb-6 text-4xl font-light text-[#e5e4e2] md:text-6xl">
                 Ludzie, którzy tworzą <span className="text-[#d3bb73]">magię</span>
               </h1>
 
-              <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed max-w-3xl mx-auto">
-                Nasz zespół to grupa pasjonatów eventów, którzy łączą kreatywność z profesjonalizmem. Każdy z nas wnosi unikalne umiejętności i doświadczenie do wspólnych projektów.
+              <p className="mx-auto max-w-3xl text-lg font-light leading-relaxed text-[#e5e4e2]/70">
+                Nasz zespół to grupa pasjonatów eventów, którzy łączą kreatywność z
+                profesjonalizmem. Każdy z nas wnosi unikalne umiejętności i doświadczenie do
+                wspólnych projektów.
               </p>
             </div>
           </div>
         </PageHeroImage>
 
-        <section className="py-24 bg-[#0f1119]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <section className="bg-[#0f1119] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {isEditMode && !canEdit && (
-              <div className="mb-8 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-xl p-6">
+              <div className="mb-8 rounded-xl border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-6">
                 <div className="flex items-start gap-4">
-                  <Users className="w-6 h-6 text-[#d3bb73] flex-shrink-0 mt-1" />
+                  <Users className="mt-1 h-6 w-6 flex-shrink-0 text-[#d3bb73]" />
                   <div>
-                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-2">
+                    <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">
                       Zarządzaj zespołem w CRM
                     </h3>
-                    <p className="text-[#e5e4e2]/70 mb-4">
+                    <p className="mb-4 text-[#e5e4e2]/70">
                       Ta strona wyświetla tylko pracowników oznaczonych jako "widoczni na stronie".
                       Aby dodawać, edytować lub usuwać członków zespołu, przejdź do panelu CRM.
                     </p>
                     <a
                       href="/crm/employees"
-                      className="inline-flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                     >
-                      <Users className="w-4 h-4" />
+                      <Users className="h-4 w-4" />
                       Przejdź do zarządzania pracownikami
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight className="h-4 w-4" />
                     </a>
                   </div>
                 </div>
@@ -175,10 +183,10 @@ export default function TeamPage() {
 
             {loading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="text-[#d3bb73] text-lg">Ładowanie zespołu...</div>
+                <div className="text-lg text-[#d3bb73]">Ładowanie zespołu...</div>
               </div>
             ) : team.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="py-12 text-center">
                 <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
               </div>
             ) : (
@@ -186,14 +194,14 @@ export default function TeamPage() {
                 {team.map((member, index) => (
                   <div
                     key={member.id}
-                    className="group relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 rounded-2xl overflow-hidden transition-all duration-300 w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.33rem)]"
+                    className="group relative w-full overflow-hidden rounded-2xl border border-[#d3bb73]/10 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm transition-all duration-300 hover:border-[#d3bb73]/30 md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.33rem)]"
                     onMouseEnter={() => setHoveredId(member.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     style={{
                       animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
                     }}
                   >
-                    <div className="aspect-square relative overflow-hidden">
+                    <div className="relative aspect-square overflow-hidden">
                       <img
                         src={member.image_metadata?.desktop?.src || member.image}
                         alt={member.alt || member.name}
@@ -227,24 +235,24 @@ export default function TeamPage() {
                           }%) scale(${member.image_metadata?.desktop?.position?.scale || 1})`;
                         }}
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 transition-opacity duration-500 group-hover:opacity-95"></div>
 
                       {/* Edit button - visible only in edit mode for admins */}
                       {isEditMode && canEdit && (
                         <button
                           onClick={() => handleEditImagePosition(member)}
-                          className="absolute top-4 right-4 z-20 p-2 bg-[#d3bb73] rounded-full hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
+                          className="absolute right-4 top-4 z-20 rounded-full bg-[#d3bb73] p-2 shadow-lg transition-colors hover:bg-[#d3bb73]/90"
                           title="Edytuj pozycję zdjęcia"
                         >
-                          <MoreVertical className="w-5 h-5 text-[#1c1f33]" />
+                          <MoreVertical className="h-5 w-5 text-[#1c1f33]" />
                         </button>
                       )}
 
                       <div className="absolute bottom-0 left-0 right-0 p-6">
-                        <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-1">
+                        <h3 className="mb-1 text-xl font-light text-[#e5e4e2] md:text-2xl">
                           {member.name}
                         </h3>
-                        <p className="text-[#d3bb73] text-sm font-light mb-3">{member.position}</p>
+                        <p className="mb-3 text-sm font-light text-[#d3bb73]">{member.position}</p>
                       </div>
                     </div>
 
@@ -253,10 +261,10 @@ export default function TeamPage() {
                         <div className="flex gap-3">
                           <a
                             href={`mailto:${member.email}`}
-                            className="flex items-center justify-center w-10 h-10 rounded-full bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-colors"
+                            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
                             aria-label={`Email ${member.name}`}
                           >
-                            <Mail className="w-4 h-4" />
+                            <Mail className="h-4 w-4" />
                           </a>
                         </div>
                       )}
@@ -268,46 +276,47 @@ export default function TeamPage() {
           </div>
         </section>
 
-        <section className="py-24 bg-gradient-to-br from-[#0f1119] to-[#1c1f33]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <Quote className="w-12 h-12 text-[#d3bb73] mx-auto mb-6" />
-              <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+        <section className="bg-gradient-to-br from-[#0f1119] to-[#1c1f33] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-16 text-center">
+              <Quote className="mx-auto mb-6 h-12 w-12 text-[#d3bb73]" />
+              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
                 Nasza Filozofia Pracy
               </h2>
-              <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto mb-8"></div>
-              <blockquote className="text-[#e5e4e2]/70 text-xl font-light italic leading-relaxed max-w-4xl mx-auto">
-                "Wierzymy, że każdy event to szansa na stworzenie wyjątkowego doświadczenia. Łączymy pasję, kreatywność i profesjonalizm, aby przekraczać oczekiwania naszych klientów."
+              <div className="mx-auto mb-8 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
+              <blockquote className="mx-auto max-w-4xl text-xl font-light italic leading-relaxed text-[#e5e4e2]/70">
+                "Wierzymy, że każdy event to szansa na stworzenie wyjątkowego doświadczenia. Łączymy
+                pasję, kreatywność i profesjonalizm, aby przekraczać oczekiwania naszych klientów."
               </blockquote>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 mt-12">
+            <div className="mt-12 grid gap-8 md:grid-cols-3">
               <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-[#d3bb73]/20 border border-[#d3bb73]/30 flex items-center justify-center mx-auto mb-4">
-                  <Users className="w-8 h-8 text-[#d3bb73]" />
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/20">
+                  <Users className="h-8 w-8 text-[#d3bb73]" />
                 </div>
-                <h3 className="text-xl font-light text-[#e5e4e2] mb-3">Współpraca</h3>
-                <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
+                <h3 className="mb-3 text-xl font-light text-[#e5e4e2]">Współpraca</h3>
+                <p className="font-light leading-relaxed text-[#e5e4e2]/70">
                   Pracujemy jako zgrany zespół, wspierając się nawzajem i dzieląc wiedzą.
                 </p>
               </div>
 
               <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-[#d3bb73]/20 border border-[#d3bb73]/30 flex items-center justify-center mx-auto mb-4">
-                  <Quote className="w-8 h-8 text-[#d3bb73]" />
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/20">
+                  <Quote className="h-8 w-8 text-[#d3bb73]" />
                 </div>
-                <h3 className="text-xl font-light text-[#e5e4e2] mb-3">Kreatywność</h3>
-                <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
+                <h3 className="mb-3 text-xl font-light text-[#e5e4e2]">Kreatywność</h3>
+                <p className="font-light leading-relaxed text-[#e5e4e2]/70">
                   Każdy projekt to nowe wyzwanie, które rozwiązujemy z kreatywnością.
                 </p>
               </div>
 
               <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-[#d3bb73]/20 border border-[#d3bb73]/30 flex items-center justify-center mx-auto mb-4">
-                  <ArrowRight className="w-8 h-8 text-[#d3bb73]" />
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/20">
+                  <ArrowRight className="h-8 w-8 text-[#d3bb73]" />
                 </div>
-                <h3 className="text-xl font-light text-[#e5e4e2] mb-3">Rozwój</h3>
-                <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
+                <h3 className="mb-3 text-xl font-light text-[#e5e4e2]">Rozwój</h3>
+                <p className="font-light leading-relaxed text-[#e5e4e2]/70">
                   Nieustannie się rozwijamy i śledzimy najnowsze trendy w branży eventowej.
                 </p>
               </div>
@@ -315,26 +324,25 @@ export default function TeamPage() {
           </div>
         </section>
 
-        <section className="py-24 bg-[#0f1119]">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <Users className="w-16 h-16 text-[#d3bb73] mx-auto mb-6" />
-            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6">
-              Dołącz do Nas!
-            </h2>
-            <p className="text-[#e5e4e2]/70 text-lg font-light mb-8 max-w-2xl mx-auto">
-              Szukasz pracy w dynamicznej branży eventowej? Chcesz realizować kreatywne projekty? Sprawdź nasze aktualne oferty pracy lub wyślij nam swoje CV.
+        <section className="bg-[#0f1119] py-24">
+          <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+            <Users className="mx-auto mb-6 h-16 w-16 text-[#d3bb73]" />
+            <h2 className="mb-6 text-3xl font-light text-[#e5e4e2] md:text-4xl">Dołącz do Nas!</h2>
+            <p className="mx-auto mb-8 max-w-2xl text-lg font-light text-[#e5e4e2]/70">
+              Szukasz pracy w dynamicznej branży eventowej? Chcesz realizować kreatywne projekty?
+              Sprawdź nasze aktualne oferty pracy lub wyślij nam swoje CV.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <a
                 href="/#kontakt?career=true"
-                className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
                 Aplikuj teraz
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="h-4 w-4" />
               </a>
               <a
                 href="/portfolio"
-                className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/20 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-8 py-3 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
               >
                 Zobacz nasze projekty
               </a>

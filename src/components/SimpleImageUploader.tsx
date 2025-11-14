@@ -16,7 +16,7 @@ interface SimpleImageUploaderProps {
 export function SimpleImageUploader({
   onImageSelect,
   initialImage,
-  showPreview = true
+  showPreview = true,
 }: SimpleImageUploaderProps) {
   const [preview, setPreview] = useState<string | null>(initialImage?.src || null);
   const [alt, setAlt] = useState(initialImage?.alt || '');
@@ -45,13 +45,13 @@ export function SimpleImageUploader({
       image_metadata: {
         desktop: {
           src: '',
-          position: { posX: 0, posY: 0, scale: 1 }
+          position: { posX: 0, posY: 0, scale: 1 },
         },
         mobile: {
           src: '',
-          position: { posX: 0, posY: 0, scale: 1 }
-        }
-      }
+          position: { posX: 0, posY: 0, scale: 1 },
+        },
+      },
     });
   };
 
@@ -64,13 +64,13 @@ export function SimpleImageUploader({
         image_metadata: {
           desktop: {
             src: '',
-            position: { posX: 0, posY: 0, scale: 1 }
+            position: { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
             src: '',
-            position: { posX: 0, posY: 0, scale: 1 }
-          }
-        }
+            position: { posX: 0, posY: 0, scale: 1 },
+          },
+        },
       });
     }
   };
@@ -88,26 +88,22 @@ export function SimpleImageUploader({
       <div className="relative">
         {preview && showPreview ? (
           <div className="relative aspect-[4/3] overflow-hidden rounded-lg border border-[#d3bb73]/20">
-            <img
-              src={preview}
-              alt={alt || 'Podgląd'}
-              className="w-full h-full object-cover"
-            />
+            <img src={preview} alt={alt || 'Podgląd'} className="h-full w-full object-cover" />
             <button
               type="button"
               onClick={handleRemove}
-              className="absolute top-2 right-2 p-2 bg-[#800020] text-[#e5e4e2] rounded-lg hover:bg-[#800020]/90 transition-colors"
+              className="absolute right-2 top-2 rounded-lg bg-[#800020] p-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/90"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         ) : (
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full aspect-[4/3] border-2 border-dashed border-[#d3bb73]/30 rounded-lg hover:border-[#d3bb73]/50 transition-colors flex flex-col items-center justify-center gap-2 text-[#e5e4e2]/70 hover:text-[#e5e4e2]"
+            className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#d3bb73]/30 text-[#e5e4e2]/70 transition-colors hover:border-[#d3bb73]/50 hover:text-[#e5e4e2]"
           >
-            <Upload className="w-8 h-8" />
+            <Upload className="h-8 w-8" />
             <span className="text-sm">Wybierz zdjęcie</span>
           </button>
         )}
@@ -121,15 +117,13 @@ export function SimpleImageUploader({
       </div>
 
       <div>
-        <label className="block text-[#e5e4e2] text-sm font-medium mb-2">
-          Opis zdjęcia (ALT)
-        </label>
+        <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Opis zdjęcia (ALT)</label>
         <input
           type="text"
           value={alt}
           onChange={(e) => handleAltChange(e.target.value)}
           placeholder="Np. Zdjęcie z konferencji"
-          className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none focus:border-[#d3bb73]/50"
+          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-[#d3bb73]/50 focus:outline-none"
         />
       </div>
     </div>

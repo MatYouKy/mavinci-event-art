@@ -3,6 +3,7 @@
 ## 🎯 Problem który naprawiliśmy:
 
 **Zgłoszenie:**
+
 > "Dodanie nowej polisy NIE usuwa alertu, który powinien być w przypadku gdy aktualna się kończy i nie ma żadnej nowszej lub kontynuacji."
 
 **Przyczyna:**
@@ -11,6 +12,7 @@ Trigger V4 usuwał alert, ale potem szukał polisy do alertu sortując `ORDER BY
 ## ✅ Rozwiązanie V4 FINAL:
 
 Trigger teraz:
+
 1. **Usuwa wszystkie alerty** tego typu ✓
 2. **Iteruje przez WSZYSTKIE polisy** posortowane po `end_date ASC`
 3. Bierze **pierwszą (najwcześniej kończącą się)** polisę
@@ -21,6 +23,7 @@ Trigger teraz:
 ## 🧠 Przykład (Twój przypadek):
 
 ### PRZED (V4 zły):
+
 ```
 Masz:
 - Stare OC: 22.10.2025 → 23.10.2025 (polisa 4123)
@@ -39,6 +42,7 @@ PROBLEM: 4123 wygasa jutro ale nie jest sprawdzana! ✗
 ```
 
 ### PO (V4 FINAL):
+
 ```
 Masz:
 - Stare OC: 22.10.2025 → 23.10.2025 (polisa 4123)
@@ -62,21 +66,25 @@ REZULTAT: Alert NIE jest tworzony bo jest ciągłość! ✅
 ## 📋 Zastosowanie:
 
 ### 1. Uruchom zaktualizowany SQL:
+
 ```
 FIX_ALERTS_AFTER_INSPECTION_V2.sql
 ```
 
 **Zawiera:**
+
 - ✅ Sprawdzenie czy tabele istnieją
 - ✅ Trigger V4 FINAL z iteracją przez wszystkie polisy
 - ✅ Czyszczenie duplikatów
 
 ### 2. Przetestuj działanie:
+
 ```
 TEST_TRIGGER_UBEZPIECZEN.sql
 ```
 
 Ten skrypt:
+
 - Pokaże wszystkie Twoje polisy OC
 - Symuluje logikę triggera
 - Wyjaśni dlaczego alert się pojawia lub nie
@@ -103,6 +111,7 @@ To wywoła trigger i przelicz alerty!
 ## 🔍 Kluczowe zmiany w kodzie:
 
 ### PRZED (V4 zły):
+
 ```sql
 -- Znajdź polisę która kończy się najwcześniej
 SELECT id, end_date, start_date, type, status
@@ -116,6 +125,7 @@ LIMIT 1;
 ```
 
 ### PO (V4 FINAL):
+
 ```sql
 -- Iteruj przez WSZYSTKIE polisy
 FOR alert_policy IN
@@ -145,6 +155,7 @@ END LOOP;
 ## 🎨 Scenariusze działania:
 
 ### Scenariusz 1: Ciągła ochrona (Twój przypadek)
+
 ```
 Polisy:
 ├─ 4123: 22.10.2025 → 23.10.2025 (za 1 dzień)
@@ -159,6 +170,7 @@ EFEKT: ✅ Alert NIE jest tworzony (poprawnie!)
 ```
 
 ### Scenariusz 2: Usunięcie nowej polisy
+
 ```
 Masz:
 ├─ 4123: 22.10.2025 → 23.10.2025 (za 1 dzień)
@@ -177,6 +189,7 @@ EFEKT: 🔴 Alert pojawia się natychmiast! (poprawnie!)
 ```
 
 ### Scenariusz 3: Tylko stara polisa
+
 ```
 Masz:
 └─ 4123: 22.10.2025 → 23.10.2025 (za 1 dzień)
@@ -191,6 +204,7 @@ EFEKT: 🔴 Alert "OC - wygasa za 1 dzień" (poprawnie!)
 ```
 
 ### Scenariusz 4: Dodanie nowej polisy
+
 ```
 Masz:
 └─ 4123: 22.10.2025 → 23.10.2025 (alert istnieje)
@@ -210,6 +224,7 @@ EFEKT: ✅ Alert znika automatycznie! (poprawnie!)
 ## 🚀 Test manualny:
 
 1. **Zobacz polisy:**
+
 ```sql
 SELECT policy_number, start_date, end_date, (end_date - CURRENT_DATE) as days_left
 FROM insurance_policies ip
@@ -220,6 +235,7 @@ ORDER BY end_date;
 ```
 
 2. **Zobacz alerty:**
+
 ```sql
 SELECT message, priority, created_at
 FROM vehicle_alerts va
@@ -229,6 +245,7 @@ AND va.alert_type = 'insurance';
 ```
 
 3. **Wymuś trigger:**
+
 ```sql
 UPDATE insurance_policies
 SET updated_at = now()
@@ -240,14 +257,14 @@ AND type = 'oc';
 
 ## ✨ Różnice między wersjami:
 
-| Funkcja | V4 (zły) | V4 FINAL |
-|---------|----------|----------|
-| Usuwa alerty | ✓ | ✓ |
-| Sortuje polisy | ORDER BY end_date ASC | ORDER BY end_date ASC |
-| Wybiera polisę | LIMIT 1 (może wybrać złą) | FOR LOOP (sprawdza pierwszą) |
-| Sprawdza ciągłość | ✓ (dla wybranej) | ✓ (dla najwcześniejszej) |
+| Funkcja              | V4 (zły)                      | V4 FINAL                     |
+| -------------------- | ----------------------------- | ---------------------------- |
+| Usuwa alerty         | ✓                             | ✓                            |
+| Sortuje polisy       | ORDER BY end_date ASC         | ORDER BY end_date ASC        |
+| Wybiera polisę       | LIMIT 1 (może wybrać złą)     | FOR LOOP (sprawdza pierwszą) |
+| Sprawdza ciągłość    | ✓ (dla wybranej)              | ✓ (dla najwcześniejszej)     |
 | Dodanie nowej polisy | ✗ Wybiera nową zamiast starej | ✓ Zawsze sprawdza najstarszą |
-| Alert znika | ✗ NIE (błąd logiki) | ✓ TAK (poprawnie) |
+| Alert znika          | ✗ NIE (błąd logiki)           | ✓ TAK (poprawnie)            |
 
 ## 📝 Podsumowanie:
 
@@ -258,6 +275,7 @@ AND type = 'oc';
 **Rezultat:** Alert poprawnie znika gdy dodasz ciągłą polisę i pojawia się gdy jej brak
 
 **Pliki:**
+
 - `FIX_ALERTS_AFTER_INSPECTION_V2.sql` - zaktualizowany trigger (ZASTOSUJ!)
 - `TEST_TRIGGER_UBEZPIECZEN.sql` - tester do diagnozy (URUCHOM!)
 - `DIAGNOZA_UBEZPIECZEN.sql` - szczegółowa diagnoza (opcjonalnie)

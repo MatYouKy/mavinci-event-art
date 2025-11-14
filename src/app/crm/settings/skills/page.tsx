@@ -45,19 +45,13 @@ export default function SkillsManagementPage() {
   }, []);
 
   const fetchCategories = async () => {
-    const { data } = await supabase
-      .from('skill_categories')
-      .select('*')
-      .order('name');
+    const { data } = await supabase.from('skill_categories').select('*').order('name');
     if (data) setCategories(data);
   };
 
   const fetchSkills = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('skills')
-      .select('*, skill_categories(*)')
-      .order('name');
+    const { data } = await supabase.from('skills').select('*, skill_categories(*)').order('name');
     if (data) setSkills(data);
     setLoading(false);
   };
@@ -65,10 +59,7 @@ export default function SkillsManagementPage() {
   const handleDeleteCategory = async (id: string) => {
     if (!confirm('Czy na pewno usunąć tę kategorię?')) return;
 
-    const { error } = await supabase
-      .from('skill_categories')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('skill_categories').delete().eq('id', id);
 
     if (error) {
       showSnackbar('Błąd usuwania kategorii', 'error');
@@ -81,10 +72,7 @@ export default function SkillsManagementPage() {
   const handleDeleteSkill = async (id: string) => {
     if (!confirm('Czy na pewno usunąć tę umiejętność?')) return;
 
-    const { error } = await supabase
-      .from('skills')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('skills').delete().eq('id', id);
 
     if (error) {
       showSnackbar('Błąd usuwania umiejętności', 'error');
@@ -99,18 +87,18 @@ export default function SkillsManagementPage() {
       <div className="flex items-center gap-4">
         <button
           onClick={() => router.push('/crm/settings')}
-          className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+          className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
         >
-          <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+          <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
         </button>
         <h1 className="text-2xl font-light text-[#e5e4e2]">Zarządzanie umiejętnościami</h1>
       </div>
 
       {/* Kategorie */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-[#d3bb73]" />
+            <BookOpen className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Kategorie umiejętności</h2>
           </div>
           {isAdmin && (
@@ -119,23 +107,28 @@ export default function SkillsManagementPage() {
                 setEditingCategory(null);
                 setShowCategoryModal(true);
               }}
-              className="px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm flex items-center gap-2"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/20 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Dodaj kategorię
             </button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {categories.map((cat) => (
-            <div key={cat.id} className="p-4 bg-[#0a0d1a] rounded-lg border border-[#d3bb73]/10">
-              <div className="flex items-start justify-between mb-2">
+            <div key={cat.id} className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+              <div className="mb-2 flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: cat.color + '20' }}>
-                    <span className="text-lg" style={{ color: cat.color }}>●</span>
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-lg"
+                    style={{ backgroundColor: cat.color + '20' }}
+                  >
+                    <span className="text-lg" style={{ color: cat.color }}>
+                      ●
+                    </span>
                   </div>
-                  <h3 className="text-[#e5e4e2] font-medium">{cat.name}</h3>
+                  <h3 className="font-medium text-[#e5e4e2]">{cat.name}</h3>
                 </div>
                 {isAdmin && (
                   <div className="flex gap-2">
@@ -146,20 +139,20 @@ export default function SkillsManagementPage() {
                       }}
                       className="text-[#d3bb73] hover:text-[#d3bb73]/80"
                     >
-                      <Edit className="w-4 h-4" />
+                      <Edit className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteCategory(cat.id)}
                       className="text-red-400 hover:text-red-300"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 )}
               </div>
               <p className="text-xs text-[#e5e4e2]/60">{cat.description}</p>
-              <p className="text-xs text-[#d3bb73] mt-2">
-                {skills.filter(s => s.category_id === cat.id).length} umiejętności
+              <p className="mt-2 text-xs text-[#d3bb73]">
+                {skills.filter((s) => s.category_id === cat.id).length} umiejętności
               </p>
             </div>
           ))}
@@ -167,10 +160,10 @@ export default function SkillsManagementPage() {
       </div>
 
       {/* Umiejętności */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Tag className="w-5 h-5 text-[#d3bb73]" />
+            <Tag className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Umiejętności</h2>
           </div>
           {isAdmin && (
@@ -179,33 +172,43 @@ export default function SkillsManagementPage() {
                 setEditingSkill(null);
                 setShowSkillModal(true);
               }}
-              className="px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm flex items-center gap-2"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/20 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Dodaj umiejętność
             </button>
           )}
         </div>
 
         {loading ? (
-          <p className="text-center text-[#e5e4e2]/60 py-8">Ładowanie...</p>
+          <p className="py-8 text-center text-[#e5e4e2]/60">Ładowanie...</p>
         ) : (
           <div className="space-y-2">
             {skills.map((skill) => (
-              <div key={skill.id} className="flex items-center justify-between p-3 bg-[#0a0d1a] rounded-lg">
+              <div
+                key={skill.id}
+                className="flex items-center justify-between rounded-lg bg-[#0a0d1a] p-3"
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: skill.skill_categories?.color || '#d3bb73' }}></div>
+                  <div
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: skill.skill_categories?.color || '#d3bb73' }}
+                  ></div>
                   <div>
-                    <div className="text-[#e5e4e2] font-medium">{skill.name}</div>
+                    <div className="font-medium text-[#e5e4e2]">{skill.name}</div>
                     {skill.description && (
                       <div className="text-xs text-[#e5e4e2]/60">{skill.description}</div>
                     )}
-                    <div className="text-xs text-[#e5e4e2]/40 mt-1">{skill.skill_categories?.name}</div>
+                    <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                      {skill.skill_categories?.name}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {!skill.is_active && (
-                    <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs">Nieaktywna</span>
+                    <span className="rounded bg-red-500/20 px-2 py-1 text-xs text-red-400">
+                      Nieaktywna
+                    </span>
                   )}
                   {isAdmin && (
                     <div className="flex gap-2">
@@ -216,13 +219,13 @@ export default function SkillsManagementPage() {
                         }}
                         className="text-[#d3bb73] hover:text-[#d3bb73]/80"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteSkill(skill.id)}
                         className="text-red-400 hover:text-red-300"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   )}
@@ -268,7 +271,15 @@ export default function SkillsManagementPage() {
   );
 }
 
-function CategoryModal({ category, onClose, onSuccess }: { category: SkillCategory | null; onClose: () => void; onSuccess: () => void }) {
+function CategoryModal({
+  category,
+  onClose,
+  onSuccess,
+}: {
+  category: SkillCategory | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const [name, setName] = useState(category?.name || '');
   const [description, setDescription] = useState(category?.description || '');
   const [color, setColor] = useState(category?.color || '#d3bb73');
@@ -307,55 +318,55 @@ function CategoryModal({ category, onClose, onSuccess }: { category: SkillCatego
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-lg w-full">
-        <div className="p-6 border-b border-[#d3bb73]/10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">
             {category ? 'Edytuj kategorię' : 'Nowa kategoria'}
           </h3>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="space-y-4 p-6">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kolor</label>
             <input
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="w-full h-10 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg"
+              className="h-10 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]"
             />
           </div>
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end">
+        <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? 'Zapisuję...' : 'Zapisz'}
           </button>
@@ -365,7 +376,17 @@ function CategoryModal({ category, onClose, onSuccess }: { category: SkillCatego
   );
 }
 
-function SkillModal({ skill, categories, onClose, onSuccess }: { skill: Skill | null; categories: SkillCategory[]; onClose: () => void; onSuccess: () => void }) {
+function SkillModal({
+  skill,
+  categories,
+  onClose,
+  onSuccess,
+}: {
+  skill: Skill | null;
+  categories: SkillCategory[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const [name, setName] = useState(skill?.name || '');
   const [description, setDescription] = useState(skill?.description || '');
   const [categoryId, setCategoryId] = useState(skill?.category_id || '');
@@ -405,72 +426,74 @@ function SkillModal({ skill, categories, onClose, onSuccess }: { skill: Skill | 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-lg w-full">
-        <div className="p-6 border-b border-[#d3bb73]/10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">
             {skill ? 'Edytuj umiejętność' : 'Nowa umiejętność'}
           </h3>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="space-y-4 p-6">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="np. Obsługa konsolet GrandMA"
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Dodatkowe informacje o umiejętności..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kategoria</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             >
               <option value="">Brak kategorii</option>
               {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={isActive}
                 onChange={(e) => setIsActive(e.target.checked)}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
               />
               <span className="text-sm text-[#e5e4e2]">Aktywna</span>
             </label>
           </div>
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end">
+        <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? 'Zapisuję...' : 'Zapisz'}
           </button>

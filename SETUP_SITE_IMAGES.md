@@ -7,11 +7,14 @@ System inline editing obrazów z **pełną obsługą file upload** jest już fun
 ## Jak używać (krok po kroku):
 
 ### 1. Zaloguj się jako admin
+
 Możesz się zalogować przez:
+
 - `/crm/login` - panel CRM
 - `/admin/login` - panel admina
 
 ### 2. Włącz tryb edycji obrazów
+
 1. Kliknij w swoje **menu użytkownika** (awatar/inicjały w prawym górnym rogu)
 2. Wybierz opcję **"Edytuj obrazy strony"**
 3. Ikony edycji pojawią się automatycznie
@@ -19,6 +22,7 @@ Możesz się zalogować przez:
 ### 3. Edytuj obrazy - dwa sposoby!
 
 **Sposób 1: Upload własnego obrazu** (zalecane)
+
 - **Złote ikony edycji** (z ołówkiem) pojawią się przy każdym obrazie
 - Kliknij ikonę aby otworzyć edytor
 - Kliknij przycisk **"Upload"** przy polu Desktop lub Mobile
@@ -29,12 +33,14 @@ Możesz się zalogować przez:
 - Strona automatycznie się przeładuje
 
 **Sposób 2: Użyj URL z internetu**
+
 - Wklej URL obrazu (np. z Pexels) bezpośrednio w pole tekstowe
 - Zobacz **podgląd na żywo** (obraz pojawi się od razu po wklejeniu URL)
 - Kliknij "Zapisz Zmiany"
 - Strona automatycznie się przeładuje
 
 ### 4. Wyłącz tryb edycji
+
 - Kliknij ponownie w menu użytkownika
 - Wybierz **"Wyłącz edycję obrazów"**
 
@@ -197,15 +203,18 @@ VALUES
 ## Rozwiązywanie problemów:
 
 **Problem: Nie widzę ikon edycji**
+
 - Sprawdź czy jesteś zalogowany jako admin
 - Sprawdź czy tryb edycji jest włączony (menu użytkownika → "Edytuj obrazy strony")
 - Odśwież stronę (Ctrl+Shift+R lub Cmd+Shift+R)
 
 **Problem: Ikony są widoczne, ale nie mogę zapisać zmian**
+
 - Wykonaj SQL w panelu Supabase (patrz sekcja powyżej)
 - Sprawdź czy masz uprawnienia w bazie danych
 
 **Problem: Obraz nie ładuje się w podglądzie**
+
 - Sprawdź czy URL jest poprawny
 - Upewnij się, że URL zaczyna się od `https://`
 - Spróbuj innego obrazu z Pexels

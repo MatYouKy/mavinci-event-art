@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -15,24 +8,20 @@ export default function SettingsScreen() {
   const { employee, signOut } = useAuth();
 
   const handleSignOut = () => {
-    Alert.alert(
-      'Wylogowanie',
-      'Czy na pewno chcesz się wylogować?',
-      [
-        { text: 'Anuluj', style: 'cancel' },
-        {
-          text: 'Wyloguj',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut();
-            } catch (error) {
-              Alert.alert('Błąd', 'Nie udało się wylogować');
-            }
-          },
+    Alert.alert('Wylogowanie', 'Czy na pewno chcesz się wylogować?', [
+      { text: 'Anuluj', style: 'cancel' },
+      {
+        text: 'Wyloguj',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await signOut();
+          } catch (error) {
+            Alert.alert('Błąd', 'Nie udało się wylogować');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   return (
@@ -88,10 +77,7 @@ export default function SettingsScreen() {
 
       {/* Sign Out */}
       <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.signOutButton}
-          onPress={handleSignOut}
-        >
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <Feather name="log-out" color={colors.status.error} size={20} />
           <Text style={styles.signOutText}>Wyloguj się</Text>
         </TouchableOpacity>

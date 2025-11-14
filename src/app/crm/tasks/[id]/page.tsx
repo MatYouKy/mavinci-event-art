@@ -2,7 +2,24 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus, Edit3, Save, X, UserPlus, Image as ImageIcon } from 'lucide-react';
+import {
+  ArrowLeft,
+  Calendar,
+  User,
+  Paperclip,
+  Send,
+  Download,
+  Trash2,
+  Link as LinkIcon,
+  ExternalLink,
+  File,
+  UserMinus,
+  Edit3,
+  Save,
+  X,
+  UserPlus,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -154,7 +171,7 @@ export default function TaskDetailPage() {
           },
           () => {
             fetchChatItems();
-          }
+          },
         )
         .subscribe();
 
@@ -170,7 +187,7 @@ export default function TaskDetailPage() {
           },
           () => {
             fetchChatItems();
-          }
+          },
         )
         .subscribe();
 
@@ -194,11 +211,7 @@ export default function TaskDetailPage() {
   const fetchTask = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', taskId)
-        .single();
+      const { data, error } = await supabase.from('tasks').select('*').eq('id', taskId).single();
 
       if (error) throw error;
 
@@ -217,9 +230,14 @@ export default function TaskDetailPage() {
 
           return {
             employee_id: assignee.employee_id,
-            employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+            employees: employee || {
+              name: '',
+              surname: '',
+              avatar_url: null,
+              avatar_metadata: null,
+            },
           };
-        })
+        }),
       );
 
       let creator = null;
@@ -259,7 +277,7 @@ export default function TaskDetailPage() {
         .eq('task_id', taskId)
         .order('created_at', { ascending: true });
 
-      const comments: ChatItem[] = (commentsData || []).map(c => ({
+      const comments: ChatItem[] = (commentsData || []).map((c) => ({
         id: c.id,
         type: 'comment' as const,
         created_at: c.created_at,
@@ -268,7 +286,7 @@ export default function TaskDetailPage() {
         content: c.content,
       }));
 
-      const attachments: ChatItem[] = (attachmentsData || []).map(a => ({
+      const attachments: ChatItem[] = (attachmentsData || []).map((a) => ({
         id: a.id,
         type: 'attachment' as const,
         created_at: a.created_at,
@@ -278,7 +296,7 @@ export default function TaskDetailPage() {
       }));
 
       const allItems = [...comments, ...attachments].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       );
 
       setChatItems(allItems);
@@ -291,13 +309,11 @@ export default function TaskDetailPage() {
     if (!newComment.trim() || !currentEmployee) return;
 
     try {
-      const { error } = await supabase
-        .from('task_comments')
-        .insert({
-          task_id: taskId,
-          employee_id: currentEmployee.id,
-          content: newComment.trim(),
-        });
+      const { error } = await supabase.from('task_comments').insert({
+        task_id: taskId,
+        employee_id: currentEmployee.id,
+        content: newComment.trim(),
+      });
 
       if (error) throw error;
 
@@ -329,20 +345,18 @@ export default function TaskDetailPage() {
 
         if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('event-files')
-          .getPublicUrl(filePath);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('event-files').getPublicUrl(filePath);
 
-        const { error: dbError } = await supabase
-          .from('task_attachments')
-          .insert({
-            task_id: taskId,
-            file_name: file.name,
-            file_url: publicUrl,
-            file_type: file.type,
-            file_size: file.size,
-            uploaded_by: currentEmployee.id,
-          });
+        const { error: dbError } = await supabase.from('task_attachments').insert({
+          task_id: taskId,
+          file_name: file.name,
+          file_url: publicUrl,
+          file_type: file.type,
+          file_size: file.size,
+          uploaded_by: currentEmployee.id,
+        });
 
         if (dbError) throw dbError;
       }
@@ -362,16 +376,13 @@ export default function TaskDetailPage() {
   const handleDeleteComment = async (commentId: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć ten komentarz?',
-      'Usuń komentarz'
+      'Usuń komentarz',
     );
 
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('task_comments')
-        .delete()
-        .eq('id', commentId);
+      const { error } = await supabase.from('task_comments').delete().eq('id', commentId);
 
       if (error) throw error;
 
@@ -382,10 +393,16 @@ export default function TaskDetailPage() {
     }
   };
 
-  const handleDeleteAttachment = async (attachmentId: string, fileUrl: string | null, isLinked: boolean) => {
+  const handleDeleteAttachment = async (
+    attachmentId: string,
+    fileUrl: string | null,
+    isLinked: boolean,
+  ) => {
     const confirmed = await showConfirm(
-      isLinked ? 'Czy na pewno chcesz odlinkować ten plik?' : 'Czy na pewno chcesz usunąć ten plik?',
-      isLinked ? 'Odlinkuj plik' : 'Usuń plik'
+      isLinked
+        ? 'Czy na pewno chcesz odlinkować ten plik?'
+        : 'Czy na pewno chcesz usunąć ten plik?',
+      isLinked ? 'Odlinkuj plik' : 'Usuń plik',
     );
 
     if (!confirmed) return;
@@ -398,10 +415,7 @@ export default function TaskDetailPage() {
         }
       }
 
-      const { error } = await supabase
-        .from('task_attachments')
-        .delete()
-        .eq('id', attachmentId);
+      const { error } = await supabase.from('task_attachments').delete().eq('id', attachmentId);
 
       if (error) throw error;
 
@@ -417,7 +431,7 @@ export default function TaskDetailPage() {
 
     const confirmed = await showConfirm(
       'Czy na pewno chcesz wypisać się z tego zadania?',
-      'Wypisz się'
+      'Wypisz się',
     );
 
     if (!confirmed) return;
@@ -499,12 +513,10 @@ export default function TaskDetailPage() {
 
   const handleAddAssignee = async (employeeId: string) => {
     try {
-      const { error } = await supabase
-        .from('task_assignees')
-        .insert({
-          task_id: taskId,
-          employee_id: employeeId,
-        });
+      const { error } = await supabase.from('task_assignees').insert({
+        task_id: taskId,
+        employee_id: employeeId,
+      });
 
       if (error) throw error;
 
@@ -523,7 +535,7 @@ export default function TaskDetailPage() {
   const handleRemoveAssignee = async (employeeId: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć tę osobę z zadania?',
-      'Usuń przypisanie'
+      'Usuń przypisanie',
     );
 
     if (!confirmed) return;
@@ -562,9 +574,9 @@ export default function TaskDetailPage() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-files')
-        .getPublicUrl(filePath);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('event-files').getPublicUrl(filePath);
 
       const { error: updateError } = await supabase
         .from('tasks')
@@ -586,10 +598,7 @@ export default function TaskDetailPage() {
   const handleRemoveThumbnail = async () => {
     if (!task?.thumbnail_url) return;
 
-    const confirmed = await showConfirm(
-      'Czy na pewno chcesz usunąć zdjęcie?',
-      'Usuń zdjęcie'
-    );
+    const confirmed = await showConfirm('Czy na pewno chcesz usunąć zdjęcie?', 'Usuń zdjęcie');
 
     if (!confirmed) return;
 
@@ -669,15 +678,15 @@ export default function TaskDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0a0d1a]">
-        <div className="animate-spin w-8 h-8 border-2 border-[#d3bb73] border-t-transparent rounded-full" />
+      <div className="flex h-screen items-center justify-center bg-[#0a0d1a]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#d3bb73] border-t-transparent" />
       </div>
     );
   }
 
   if (!task) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0a0d1a]">
+      <div className="flex h-screen items-center justify-center bg-[#0a0d1a]">
         <p className="text-[#e5e4e2]/60">Nie znaleziono zadania</p>
       </div>
     );
@@ -686,23 +695,23 @@ export default function TaskDetailPage() {
   return (
     <div className="bg-[#0a0d1a]">
       {/* Header - Sticky */}
-      <div className="sticky top-0 z-10 bg-[#0f1119] border-b border-[#d3bb73]/10">
+      <div className="sticky top-0 z-10 border-b border-[#d3bb73]/10 bg-[#0f1119]">
         <div className="flex items-center gap-4 p-4">
           <button
             onClick={() => router.back()}
-            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
           >
-            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+            <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
           </button>
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-xl font-bold text-[#e5e4e2]">Szczegóły zadania</h1>
           </div>
           {!isEditing && (
             <button
               onClick={handleStartEdit}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
             >
-              <Edit3 className="w-4 h-4" />
+              <Edit3 className="h-4 w-4" />
               Edytuj
             </button>
           )}
@@ -710,57 +719,55 @@ export default function TaskDetailPage() {
       </div>
 
       {/* Task Details Section - Scrollable */}
-      <div className="flex-shrink-0 bg-[#0f1119] border-b-4 border-[#d3bb73]/20 max-h-[60vh] overflow-y-auto">
-        <div className="p-6 space-y-6">
+      <div className="max-h-[60vh] flex-shrink-0 overflow-y-auto border-b-4 border-[#d3bb73]/20 bg-[#0f1119]">
+        <div className="space-y-6 p-6">
           {isEditing ? (
             <>
               {/* Edit Mode */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/60">
                     Tytuł zadania *
                   </label>
                   <input
                     type="text"
                     value={editedTask.title || ''}
                     onChange={(e) => setEditedTask({ ...editedTask, title: e.target.value })}
-                    className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1a1d2e] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
-                    Opis
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/60">Opis</label>
                   <textarea
                     value={editedTask.description || ''}
                     onChange={(e) => setEditedTask({ ...editedTask, description: e.target.value })}
                     rows={4}
-                    className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50 resize-none"
+                    className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#1a1d2e] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                 </div>
 
                 {/* Thumbnail in Edit Mode */}
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/60">
                     Zdjęcie
                   </label>
                   {task.thumbnail_url ? (
-                    <div className="relative group inline-block">
+                    <div className="group relative inline-block">
                       <img
                         src={task.thumbnail_url}
                         alt="Task thumbnail"
-                        className="w-48 h-32 object-cover rounded-lg border-2 border-[#d3bb73]/20"
+                        className="h-32 w-48 rounded-lg border-2 border-[#d3bb73]/20 object-cover"
                       />
                       <button
                         onClick={handleRemoveThumbnail}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute right-2 top-2 rounded-lg bg-red-500/90 p-1.5 opacity-0 transition-opacity hover:bg-red-500 group-hover:opacity-100"
                       >
-                        <Trash2 className="w-4 h-4 text-white" />
+                        <Trash2 className="h-4 w-4 text-white" />
                       </button>
                     </div>
                   ) : (
-                    <label className="w-48 h-32 border-2 border-dashed border-[#d3bb73]/30 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-[#d3bb73]/5 transition-colors">
+                    <label className="flex h-32 w-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]/30 transition-colors hover:bg-[#d3bb73]/5">
                       <input
                         type="file"
                         accept="image/*"
@@ -768,7 +775,7 @@ export default function TaskDetailPage() {
                         className="hidden"
                         disabled={uploadingThumbnail}
                       />
-                      <ImageIcon className="w-8 h-8 text-[#d3bb73]/50 mb-2" />
+                      <ImageIcon className="mb-2 h-8 w-8 text-[#d3bb73]/50" />
                       <span className="text-xs text-[#e5e4e2]/50">
                         {uploadingThumbnail ? 'Przesyłanie...' : 'Dodaj zdjęcie'}
                       </span>
@@ -778,13 +785,15 @@ export default function TaskDetailPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/60">
                       Priorytet
                     </label>
                     <select
                       value={editedTask.priority || 'medium'}
-                      onChange={(e) => setEditedTask({ ...editedTask, priority: e.target.value as any })}
-                      className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                      onChange={(e) =>
+                        setEditedTask({ ...editedTask, priority: e.target.value as any })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1a1d2e] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     >
                       <option value="low">Niski</option>
                       <option value="medium">Średni</option>
@@ -794,31 +803,31 @@ export default function TaskDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2]/60 mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/60">
                       Termin
                     </label>
                     <input
                       type="date"
                       value={editedTask.due_date ? editedTask.due_date.split('T')[0] : ''}
                       onChange={(e) => setEditedTask({ ...editedTask, due_date: e.target.value })}
-                      className="w-full bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1a1d2e] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     />
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4 border-t border-[#d3bb73]/10">
+                <div className="flex gap-3 border-t border-[#d3bb73]/10 pt-4">
                   <button
                     onClick={handleSaveEdit}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] hover:bg-[#c4ac64] text-[#0a0d1a] rounded-lg transition-colors font-medium"
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#0a0d1a] transition-colors hover:bg-[#c4ac64]"
                   >
-                    <Save className="w-4 h-4" />
+                    <Save className="h-4 w-4" />
                     Zapisz
                   </button>
                   <button
                     onClick={handleCancelEdit}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#e5e4e2]/10 hover:bg-[#e5e4e2]/20 text-[#e5e4e2] rounded-lg transition-colors"
+                    className="flex items-center gap-2 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                     Anuluj
                   </button>
                 </div>
@@ -832,8 +841,10 @@ export default function TaskDetailPage() {
 
                 {task.description && (
                   <div>
-                    <h3 className="text-sm font-medium text-[#e5e4e2]/60 mb-2">Opis</h3>
-                    <p className="text-sm text-[#e5e4e2]/80 whitespace-pre-wrap">{task.description}</p>
+                    <h3 className="mb-2 text-sm font-medium text-[#e5e4e2]/60">Opis</h3>
+                    <p className="whitespace-pre-wrap text-sm text-[#e5e4e2]/80">
+                      {task.description}
+                    </p>
                   </div>
                 )}
 
@@ -842,27 +853,29 @@ export default function TaskDetailPage() {
                     <img
                       src={task.thumbnail_url}
                       alt="Task thumbnail"
-                      className="w-48 h-32 object-cover rounded-lg border-2 border-[#d3bb73]/20"
+                      className="h-32 w-48 rounded-lg border-2 border-[#d3bb73]/20 object-cover"
                     />
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex flex-wrap items-center gap-4">
                   {task.creator && (
                     <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-[#e5e4e2]/60" />
+                      <User className="h-4 w-4 text-[#e5e4e2]/60" />
                       <span className="text-sm text-[#e5e4e2]/60">Autor:</span>
                       <span className="text-sm text-[#e5e4e2]">
                         {task.creator.name} {task.creator.surname}
                       </span>
                     </div>
                   )}
-                  <span className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs ${priorityColors[task.priority]}`}
+                  >
                     {priorityLabels[task.priority]}
                   </span>
                   {task.due_date && (
                     <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                      <Calendar className="w-4 h-4" />
+                      <Calendar className="h-4 w-4" />
                       {new Date(task.due_date).toLocaleDateString('pl-PL')}
                     </div>
                   )}
@@ -870,12 +883,12 @@ export default function TaskDetailPage() {
 
                 {/* Assignees - Only Avatars */}
                 <div>
-                  <h3 className="text-sm font-medium text-[#e5e4e2]/60 mb-3">Przypisane osoby</h3>
+                  <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]/60">Przypisane osoby</h3>
                   <div className="flex items-center -space-x-2">
                     {task.task_assignees.map((assignee) => (
                       <div
                         key={assignee.employee_id}
-                        className="relative group"
+                        className="group relative"
                         title={`${assignee.employees.name} ${assignee.employees.surname}`}
                       >
                         <EmployeeAvatar
@@ -887,23 +900,24 @@ export default function TaskDetailPage() {
                           }}
                           size={40}
                         />
-                        {(task.created_by === currentEmployee?.id || currentEmployee?.id === assignee.employee_id) && (
+                        {(task.created_by === currentEmployee?.id ||
+                          currentEmployee?.id === assignee.employee_id) && (
                           <button
                             onClick={() => handleRemoveAssignee(assignee.employee_id)}
-                            className="absolute -top-1 -right-1 p-1 bg-red-500 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
+                            className="absolute -right-1 -top-1 z-10 rounded-full bg-red-500 p-1 opacity-0 shadow-lg transition-opacity hover:bg-red-600 group-hover:opacity-100"
                             title="Usuń"
                           >
-                            <X className="w-3 h-3 text-white" />
+                            <X className="h-3 w-3 text-white" />
                           </button>
                         )}
                       </div>
                     ))}
                     <button
                       onClick={() => setShowAssignModal(true)}
-                      className="w-10 h-10 rounded-full bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 border-2 border-[#d3bb73]/40 flex items-center justify-center transition-colors ml-2"
+                      className="ml-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#d3bb73]/40 bg-[#d3bb73]/20 transition-colors hover:bg-[#d3bb73]/30"
                       title="Dodaj osobę"
                     >
-                      <UserPlus className="w-5 h-5 text-[#d3bb73]" />
+                      <UserPlus className="h-5 w-5 text-[#d3bb73]" />
                     </button>
                   </div>
                 </div>
@@ -914,174 +928,183 @@ export default function TaskDetailPage() {
       </div>
 
       {/* Chat Area */}
-      <div className="bg-[#0f1119] border-b-4 border-[#d3bb73]/20">
+      <div className="border-b-4 border-[#d3bb73]/20 bg-[#0f1119]">
         <div
-          className="overflow-y-auto p-6 space-y-4"
+          className="space-y-4 overflow-y-auto p-6"
           style={{
             minHeight: chatItems.length === 0 ? '200px' : '200px',
-            maxHeight: '500px'
+            maxHeight: '500px',
           }}
         >
-
-        {chatItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-[#e5e4e2]/40">
-            <p className="text-sm">Brak wiadomości. Rozpocznij konwersację.</p>
-          </div>
-        ) : (
-          chatItems.map((item) => (
-            <div key={item.id} className="flex gap-3">
-              <EmployeeAvatar
-                employee={{
-                  avatar_url: item.employee.avatar_url,
-                  avatar_metadata: item.employee.avatar_metadata,
-                  name: item.employee.name,
-                  surname: item.employee.surname,
-                }}
-                size={40}
-                className="flex-shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium text-[#e5e4e2]">
-                    {item.employee.name} {item.employee.surname}
-                  </span>
-                  <span className="text-xs text-[#e5e4e2]/40">
-                    {new Date(item.created_at).toLocaleString('pl-PL')}
-                  </span>
-                </div>
-
-                {item.type === 'comment' && (
-                  <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 group">
-                    <div className="flex items-start gap-2">
-                      <p className="text-sm text-[#e5e4e2] whitespace-pre-wrap flex-1">{item.content}</p>
-                      {canDeleteComment(item.employee_id) && (
-                        <button
-                          onClick={() => handleDeleteComment(item.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-500/10 rounded-lg flex-shrink-0"
-                          title="Usuń komentarz"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                        </button>
-                      )}
-                    </div>
+          {chatItems.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center text-[#e5e4e2]/40">
+              <p className="text-sm">Brak wiadomości. Rozpocznij konwersację.</p>
+            </div>
+          ) : (
+            chatItems.map((item) => (
+              <div key={item.id} className="flex gap-3">
+                <EmployeeAvatar
+                  employee={{
+                    avatar_url: item.employee.avatar_url,
+                    avatar_metadata: item.employee.avatar_metadata,
+                    name: item.employee.name,
+                    surname: item.employee.surname,
+                  }}
+                  size={40}
+                  className="flex-shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-sm font-medium text-[#e5e4e2]">
+                      {item.employee.name} {item.employee.surname}
+                    </span>
+                    <span className="text-xs text-[#e5e4e2]/40">
+                      {new Date(item.created_at).toLocaleString('pl-PL')}
+                    </span>
                   </div>
-                )}
 
-                {item.type === 'attachment' && item.attachment && (
-                  <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3">
-                    <div className="flex items-center gap-3">
-                      {isImage(item.attachment.file_type) && item.attachment.file_url ? (
-                        <img
-                          src={item.attachment.file_url}
-                          alt={item.attachment.file_name}
-                          className="w-48 h-32 object-cover rounded-lg"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center">
-                          <File className="w-6 h-6 text-[#d3bb73]" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm text-[#e5e4e2] font-medium truncate">
-                            {item.attachment.file_name}
-                          </p>
-                          {item.attachment.is_linked && (
-                            <ExternalLink className="w-3 h-3 text-blue-400 flex-shrink-0"  />
-                          )}
-                        </div>
-                        <p className="text-xs text-[#e5e4e2]/60">{formatFileSize(item.attachment.file_size)}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        {item.attachment.file_url && (
-                          <a
-                            href={item.attachment.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-                            title="Pobierz"
+                  {item.type === 'comment' && (
+                    <div className="group rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
+                      <div className="flex items-start gap-2">
+                        <p className="flex-1 whitespace-pre-wrap text-sm text-[#e5e4e2]">
+                          {item.content}
+                        </p>
+                        {canDeleteComment(item.employee_id) && (
+                          <button
+                            onClick={() => handleDeleteComment(item.id)}
+                            className="flex-shrink-0 rounded-lg p-1.5 opacity-0 transition-opacity hover:bg-red-500/10 group-hover:opacity-100"
+                            title="Usuń komentarz"
                           >
-                            <Download className="w-4 h-4 text-[#d3bb73]" />
-                          </a>
+                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                          </button>
                         )}
-                        <button
-                          onClick={() => handleDeleteAttachment(item.attachment!.id, item.attachment!.file_url, item.attachment!.is_linked)}
-                          className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
-                          title={item.attachment.is_linked ? 'Odlinkuj' : 'Usuń'}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-400" />
-                        </button>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {item.type === 'attachment' && item.attachment && (
+                    <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
+                      <div className="flex items-center gap-3">
+                        {isImage(item.attachment.file_type) && item.attachment.file_url ? (
+                          <img
+                            src={item.attachment.file_url}
+                            alt={item.attachment.file_name}
+                            className="h-32 w-48 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/10">
+                            <File className="h-6 w-6 text-[#d3bb73]" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-center gap-2">
+                            <p className="truncate text-sm font-medium text-[#e5e4e2]">
+                              {item.attachment.file_name}
+                            </p>
+                            {item.attachment.is_linked && (
+                              <ExternalLink className="h-3 w-3 flex-shrink-0 text-blue-400" />
+                            )}
+                          </div>
+                          <p className="text-xs text-[#e5e4e2]/60">
+                            {formatFileSize(item.attachment.file_size)}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {item.attachment.file_url && (
+                            <a
+                              href={item.attachment.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
+                              title="Pobierz"
+                            >
+                              <Download className="h-4 w-4 text-[#d3bb73]" />
+                            </a>
+                          )}
+                          <button
+                            onClick={() =>
+                              handleDeleteAttachment(
+                                item.attachment!.id,
+                                item.attachment!.file_url,
+                                item.attachment!.is_linked,
+                              )
+                            }
+                            className="rounded-lg p-2 transition-colors hover:bg-red-500/10"
+                            title={item.attachment.is_linked ? 'Odlinkuj' : 'Usuń'}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-400" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Input Area */}
+        <div
+          className="relative border-t border-[#d3bb73]/10 bg-[#0f1119] p-4"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragging && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73] bg-[#d3bb73]/10">
+              <div className="text-center">
+                <Paperclip className="mx-auto mb-2 h-12 w-12 text-[#d3bb73]" />
+                <p className="font-medium text-[#d3bb73]">Upuść pliki tutaj</p>
               </div>
             </div>
-          ))
-        )}
-        <div ref={chatEndRef} />
-      </div>
-
-      {/* Input Area */}
-      <div
-        className="p-4 bg-[#0f1119] border-t border-[#d3bb73]/10 relative"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {isDragging && (
-          <div className="absolute inset-0 bg-[#d3bb73]/10 border-2 border-dashed border-[#d3bb73] rounded-lg flex items-center justify-center z-50">
-            <div className="text-center">
-              <Paperclip className="w-12 h-12 text-[#d3bb73] mx-auto mb-2" />
-              <p className="text-[#d3bb73] font-medium">Upuść pliki tutaj</p>
-            </div>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            onChange={(e) => handleFileUpload(e.target.files)}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadingFile}
-            className="p-3 hover:bg-[#d3bb73]/10 rounded-lg transition-colors disabled:opacity-50"
-            title="Dodaj plik"
-          >
-            <Paperclip className="w-5 h-5 text-[#e5e4e2]/60" />
-          </button>
-          {task.event_id && (
-            <button
-              onClick={() => setShowLinkFileModal(true)}
-              className="p-3 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-              title="Dodaj z wydarzenia"
-            >
-              <LinkIcon className="w-5 h-5 text-blue-400" />
-            </button>
           )}
-          <textarea
-            ref={textareaRef}
-            value={newComment}
-            onChange={handleTextareaChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Napisz wiadomość... (Shift+Enter dla nowej linii)"
-            className="flex-1 bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/50 resize-none min-h-[48px] max-h-[200px]"
-            rows={1}
-          />
-          <button
-            onClick={handleSendComment}
-            disabled={!newComment.trim() || uploadingFile}
-            className="px-6 py-3 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#0f1119] rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send className="w-5 h-5" />
-          </button>
-        </div>
-        <p className="text-xs text-[#e5e4e2]/40 mt-2 px-6 pb-4">
-          Przeciągnij i upuść pliki lub zdjęcia aby je dodać
-        </p>
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={(e) => handleFileUpload(e.target.files)}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingFile}
+              className="rounded-lg p-3 transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
+              title="Dodaj plik"
+            >
+              <Paperclip className="h-5 w-5 text-[#e5e4e2]/60" />
+            </button>
+            {task.event_id && (
+              <button
+                onClick={() => setShowLinkFileModal(true)}
+                className="rounded-lg p-3 transition-colors hover:bg-[#d3bb73]/10"
+                title="Dodaj z wydarzenia"
+              >
+                <LinkIcon className="h-5 w-5 text-blue-400" />
+              </button>
+            )}
+            <textarea
+              ref={textareaRef}
+              value={newComment}
+              onChange={handleTextareaChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Napisz wiadomość... (Shift+Enter dla nowej linii)"
+              className="max-h-[200px] min-h-[48px] flex-1 resize-none rounded-lg border border-[#d3bb73]/20 bg-[#1a1d2e] px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/50 focus:outline-none"
+              rows={1}
+            />
+            <button
+              onClick={handleSendComment}
+              disabled={!newComment.trim() || uploadingFile}
+              className="rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#0f1119] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Send className="h-5 w-5" />
+            </button>
+          </div>
+          <p className="mt-2 px-6 pb-4 text-xs text-[#e5e4e2]/40">
+            Przeciągnij i upuść pliki lub zdjęcia aby je dodać
+          </p>
         </div>
       </div>
 
@@ -1098,18 +1121,18 @@ export default function TaskDetailPage() {
 
       {/* Assign Employee Modal */}
       {showAssignModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0f1119] rounded-lg max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-[#d3bb73]/10 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-lg bg-[#0f1119]">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
               <h3 className="text-lg font-semibold text-[#e5e4e2]">Przypisz osobę</h3>
               <button
                 onClick={() => setShowAssignModal(false)}
-                className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
               >
-                <X className="w-5 h-5 text-[#e5e4e2]" />
+                <X className="h-5 w-5 text-[#e5e4e2]" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            <div className="flex-1 space-y-2 overflow-y-auto p-4">
               {availableEmployees
                 .filter((emp) => !task.task_assignees.some((a) => a.employee_id === emp.id))
                 .map((employee) => (
@@ -1119,19 +1142,18 @@ export default function TaskDetailPage() {
                       handleAddAssignee(employee.id);
                       setShowAssignModal(false);
                     }}
-                    className="w-full flex items-center gap-3 p-3 bg-[#1a1d2e] hover:bg-[#1a1d2e]/80 rounded-lg transition-colors"
+                    className="flex w-full items-center gap-3 rounded-lg bg-[#1a1d2e] p-3 transition-colors hover:bg-[#1a1d2e]/80"
                   >
-                    <EmployeeAvatar
-                      employee={employee}
-                      size={32}
-                    />
+                    <EmployeeAvatar employee={employee} size={32} />
                     <span className="text-sm text-[#e5e4e2]">
                       {employee.name} {employee.surname}
                     </span>
                   </button>
                 ))}
-              {availableEmployees.filter((emp) => !task.task_assignees.some((a) => a.employee_id === emp.id)).length === 0 && (
-                <p className="text-sm text-[#e5e4e2]/60 text-center py-8">
+              {availableEmployees.filter(
+                (emp) => !task.task_assignees.some((a) => a.employee_id === emp.id),
+              ).length === 0 && (
+                <p className="py-8 text-center text-sm text-[#e5e4e2]/60">
                   Wszyscy dostępni pracownicy są już przypisani do tego zadania
                 </p>
               )}

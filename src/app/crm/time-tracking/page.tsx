@@ -110,7 +110,8 @@ export default function TimeTrackingPage() {
       // Sprawdź aktywny timer
       const { data: activeData } = await supabase
         .from('time_entries')
-        .select(`
+        .select(
+          `
           *,
           tasks (
             title,
@@ -119,7 +120,8 @@ export default function TimeTrackingPage() {
           events (
             name
           )
-        `)
+        `,
+        )
         .eq('employee_id', employee!.id)
         .is('end_time', null)
         .maybeSingle();
@@ -129,7 +131,8 @@ export default function TimeTrackingPage() {
       // Pobierz wpisy
       let query = supabase
         .from(viewMode === 'all' && isAdmin ? 'admin_time_entries_view' : 'time_entries')
-        .select(`
+        .select(
+          `
           *,
           tasks (
             title,
@@ -138,7 +141,8 @@ export default function TimeTrackingPage() {
           events (
             name
           )
-        `)
+        `,
+        )
         .order('start_time', { ascending: false })
         .limit(100);
 
@@ -174,12 +178,14 @@ export default function TimeTrackingPage() {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select(`
+        .select(
+          `
           id,
           title,
           event_id,
           events (name)
-        `)
+        `,
+        )
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -290,7 +296,7 @@ export default function TimeTrackingPage() {
 
   if (employeeLoading || loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
       </div>
     );
@@ -298,15 +304,15 @@ export default function TimeTrackingPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         {/* Nagłówek */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#e5e4e2] flex items-center gap-3">
-              <Clock className="w-8 h-8 text-[#d3bb73]" />
+            <h1 className="flex items-center gap-3 text-2xl font-bold text-[#e5e4e2]">
+              <Clock className="h-8 w-8 text-[#d3bb73]" />
               Śledzenie czasu pracy
             </h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">
               Loguj swój czas pracy i zarządzaj wpisami
             </p>
           </div>
@@ -314,7 +320,7 @@ export default function TimeTrackingPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => setViewMode('my')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
+                className={`rounded-lg px-4 py-2 transition-colors ${
                   viewMode === 'my'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
@@ -324,7 +330,7 @@ export default function TimeTrackingPage() {
               </button>
               <button
                 onClick={() => setViewMode('all')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
+                className={`rounded-lg px-4 py-2 transition-colors ${
                   viewMode === 'all'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
@@ -338,14 +344,14 @@ export default function TimeTrackingPage() {
 
         {/* Aktywny timer */}
         {activeTimer ? (
-          <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 border border-green-500/30 rounded-xl p-6">
+          <div className="rounded-xl border border-green-500/30 bg-gradient-to-r from-green-500/20 to-blue-500/20 p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+                <div className="mb-2 flex items-center gap-3">
+                  <div className="h-3 w-3 animate-pulse rounded-full bg-green-500" />
                   <span className="text-sm text-[#e5e4e2]/60">Timer aktywny</span>
                 </div>
-                <h3 className="text-xl font-semibold text-[#e5e4e2] mb-1">
+                <h3 className="mb-1 text-xl font-semibold text-[#e5e4e2]">
                   {activeTimer.task_id && activeTimer.tasks
                     ? `${activeTimer.tasks.title} (Task)`
                     : activeTimer.title || activeTimer.task_title || 'Praca'}
@@ -355,35 +361,33 @@ export default function TimeTrackingPage() {
                 )}
               </div>
               <div className="text-right">
-                <div className="text-4xl font-mono font-bold text-[#d3bb73] mb-3">
+                <div className="mb-3 font-mono text-4xl font-bold text-[#d3bb73]">
                   {formatDuration(elapsedTime)}
                 </div>
                 <button
                   onClick={stopTimer}
-                  className="flex items-center gap-2 bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-red-500 px-6 py-2 text-white transition-colors hover:bg-red-600"
                 >
-                  <Square className="w-4 h-4" />
+                  <Square className="h-4 w-4" />
                   Zatrzymaj
                 </button>
               </div>
             </div>
           </div>
         ) : (
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-[#e5e4e2] mb-1">
-                  Brak aktywnego timera
-                </h3>
+                <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2]">Brak aktywnego timera</h3>
                 <p className="text-sm text-[#e5e4e2]/60">
                   Rozpocznij nowy timer lub dodaj wpis ręcznie
                 </p>
               </div>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Play className="w-4 h-4" />
+                <Play className="h-4 w-4" />
                 Rozpocznij timer
               </button>
             </div>
@@ -391,20 +395,18 @@ export default function TimeTrackingPage() {
         )}
 
         {/* Statystyki */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Clock className="w-5 h-5 text-blue-400" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+            <div className="mb-2 flex items-center gap-3">
+              <Clock className="h-5 w-5 text-blue-400" />
               <span className="text-sm text-[#e5e4e2]/60">Łącznie</span>
             </div>
-            <div className="text-2xl font-bold text-[#e5e4e2]">
-              {formatMinutes(totalMinutes)}
-            </div>
+            <div className="text-2xl font-bold text-[#e5e4e2]">{formatMinutes(totalMinutes)}</div>
           </div>
 
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <DollarSign className="w-5 h-5 text-green-400" />
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+            <div className="mb-2 flex items-center gap-3">
+              <DollarSign className="h-5 w-5 text-green-400" />
               <span className="text-sm text-[#e5e4e2]/60">Płatne</span>
             </div>
             <div className="text-2xl font-bold text-[#d3bb73]">
@@ -412,17 +414,17 @@ export default function TimeTrackingPage() {
             </div>
           </div>
 
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Calendar className="w-5 h-5 text-purple-400" />
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+            <div className="mb-2 flex items-center gap-3">
+              <Calendar className="h-5 w-5 text-purple-400" />
               <span className="text-sm text-[#e5e4e2]/60">Wpisów</span>
             </div>
             <div className="text-2xl font-bold text-[#e5e4e2]">{entries.length}</div>
           </div>
 
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <CheckCircle className="w-5 h-5 text-yellow-400" />
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+            <div className="mb-2 flex items-center gap-3">
+              <CheckCircle className="h-5 w-5 text-yellow-400" />
               <span className="text-sm text-[#e5e4e2]/60">Śr. dziennie</span>
             </div>
             <div className="text-2xl font-bold text-[#e5e4e2]">
@@ -435,18 +437,18 @@ export default function TimeTrackingPage() {
 
         {/* Filtry */}
         {viewMode === 'all' && isAdmin && (
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Filter className="w-4 h-4 text-[#d3bb73]" />
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+            <div className="mb-4 flex items-center gap-2">
+              <Filter className="h-4 w-4 text-[#d3bb73]" />
               <span className="text-sm font-medium text-[#e5e4e2]">Filtry</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pracownik</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Pracownik</label>
                 <select
                   value={filterEmployee}
                   onChange={(e) => setFilterEmployee(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 >
                   <option value="">Wszyscy pracownicy</option>
                   {allEmployees.map((emp) => (
@@ -457,21 +459,21 @@ export default function TimeTrackingPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data od</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data od</label>
                 <input
                   type="date"
                   value={filterDateFrom}
                   onChange={(e) => setFilterDateFrom(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data do</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data do</label>
                 <input
                   type="date"
                   value={filterDateTo}
                   onChange={(e) => setFilterDateTo(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
             </div>
@@ -481,20 +483,17 @@ export default function TimeTrackingPage() {
         {/* Lista wpisów */}
         <div className="space-y-3">
           {entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4"
-            >
+            <div key={entry.id} className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="mb-2 flex items-center gap-3">
                     <h4 className="font-semibold text-[#e5e4e2]">
                       {entry.task_id && entry.tasks
                         ? `${entry.tasks.title} (Task)`
                         : entry.title || entry.task_title || 'Praca'}
                     </h4>
                     {entry.is_billable && (
-                      <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">
+                      <span className="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
                         Płatne
                       </span>
                     )}
@@ -505,12 +504,12 @@ export default function TimeTrackingPage() {
                     )}
                   </div>
                   {entry.description && (
-                    <p className="text-sm text-[#e5e4e2]/60 mb-2">{entry.description}</p>
+                    <p className="mb-2 text-sm text-[#e5e4e2]/60">{entry.description}</p>
                   )}
                   {entry.event_name && (
                     <p className="text-xs text-[#e5e4e2]/40">Wydarzenie: {entry.event_name}</p>
                   )}
-                  <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60 mt-2">
+                  <div className="mt-2 flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                     <span>
                       {new Date(entry.start_time).toLocaleDateString('pl-PL', {
                         day: '2-digit',
@@ -533,15 +532,13 @@ export default function TimeTrackingPage() {
                     </span>
                   </div>
                 </div>
-                <div className="text-right flex items-center gap-4">
+                <div className="flex items-center gap-4 text-right">
                   <div>
                     <div className="text-2xl font-bold text-[#d3bb73]">
                       {formatMinutes(entry.duration_minutes)}
                     </div>
                     {entry.hourly_rate && (
-                      <div className="text-xs text-[#e5e4e2]/40 mt-1">
-                        {entry.hourly_rate} zł/h
-                      </div>
+                      <div className="mt-1 text-xs text-[#e5e4e2]/40">{entry.hourly_rate} zł/h</div>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -551,10 +548,10 @@ export default function TimeTrackingPage() {
                           setEditingEntry(entry);
                           setShowEditModal(true);
                         }}
-                        className="text-blue-400 hover:text-blue-300 p-2"
+                        className="p-2 text-blue-400 hover:text-blue-300"
                         title="Edytuj"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="h-4 w-4" />
                       </button>
                     )}
                     {isAdmin && entry.edit_count && entry.edit_count > 0 && (
@@ -563,11 +560,11 @@ export default function TimeTrackingPage() {
                           setHistoryEntryId(entry.id);
                           setShowHistoryModal(true);
                         }}
-                        className="text-yellow-400 hover:text-yellow-300 p-2 relative"
+                        className="relative p-2 text-yellow-400 hover:text-yellow-300"
                         title="Historia zmian"
                       >
-                        <History className="w-4 h-4" />
-                        <span className="absolute -top-1 -right-1 bg-yellow-500 text-[#1c1f33] text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                        <History className="h-4 w-4" />
+                        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-500 text-xs text-[#1c1f33]">
                           {entry.edit_count}
                         </span>
                       </button>
@@ -575,10 +572,10 @@ export default function TimeTrackingPage() {
                     {viewMode === 'my' && (
                       <button
                         onClick={() => deleteEntry(entry.id)}
-                        className="text-red-400 hover:text-red-300 p-2"
+                        className="p-2 text-red-400 hover:text-red-300"
                         title="Usuń"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                   </div>
@@ -588,8 +585,8 @@ export default function TimeTrackingPage() {
           ))}
 
           {entries.length === 0 && (
-            <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-              <Clock className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+              <Clock className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak wpisów czasu pracy</p>
             </div>
           )}
@@ -667,7 +664,7 @@ function StartTimerModal({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const filteredTasks = tasks.filter((task) =>
-    task.title.toLowerCase().includes(inputValue.toLowerCase())
+    task.title.toLowerCase().includes(inputValue.toLowerCase()),
   );
 
   const handleSelectTask = (task: Task) => {
@@ -692,37 +689,33 @@ function StartTimerModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
-        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Rozpocznij timer</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <h2 className="mb-6 text-xl font-light text-[#e5e4e2]">Rozpocznij timer</h2>
 
         <div className="space-y-4">
           <div className="relative">
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Nazwa zadania
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa zadania</label>
             <input
               type="text"
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               onFocus={() => inputValue && setShowSuggestions(true)}
               placeholder="Wpisz nazwę lub wybierz z listy..."
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
 
             {showSuggestions && filteredTasks.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-lg">
                 {filteredTasks.map((task) => (
                   <button
                     key={task.id}
                     onClick={() => handleSelectTask(task)}
-                    className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/5 last:border-b-0"
+                    className="w-full border-b border-[#d3bb73]/5 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10"
                   >
-                    <div className="text-[#e5e4e2] font-medium">{task.title}</div>
+                    <div className="font-medium text-[#e5e4e2]">{task.title}</div>
                     {task.events && (
-                      <div className="text-xs text-[#e5e4e2]/60 mt-1">
-                        {task.events.name}
-                      </div>
+                      <div className="mt-1 text-xs text-[#e5e4e2]/60">{task.events.name}</div>
                     )}
                   </button>
                 ))}
@@ -731,44 +724,42 @@ function StartTimerModal({
 
             {selectedTaskId && (
               <div className="mt-2 flex items-center gap-2 text-xs text-green-400">
-                <CheckCircle className="w-4 h-4" />
+                <CheckCircle className="h-4 w-4" />
                 <span>Powiązane z zadaniem</span>
               </div>
             )}
 
             {inputValue && !selectedTaskId && filteredTasks.length === 0 && (
               <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
-                <CheckCircle className="w-4 h-4" />
+                <CheckCircle className="h-4 w-4" />
                 <span>Własny tytuł zostanie utworzony</span>
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Opis (opcjonalnie)
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis (opcjonalnie)</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Co będziesz robić?"
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+              className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="mt-6 flex gap-3">
           <button
             onClick={handleStart}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 font-medium"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
           >
-            <Play className="w-4 h-4 inline mr-2" />
+            <Play className="mr-2 inline h-4 w-4" />
             Rozpocznij
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
           >
             Anuluj
           </button>
@@ -789,17 +780,15 @@ function EditEntryModal({
 }) {
   const [title, setTitle] = useState(entry.title || '');
   const [description, setDescription] = useState(entry.description || '');
-  const [startDate, setStartDate] = useState(
-    new Date(entry.start_time).toISOString().slice(0, 10)
-  );
+  const [startDate, setStartDate] = useState(new Date(entry.start_time).toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState(
-    new Date(entry.start_time).toISOString().slice(11, 16)
+    new Date(entry.start_time).toISOString().slice(11, 16),
   );
   const [endDate, setEndDate] = useState(
-    entry.end_time ? new Date(entry.end_time).toISOString().slice(0, 10) : ''
+    entry.end_time ? new Date(entry.end_time).toISOString().slice(0, 10) : '',
   );
   const [endTime, setEndTime] = useState(
-    entry.end_time ? new Date(entry.end_time).toISOString().slice(11, 16) : ''
+    entry.end_time ? new Date(entry.end_time).toISOString().slice(11, 16) : '',
   );
 
   const handleSave = () => {
@@ -831,74 +820,74 @@ function EditEntryModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-lg w-full">
-        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Edytuj wpis czasu</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <h2 className="mb-6 text-xl font-light text-[#e5e4e2]">Edytuj wpis czasu</h2>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Tytuł</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Tytuł</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-y"
+              className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data rozpoczęcia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data rozpoczęcia</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Godzina rozpoczęcia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina rozpoczęcia</label>
               <input
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data zakończenia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data zakończenia</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Godzina zakończenia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina zakończenia</label>
               <input
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="bg-[#1c1f33] rounded-lg p-4 border border-[#d3bb73]/10">
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-[#e5e4e2]/60">Czas trwania:</span>
               <span className="text-lg font-bold text-[#d3bb73]">{calculateDuration()}</span>
@@ -906,16 +895,16 @@ function EditEntryModal({
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="mt-6 flex gap-3">
           <button
             onClick={handleSave}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 font-medium"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
           >
             Zapisz zmiany
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
           >
             Anuluj
           </button>
@@ -999,37 +988,31 @@ function HistoryModal({ entryId, onClose }: { entryId: string; onClose: () => vo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-light text-[#e5e4e2] flex items-center gap-3">
-            <History className="w-6 h-6 text-[#d3bb73]" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[80vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="flex items-center gap-3 text-xl font-light text-[#e5e4e2]">
+            <History className="h-6 w-6 text-[#d3bb73]" />
             Historia zmian
           </h2>
-          <button
-            onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-          >
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
             ✕
           </button>
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-[#e5e4e2]/60">Ładowanie...</div>
+          <div className="py-12 text-center text-[#e5e4e2]/60">Ładowanie...</div>
         ) : history.length === 0 ? (
-          <div className="text-center py-12 text-[#e5e4e2]/60">Brak historii zmian</div>
+          <div className="py-12 text-center text-[#e5e4e2]/60">Brak historii zmian</div>
         ) : (
           <div className="space-y-4">
             {history.map((item) => (
-              <div
-                key={item.id}
-                className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4"
-              >
-                <div className="flex items-start justify-between mb-3">
+              <div key={item.id} className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+                <div className="mb-3 flex items-start justify-between">
                   <div>
                     <span
-                      className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getActionColor(
-                        item.action
+                      className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${getActionColor(
+                        item.action,
                       )}`}
                     >
                       {getActionName(item.action)}
@@ -1046,16 +1029,16 @@ function HistoryModal({ entryId, onClose }: { entryId: string; onClose: () => vo
                 </div>
 
                 {item.action === 'updated' && item.changed_fields && (
-                  <div className="space-y-2 mt-3">
+                  <div className="mt-3 space-y-2">
                     {item.changed_fields.map((field: string) => (
                       <div
                         key={field}
-                        className="flex items-start gap-4 text-sm border-t border-[#d3bb73]/5 pt-2"
+                        className="flex items-start gap-4 border-t border-[#d3bb73]/5 pt-2 text-sm"
                       >
-                        <div className="font-medium text-[#e5e4e2]/60 min-w-[120px]">
+                        <div className="min-w-[120px] font-medium text-[#e5e4e2]/60">
                           {getFieldName(field)}:
                         </div>
-                        <div className="flex-1 flex items-center gap-3">
+                        <div className="flex flex-1 items-center gap-3">
                           <div className="flex-1">
                             <div className="text-red-400 line-through">
                               {formatValue(item.old_values?.[field])}
@@ -1074,15 +1057,11 @@ function HistoryModal({ entryId, onClose }: { entryId: string; onClose: () => vo
                 )}
 
                 {item.action === 'created' && (
-                  <div className="text-sm text-[#e5e4e2]/60 mt-2">
-                    Wpis został utworzony
-                  </div>
+                  <div className="mt-2 text-sm text-[#e5e4e2]/60">Wpis został utworzony</div>
                 )}
 
                 {item.action === 'deleted' && (
-                  <div className="text-sm text-[#e5e4e2]/60 mt-2">
-                    Wpis został usunięty
-                  </div>
+                  <div className="mt-2 text-sm text-[#e5e4e2]/60">Wpis został usunięty</div>
                 )}
               </div>
             ))}

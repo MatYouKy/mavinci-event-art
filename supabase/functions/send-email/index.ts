@@ -1,10 +1,10 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
 interface SmtpConfig {
@@ -38,7 +38,7 @@ interface EmailAccount {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
+  if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
       headers: corsHeaders,
@@ -46,10 +46,11 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig }: EmailRequest = await req.json();
+    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig }: EmailRequest =
+      await req.json();
 
     if (!to || !subject || !body) {
-      throw new Error("Missing required fields: to, subject, body");
+      throw new Error('Missing required fields: to, subject, body');
     }
 
     let smtpSettings: {
@@ -65,18 +66,18 @@ Deno.serve(async (req: Request) => {
     if (smtpConfig) {
       smtpSettings = smtpConfig;
     } else if (emailAccountId) {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       const { data: emailAccount, error: accountError } = await supabase
-        .from("employee_email_accounts")
-        .select("*")
-        .eq("id", emailAccountId)
+        .from('employee_email_accounts')
+        .select('*')
+        .eq('id', emailAccountId)
         .maybeSingle();
 
       if (accountError || !emailAccount) {
-        throw new Error("Email account not found");
+        throw new Error('Email account not found');
       }
 
       const account = emailAccount as EmailAccount;
@@ -90,10 +91,10 @@ Deno.serve(async (req: Request) => {
         fromName: account.from_name,
       };
     } else {
-      throw new Error("Either emailAccountId or smtpConfig must be provided");
+      throw new Error('Either emailAccountId or smtpConfig must be provided');
     }
 
-    const nodemailer = await import("npm:nodemailer@6.9.7");
+    const nodemailer = await import('npm:nodemailer@6.9.7');
 
     const transporter = nodemailer.default.createTransport({
       host: smtpSettings.host,
@@ -104,8 +105,8 @@ Deno.serve(async (req: Request) => {
         pass: smtpSettings.password,
       },
       tls: {
-        rejectUnauthorized: false
-      }
+        rejectUnauthorized: false,
+      },
     });
 
     const mailOptions: any = {
@@ -121,19 +122,19 @@ Deno.serve(async (req: Request) => {
 
     const info = await transporter.sendMail(mailOptions);
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Zapisz wysłany email w bazie
-    const authHeader = req.headers.get("Authorization");
+    const authHeader = req.headers.get('Authorization');
     if (authHeader && emailAccountId) {
-      const { data: { user } } = await supabase.auth.getUser(
-        authHeader.replace("Bearer ", "")
-      );
+      const {
+        data: { user },
+      } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
 
       if (user) {
-        await supabase.from("sent_emails").insert({
+        await supabase.from('sent_emails').insert({
           employee_id: user.id,
           email_account_id: emailAccountId,
           to_address: to,
@@ -149,41 +150,41 @@ Deno.serve(async (req: Request) => {
     // Zaktualizuj status wiadomości kontaktowej jeśli to odpowiedź
     if (messageId && emailAccountId) {
       await supabase
-        .from("contact_messages")
+        .from('contact_messages')
         .update({
-          status: "replied",
-          replied_at: new Date().toISOString()
+          status: 'replied',
+          replied_at: new Date().toISOString(),
         })
-        .eq("id", messageId);
+        .eq('id', messageId);
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         messageId: info.messageId,
-        message: "Email sent successfully"
+        message: 'Email sent successfully',
       }),
       {
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-      }
+      },
     );
   } catch (error) {
-    console.error("Error sending email:", error);
+    console.error('Error sending email:', error);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       }),
       {
         status: 400,
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-      }
+      },
     );
   }
 });

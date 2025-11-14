@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MoreVertical, Reply, Trash2, UserPlus, FolderInput, Forward, Star, Archive, Paperclip } from 'lucide-react';
+import {
+  MoreVertical,
+  Reply,
+  Trash2,
+  UserPlus,
+  FolderInput,
+  Forward,
+  Star,
+  Archive,
+  Paperclip,
+} from 'lucide-react';
 
 interface MessageActionsMenuProps {
   messageId: string;
@@ -65,33 +75,34 @@ export default function MessageActionsMenu({
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#0f1119] rounded-lg transition-colors"
+        className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#0f1119] hover:text-[#e5e4e2]"
         title="Akcje"
       >
-        <MoreVertical className="w-5 h-5" />
+        <MoreVertical className="h-5 w-5" />
       </button>
 
       {isOpen && (
-        <div className="fixed right-4 mt-2 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl z-[100] py-2"
-             style={{
-               top: menuRef.current?.getBoundingClientRect().bottom ?? 0,
-               right: window.innerWidth - (menuRef.current?.getBoundingClientRect().right ?? 0),
-             }}
+        <div
+          className="fixed right-4 z-[100] mt-2 w-56 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] py-2 shadow-xl"
+          style={{
+            top: menuRef.current?.getBoundingClientRect().bottom ?? 0,
+            right: window.innerWidth - (menuRef.current?.getBoundingClientRect().right ?? 0),
+          }}
         >
           <button
             onClick={() => handleAction(onReply)}
-            className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+            className="flex w-full items-center gap-3 px-4 py-2 text-left text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
           >
-            <Reply className="w-4 h-4" />
+            <Reply className="h-4 w-4" />
             <span>Odpowiedz</span>
           </button>
 
           {onForward && (
             <button
               onClick={() => handleAction(onForward)}
-              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+              className="flex w-full items-center gap-3 px-4 py-2 text-left text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
             >
-              <Forward className="w-4 h-4" />
+              <Forward className="h-4 w-4" />
               <span>Przekaż dalej</span>
             </button>
           )}
@@ -99,9 +110,9 @@ export default function MessageActionsMenu({
           {hasAttachments && onViewAttachments && (
             <button
               onClick={() => handleAction(onViewAttachments)}
-              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+              className="flex w-full items-center gap-3 px-4 py-2 text-left text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
             >
-              <Paperclip className="w-4 h-4" />
+              <Paperclip className="h-4 w-4" />
               <span>Załączniki</span>
             </button>
           )}
@@ -111,27 +122,27 @@ export default function MessageActionsMenu({
           {onStar && (
             <button
               onClick={() => handleAction(onStar)}
-              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+              className="flex w-full items-center gap-3 px-4 py-2 text-left text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
             >
-              <Star className={`w-4 h-4 ${isStarred ? 'fill-yellow-500 text-yellow-500' : ''}`} />
+              <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500 text-yellow-500' : ''}`} />
               <span>{isStarred ? 'Usuń gwiazdkę' : 'Oznacz gwiazdką'}</span>
             </button>
           )}
 
           <button
             onClick={() => handleAction(onAssign)}
-            className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+            className="flex w-full items-center gap-3 px-4 py-2 text-left text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
           >
-            <UserPlus className="w-4 h-4" />
+            <UserPlus className="h-4 w-4" />
             <span>Przypisz pracownika</span>
           </button>
 
           {messageType === 'received' && onArchive && (
             <button
               onClick={() => handleAction(onArchive)}
-              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+              className="flex w-full items-center gap-3 px-4 py-2 text-left text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
             >
-              <Archive className="w-4 h-4" />
+              <Archive className="h-4 w-4" />
               <span>Archiwizuj</span>
             </button>
           )}
@@ -139,9 +150,9 @@ export default function MessageActionsMenu({
           {messageType === 'received' && (
             <button
               onClick={() => handleAction(onMove)}
-              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+              className="flex w-full items-center gap-3 px-4 py-2 text-left text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
             >
-              <FolderInput className="w-4 h-4" />
+              <FolderInput className="h-4 w-4" />
               <span>Przenieś do folderu</span>
             </button>
           )}
@@ -151,9 +162,9 @@ export default function MessageActionsMenu({
               <div className="my-2 border-t border-[#d3bb73]/10" />
               <button
                 onClick={() => handleAction(onDelete)}
-                className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-3"
+                className="flex w-full items-center gap-3 px-4 py-2 text-left text-red-400 transition-colors hover:bg-red-500/10"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="h-4 w-4" />
                 <span>Usuń wiadomość</span>
               </button>
             </>

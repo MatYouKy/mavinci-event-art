@@ -2,7 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Save, Package, DollarSign, Truck, Users, Wrench, Tag, Settings, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Save,
+  Package,
+  DollarSign,
+  Truck,
+  Users,
+  Wrench,
+  Tag,
+  Settings,
+  X,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -106,10 +117,12 @@ export default function ProductDetailPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('offer_products')
-        .select(`
+        .select(
+          `
           *,
           category:offer_product_categories(id, name)
-        `)
+        `,
+        )
         .eq('id', params.id)
         .single();
 
@@ -134,11 +147,13 @@ export default function ProductDetailPage() {
   const fetchEquipment = async () => {
     const { data } = await supabase
       .from('offer_product_equipment')
-      .select(`
+      .select(
+        `
         *,
         equipment_item:equipment_items(id, name, warehouse_category:warehouse_categories(name)),
         equipment_kit:equipment_kits(id, name, description)
-      `)
+      `,
+      )
       .eq('product_id', params.id);
     if (data) setEquipment(data);
   };
@@ -237,13 +252,13 @@ export default function ProductDetailPage() {
 
   // Fallback dla starych danych (przed migracją VAT)
   const priceNet = product?.price_net ?? product?.base_price ?? 0;
-  const priceGross = product?.price_gross ?? (priceNet * 1.23) ?? 0;
+  const priceGross = product?.price_gross ?? priceNet * 1.23 ?? 0;
   const costNet = product?.cost_net ?? product?.cost_price ?? 0;
-  const costGross = product?.cost_gross ?? (costNet * 1.23) ?? 0;
+  const costGross = product?.cost_gross ?? costNet * 1.23 ?? 0;
   const transportNet = product?.transport_cost_net ?? product?.transport_cost ?? 0;
-  const transportGross = product?.transport_cost_gross ?? (transportNet * 1.23) ?? 0;
+  const transportGross = product?.transport_cost_gross ?? transportNet * 1.23 ?? 0;
   const logisticsNet = product?.logistics_cost_net ?? product?.logistics_cost ?? 0;
-  const logisticsGross = product?.logistics_cost_gross ?? (logisticsNet * 1.23) ?? 0;
+  const logisticsGross = product?.logistics_cost_gross ?? logisticsNet * 1.23 ?? 0;
   const vatRate = product?.vat_rate ?? 23;
 
   const margin = priceNet > 0 ? ((priceNet - costNet) / priceNet) * 100 : 0;
@@ -254,7 +269,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -262,7 +277,7 @@ export default function ProductDetailPage() {
 
   if (!product) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Nie znaleziono produktu</div>
       </div>
     );
@@ -275,34 +290,32 @@ export default function ProductDetailPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/offers?tab=catalog')}
-            className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
           >
-            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+            <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
           </button>
           <div>
             <h1 className="text-2xl font-light text-[#e5e4e2]">{product.name}</h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              {product.category?.name}
-            </p>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">{product.category?.name}</p>
           </div>
         </div>
         {canEdit && (
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            <Save className="h-4 w-4" />
             {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
           </button>
         )}
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-[#d3bb73]" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
                 {priceNet.toLocaleString('pl-PL')} zł
@@ -315,9 +328,9 @@ export default function ProductDetailPage() {
           <p className="text-sm text-[#e5e4e2]/60">Cena netto</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-red-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-red-400" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
                 {costNet.toLocaleString('pl-PL')} zł
@@ -330,13 +343,11 @@ export default function ProductDetailPage() {
           <p className="text-sm text-[#e5e4e2]/60">Koszt netto</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-green-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-green-400" />
             <div>
-              <div className="text-2xl font-light text-[#e5e4e2]">
-                {margin.toFixed(1)}%
-              </div>
+              <div className="text-2xl font-light text-[#e5e4e2]">{margin.toFixed(1)}%</div>
               <div className="text-xs text-[#e5e4e2]/40">
                 {(priceNet - costNet).toLocaleString('pl-PL')} zł netto
               </div>
@@ -345,9 +356,9 @@ export default function ProductDetailPage() {
           <p className="text-sm text-[#e5e4e2]/60">Marża</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <Package className="w-5 h-5 text-blue-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <Package className="h-5 w-5 text-blue-400" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
                 {totalPriceNet.toLocaleString('pl-PL')} zł
@@ -361,102 +372,106 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Basic Info */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Settings className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Settings className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Podstawowe informacje</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa produktu</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa produktu</label>
               <input
                 type="text"
                 value={product.name}
                 onChange={(e) => setProduct({ ...product, name: e.target.value })}
                 disabled={!canEdit}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kategoria</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
               <select
                 value={product.category_id}
                 onChange={(e) => setProduct({ ...product, category_id: e.target.value })}
                 disabled={!canEdit}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               >
                 {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
               <textarea
                 value={product.description || ''}
                 onChange={(e) => setProduct({ ...product, description: e.target.value })}
                 disabled={!canEdit}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px] disabled:opacity-50"
+                className="min-h-[100px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Jednostka</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Jednostka</label>
                 <input
                   type="text"
                   value={product.unit}
                   onChange={(e) => setProduct({ ...product, unit: e.target.value })}
                   disabled={!canEdit}
                   placeholder="szt, komplet, dzień"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Min. ilość</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Min. ilość</label>
                 <input
                   type="number"
                   value={product.min_quantity}
-                  onChange={(e) => setProduct({ ...product, min_quantity: parseInt(e.target.value) })}
+                  onChange={(e) =>
+                    setProduct({ ...product, min_quantity: parseInt(e.target.value) })
+                  }
                   disabled={!canEdit}
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={product.is_active}
                   onChange={(e) => setProduct({ ...product, is_active: e.target.checked })}
                   disabled={!canEdit}
-                  className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
                 />
                 <span className="text-sm text-[#e5e4e2]">Aktywny</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={product.requires_vehicle}
                   onChange={(e) => setProduct({ ...product, requires_vehicle: e.target.checked })}
                   disabled={!canEdit}
-                  className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
                 />
                 <span className="text-sm text-[#e5e4e2]">Wymaga pojazdu</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={product.requires_driver}
                   onChange={(e) => setProduct({ ...product, requires_driver: e.target.checked })}
                   disabled={!canEdit}
-                  className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
                 />
                 <span className="text-sm text-[#e5e4e2]">Wymaga kierowcy</span>
               </label>
@@ -465,15 +480,15 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Pricing */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <DollarSign className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Ceny i koszty (netto/brutto)</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stawka VAT (%)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka VAT (%)</label>
               <input
                 type="number"
                 value={vatRate}
@@ -490,63 +505,63 @@ export default function ProductDetailPage() {
                 }}
                 disabled={!canEdit}
                 step="0.01"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena netto</label>
                 <input
                   type="number"
                   value={priceNet}
                   onChange={(e) => updateNetPrice(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena brutto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena brutto</label>
                 <input
                   type="number"
                   value={priceGross}
                   onChange={(e) => updateGrossPrice(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Koszt netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt netto</label>
                 <input
                   type="number"
                   value={costNet}
                   onChange={(e) => updateNetCost(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Koszt brutto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt brutto</label>
                 <input
                   type="number"
                   value={costGross}
                   onChange={(e) => updateGrossCost(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Transport netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Transport netto</label>
                 <input
                   type="number"
                   value={transportNet}
@@ -560,11 +575,11 @@ export default function ProductDetailPage() {
                   }}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Logistyka netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Logistyka netto</label>
                 <input
                   type="number"
                   value={logisticsNet}
@@ -578,66 +593,78 @@ export default function ProductDetailPage() {
                   }}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#d3bb73]/10 space-y-2">
+            <div className="space-y-2 border-t border-[#d3bb73]/10 pt-4">
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Marża:</span>
-                <span className={`font-medium ${margin > 50 ? 'text-green-400' : margin > 30 ? 'text-yellow-400' : 'text-red-400'}`}>
+                <span
+                  className={`font-medium ${margin > 50 ? 'text-green-400' : margin > 30 ? 'text-yellow-400' : 'text-red-400'}`}
+                >
                   {margin.toFixed(1)}% ({(priceNet - costNet).toLocaleString('pl-PL')} zł netto)
                 </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Całkowity koszt:</span>
-                <span className="text-[#e5e4e2]">{totalCostNet.toLocaleString('pl-PL')} zł netto / {totalCostGross.toLocaleString('pl-PL')} zł brutto</span>
+                <span className="text-[#e5e4e2]">
+                  {totalCostNet.toLocaleString('pl-PL')} zł netto /{' '}
+                  {totalCostGross.toLocaleString('pl-PL')} zł brutto
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Całkowita cena:</span>
-                <span className="text-[#d3bb73] font-medium">{totalPriceNet.toLocaleString('pl-PL')} zł netto / {totalPriceGross.toLocaleString('pl-PL')} zł brutto</span>
+                <span className="font-medium text-[#d3bb73]">
+                  {totalPriceNet.toLocaleString('pl-PL')} zł netto /{' '}
+                  {totalPriceGross.toLocaleString('pl-PL')} zł brutto
+                </span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Time */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Truck className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Truck className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Czas realizacji</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Czas montażu (godz.)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Czas montażu (godz.)</label>
               <input
                 type="number"
                 value={product.setup_time_hours}
-                onChange={(e) => setProduct({ ...product, setup_time_hours: parseFloat(e.target.value) })}
+                onChange={(e) =>
+                  setProduct({ ...product, setup_time_hours: parseFloat(e.target.value) })
+                }
                 disabled={!canEdit}
                 step="0.5"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Czas demontażu (godz.)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Czas demontażu (godz.)</label>
               <input
                 type="number"
                 value={product.teardown_time_hours}
-                onChange={(e) => setProduct({ ...product, teardown_time_hours: parseFloat(e.target.value) })}
+                onChange={(e) =>
+                  setProduct({ ...product, teardown_time_hours: parseFloat(e.target.value) })
+                }
                 disabled={!canEdit}
                 step="0.5"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
-            <div className="pt-4 border-t border-[#d3bb73]/10">
+            <div className="border-t border-[#d3bb73]/10 pt-4">
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Całkowity czas:</span>
-                <span className="text-[#e5e4e2] font-medium">
+                <span className="font-medium text-[#e5e4e2]">
                   {(product.setup_time_hours + product.teardown_time_hours).toFixed(1)} godz.
                 </span>
               </div>
@@ -646,28 +673,41 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Tags */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Tag className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Tag className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Tagi</h2>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Tagi (oddzielone przecinkami)</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+              Tagi (oddzielone przecinkami)
+            </label>
             <input
               type="text"
               value={product.tags?.join(', ') || ''}
-              onChange={(e) => setProduct({ ...product, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
+              onChange={(e) =>
+                setProduct({
+                  ...product,
+                  tags: e.target.value
+                    .split(',')
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                })
+              }
               disabled={!canEdit}
               placeholder="dj, wesele, premium"
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
             />
           </div>
 
           {product.tags && product.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-4">
+            <div className="mt-4 flex flex-wrap gap-2">
               {product.tags.map((tag, idx) => (
-                <span key={idx} className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full text-sm">
+                <span
+                  key={idx}
+                  className="rounded-full bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]"
+                >
                   {tag}
                 </span>
               ))}
@@ -677,16 +717,16 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Equipment */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-[#d3bb73]" />
+            <Wrench className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Wymagany sprzęt</h2>
           </div>
           {canEdit && (
             <button
               onClick={() => setShowAddEquipmentModal(true)}
-              className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
+              className="rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
             >
               + Dodaj sprzęt / pakiet
             </button>
@@ -694,45 +734,53 @@ export default function ProductDetailPage() {
         </div>
 
         {equipment.length === 0 ? (
-          <p className="text-[#e5e4e2]/60 text-sm text-center py-8">
-            Brak przypisanego sprzętu
-          </p>
+          <p className="py-8 text-center text-sm text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
         ) : (
           <div className="space-y-3">
             {equipment.map((item) => (
-              <div key={item.id} className="bg-[#0a0d1a] rounded-lg overflow-hidden">
+              <div key={item.id} className="overflow-hidden rounded-lg bg-[#0a0d1a]">
                 <div className="flex items-center justify-between p-3">
                   <div className="flex-1">
                     {item.equipment_kit ? (
                       <div>
                         <div className="flex items-center gap-2">
-                          <Package className="w-4 h-4 text-[#d3bb73]" />
-                          <div className="text-[#e5e4e2] font-medium">{item.equipment_kit.name}</div>
+                          <Package className="h-4 w-4 text-[#d3bb73]" />
+                          <div className="font-medium text-[#e5e4e2]">
+                            {item.equipment_kit.name}
+                          </div>
                         </div>
                         {item.equipment_kit.description && (
-                          <div className="text-xs text-[#e5e4e2]/60 mt-1 ml-6">{item.equipment_kit.description}</div>
+                          <div className="ml-6 mt-1 text-xs text-[#e5e4e2]/60">
+                            {item.equipment_kit.description}
+                          </div>
                         )}
-                        <div className="text-xs text-[#d3bb73]/80 mt-1 ml-6">Pakiet sprzętu</div>
+                        <div className="ml-6 mt-1 text-xs text-[#d3bb73]/80">Pakiet sprzętu</div>
                       </div>
                     ) : (
                       <div>
-                        <div className="text-[#e5e4e2] font-medium">{item.equipment_item?.name}</div>
-                        <div className="text-xs text-[#e5e4e2]/60">{item.equipment_item?.warehouse_category?.name}</div>
+                        <div className="font-medium text-[#e5e4e2]">
+                          {item.equipment_item?.name}
+                        </div>
+                        <div className="text-xs text-[#e5e4e2]/60">
+                          {item.equipment_item?.warehouse_category?.name}
+                        </div>
                       </div>
                     )}
                     {item.notes && (
-                      <div className="text-xs text-[#e5e4e2]/50 mt-1 italic">{item.notes}</div>
+                      <div className="mt-1 text-xs italic text-[#e5e4e2]/50">{item.notes}</div>
                     )}
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-sm text-[#e5e4e2]/80">Ilość: {item.quantity}</span>
                     {item.is_optional && (
-                      <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">Opcjonalny</span>
+                      <span className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400">
+                        Opcjonalny
+                      </span>
                     )}
                     {canEdit && (
                       <button
                         onClick={() => handleDeleteEquipment(item.id)}
-                        className="text-red-400 hover:text-red-300 text-xs"
+                        className="text-xs text-red-400 hover:text-red-300"
                       >
                         Usuń
                       </button>
@@ -746,16 +794,16 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Staff */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#d3bb73]" />
+            <Users className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Wymagani pracownicy</h2>
           </div>
           {canEdit && (
             <button
               onClick={() => setShowAddStaffModal(true)}
-              className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
+              className="rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
             >
               + Dodaj rolę
             </button>
@@ -763,17 +811,20 @@ export default function ProductDetailPage() {
         </div>
 
         {staff.length === 0 ? (
-          <p className="text-[#e5e4e2]/60 text-sm text-center py-8">
-            Brak wymagań kadrowych
-          </p>
+          <p className="py-8 text-center text-sm text-[#e5e4e2]/60">Brak wymagań kadrowych</p>
         ) : (
           <div className="space-y-2">
             {staff.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-[#0a0d1a] rounded-lg">
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-lg bg-[#0a0d1a] p-3"
+              >
                 <div>
-                  <div className="text-[#e5e4e2] font-medium">{item.role}</div>
+                  <div className="font-medium text-[#e5e4e2]">{item.role}</div>
                   {item.required_skills && item.required_skills.length > 0 && (
-                    <div className="text-xs text-[#e5e4e2]/60">Umiejętności: {item.required_skills.join(', ')}</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Umiejętności: {item.required_skills.join(', ')}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-4 text-sm">
@@ -785,7 +836,9 @@ export default function ProductDetailPage() {
                     <span className="text-[#e5e4e2]/80">~{item.estimated_hours}h</span>
                   )}
                   {item.is_optional && (
-                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">Opcjonalny</span>
+                    <span className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400">
+                      Opcjonalny
+                    </span>
                   )}
                 </div>
               </div>
@@ -821,7 +874,15 @@ export default function ProductDetailPage() {
   );
 }
 
-function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: string; onClose: () => void; onSuccess: () => void }) {
+function AddEquipmentModal({
+  productId,
+  onClose,
+  onSuccess,
+}: {
+  productId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const [mode, setMode] = useState<'item' | 'kit'>('kit');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedKitId, setSelectedKitId] = useState('');
@@ -851,10 +912,11 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
 
   useEffect(() => {
     if (searchQuery) {
-      const filtered = equipmentItems.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.model?.toLowerCase().includes(searchQuery.toLowerCase())
+      const filtered = equipmentItems.filter(
+        (item) =>
+          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.model?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
       setFilteredItems(filtered);
     } else {
@@ -873,13 +935,13 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
       const itemsWithAvailability = await Promise.all(
         data.map(async (item) => {
           const { data: availData } = await supabase.rpc('get_available_equipment_quantity', {
-            p_equipment_id: item.id
+            p_equipment_id: item.id,
           });
           return {
             ...item,
-            available_quantity: availData || 0
+            available_quantity: availData || 0,
           };
-        })
+        }),
       );
       setEquipmentItems(itemsWithAvailability);
       setFilteredItems(itemsWithAvailability);
@@ -898,10 +960,12 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
   const fetchKitDetails = async (kitId: string) => {
     const { data } = await supabase
       .from('equipment_kit_items')
-      .select(`
+      .select(
+        `
         quantity,
         equipment:equipment_items(name, brand, model)
-      `)
+      `,
+      )
       .eq('kit_id', kitId)
       .order('order_index');
     if (data) setKitDetails(data);
@@ -919,16 +983,14 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('offer_product_equipment')
-        .insert({
-          product_id: productId,
-          equipment_item_id: mode === 'item' ? selectedItemId : null,
-          equipment_kit_id: mode === 'kit' ? selectedKitId : null,
-          quantity,
-          is_optional: isOptional,
-          notes: notes || null,
-        });
+      const { error } = await supabase.from('offer_product_equipment').insert({
+        product_id: productId,
+        equipment_item_id: mode === 'item' ? selectedItemId : null,
+        equipment_kit_id: mode === 'kit' ? selectedKitId : null,
+        quantity,
+        is_optional: isOptional,
+        notes: notes || null,
+      });
 
       if (error) throw error;
 
@@ -943,41 +1005,41 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj sprzęt do produktu</h3>
           <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="space-y-6 p-6">
           {/* Mode selection */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-3">Wybierz typ</label>
+            <label className="mb-3 block text-sm text-[#e5e4e2]/60">Wybierz typ</label>
             <div className="flex gap-3">
               <button
                 onClick={() => setMode('kit')}
-                className={`flex-1 px-4 py-3 rounded-lg border transition-colors ${
+                className={`flex-1 rounded-lg border px-4 py-3 transition-colors ${
                   mode === 'kit'
-                    ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                    : 'bg-[#0a0d1a] border-[#d3bb73]/10 text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
+                    ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'border-[#d3bb73]/10 bg-[#0a0d1a] text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
                 }`}
               >
-                <Package className="w-5 h-5 mx-auto mb-1" />
+                <Package className="mx-auto mb-1 h-5 w-5" />
                 <div className="text-sm font-medium">Pakiet sprzętu</div>
                 <div className="text-xs opacity-60">Zestaw gotowych itemów</div>
               </button>
               <button
                 onClick={() => setMode('item')}
-                className={`flex-1 px-4 py-3 rounded-lg border transition-colors ${
+                className={`flex-1 rounded-lg border px-4 py-3 transition-colors ${
                   mode === 'item'
-                    ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                    : 'bg-[#0a0d1a] border-[#d3bb73]/10 text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
+                    ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'border-[#d3bb73]/10 bg-[#0a0d1a] text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
                 }`}
               >
-                <Wrench className="w-5 h-5 mx-auto mb-1" />
+                <Wrench className="mx-auto mb-1 h-5 w-5" />
                 <div className="text-sm font-medium">Pojedynczy sprzęt</div>
                 <div className="text-xs opacity-60">Wybierz jeden item</div>
               </button>
@@ -988,11 +1050,11 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
           {mode === 'kit' && (
             <>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz pakiet *</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz pakiet *</label>
                 <select
                   value={selectedKitId}
                   onChange={(e) => setSelectedKitId(e.target.value)}
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
                 >
                   <option value="">-- Wybierz pakiet --</option>
                   {kits.map((kit) => (
@@ -1005,15 +1067,19 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
 
               {/* Kit details preview */}
               {kitDetails && kitDetails.length > 0 && (
-                <div className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-4">
-                  <div className="text-sm text-[#e5e4e2]/60 mb-2">Zawartość pakietu:</div>
+                <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+                  <div className="mb-2 text-sm text-[#e5e4e2]/60">Zawartość pakietu:</div>
                   <div className="space-y-1">
                     {kitDetails.map((item: any, idx: number) => (
-                      <div key={idx} className="text-sm text-[#e5e4e2] flex items-center gap-2">
+                      <div key={idx} className="flex items-center gap-2 text-sm text-[#e5e4e2]">
                         <span className="text-[#d3bb73]">•</span>
-                        <span>{item.quantity}x {item.equipment?.name}</span>
+                        <span>
+                          {item.quantity}x {item.equipment?.name}
+                        </span>
                         {item.equipment?.model && (
-                          <span className="text-[#e5e4e2]/60 text-xs">({item.equipment.model})</span>
+                          <span className="text-xs text-[#e5e4e2]/60">
+                            ({item.equipment.model})
+                          </span>
                         )}
                       </div>
                     ))}
@@ -1027,21 +1093,23 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
           {mode === 'item' && (
             <>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyszukaj sprzęt</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wyszukaj sprzęt</label>
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Szukaj po nazwie, marce lub modelu..."
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz sprzęt * ({filteredItems.length} wyników)</label>
-                <div className="max-h-60 overflow-y-auto bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                  Wybierz sprzęt * ({filteredItems.length} wyników)
+                </label>
+                <div className="max-h-60 overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
                   {filteredItems.length === 0 ? (
-                    <div className="p-4 text-center text-[#e5e4e2]/60 text-sm">
+                    <div className="p-4 text-center text-sm text-[#e5e4e2]/60">
                       Brak wyników wyszukiwania
                     </div>
                   ) : (
@@ -1051,30 +1119,36 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
                         type="button"
                         onClick={() => setSelectedItemId(item.id)}
                         disabled={item.available_quantity === 0}
-                        className={`w-full text-left px-4 py-3 border-b border-[#d3bb73]/10 transition-colors ${
+                        className={`w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors ${
                           selectedItemId === item.id
                             ? 'bg-[#d3bb73]/20'
                             : item.available_quantity === 0
-                            ? 'opacity-50 cursor-not-allowed'
-                            : 'hover:bg-[#d3bb73]/10'
+                              ? 'cursor-not-allowed opacity-50'
+                              : 'hover:bg-[#d3bb73]/10'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="text-[#e5e4e2] font-medium">{item.name}</div>
-                          <div className={`text-xs px-2 py-0.5 rounded ${
-                            item.available_quantity === 0
-                              ? 'bg-red-500/20 text-red-400'
-                              : item.available_quantity < 5
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-green-500/20 text-green-400'
-                          }`}>
-                            {item.available_quantity === 0 ? 'Brak' : `${item.available_quantity} szt.`}
+                          <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                          <div
+                            className={`rounded px-2 py-0.5 text-xs ${
+                              item.available_quantity === 0
+                                ? 'bg-red-500/20 text-red-400'
+                                : item.available_quantity < 5
+                                  ? 'bg-yellow-500/20 text-yellow-400'
+                                  : 'bg-green-500/20 text-green-400'
+                            }`}
+                          >
+                            {item.available_quantity === 0
+                              ? 'Brak'
+                              : `${item.available_quantity} szt.`}
                           </div>
                         </div>
-                        <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                        <div className="mt-1 text-xs text-[#e5e4e2]/60">
                           {item.brand && <span>{item.brand} </span>}
                           {item.model && <span>• {item.model} </span>}
-                          {item.warehouse_categories?.name && <span>• {item.warehouse_categories.name}</span>}
+                          {item.warehouse_categories?.name && (
+                            <span>• {item.warehouse_categories.name}</span>
+                          )}
                         </div>
                       </button>
                     ))
@@ -1086,28 +1160,42 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
 
           {/* Quantity */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Ilość
-              {mode === 'item' && selectedItemId && (() => {
-                const selected = equipmentItems.find(item => item.id === selectedItemId);
-                return selected && (
-                  <span className="ml-2 text-xs">
-                    (dostępne: <span className={selected.available_quantity < 5 ? 'text-yellow-400' : 'text-green-400'}>
-                      {selected.available_quantity} szt.
-                    </span>)
-                  </span>
-                );
-              })()}
+              {mode === 'item' &&
+                selectedItemId &&
+                (() => {
+                  const selected = equipmentItems.find((item) => item.id === selectedItemId);
+                  return (
+                    selected && (
+                      <span className="ml-2 text-xs">
+                        (dostępne:{' '}
+                        <span
+                          className={
+                            selected.available_quantity < 5 ? 'text-yellow-400' : 'text-green-400'
+                          }
+                        >
+                          {selected.available_quantity} szt.
+                        </span>
+                        )
+                      </span>
+                    )
+                  );
+                })()}
             </label>
             <input
               type="number"
               min="1"
-              max={mode === 'item' && selectedItemId ? equipmentItems.find(item => item.id === selectedItemId)?.available_quantity : undefined}
+              max={
+                mode === 'item' && selectedItemId
+                  ? equipmentItems.find((item) => item.id === selectedItemId)?.available_quantity
+                  : undefined
+              }
               value={quantity}
               onChange={(e) => {
                 const val = parseInt(e.target.value) || 1;
                 if (mode === 'item' && selectedItemId) {
-                  const selected = equipmentItems.find(item => item.id === selectedItemId);
+                  const selected = equipmentItems.find((item) => item.id === selectedItemId);
                   if (selected) {
                     setQuantity(Math.min(val, selected.available_quantity));
                   } else {
@@ -1117,26 +1205,31 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
                   setQuantity(val);
                 }
               }}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
-            {mode === 'item' && selectedItemId && (() => {
-              const selected = equipmentItems.find(item => item.id === selectedItemId);
-              return selected && selected.available_quantity < 10 && (
-                <p className="text-xs text-yellow-400 mt-1">
-                  ⚠️ Niska dostępność - dostępne tylko {selected.available_quantity} szt.
-                </p>
-              );
-            })()}
+            {mode === 'item' &&
+              selectedItemId &&
+              (() => {
+                const selected = equipmentItems.find((item) => item.id === selectedItemId);
+                return (
+                  selected &&
+                  selected.available_quantity < 10 && (
+                    <p className="mt-1 text-xs text-yellow-400">
+                      ⚠️ Niska dostępność - dostępne tylko {selected.available_quantity} szt.
+                    </p>
+                  )
+                );
+              })()}
           </div>
 
           {/* Optional */}
           <div>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={isOptional}
                 onChange={(e) => setIsOptional(e.target.checked)}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
               />
               <span className="text-sm text-[#e5e4e2]">Opcjonalny (można usunąć z oferty)</span>
             </label>
@@ -1144,28 +1237,28 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
 
           {/* Notes */}
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki (opcjonalnie)</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Notatki (opcjonalnie)</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               placeholder="Dodatkowe informacje..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end sticky bottom-0 bg-[#1c1f33]">
+        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading || (mode === 'item' ? !selectedItemId : !selectedKitId)}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? 'Dodawanie...' : 'Dodaj'}
           </button>
@@ -1175,7 +1268,15 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
   );
 }
 
-function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; onClose: () => void; onSuccess: () => void }) {
+function AddStaffModal({
+  productId,
+  onClose,
+  onSuccess,
+}: {
+  productId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const [role, setRole] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [hourlyRate, setHourlyRate] = useState('');
@@ -1183,7 +1284,9 @@ function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; o
   const [isOptional, setIsOptional] = useState(false);
   const [notes, setNotes] = useState('');
   const [skills, setSkills] = useState<any[]>([]);
-  const [selectedSkills, setSelectedSkills] = useState<Array<{skill_id: string, minimum_proficiency: string}>>([]);
+  const [selectedSkills, setSelectedSkills] = useState<
+    Array<{ skill_id: string; minimum_proficiency: string }>
+  >([]);
   const [loading, setLoading] = useState(false);
   const { showSnackbar } = useSnackbar();
 
@@ -1201,18 +1304,20 @@ function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; o
   };
 
   const toggleSkill = (skillId: string) => {
-    const exists = selectedSkills.find(s => s.skill_id === skillId);
+    const exists = selectedSkills.find((s) => s.skill_id === skillId);
     if (exists) {
-      setSelectedSkills(selectedSkills.filter(s => s.skill_id !== skillId));
+      setSelectedSkills(selectedSkills.filter((s) => s.skill_id !== skillId));
     } else {
       setSelectedSkills([...selectedSkills, { skill_id: skillId, minimum_proficiency: 'basic' }]);
     }
   };
 
   const updateSkillLevel = (skillId: string, level: string) => {
-    setSelectedSkills(selectedSkills.map(s =>
-      s.skill_id === skillId ? { ...s, minimum_proficiency: level } : s
-    ));
+    setSelectedSkills(
+      selectedSkills.map((s) =>
+        s.skill_id === skillId ? { ...s, minimum_proficiency: level } : s,
+      ),
+    );
   };
 
   const handleSubmit = async () => {
@@ -1240,7 +1345,7 @@ function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; o
       if (staffError) throw staffError;
 
       if (selectedSkills.length > 0) {
-        const skillsToInsert = selectedSkills.map(s => ({
+        const skillsToInsert = selectedSkills.map((s) => ({
           staff_requirement_id: staffData.id,
           skill_id: s.skill_id,
           minimum_proficiency: s.minimum_proficiency,
@@ -1265,67 +1370,67 @@ function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; o
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj wymagania kadrowe</h3>
           <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="space-y-6 p-6">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa roli *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa roli *</label>
             <input
               type="text"
               value={role}
               onChange={(e) => setRole(e.target.value)}
               placeholder="np. Realizator dźwięku, Operator świateł..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość osób</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość osób</label>
               <input
                 type="number"
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stawka godzinowa (zł)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka godzinowa (zł)</label>
               <input
                 type="number"
                 step="0.01"
                 value={hourlyRate}
                 onChange={(e) => setHourlyRate(e.target.value)}
                 placeholder="opcjonalne"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Szacowane godziny</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Szacowane godziny</label>
               <input
                 type="number"
                 step="0.5"
                 value={estimatedHours}
                 onChange={(e) => setEstimatedHours(e.target.value)}
                 placeholder="opcjonalne"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-3">Wymagane umiejętności</label>
-            <div className="max-h-60 overflow-y-auto bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg divide-y divide-[#d3bb73]/10">
+            <label className="mb-3 block text-sm text-[#e5e4e2]/60">Wymagane umiejętności</label>
+            <div className="max-h-60 divide-y divide-[#d3bb73]/10 overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
               {skills.map((skill) => {
-                const selected = selectedSkills.find(s => s.skill_id === skill.id);
+                const selected = selectedSkills.find((s) => s.skill_id === skill.id);
                 return (
                   <div key={skill.id} className="p-3">
                     <div className="flex items-center gap-3">
@@ -1333,17 +1438,19 @@ function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; o
                         type="checkbox"
                         checked={!!selected}
                         onChange={() => toggleSkill(skill.id)}
-                        className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                        className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
                       />
                       <div className="flex-1">
-                        <div className="text-[#e5e4e2] text-sm">{skill.name}</div>
-                        <div className="text-xs text-[#e5e4e2]/60">{skill.skill_categories?.name}</div>
+                        <div className="text-sm text-[#e5e4e2]">{skill.name}</div>
+                        <div className="text-xs text-[#e5e4e2]/60">
+                          {skill.skill_categories?.name}
+                        </div>
                       </div>
                       {selected && (
                         <select
                           value={selected.minimum_proficiency}
                           onChange={(e) => updateSkillLevel(skill.id, e.target.value)}
-                          className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-xs text-[#e5e4e2]"
+                          className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1 text-xs text-[#e5e4e2]"
                         >
                           <option value="basic">Podstawowy</option>
                           <option value="intermediate">Średniozaawansowany</option>
@@ -1357,47 +1464,47 @@ function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; o
               })}
             </div>
             {selectedSkills.length > 0 && (
-              <p className="text-xs text-[#d3bb73] mt-2">
+              <p className="mt-2 text-xs text-[#d3bb73]">
                 Wybrano {selectedSkills.length} umiejętności
               </p>
             )}
           </div>
 
           <div>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={isOptional}
                 onChange={(e) => setIsOptional(e.target.checked)}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
               />
               <span className="text-sm text-[#e5e4e2]">Opcjonalny (można usunąć z oferty)</span>
             </label>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki (opcjonalnie)</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Notatki (opcjonalnie)</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               placeholder="Dodatkowe informacje..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end sticky bottom-0 bg-[#1c1f33]">
+        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading || !role}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? 'Dodawanie...' : 'Dodaj'}
           </button>

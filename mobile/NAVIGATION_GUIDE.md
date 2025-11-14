@@ -5,11 +5,13 @@
 Aplikacja mobilna Mavinci CRM używa kombinacji trzech typów nawigacji:
 
 ### 1. **Drawer Navigation** (Menu Hamburgerowe)
+
 - Główne menu boczne otwierane przyciskiem hamburgerowym (☰)
 - Zawiera informacje o użytkowniku oraz główne sekcje aplikacji
 - Lokalizacja: `/mobile/src/navigation/DrawerNavigator.tsx`
 
 ### 2. **Bottom Tab Navigation** (Dolny Pasek Zakładek)
+
 - Szybki dostęp do 5 głównych ekranów:
   - Dashboard (🏠)
   - Kalendarz (📅)
@@ -19,12 +21,14 @@ Aplikacja mobilna Mavinci CRM używa kombinacji trzech typów nawigacji:
 - Lokalizacja: `/mobile/src/navigation/MainTabNavigator.tsx`
 
 ### 3. **Stack Navigation** (Nawigacja Stosowa)
+
 - Zarządza przełączaniem między ekranem logowania a główną aplikacją
 - Lokalizacja: `/mobile/src/navigation/RootNavigator.tsx`
 
 ## Komponenty Nawigacyjne
 
 ### DrawerNavigator
+
 ```tsx
 DrawerNavigator
 ├── Custom Drawer Content
@@ -35,6 +39,7 @@ DrawerNavigator
 ```
 
 ### Funkcje Menu Hamburgerowego
+
 - **User Profile Header**: Wyświetla avatar, imię, email i rolę pracownika
 - **Navigation Items**: Pozwala przejść do dowolnej sekcji aplikacji
 - **Logout Button**: Bezpieczne wylogowanie z potwierdzeniem
@@ -52,6 +57,7 @@ npm install react-native-reanimated
 ## Konfiguracja
 
 ### babel.config.js
+
 ```javascript
 module.exports = function (api) {
   api.cache(true);
@@ -65,6 +71,7 @@ module.exports = function (api) {
 ```
 
 ### App.tsx
+
 ```typescript
 import 'react-native-gesture-handler'; // Musi być pierwsza linia!
 ```
@@ -83,7 +90,9 @@ npx expo start --clear
 ## Customizacja Nawigacji
 
 ### Zmiana Kolorów
+
 Edytuj plik `/mobile/src/theme/colors.ts`:
+
 ```typescript
 export const colors = {
   primary: {
@@ -95,7 +104,9 @@ export const colors = {
 ```
 
 ### Dodawanie Nowych Ekranów do Drawer
+
 W pliku `DrawerNavigator.tsx`, dodaj nowy element do `menuItems`:
+
 ```typescript
 const menuItems = [
   // ... istniejące elementy
@@ -108,7 +119,9 @@ const menuItems = [
 ```
 
 ### Dodawanie Nowych Tabów
+
 W pliku `MainTabNavigator.tsx`, dodaj nowy `Tab.Screen`:
+
 ```typescript
 <Tab.Screen
   name="NewTab"
@@ -129,6 +142,7 @@ Aplikacja używa **Feather Icons** z pakietu `@expo/vector-icons`.
 Dostępne ikony: https://feathericons.com/
 
 Przykład użycia:
+
 ```typescript
 import { Feather } from '@expo/vector-icons';
 
@@ -138,13 +152,17 @@ import { Feather } from '@expo/vector-icons';
 ## Troubleshooting
 
 ### Problem: Drawer się nie otwiera
+
 **Rozwiązanie**: Upewnij się, że `react-native-gesture-handler` jest zaimportowany jako pierwsza linia w `App.tsx`
 
 ### Problem: Animacje nie działają
+
 **Rozwiązanie**: Dodaj `react-native-reanimated/plugin` jako ostatni plugin w `babel.config.js` i uruchom `npx expo start --clear`
 
 ### Problem: TypeScript błędy nawigacji
+
 **Rozwiązanie**: Upewnij się, że wszystkie typy nawigacji są poprawnie zdefiniowane:
+
 ```typescript
 export type DrawerParamList = {
   MainTabs: undefined;

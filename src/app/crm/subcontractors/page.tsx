@@ -11,8 +11,8 @@ export default function SubcontractorsRedirect() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
-      <div className="text-[#d3bb73] text-lg">Przekierowanie...</div>
+    <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
+      <div className="text-lg text-[#d3bb73]">Przekierowanie...</div>
     </div>
   );
 }

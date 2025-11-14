@@ -93,19 +93,13 @@ export default function AdminResetPasswordModal({
         throw new Error(data.error || 'Błąd podczas resetowania hasła');
       }
 
-      showSnackbar(
-        `Hasło dla ${employeeName} zostało zmienione pomyślnie`,
-        'success'
-      );
+      showSnackbar(`Hasło dla ${employeeName} zostało zmienione pomyślnie`, 'success');
       onClose();
       setNewPassword('');
       setConfirmPassword('');
     } catch (error: any) {
       console.error('Error resetting password:', error);
-      showSnackbar(
-        error.message || 'Błąd podczas resetowania hasła',
-        'error'
-      );
+      showSnackbar(error.message || 'Błąd podczas resetowania hasła', 'error');
     } finally {
       setLoading(false);
     }
@@ -120,22 +114,20 @@ export default function AdminResetPasswordModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={handleClose}
     >
       <div
-        className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20 w-full max-w-md"
+        className="w-full max-w-md rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-6 border-b border-[#d3bb73]/10">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#d3bb73]/10 flex items-center justify-center">
-              <Lock className="w-5 h-5 text-[#d3bb73]" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/10">
+              <Lock className="h-5 w-5 text-[#d3bb73]" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-[#e5e4e2]">
-                Resetuj hasło pracownika
-              </h2>
+              <h2 className="text-lg font-semibold text-[#e5e4e2]">Resetuj hasło pracownika</h2>
               <p className="text-sm text-[#e5e4e2]/60">
                 {employeeName} ({employeeEmail})
               </p>
@@ -143,28 +135,26 @@ export default function AdminResetPasswordModal({
           </div>
           <button
             onClick={handleClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 flex gap-3">
-            <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          <div className="flex gap-3 rounded-lg border border-orange-500/20 bg-orange-500/10 p-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-400" />
             <div className="text-sm text-orange-200">
-              <p className="font-medium mb-1">Uwaga!</p>
+              <p className="mb-1 font-medium">Uwaga!</p>
               <p>
-                Ta akcja natychmiast zmieni hasło dla pracownika. Poinformuj go
-                o nowym haśle przez bezpieczny kanał komunikacji.
+                Ta akcja natychmiast zmieni hasło dla pracownika. Poinformuj go o nowym haśle przez
+                bezpieczny kanał komunikacji.
               </p>
             </div>
           </div>
 
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
-            <p className="text-sm text-blue-200 mb-2">
-              Hasło musi spełniać następujące wymagania:
-            </p>
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
+            <p className="mb-2 text-sm text-blue-200">Hasło musi spełniać następujące wymagania:</p>
             <ul className="space-y-1 text-xs text-blue-200/80">
               <li>• Minimum 8 znaków</li>
               <li>• Co najmniej jedna wielka litera</li>
@@ -174,10 +164,7 @@ export default function AdminResetPasswordModal({
           </div>
 
           <div>
-            <label
-              htmlFor="newPassword"
-              className="block text-sm font-medium text-[#e5e4e2] mb-2"
-            >
+            <label htmlFor="newPassword" className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Nowe hasło
             </label>
             <div className="relative">
@@ -186,10 +173,8 @@ export default function AdminResetPasswordModal({
                 type={showNewPassword ? 'text' : 'password'}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className={`w-full pl-4 pr-12 py-3 bg-[#0f1119] border rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73] transition-colors ${
-                  errors.newPassword
-                    ? 'border-red-500/50'
-                    : 'border-[#d3bb73]/20'
+                className={`w-full rounded-lg border bg-[#0f1119] py-3 pl-4 pr-12 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none ${
+                  errors.newPassword ? 'border-red-500/50' : 'border-[#d3bb73]/20'
                 }`}
                 placeholder="Wprowadź nowe hasło"
                 required
@@ -197,24 +182,20 @@ export default function AdminResetPasswordModal({
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 hover:text-[#e5e4e2] transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 transition-colors hover:text-[#e5e4e2]"
               >
-                {showNewPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
+                {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
             {errors.newPassword && (
-              <p className="text-red-400 text-sm mt-1">{errors.newPassword}</p>
+              <p className="mt-1 text-sm text-red-400">{errors.newPassword}</p>
             )}
           </div>
 
           <div>
             <label
               htmlFor="confirmPassword"
-              className="block text-sm font-medium text-[#e5e4e2] mb-2"
+              className="mb-2 block text-sm font-medium text-[#e5e4e2]"
             >
               Potwierdź nowe hasło
             </label>
@@ -224,10 +205,8 @@ export default function AdminResetPasswordModal({
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className={`w-full pl-4 pr-12 py-3 bg-[#0f1119] border rounded-lg text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73] transition-colors ${
-                  errors.confirmPassword
-                    ? 'border-red-500/50'
-                    : 'border-[#d3bb73]/20'
+                className={`w-full rounded-lg border bg-[#0f1119] py-3 pl-4 pr-12 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none ${
+                  errors.confirmPassword ? 'border-red-500/50' : 'border-[#d3bb73]/20'
                 }`}
                 placeholder="Potwierdź nowe hasło"
                 required
@@ -235,19 +214,13 @@ export default function AdminResetPasswordModal({
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 hover:text-[#e5e4e2] transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 transition-colors hover:text-[#e5e4e2]"
               >
-                {showConfirmPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
+                {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
             {errors.confirmPassword && (
-              <p className="text-red-400 text-sm mt-1">
-                {errors.confirmPassword}
-              </p>
+              <p className="mt-1 text-sm text-red-400">{errors.confirmPassword}</p>
             )}
           </div>
 
@@ -255,14 +228,14 @@ export default function AdminResetPasswordModal({
             <button
               type="button"
               onClick={handleClose}
-              className="flex-1 px-4 py-3 bg-[#0f1119] text-[#e5e4e2] rounded-lg hover:bg-[#0f1119]/80 transition-colors font-medium"
+              className="flex-1 rounded-lg bg-[#0f1119] px-4 py-3 font-medium text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
             >
               Anuluj
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 px-4 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? 'Zmieniam hasło...' : 'Zmień hasło'}
             </button>

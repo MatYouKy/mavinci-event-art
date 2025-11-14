@@ -47,7 +47,7 @@ export default function MainTabNavigator() {
           },
           () => {
             fetchUnreadNotifications();
-          }
+          },
         )
         .subscribe();
 
@@ -79,21 +79,20 @@ export default function MainTabNavigator() {
         screenOptions={({ route }) => ({
           headerShown: true,
           headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => setDrawerVisible(true)}
-              style={{ marginLeft: 16 }}
-            >
+            <TouchableOpacity onPress={() => setDrawerVisible(true)} style={{ marginLeft: 16 }}>
               <Feather name="menu" color={colors.text.primary} size={24} />
             </TouchableOpacity>
           ),
           headerTitle: () => (
             <View style={{ alignItems: 'center' }}>
-              <Text style={{
-                fontSize: 18,
-                fontWeight: '700',
-                color: colors.primary.gold,
-                letterSpacing: 1,
-              }}>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: '700',
+                  color: colors.primary.gold,
+                  letterSpacing: 1,
+                }}
+              >
                 MAVINCI CRM
               </Text>
             </View>
@@ -169,7 +168,9 @@ export default function MainTabNavigator() {
           component={TasksStackNavigator}
           options={{
             title: 'Zadania',
-            tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="check-square" color={color} size={size} />
+            ),
           }}
         />
         <Tab.Screen
