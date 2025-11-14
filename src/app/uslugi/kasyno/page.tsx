@@ -114,6 +114,8 @@ export default function KasynoPage() {
   const [editTables, setEditTables] = useState<CasinoTable[]>([]);
   const [editGallery, setEditGallery] = useState<GalleryImage[]>([]);
   const [editBlocks, setEditBlocks] = useState<ContentBlock[]>([]);
+  const [tablePendingUploads, setTablePendingUploads] = useState<Map<string, IUploadImage>>(new Map());
+  const [galleryPendingUploads, setGalleryPendingUploads] = useState<Map<string, IUploadImage>>(new Map());
 
   useEffect(() => {
     fetchData();
@@ -190,12 +192,28 @@ export default function KasynoPage() {
     if (blocksData) setContentBlocks(blocksData);
   };
 
+  const handleTableImageUpload = (tableId: string, imageData: IUploadImage) => {
+    setTablePendingUploads(prev => {
+      const newMap = new Map(prev);
+      newMap.set(tableId, imageData);
+      return newMap;
+    });
+  };
+
+  const handleGalleryImageUpload = (imageId: string, imageData: IUploadImage) => {
+    setGalleryPendingUploads(prev => {
+      const newMap = new Map(prev);
+      newMap.set(imageId, imageData);
+      return newMap;
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
 
     try {
       let settingsId = pageSettings.id;
-      
+
       if (!settingsId) {
         const { data } = await supabase
           .from('casino_page_settings')
@@ -219,8 +237,32 @@ export default function KasynoPage() {
         if (settingsError) throw settingsError;
       }
 
-      await supabase.from('casino_tables').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      const processedTables: CasinoTable[] = [];
       for (const table of editTables) {
+        const tableData = {...table};
+        const pendingUpload = tablePendingUploads.get(table.id);
+
+        if (pendingUpload?.file) {
+          try {
+            const imageUrl = await uploadImage(pendingUpload.file, 'casino-tables');
+            tableData.image = imageUrl;
+            tableData.image_metadata = {
+              desktop: pendingUpload.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+              mobile: pendingUpload.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+            };
+            if (tableData.image_metadata.desktop) tableData.image_metadata.desktop.src = imageUrl;
+            if (tableData.image_metadata.mobile) tableData.image_metadata.mobile.src = imageUrl;
+          } catch (error) {
+            console.error('Error uploading table image:', error);
+            showSnackbar(`Błąd uploadu zdjęcia dla ${table.name}`, 'error');
+          }
+        }
+
+        processedTables.push(tableData);
+      }
+
+      await supabase.from('casino_tables').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      for (const table of processedTables) {
         const tableData = {...table};
         delete tableData.is_visible;
         const { error } = await supabase.from('casino_tables').insert({
@@ -230,9 +272,33 @@ export default function KasynoPage() {
         if (error) console.error('Error saving table:', error);
       }
 
-      await supabase.from('casino_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      const processedGallery: GalleryImage[] = [];
       for (let i = 0; i < editGallery.length; i++) {
         const image = {...editGallery[i]};
+        const pendingUpload = galleryPendingUploads.get(image.id);
+
+        if (pendingUpload?.file) {
+          try {
+            const imageUrl = await uploadImage(pendingUpload.file, 'casino-gallery');
+            image.image = imageUrl;
+            image.image_metadata = {
+              desktop: pendingUpload.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+              mobile: pendingUpload.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+            };
+            if (image.image_metadata.desktop) image.image_metadata.desktop.src = imageUrl;
+            if (image.image_metadata.mobile) image.image_metadata.mobile.src = imageUrl;
+          } catch (error) {
+            console.error('Error uploading gallery image:', error);
+            showSnackbar(`Błąd uploadu zdjęcia galerii`, 'error');
+          }
+        }
+
+        processedGallery.push(image);
+      }
+
+      await supabase.from('casino_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      for (let i = 0; i < processedGallery.length; i++) {
+        const image = {...processedGallery[i]};
         delete image.is_visible;
         delete image.order_index;
         const { error } = await supabase.from('casino_gallery').insert({
@@ -255,6 +321,8 @@ export default function KasynoPage() {
       }
 
       showSnackbar('Wszystkie zmiany zapisane!', 'success');
+      setTablePendingUploads(new Map());
+      setGalleryPendingUploads(new Map());
       await fetchData();
       setIsEditing(false);
     } catch (error: any) {
@@ -275,6 +343,8 @@ export default function KasynoPage() {
     setEditBlocks([...contentBlocks]);
     setEditImageData(null);
     setEditPreviewImage('');
+    setTablePendingUploads(new Map());
+    setGalleryPendingUploads(new Map());
   };
 
   const handleImageSelect = async (imageData: IUploadImage) => {
@@ -505,7 +575,11 @@ export default function KasynoPage() {
                 </div>
 
                 {isEditing ? (
-                  <CasinoTablesEditor tables={editTables} onChange={setEditTables} />
+                  <CasinoTablesEditor
+                    tables={editTables}
+                    onChange={setEditTables}
+                    onImageUpload={handleTableImageUpload}
+                  />
                 ) : (
                   <div className="space-y-16">
                     {tables.map((table, index) => (
@@ -541,7 +615,11 @@ export default function KasynoPage() {
                 </div>
 
                 {isEditing ? (
-                  <CasinoGalleryEditor gallery={editGallery} onChange={setEditGallery} />
+                  <CasinoGalleryEditor
+                    gallery={editGallery}
+                    onChange={setEditGallery}
+                    onImageUpload={handleGalleryImageUpload}
+                  />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {gallery.map((image, index) => (

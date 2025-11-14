@@ -21,9 +21,10 @@ interface GalleryImage {
 interface CasinoGalleryEditorProps {
   gallery: GalleryImage[];
   onChange: (gallery: GalleryImage[]) => void;
+  onImageUpload?: (imageId: string, imageData: IUploadImage) => void;
 }
 
-export default function CasinoGalleryEditor({ gallery, onChange }: CasinoGalleryEditorProps) {
+export default function CasinoGalleryEditor({ gallery, onChange, onImageUpload }: CasinoGalleryEditorProps) {
   const [editingImages, setEditingImages] = useState<{ [key: string]: IUploadImage }>({});
 
   const addImage = () => {
@@ -60,6 +61,10 @@ export default function CasinoGalleryEditor({ gallery, onChange }: CasinoGallery
 
   const handleImageSelect = (imageId: string, imageData: IUploadImage) => {
     setEditingImages({ ...editingImages, [imageId]: imageData });
+
+    if (onImageUpload) {
+      onImageUpload(imageId, imageData);
+    }
 
     const updatedGallery = gallery.map(img => {
       if (img.id === imageId) {

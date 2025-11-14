@@ -23,9 +23,10 @@ interface CasinoTable {
 interface CasinoTablesEditorProps {
   tables: CasinoTable[];
   onChange: (tables: CasinoTable[]) => void;
+  onImageUpload?: (tableId: string, imageData: IUploadImage) => void;
 }
 
-export default function CasinoTablesEditor({ tables, onChange }: CasinoTablesEditorProps) {
+export default function CasinoTablesEditor({ tables, onChange, onImageUpload }: CasinoTablesEditorProps) {
   const [editingImages, setEditingImages] = useState<{ [key: string]: IUploadImage }>({});
 
   const addTable = () => {
@@ -68,6 +69,10 @@ export default function CasinoTablesEditor({ tables, onChange }: CasinoTablesEdi
 
   const handleImageSelect = (tableId: string, imageData: IUploadImage) => {
     setEditingImages({ ...editingImages, [tableId]: imageData });
+
+    if (onImageUpload) {
+      onImageUpload(tableId, imageData);
+    }
 
     const updatedTables = tables.map(t => {
       if (t.id === tableId) {
