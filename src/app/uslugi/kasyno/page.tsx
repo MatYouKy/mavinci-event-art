@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Dices, Spade, CheckCircle2, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Dices, Spade, CheckCircle2, ArrowLeft, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -59,6 +59,7 @@ export default function KasynoPage() {
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
   const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([]);
   const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -111,6 +112,15 @@ export default function KasynoPage() {
     if (blocksData) setContentBlocks(blocksData);
   };
 
+  const openLightbox = (index: number) => {
+    setCurrentGalleryIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => {
+    setLightboxOpen(false);
+  };
+
   const nextImage = () => {
     setCurrentGalleryIndex((prev) => (prev + 1) % gallery.length);
   };
@@ -118,6 +128,18 @@ export default function KasynoPage() {
   const prevImage = () => {
     setCurrentGalleryIndex((prev) => (prev - 1 + gallery.length) % gallery.length);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!lightboxOpen) return;
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') prevImage();
+      if (e.key === 'ArrowRight') nextImage();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxOpen, gallery.length]);
 
   const getGridClass = (layout: string) => {
     switch (layout) {
@@ -259,51 +281,32 @@ export default function KasynoPage() {
                     <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
                   </div>
 
-                  <div className="relative max-w-5xl mx-auto">
-                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-[#d3bb73]/20">
-                      <img
-                        src={gallery[currentGalleryIndex].image_url}
-                        alt={gallery[currentGalleryIndex].alt_text}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    {gallery.length > 1 && (
-                      <>
-                        <button
-                          onClick={prevImage}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 bg-[#1c1f33]/80 hover:bg-[#1c1f33] border border-[#d3bb73]/30 text-[#d3bb73] p-3 rounded-full transition-colors"
-                        >
-                          <ChevronLeft className="w-6 h-6" />
-                        </button>
-                        <button
-                          onClick={nextImage}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 bg-[#1c1f33]/80 hover:bg-[#1c1f33] border border-[#d3bb73]/30 text-[#d3bb73] p-3 rounded-full transition-colors"
-                        >
-                          <ChevronRight className="w-6 h-6" />
-                        </button>
-
-                        <div className="flex justify-center gap-2 mt-6">
-                          {gallery.map((_, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => setCurrentGalleryIndex(idx)}
-                              className={`w-2 h-2 rounded-full transition-all ${
-                                idx === currentGalleryIndex
-                                  ? 'bg-[#d3bb73] w-8'
-                                  : 'bg-[#d3bb73]/30'
-                              }`}
-                            />
-                          ))}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {gallery.map((image, index) => (
+                      <div
+                        key={image.id}
+                        onClick={() => openLightbox(index)}
+                        className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300 cursor-pointer"
+                      >
+                        <img
+                          src={image.image_url}
+                          alt={image.alt_text || `Zdjęcie z kasyna ${index + 1}`}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                          <div className="absolute bottom-4 left-4 right-4">
+                            <p className="text-[#e5e4e2] text-sm font-light">
+                              {image.alt_text || `Zdjęcie ${index + 1}`}
+                            </p>
+                            {image.caption && (
+                              <p className="text-[#e5e4e2]/60 text-xs font-light mt-1">
+                                {image.caption}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </>
-                    )}
-
-                    {gallery[currentGalleryIndex].caption && (
-                      <p className="text-center text-[#e5e4e2]/60 font-light mt-4">
-                        {gallery[currentGalleryIndex].caption}
-                      </p>
-                    )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </section>
@@ -316,22 +319,37 @@ export default function KasynoPage() {
                     <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">Zasady Gier</h2>
                     <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
                     <p className="text-[#e5e4e2]/60 font-light mt-4 max-w-2xl mx-auto">
-                      Poznaj podstawowe zasady naszych gier, aby w pełni cieszyć się rozrywką podczas eventu
+                      Poznaj szczegółowe zasady naszych gier kasynowych
                     </p>
                   </div>
 
                   <div className="grid lg:grid-cols-3 gap-8">
-                    {gameRules.map((rule) => (
-                      <div key={rule.id} className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 hover:border-[#d3bb73]/30 transition-all">
-                        <h3 className="text-2xl font-light text-[#e5e4e2] mb-3">{rule.game_name}</h3>
-                        <p className="text-[#e5e4e2]/60 text-sm font-light mb-6">{rule.short_description}</p>
-                        <div className="prose prose-invert prose-sm max-w-none">
-                          <div className="text-[#e5e4e2]/80 font-light leading-relaxed whitespace-pre-line">
-                            {rule.rules_content}
+                    {gameRules.map((rule) => {
+                      const ruleLinks: { [key: string]: string } = {
+                        'poker-texas-holdem': '/uslugi/kasyno/zasady/poker',
+                        'ruletka': '/uslugi/kasyno/zasady/ruletka',
+                        'blackjack': '/uslugi/kasyno/zasady/blackjack',
+                      };
+
+                      return (
+                        <Link
+                          key={rule.id}
+                          href={ruleLinks[rule.slug] || '/uslugi/kasyno'}
+                          className="group bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 hover:border-[#d3bb73]/30 transition-all"
+                        >
+                          <h3 className="text-2xl font-light text-[#e5e4e2] mb-3 group-hover:text-[#d3bb73] transition-colors">
+                            {rule.game_name}
+                          </h3>
+                          <p className="text-[#e5e4e2]/60 text-sm font-light mb-6">
+                            {rule.short_description}
+                          </p>
+                          <div className="text-[#d3bb73] text-sm font-medium flex items-center gap-2 group-hover:gap-3 transition-all">
+                            Czytaj więcej
+                            <ArrowLeft className="w-4 h-4 rotate-180" />
                           </div>
-                        </div>
-                      </div>
-                    ))}
+                        </Link>
+                      );
+                    })}
                   </div>
                 </div>
               </section>
@@ -374,6 +392,59 @@ export default function KasynoPage() {
             </section>
           </main>
           <Footer />
+
+          {lightboxOpen && gallery.length > 0 && (
+            <div className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center">
+              <button
+                onClick={closeLightbox}
+                className="absolute top-4 right-4 text-white hover:text-[#d3bb73] transition-colors z-10"
+                aria-label="Zamknij"
+              >
+                <XCircle className="w-10 h-10" />
+              </button>
+
+              {gallery.length > 1 && (
+                <>
+                  <button
+                    onClick={prevImage}
+                    className="absolute left-4 text-white hover:text-[#d3bb73] transition-colors z-10"
+                    aria-label="Poprzednie zdjęcie"
+                  >
+                    <ChevronLeft className="w-12 h-12" />
+                  </button>
+                  <button
+                    onClick={nextImage}
+                    className="absolute right-4 text-white hover:text-[#d3bb73] transition-colors z-10"
+                    aria-label="Następne zdjęcie"
+                  >
+                    <ChevronRight className="w-12 h-12" />
+                  </button>
+                </>
+              )}
+
+              <div className="relative max-w-7xl max-h-[90vh] mx-4">
+                <img
+                  src={gallery[currentGalleryIndex].image_url}
+                  alt={gallery[currentGalleryIndex].alt_text || `Zdjęcie ${currentGalleryIndex + 1}`}
+                  className="max-w-full max-h-[90vh] object-contain"
+                />
+
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+                  <p className="text-white text-center">
+                    {gallery[currentGalleryIndex].alt_text || `Zdjęcie ${currentGalleryIndex + 1}`}
+                  </p>
+                  {gallery[currentGalleryIndex].caption && (
+                    <p className="text-white/80 text-sm text-center mt-1">
+                      {gallery[currentGalleryIndex].caption}
+                    </p>
+                  )}
+                  <p className="text-white/60 text-sm text-center mt-2">
+                    {currentGalleryIndex + 1} / {gallery.length}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </>
