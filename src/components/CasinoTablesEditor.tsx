@@ -10,9 +10,14 @@ interface CasinoTable {
   name: string;
   slug: string;
   description: string;
-  image_url: string;
-  image_alt: string;
+  image: string;
+  alt: string;
+  image_metadata?: {
+    desktop?: { src: string; position: { posX: number; posY: number; scale: number } };
+    mobile?: { src: string; position: { posX: number; posY: number; scale: number } };
+  };
   order_index: number;
+  is_visible?: boolean;
 }
 
 interface CasinoTablesEditorProps {
@@ -24,13 +29,18 @@ export default function CasinoTablesEditor({ tables, onChange }: CasinoTablesEdi
   const [editingImages, setEditingImages] = useState<{ [key: string]: IUploadImage }>({});
 
   const addTable = () => {
+    const defaultImage = 'https://images.pexels.com/photos/262508/pexels-photo-262508.jpeg?auto=compress&cs=tinysrgb&w=1920';
     const newTable: CasinoTable = {
       id: crypto.randomUUID(),
       name: 'Nowy stół',
       slug: `stol-${Date.now()}`,
       description: 'Opis nowego stołu',
-      image_url: 'https://images.pexels.com/photos/262508/pexels-photo-262508.jpeg?auto=compress&cs=tinysrgb&w=1920',
-      image_alt: 'Nowy stół',
+      image: defaultImage,
+      alt: 'Nowy stół',
+      image_metadata: {
+        desktop: { src: defaultImage, position: { posX: 0, posY: 0, scale: 1 } },
+        mobile: { src: defaultImage, position: { posX: 0, posY: 0, scale: 1 } },
+      },
       order_index: tables.length,
     };
     onChange([...tables, newTable]);
@@ -58,13 +68,28 @@ export default function CasinoTablesEditor({ tables, onChange }: CasinoTablesEdi
 
   const handleImageSelect = (tableId: string, imageData: IUploadImage) => {
     setEditingImages({ ...editingImages, [tableId]: imageData });
-    if (imageData.file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        updateTable(tableId, 'image_url', reader.result as string);
-      };
-      reader.readAsDataURL(imageData.file);
-    }
+
+    const updatedTables = tables.map(t => {
+      if (t.id === tableId) {
+        let imageUrl = t.image;
+        if (imageData.file) {
+          imageUrl = URL.createObjectURL(imageData.file);
+        }
+
+        return {
+          ...t,
+          image: imageUrl,
+          alt: imageData.alt || t.alt,
+          image_metadata: {
+            desktop: imageData.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+            mobile: imageData.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+          },
+        };
+      }
+      return t;
+    });
+
+    onChange(updatedTables);
   };
 
   return (
@@ -135,7 +160,12 @@ export default function CasinoTablesEditor({ tables, onChange }: CasinoTablesEdi
             </label>
             <SimpleImageUploader
               onImageSelect={(data) => handleImageSelect(table.id, data)}
-              initialImage={{ src: table.image_url, alt: table.image_alt }}
+              initialImage={{
+                src: table.image_metadata?.desktop?.src || table.image,
+                alt: table.alt,
+                desktop: table.image_metadata?.desktop,
+                mobile: table.image_metadata?.mobile,
+              }}
               showPreview={true}
             />
           </div>

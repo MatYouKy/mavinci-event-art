@@ -7,9 +7,15 @@ import { IUploadImage } from '@/types/image';
 
 interface GalleryImage {
   id: string;
-  image_url: string;
-  alt_text: string;
+  image: string;
+  alt: string;
   caption: string;
+  image_metadata?: {
+    desktop?: { src: string; position: { posX: number; posY: number; scale: number } };
+    mobile?: { src: string; position: { posX: number; posY: number; scale: number } };
+  };
+  order_index?: number;
+  is_visible?: boolean;
 }
 
 interface CasinoGalleryEditorProps {
@@ -21,11 +27,16 @@ export default function CasinoGalleryEditor({ gallery, onChange }: CasinoGallery
   const [editingImages, setEditingImages] = useState<{ [key: string]: IUploadImage }>({});
 
   const addImage = () => {
+    const defaultImage = 'https://images.pexels.com/photos/262508/pexels-photo-262508.jpeg?auto=compress&cs=tinysrgb&w=1920';
     const newImage: GalleryImage = {
       id: crypto.randomUUID(),
-      image_url: 'https://images.pexels.com/photos/262508/pexels-photo-262508.jpeg?auto=compress&cs=tinysrgb&w=1920',
-      alt_text: 'Nowe zdjęcie',
+      image: defaultImage,
+      alt: 'Nowe zdjęcie',
       caption: '',
+      image_metadata: {
+        desktop: { src: defaultImage, position: { posX: 0, posY: 0, scale: 1 } },
+        mobile: { src: defaultImage, position: { posX: 0, posY: 0, scale: 1 } },
+      },
     };
     onChange([...gallery, newImage]);
   };
@@ -49,13 +60,28 @@ export default function CasinoGalleryEditor({ gallery, onChange }: CasinoGallery
 
   const handleImageSelect = (imageId: string, imageData: IUploadImage) => {
     setEditingImages({ ...editingImages, [imageId]: imageData });
-    if (imageData.file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        updateImage(imageId, 'image_url', reader.result as string);
-      };
-      reader.readAsDataURL(imageData.file);
-    }
+
+    const updatedGallery = gallery.map(img => {
+      if (img.id === imageId) {
+        let imageUrl = img.image;
+        if (imageData.file) {
+          imageUrl = URL.createObjectURL(imageData.file);
+        }
+
+        return {
+          ...img,
+          image: imageUrl,
+          alt: imageData.alt || img.alt,
+          image_metadata: {
+            desktop: imageData.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+            mobile: imageData.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+          },
+        };
+      }
+      return img;
+    });
+
+    onChange(updatedGallery);
   };
 
   return (
@@ -102,7 +128,12 @@ export default function CasinoGalleryEditor({ gallery, onChange }: CasinoGallery
 
             <SimpleImageUploader
               onImageSelect={(data) => handleImageSelect(image.id, data)}
-              initialImage={{ src: image.image_url, alt: image.alt_text }}
+              initialImage={{
+                src: image.image_metadata?.desktop?.src || image.image,
+                alt: image.alt,
+                desktop: image.image_metadata?.desktop,
+                mobile: image.image_metadata?.mobile,
+              }}
               showPreview={true}
             />
 
@@ -110,8 +141,8 @@ export default function CasinoGalleryEditor({ gallery, onChange }: CasinoGallery
               <label className="block text-[#e5e4e2]/70 text-xs mb-1">Tekst alternatywny</label>
               <input
                 type="text"
-                value={image.alt_text}
-                onChange={(e) => updateImage(image.id, 'alt_text', e.target.value)}
+                value={image.alt}
+                onChange={(e) => updateImage(image.id, 'alt', e.target.value)}
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1.5 text-[#e5e4e2] text-sm focus:border-[#d3bb73] focus:outline-none"
                 placeholder="Opis zdjęcia"
               />

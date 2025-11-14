@@ -22,8 +22,12 @@ interface CasinoTable {
   name: string;
   slug: string;
   description: string;
-  image_url: string;
-  image_alt: string;
+  image: string;
+  alt: string;
+  image_metadata?: {
+    desktop?: { src: string; position: { posX: number; posY: number; scale: number } };
+    mobile?: { src: string; position: { posX: number; posY: number; scale: number } };
+  };
   order_index: number;
   is_visible?: boolean;
 }
@@ -46,9 +50,13 @@ interface CasinoGameRule {
 
 interface GalleryImage {
   id: string;
-  image_url: string;
-  alt_text: string;
+  image: string;
+  alt: string;
   caption: string;
+  image_metadata?: {
+    desktop?: { src: string; position: { posX: number; posY: number; scale: number } };
+    mobile?: { src: string; position: { posX: number; posY: number; scale: number } };
+  };
   order_index?: number;
   is_visible?: boolean;
 }
@@ -506,8 +514,8 @@ export default function KasynoPage() {
                           <div className="relative group">
                             <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-transparent rounded-2xl blur-xl group-hover:blur-2xl transition-all"></div>
                             <img
-                              src={table.image_url}
-                              alt={table.image_alt || table.name}
+                              src={table.image_metadata?.desktop?.src || table.image}
+                              alt={table.alt || table.name}
                               className="relative w-full h-[400px] object-cover rounded-2xl border border-[#d3bb73]/20"
                             />
                           </div>
@@ -543,14 +551,14 @@ export default function KasynoPage() {
                         className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300 cursor-pointer"
                       >
                         <img
-                          src={image.image_url}
-                          alt={image.alt_text || `Zdjęcie z kasyna ${index + 1}`}
+                          src={image.image_metadata?.desktop?.src || image.image}
+                          alt={image.alt || `Zdjęcie z kasyna ${index + 1}`}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           <div className="absolute bottom-4 left-4 right-4">
                             <p className="text-[#e5e4e2] text-sm font-light">
-                              {image.alt_text || `Zdjęcie ${index + 1}`}
+                              {image.alt || `Zdjęcie ${index + 1}`}
                             </p>
                             {image.caption && (
                               <p className="text-[#e5e4e2]/60 text-xs font-light mt-1">
@@ -683,13 +691,13 @@ export default function KasynoPage() {
 
               <div className="relative max-w-7xl max-h-[90vh] mx-4">
                 <img
-                  src={gallery[currentGalleryIndex].image_url}
-                  alt={gallery[currentGalleryIndex].alt_text}
+                  src={gallery[currentGalleryIndex].image_metadata?.desktop?.src || gallery[currentGalleryIndex].image}
+                  alt={gallery[currentGalleryIndex].alt}
                   className="max-w-full max-h-[90vh] object-contain"
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
                   <p className="text-white text-center">
-                    {gallery[currentGalleryIndex].alt_text}
+                    {gallery[currentGalleryIndex].alt}
                   </p>
                   {gallery[currentGalleryIndex].caption && (
                     <p className="text-white/80 text-sm text-center mt-1">
