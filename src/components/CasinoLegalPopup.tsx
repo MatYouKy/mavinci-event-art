@@ -32,14 +32,11 @@ export default function CasinoLegalPopup({ content, onAccept }: CasinoLegalPopup
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm"
-      style={{
-        boxShadow: 'inset 0 0 100px rgba(0, 0, 0, 0.8), 0 0 200px rgba(0, 0, 0, 0.9)'
-      }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm"
     >
-      <div className="relative max-w-2xl mx-4 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] border border-[#d3bb73]/30 rounded-2xl overflow-hidden"
+      <div className="relative max-w-2xl mx-4 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] border border-[#d3bb73]/30 rounded-2xl overflow-hidden shadow-2xl"
         style={{
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 100px rgba(211, 187, 115, 0.1)'
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 100px rgba(0, 0, 0, 0.3)'
         }}
       >
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
