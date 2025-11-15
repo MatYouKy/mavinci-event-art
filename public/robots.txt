@@ -1,23 +1,103 @@
+# Mavinci.pl - Profesjonalna organizacja eventów
+# robots.txt dla optymalnej indeksacji przez wyszukiwarki
+
 User-agent: *
 Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
+Allow: /o-nas
+Allow: /zespol
 Disallow: /admin/
 Disallow: /crm/
 Disallow: /api/
+Disallow: /seller/
+Disallow: /*.json$
+Disallow: /*?*
 
+# Sitemap
 Sitemap: https://mavinci.pl/sitemap.xml
 
-# Szczególne ustawienia dla Google
+# Google (Googlebot, Google-Extended dla AI)
 User-agent: Googlebot
 Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
 Disallow: /admin/
 Disallow: /crm/
 Disallow: /api/
+Crawl-delay: 0
 
-# Szczególne ustawienia dla Bing
+User-agent: Google-Extended
+Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
+Allow: /o-nas
+Allow: /zespol
+
+# Bing
 User-agent: Bingbot
 Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
 Disallow: /admin/
 Disallow: /crm/
 Disallow: /api/
-
 Crawl-delay: 0
+
+# ChatGPT / OpenAI
+User-agent: GPTBot
+Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
+Allow: /o-nas
+Allow: /zespol
+
+# Claude AI / Anthropic
+User-agent: anthropic-ai
+Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
+Allow: /o-nas
+Allow: /zespol
+
+User-agent: Claude-Web
+Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
+Allow: /o-nas
+Allow: /zespol
+
+# Common Crawl (duży korpus danych dla AI)
+User-agent: CCBot
+Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
+
+# Perplexity AI
+User-agent: PerplexityBot
+Allow: /
+Allow: /portfolio/
+Allow: /uslugi/
+
+# Inne AI crawlers
+User-agent: FacebookBot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+# Blokuj scraping botów
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /

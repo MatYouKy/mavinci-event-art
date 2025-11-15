@@ -361,6 +361,7 @@ export default function PortfolioPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
                 {filteredProjects.map((project) => {
                   const projectId = project.id || '';
+                  const projectSlug = project.slug || project.id || '';
 
                   return (
                     <div
@@ -370,7 +371,7 @@ export default function PortfolioPage() {
                       onMouseLeave={() => setHoveredId(null)}
                     >
                       <a
-                        href={`/portfolio/${projectId}`}
+                        href={`/portfolio/${projectSlug}`}
                         className="block"
                       >
                         <div className="aspect-[4/5] relative overflow-hidden">
@@ -386,7 +387,7 @@ export default function PortfolioPage() {
                             {isEditMode ? (
                               <>
                                 <a
-                                  href={`/portfolio/${projectId}`}
+                                  href={`/portfolio/${projectSlug}`}
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform"
                                 >

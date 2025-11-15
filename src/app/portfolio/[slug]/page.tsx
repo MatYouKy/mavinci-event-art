@@ -36,7 +36,7 @@ export default function ProjectDetailPage() {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
   const params = useParams();
-  const id = params.id as string;
+  const slug = params.slug as string;
 
   const [project, setProject] = useState<PortfolioProject | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,7 +60,7 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     fetchProject();
-  }, [id]);
+  }, [slug]);
 
   const fetchProject = async () => {
     setLoading(true);
@@ -68,14 +68,14 @@ export default function ProjectDetailPage() {
       const { data, error } = await supabase
         .from('portfolio_projects')
         .select('*')
-        .eq('id', id)
+        .eq('slug', slug)
         .maybeSingle();
 
       if (!error && data) {
         setProject(data);
         loadProjectData(data);
       } else {
-        const mockProject = MOCK_PROJECTS.find(p => p.id === id);
+        const mockProject = MOCK_PROJECTS.find(p => p.id === slug);
         if (mockProject) {
           setProject(mockProject);
           loadProjectData(mockProject);
@@ -85,7 +85,7 @@ export default function ProjectDetailPage() {
       }
     } catch (error) {
       console.error('Error fetching project:', error);
-      const mockProject = MOCK_PROJECTS.find(p => p.id === id);
+      const mockProject = MOCK_PROJECTS.find(p => p.id === slug);
       if (mockProject) {
         setProject(mockProject);
         loadProjectData(mockProject);
@@ -161,7 +161,7 @@ export default function ProjectDetailPage() {
       const { error } = await supabase
         .from('portfolio_projects')
         .update(payload)
-        .eq('id', id);
+        .eq('slug', slug);
 
       if (error) throw error;
 
@@ -517,7 +517,7 @@ export default function ProjectDetailPage() {
 
                   <div className="mt-8 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8">
                     <PortfolioFeaturesEditor
-                      projectId={id}
+                      projectId={slug}
                       features={features}
                       onChange={setFeatures}
                     />
