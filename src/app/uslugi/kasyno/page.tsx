@@ -83,7 +83,7 @@ export default function KasynoPage() {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
 
-  const [showContent, setShowContent] = useState(false);
+  const [showContent, setShowContent] = useState(true);
   const [legalContent, setLegalContent] = useState('');
   const [tables, setTables] = useState<CasinoTable[]>([]);
   const [features, setFeatures] = useState<CasinoFeature[]>([]);
@@ -403,16 +403,7 @@ export default function KasynoPage() {
 
   return (
     <>
-      {legalContent && !isEditing && (
-        <CasinoLegalPopup
-          content={legalContent}
-          onAccept={() => setShowContent(true)}
-        />
-      )}
-
-      {(showContent || isEditing) && (
-        <>
-          <Navbar />
+      <Navbar />
           <main className="min-h-screen bg-[#0f1119]">
             {isEditing && (
               <div className="sticky top-0 z-50 bg-[#1c1f33] border-b border-[#d3bb73]/30 px-4 py-3">
@@ -793,7 +784,12 @@ export default function KasynoPage() {
               </div>
             </div>
           )}
-        </>
+
+      {legalContent && !isEditing && (
+        <CasinoLegalPopup
+          content={legalContent}
+          onAccept={() => setShowContent(true)}
+        />
       )}
     </>
   );
