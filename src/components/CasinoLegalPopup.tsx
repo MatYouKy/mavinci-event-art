@@ -14,9 +14,7 @@ export default function CasinoLegalPopup({ content, onAccept }: CasinoLegalPopup
   useEffect(() => {
     const hasAccepted = localStorage.getItem('casino-legal-accepted');
     if (!hasAccepted) {
-      setTimeout(() => {
-        setIsVisible(true);
-      }, 3000);
+      setIsVisible(true);
     } else {
       onAccept();
     }
@@ -31,14 +29,38 @@ export default function CasinoLegalPopup({ content, onAccept }: CasinoLegalPopup
   if (!isVisible) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm"
-    >
-      <div className="relative max-w-2xl mx-4 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] border border-[#d3bb73]/30 rounded-2xl overflow-hidden shadow-2xl"
-        style={{
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 100px rgba(0, 0, 0, 0.3)'
-        }}
-      >
+    <>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes casinoFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes casinoSlideUp {
+            from {
+              opacity: 0;
+              transform: translateY(30px) scale(0.95);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+          .casino-popup-overlay {
+            animation: casinoFadeIn 0.3s ease-in-out;
+          }
+          .casino-popup-content {
+            animation: casinoSlideUp 0.4s ease-out;
+          }
+        `
+      }} />
+      <div className="casino-popup-overlay fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md">
+        <div
+          className="casino-popup-content relative max-w-2xl mx-4 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] border border-[#d3bb73]/30 rounded-2xl overflow-hidden shadow-2xl"
+          style={{
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 100px rgba(0, 0, 0, 0.3)'
+          }}
+        >
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
 
         <div className="p-8">
@@ -70,5 +92,6 @@ export default function CasinoLegalPopup({ content, onAccept }: CasinoLegalPopup
         </div>
       </div>
     </div>
+    </>
   );
 }
