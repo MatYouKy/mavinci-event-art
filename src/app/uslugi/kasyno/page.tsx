@@ -267,11 +267,14 @@ export default function KasynoPage() {
         delete tableData.is_visible;
         const { error } = await supabase.from('casino_tables').insert({
           ...tableData,
+          image_url: tableData.image,
+          image_alt: tableData.alt,
           is_visible: true,
         });
         if (error) console.error('Error saving table:', error);
       }
 
+      console.log('📝 Processing gallery from editGallery:', editGallery.length);
       const processedGallery: GalleryImage[] = [];
       for (let i = 0; i < editGallery.length; i++) {
         const image = {...editGallery[i]};
@@ -296,13 +299,17 @@ export default function KasynoPage() {
         processedGallery.push(image);
       }
 
+      console.log('🖼️ Saving gallery, total images:', processedGallery.length);
       await supabase.from('casino_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       for (let i = 0; i < processedGallery.length; i++) {
         const image = {...processedGallery[i]};
         delete image.is_visible;
         delete image.order_index;
+        console.log(`  → Image ${i + 1}:`, image.alt || 'No alt');
         const { error } = await supabase.from('casino_gallery').insert({
           ...image,
+          image_url: image.image,
+          alt_text: image.alt,
           order_index: i,
           is_visible: true,
         });
