@@ -53,7 +53,7 @@ export const metadata: Metadata = {
     canonical: 'https://mavinci.pl',
   },
   verification: {
-    google: 'verification_token',
+    google: 'google-site-verification=qIraUGTmchH_bL3HeOYo_16-6U7R1os1yMel7',
   },
   icons: {
     icon: [
