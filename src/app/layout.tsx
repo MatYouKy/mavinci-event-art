@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { EditModeProvider } from '@/contexts/EditModeContext';
 import { Providers } from './providers';
@@ -63,11 +64,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
@@ -113,6 +110,24 @@ export default function RootLayout({
         <meta name="theme-color" content="#d3bb73" />
         <link rel="icon" type="image/svg+xml" href="/shape-mavinci.svg" />
         <link rel="canonical" href="https://mavinci.pl" />
+
+        {/* Google Tag */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-BHPZ5NSLQM"
+          strategy="afterInteractive"
+          async
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-BHPZ5NSLQM', {
+              page_path: window.location.pathname,
+            });
+          `}
+        </Script>
+
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
