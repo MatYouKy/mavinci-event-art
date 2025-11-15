@@ -134,7 +134,7 @@ export default function KasynoPage() {
     } else if (!isEditMode && isEditing) {
       setIsEditing(false);
     }
-  }, [isEditMode]);
+  }, [isEditMode, tables, gallery, contentBlocks, pageSettings]);
 
   const fetchData = async () => {
     const { data: popupData } = await supabase
