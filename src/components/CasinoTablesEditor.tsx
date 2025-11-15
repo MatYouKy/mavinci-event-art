@@ -98,9 +98,9 @@ export default function CasinoTablesEditor({ tables, onChange, onImageUpload }: 
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-xl font-light text-[#e5e4e2]">Nasze Stoły</h3>
+    <div className="space-y-16">
+      <div className="flex justify-between items-center mb-8">
+        <h3 className="text-xl font-light text-[#e5e4e2]">Edycja Stołów</h3>
         <button
           onClick={addTable}
           className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
@@ -111,68 +111,95 @@ export default function CasinoTablesEditor({ tables, onChange, onImageUpload }: 
       </div>
 
       {tables.map((table, index) => (
-        <div key={table.id} className="bg-[#1c1f33]/60 border border-[#d3bb73]/20 rounded-xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-lg font-light text-[#e5e4e2]">Stół #{index + 1}</h4>
+        <div key={table.id} className="bg-[#1c1f33]/60 border-2 border-[#d3bb73]/30 rounded-2xl p-4 lg:p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h4 className="text-lg font-light text-[#e5e4e2] flex items-center gap-2">
+              <span className="bg-[#d3bb73]/20 px-3 py-1 rounded-full text-sm">Stół #{index + 1}</span>
+            </h4>
             <div className="flex gap-2">
               <button
                 onClick={() => moveTable(index, 'up')}
                 disabled={index === 0}
-                className="text-[#d3bb73] hover:text-[#d3bb73]/80 disabled:opacity-30"
+                className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg disabled:opacity-30 transition-colors"
+                title="Przesuń w górę"
               >
                 <ArrowUp className="w-4 h-4" />
               </button>
               <button
                 onClick={() => moveTable(index, 'down')}
                 disabled={index === tables.length - 1}
-                className="text-[#d3bb73] hover:text-[#d3bb73]/80 disabled:opacity-30"
+                className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg disabled:opacity-30 transition-colors"
+                title="Przesuń w dół"
               >
                 <ArrowDown className="w-4 h-4" />
               </button>
               <button
                 onClick={() => removeTable(table.id)}
-                className="text-red-400 hover:text-red-300"
+                className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                title="Usuń stół"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          <div>
-            <label className="block text-[#e5e4e2]/70 text-sm mb-2">Nazwa</label>
-            <input
-              type="text"
-              value={table.name}
-              onChange={(e) => updateTable(table.id, 'name', e.target.value)}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            />
-          </div>
+          <div className={`grid lg:grid-cols-2 gap-8 items-center ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
+            <div className={index % 2 === 1 ? 'lg:order-2' : ''}>
+              <label className="block text-[#e5e4e2]/70 text-sm mb-3">
+                <ImageIcon className="w-4 h-4 inline mr-2" />
+                Zdjęcie stołu
+              </label>
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-transparent rounded-2xl blur-xl group-hover:blur-2xl transition-all"></div>
+                <div className="relative">
+                  <SimpleImageUploader
+                    onImageSelect={(data) => handleImageSelect(table.id, data)}
+                    initialImage={{
+                      src: table.image_metadata?.desktop?.src || table.image,
+                      alt: table.alt,
+                      desktop: table.image_metadata?.desktop,
+                      mobile: table.image_metadata?.mobile,
+                    }}
+                    showPreview={true}
+                  />
+                </div>
+              </div>
+            </div>
 
-          <div>
-            <label className="block text-[#e5e4e2]/70 text-sm mb-2">Opis</label>
-            <textarea
-              value={table.description}
-              onChange={(e) => updateTable(table.id, 'description', e.target.value)}
-              rows={3}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            />
-          </div>
+            <div className={`space-y-4 ${index % 2 === 1 ? 'lg:order-1' : ''}`}>
+              <div>
+                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Nazwa stołu</label>
+                <input
+                  type="text"
+                  value={table.name}
+                  onChange={(e) => updateTable(table.id, 'name', e.target.value)}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] text-lg focus:border-[#d3bb73] focus:outline-none transition-colors"
+                  placeholder="np. Ruletka"
+                />
+              </div>
 
-          <div>
-            <label className="block text-[#e5e4e2]/70 text-sm mb-2">
-              <ImageIcon className="w-4 h-4 inline mr-2" />
-              Zdjęcie
-            </label>
-            <SimpleImageUploader
-              onImageSelect={(data) => handleImageSelect(table.id, data)}
-              initialImage={{
-                src: table.image_metadata?.desktop?.src || table.image,
-                alt: table.alt,
-                desktop: table.image_metadata?.desktop,
-                mobile: table.image_metadata?.mobile,
-              }}
-              showPreview={true}
-            />
+              <div>
+                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Opis stołu</label>
+                <textarea
+                  value={table.description}
+                  onChange={(e) => updateTable(table.id, 'description', e.target.value)}
+                  rows={5}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
+                  placeholder="Opisz stół i zasady gry..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Slug (URL)</label>
+                <input
+                  type="text"
+                  value={table.slug}
+                  onChange={(e) => updateTable(table.id, 'slug', e.target.value)}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] text-sm focus:border-[#d3bb73] focus:outline-none transition-colors font-mono"
+                  placeholder="ruletka"
+                />
+              </div>
+            </div>
           </div>
         </div>
       ))}
