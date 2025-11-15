@@ -21,7 +21,7 @@ interface PageHeroImageProps {
 
 export function PageHeroImage({
   section,
-  defaultImage = 'https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920',
+  defaultImage = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg',
   defaultOpacity = 0.2,
   className = '',
   children,
