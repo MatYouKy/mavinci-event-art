@@ -22,12 +22,8 @@ interface CasinoTable {
   name: string;
   slug: string;
   description: string;
-  image: string;
-  alt: string;
-  image_metadata?: {
-    desktop?: { src: string; position: { posX: number; posY: number; scale: number } };
-    mobile?: { src: string; position: { posX: number; posY: number; scale: number } };
-  };
+  image_url: string;
+  image_alt: string;
   order_index: number;
   is_visible?: boolean;
 }
@@ -50,13 +46,9 @@ interface CasinoGameRule {
 
 interface GalleryImage {
   id: string;
-  image: string;
-  alt: string;
+  image_url: string;
+  alt_text: string;
   caption: string;
-  image_metadata?: {
-    desktop?: { src: string; position: { posX: number; posY: number; scale: number } };
-    mobile?: { src: string; position: { posX: number; posY: number; scale: number } };
-  };
   order_index?: number;
   is_visible?: boolean;
 }
@@ -114,8 +106,6 @@ export default function KasynoPage() {
   const [editTables, setEditTables] = useState<CasinoTable[]>([]);
   const [editGallery, setEditGallery] = useState<GalleryImage[]>([]);
   const [editBlocks, setEditBlocks] = useState<ContentBlock[]>([]);
-  const [tablePendingUploads, setTablePendingUploads] = useState<Map<string, IUploadImage>>(new Map());
-  const [galleryPendingUploads, setGalleryPendingUploads] = useState<Map<string, IUploadImage>>(new Map());
 
   useEffect(() => {
     fetchData();
@@ -192,28 +182,12 @@ export default function KasynoPage() {
     if (blocksData) setContentBlocks(blocksData);
   };
 
-  const handleTableImageUpload = (tableId: string, imageData: IUploadImage) => {
-    setTablePendingUploads(prev => {
-      const newMap = new Map(prev);
-      newMap.set(tableId, imageData);
-      return newMap;
-    });
-  };
-
-  const handleGalleryImageUpload = (imageId: string, imageData: IUploadImage) => {
-    setGalleryPendingUploads(prev => {
-      const newMap = new Map(prev);
-      newMap.set(imageId, imageData);
-      return newMap;
-    });
-  };
-
   const handleSave = async () => {
     setSaving(true);
 
     try {
       let settingsId = pageSettings.id;
-
+      
       if (!settingsId) {
         const { data } = await supabase
           .from('casino_page_settings')
@@ -237,32 +211,8 @@ export default function KasynoPage() {
         if (settingsError) throw settingsError;
       }
 
-      const processedTables: CasinoTable[] = [];
-      for (const table of editTables) {
-        const tableData = {...table};
-        const pendingUpload = tablePendingUploads.get(table.id);
-
-        if (pendingUpload?.file) {
-          try {
-            const imageUrl = await uploadImage(pendingUpload.file, 'casino-tables');
-            tableData.image = imageUrl;
-            tableData.image_metadata = {
-              desktop: pendingUpload.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
-              mobile: pendingUpload.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
-            };
-            if (tableData.image_metadata.desktop) tableData.image_metadata.desktop.src = imageUrl;
-            if (tableData.image_metadata.mobile) tableData.image_metadata.mobile.src = imageUrl;
-          } catch (error) {
-            console.error('Error uploading table image:', error);
-            showSnackbar(`Błąd uploadu zdjęcia dla ${table.name}`, 'error');
-          }
-        }
-
-        processedTables.push(tableData);
-      }
-
       await supabase.from('casino_tables').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      for (const table of processedTables) {
+      for (const table of editTables) {
         const tableData = {...table};
         delete tableData.is_visible;
         const { error } = await supabase.from('casino_tables').insert({
@@ -272,33 +222,9 @@ export default function KasynoPage() {
         if (error) console.error('Error saving table:', error);
       }
 
-      const processedGallery: GalleryImage[] = [];
+      await supabase.from('casino_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       for (let i = 0; i < editGallery.length; i++) {
         const image = {...editGallery[i]};
-        const pendingUpload = galleryPendingUploads.get(image.id);
-
-        if (pendingUpload?.file) {
-          try {
-            const imageUrl = await uploadImage(pendingUpload.file, 'casino-gallery');
-            image.image = imageUrl;
-            image.image_metadata = {
-              desktop: pendingUpload.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
-              mobile: pendingUpload.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
-            };
-            if (image.image_metadata.desktop) image.image_metadata.desktop.src = imageUrl;
-            if (image.image_metadata.mobile) image.image_metadata.mobile.src = imageUrl;
-          } catch (error) {
-            console.error('Error uploading gallery image:', error);
-            showSnackbar(`Błąd uploadu zdjęcia galerii`, 'error');
-          }
-        }
-
-        processedGallery.push(image);
-      }
-
-      await supabase.from('casino_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      for (let i = 0; i < processedGallery.length; i++) {
-        const image = {...processedGallery[i]};
         delete image.is_visible;
         delete image.order_index;
         const { error } = await supabase.from('casino_gallery').insert({
@@ -321,8 +247,6 @@ export default function KasynoPage() {
       }
 
       showSnackbar('Wszystkie zmiany zapisane!', 'success');
-      setTablePendingUploads(new Map());
-      setGalleryPendingUploads(new Map());
       await fetchData();
       setIsEditing(false);
     } catch (error: any) {
@@ -343,8 +267,6 @@ export default function KasynoPage() {
     setEditBlocks([...contentBlocks]);
     setEditImageData(null);
     setEditPreviewImage('');
-    setTablePendingUploads(new Map());
-    setGalleryPendingUploads(new Map());
   };
 
   const handleImageSelect = async (imageData: IUploadImage) => {
@@ -575,11 +497,7 @@ export default function KasynoPage() {
                 </div>
 
                 {isEditing ? (
-                  <CasinoTablesEditor
-                    tables={editTables}
-                    onChange={setEditTables}
-                    onImageUpload={handleTableImageUpload}
-                  />
+                  <CasinoTablesEditor tables={editTables} onChange={setEditTables} />
                 ) : (
                   <div className="space-y-16">
                     {tables.map((table, index) => (
@@ -588,8 +506,8 @@ export default function KasynoPage() {
                           <div className="relative group">
                             <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-transparent rounded-2xl blur-xl group-hover:blur-2xl transition-all"></div>
                             <img
-                              src={table.image_metadata?.desktop?.src || table.image}
-                              alt={table.alt || table.name}
+                              src={table.image_url}
+                              alt={table.image_alt || table.name}
                               className="relative w-full h-[400px] object-cover rounded-2xl border border-[#d3bb73]/20"
                             />
                           </div>
@@ -615,11 +533,7 @@ export default function KasynoPage() {
                 </div>
 
                 {isEditing ? (
-                  <CasinoGalleryEditor
-                    gallery={editGallery}
-                    onChange={setEditGallery}
-                    onImageUpload={handleGalleryImageUpload}
-                  />
+                  <CasinoGalleryEditor gallery={editGallery} onChange={setEditGallery} />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {gallery.map((image, index) => (
@@ -629,14 +543,14 @@ export default function KasynoPage() {
                         className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300 cursor-pointer"
                       >
                         <img
-                          src={image.image_metadata?.desktop?.src || image.image}
-                          alt={image.alt || `Zdjęcie z kasyna ${index + 1}`}
+                          src={image.image_url}
+                          alt={image.alt_text || `Zdjęcie z kasyna ${index + 1}`}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           <div className="absolute bottom-4 left-4 right-4">
                             <p className="text-[#e5e4e2] text-sm font-light">
-                              {image.alt || `Zdjęcie ${index + 1}`}
+                              {image.alt_text || `Zdjęcie ${index + 1}`}
                             </p>
                             {image.caption && (
                               <p className="text-[#e5e4e2]/60 text-xs font-light mt-1">
@@ -769,13 +683,13 @@ export default function KasynoPage() {
 
               <div className="relative max-w-7xl max-h-[90vh] mx-4">
                 <img
-                  src={gallery[currentGalleryIndex].image_metadata?.desktop?.src || gallery[currentGalleryIndex].image}
-                  alt={gallery[currentGalleryIndex].alt}
+                  src={gallery[currentGalleryIndex].image_url}
+                  alt={gallery[currentGalleryIndex].alt_text}
                   className="max-w-full max-h-[90vh] object-contain"
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
                   <p className="text-white text-center">
-                    {gallery[currentGalleryIndex].alt}
+                    {gallery[currentGalleryIndex].alt_text}
                   </p>
                   {gallery[currentGalleryIndex].caption && (
                     <p className="text-white/80 text-sm text-center mt-1">
