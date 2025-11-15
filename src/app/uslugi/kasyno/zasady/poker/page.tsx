@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Dices } from 'lucide-react';
+import { ArrowLeft, Dices, CircleDot, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -61,12 +61,59 @@ export default function PokerRulesPage() {
             </p>
           </div>
 
-          <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8 md:p-12">
-            <div className="prose prose-invert prose-lg max-w-none">
-              <div className="text-[#e5e4e2]/90 font-light leading-relaxed whitespace-pre-line">
-                {rules?.rules_content}
+          <div className="space-y-8">
+            {parseRulesContent(rules?.rules_content).map((section, idx) => (
+              <div
+                key={idx}
+                className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8 md:p-12 hover:border-[#d3bb73]/40 transition-all duration-300"
+              >
+                {section.title && (
+                  <h2 className="text-3xl font-light text-[#e5e4e2] mb-6 flex items-center gap-3">
+                    <CircleDot className="w-6 h-6 text-[#d3bb73]" />
+                    {section.title}
+                  </h2>
+                )}
+
+                {section.content && (
+                  <p className="text-[#e5e4e2]/80 font-light leading-relaxed mb-6 text-lg">
+                    {section.content}
+                  </p>
+                )}
+
+                {section.subsections && section.subsections.length > 0 && (
+                  <div className="space-y-6">
+                    {section.subsections.map((sub, subIdx) => (
+                      <div key={subIdx} className="pl-6 border-l-2 border-[#d3bb73]/30">
+                        <h3 className="text-xl font-light text-[#d3bb73] mb-4">
+                          {sub.title}
+                        </h3>
+                        {sub.items && sub.items.length > 0 && (
+                          <ul className="space-y-3">
+                            {sub.items.map((item, itemIdx) => (
+                              <li key={itemIdx} className="flex items-start gap-3 text-[#e5e4e2]/80">
+                                <CheckCircle className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+                                <span className="font-light leading-relaxed">{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {section.items && section.items.length > 0 && (
+                  <ul className="space-y-3">
+                    {section.items.map((item, itemIdx) => (
+                      <li key={itemIdx} className="flex items-start gap-3 text-[#e5e4e2]/80">
+                        <CheckCircle className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+                        <span className="font-light leading-relaxed">{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-            </div>
+            ))}
           </div>
 
           <div className="mt-12 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-xl p-6 text-center">
@@ -97,4 +144,42 @@ export default function PokerRulesPage() {
       <Footer />
     </>
   );
+}
+
+function parseRulesContent(content: string) {
+  if (!content) return [];
+
+  const sections: any[] = [];
+  const lines = content.split('\n');
+  let currentSection: any = null;
+  let currentSubsection: any = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    if (line.startsWith('## ')) {
+      if (currentSection) sections.push(currentSection);
+      currentSection = { title: line.replace('## ', ''), subsections: [], items: [] };
+      currentSubsection = null;
+    } else if (line.startsWith('### ')) {
+      if (currentSubsection) currentSection?.subsections.push(currentSubsection);
+      currentSubsection = { title: line.replace('### ', ''), items: [] };
+    } else if (line.startsWith('- ')) {
+      const item = line.replace(/^- \*\*(.+?)\*\* - /, '$1: ').replace(/^- /, '');
+      if (currentSubsection) {
+        currentSubsection.items.push(item);
+      } else if (currentSection) {
+        currentSection.items.push(item);
+      }
+    } else if (line && !line.startsWith('#') && !line.startsWith('**')) {
+      if (!currentSection?.content) {
+        if (currentSection) currentSection.content = line;
+      }
+    }
+  }
+
+  if (currentSubsection) currentSection?.subsections.push(currentSubsection);
+  if (currentSection) sections.push(currentSection);
+
+  return sections;
 }
