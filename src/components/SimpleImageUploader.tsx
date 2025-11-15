@@ -21,12 +21,10 @@ export function SimpleImageUploader({
   const [preview, setPreview] = useState<string | null>(initialImage?.src || null);
   const [alt, setAlt] = useState(initialImage?.alt || '');
   const [file, setFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
+  const processFile = (selectedFile: File) => {
     if (!selectedFile.type.startsWith('image/')) {
       alert('Proszę wybrać plik graficzny');
       return;
@@ -53,6 +51,35 @@ export function SimpleImageUploader({
         }
       }
     });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+    processFile(selectedFile);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) {
+      processFile(droppedFile);
+    }
   };
 
   const handleAltChange = (newAlt: string) => {
@@ -102,14 +129,31 @@ export function SimpleImageUploader({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full aspect-[4/3] border-2 border-dashed border-[#d3bb73]/30 rounded-lg hover:border-[#d3bb73]/50 transition-colors flex flex-col items-center justify-center gap-2 text-[#e5e4e2]/70 hover:text-[#e5e4e2]"
+            className={`w-full aspect-[4/3] border-2 border-dashed rounded-lg transition-all cursor-pointer flex flex-col items-center justify-center gap-3 ${
+              isDragging
+                ? 'border-[#d3bb73] bg-[#d3bb73]/10 scale-[1.02]'
+                : 'border-[#d3bb73]/30 hover:border-[#d3bb73]/50 hover:bg-[#d3bb73]/5'
+            }`}
           >
-            <Upload className="w-8 h-8" />
-            <span className="text-sm">Wybierz zdjęcie</span>
-          </button>
+            <Upload className={`w-10 h-10 transition-all ${
+              isDragging ? 'text-[#d3bb73] scale-110' : 'text-[#e5e4e2]/70'
+            }`} />
+            <div className="text-center">
+              <p className={`text-sm font-medium transition-colors ${
+                isDragging ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
+              }`}>
+                {isDragging ? 'Upuść zdjęcie tutaj' : 'Przeciągnij zdjęcie lub kliknij'}
+              </p>
+              {!isDragging && (
+                <p className="text-xs text-[#e5e4e2]/50 mt-1">PNG, JPG, WEBP do 10MB</p>
+              )}
+            </div>
+          </div>
         )}
         <input
           ref={fileInputRef}
