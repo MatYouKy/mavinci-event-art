@@ -31,6 +31,7 @@ import {
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
+import Link from 'next/link';
 
 const iconMap: Record<string, any> = {
   Mic,
@@ -327,40 +328,51 @@ export default function UslugiPage() {
 
                   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {category.items.map((item: any) => (
-                      <div
+                      <Link
                         key={item.id}
-                        className="group rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 transition-all hover:scale-105 hover:transform hover:border-[#d3bb73]/40"
+                        href={`/oferta/uslugi/${item.slug}`}
+                        className="group rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] overflow-hidden transition-all hover:scale-105 hover:transform hover:border-[#d3bb73]/40"
                       >
-                        <div className="mb-3 flex items-start justify-between">
-                          <h3
-                            className={`text-lg font-medium ${item.is_premium ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'}`}
-                          >
-                            {item.name}
-                          </h3>
-                          {item.is_premium && (
-                            <div className="flex items-center gap-1 rounded-full bg-[#d3bb73]/10 px-2 py-1">
-                              <Star className="h-3 w-3 fill-[#d3bb73] text-[#d3bb73]" />
-                              <span className="text-xs font-medium text-[#d3bb73]">Premium</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {item.description && (
-                          <p className="text-sm leading-relaxed text-[#e5e4e2]/60">
-                            {item.description}
-                          </p>
+                        {item.thumbnail_url && (
+                          <div className="aspect-video overflow-hidden bg-[#0f1119]">
+                            <img
+                              src={item.thumbnail_url}
+                              alt={item.name}
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                              loading="lazy"
+                            />
+                          </div>
                         )}
 
-                        <div className="mt-4 border-t border-[#d3bb73]/10 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
-                          <button
-                            onClick={() => setIsContactFormOpen(true)}
-                            className="flex items-center gap-2 text-sm font-medium text-[#d3bb73] transition-all hover:gap-3"
-                          >
-                            Zapytaj o usługę
-                            <ArrowRight className="h-4 w-4" />
-                          </button>
+                        <div className="p-6">
+                          <div className="mb-3 flex items-start justify-between">
+                            <h3
+                              className={`text-lg font-medium ${item.is_premium ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'}`}
+                            >
+                              {item.name}
+                            </h3>
+                            {item.is_premium && (
+                              <div className="flex items-center gap-1 rounded-full bg-[#d3bb73]/10 px-2 py-1 flex-shrink-0">
+                                <Star className="h-3 w-3 fill-[#d3bb73] text-[#d3bb73]" />
+                                <span className="text-xs font-medium text-[#d3bb73]">Premium</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {item.description && (
+                            <p className="text-sm leading-relaxed text-[#e5e4e2]/60 line-clamp-2">
+                              {item.description}
+                            </p>
+                          )}
+
+                          <div className="mt-4 border-t border-[#d3bb73]/10 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
+                            <span className="flex items-center gap-2 text-sm font-medium text-[#d3bb73] transition-all group-hover:gap-3">
+                              Zobacz szczegóły
+                              <ArrowRight className="h-4 w-4" />
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 </div>
