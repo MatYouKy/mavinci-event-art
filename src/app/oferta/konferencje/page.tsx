@@ -7,7 +7,7 @@ import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
-  ChevronDown, Mail, ArrowLeft, Presentation, Music, Star
+  ChevronDown, Mail, ArrowLeft, Presentation, Music
 } from 'lucide-react';
 import Link from 'next/link';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
@@ -16,9 +16,8 @@ import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableContent } from '@/components/EditableContent';
 import { useEditMode } from '@/contexts/EditModeContext';
-import { ConferencesGalleryEditor } from '@/components/ConferencesGalleryEditor';
-import { ConferencesPackagesEditor } from '@/components/ConferencesPackagesEditor';
 import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
+import { ConferencesPricingEditor } from '@/components/ConferencesPricingEditor';
 
 const iconMap: Record<string, any> = {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
@@ -45,6 +44,7 @@ export default function ConferencesPage() {
   const [pricing, setPricing] = useState<any[]>([]);
   const [faq, setFaq] = useState<any[]>([]);
   const [gallery, setGallery] = useState<any[]>([]);
+  const [portfolioProjects, setPortfolioProjects] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [ogImage, setOgImage] = useState<string>('');
   const [serviceCategories, setServiceCategories] = useState<any[]>([]);
@@ -104,7 +104,7 @@ export default function ConferencesPage() {
       processRes,
       pricingRes,
       faqRes,
-      galleryRes,
+      portfolioRes,
       citiesRes,
       ogImageRes,
       serviceCategoriesRes,
@@ -120,7 +120,7 @@ export default function ConferencesPage() {
       supabase.from('conferences_process').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_pricing').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_gallery').select('*').eq('is_active', true).order('display_order'),
+      supabase.from('portfolio_projects').select('*').contains('tags', ['konferencje']).order('order_index'),
       supabase.from('conferences_cities').select('*').eq('is_active', true).order('display_order'),
       supabase.from('site_images').select('desktop_url').eq('section', 'konferencje-hero').eq('is_active', true).single(),
       supabase.from('conferences_service_categories').select(`
@@ -143,7 +143,7 @@ export default function ConferencesPage() {
     if (processRes.data) setProcess(processRes.data);
     if (pricingRes.data) setPricing(pricingRes.data);
     if (faqRes.data) setFaq(faqRes.data);
-    if (galleryRes.data) setGallery(galleryRes.data);
+    if (portfolioRes.data) setPortfolioProjects(portfolioRes.data);
     if (citiesRes.data) setCities(citiesRes.data);
     if (serviceCategoriesRes.data) setServiceCategories(serviceCategoriesRes.data);
 
@@ -511,8 +511,8 @@ export default function ConferencesPage() {
           </section>
         )}
 
-        {/* Gallery Section */}
-        {(gallery.length > 0 || isEditMode) && (
+        {/* Portfolio Section - Filtered by 'konferencje' tag */}
+        {portfolioProjects.length > 0 && (
           <section className="py-20 px-6">
             <div className="max-w-7xl mx-auto">
               <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center animate-fade-in-up">
@@ -523,36 +523,40 @@ export default function ConferencesPage() {
               </p>
 
               {isEditMode && (
-                <ConferencesGalleryEditor items={gallery} onUpdate={loadData} />
-              )}
-
-              {gallery.length > 0 && (
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {gallery.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
-                      style={{ animationDelay: `${idx * 100}ms` }}
-                    >
-                      <img
-                        src={item.image_url}
-                        alt={item.alt_text}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        <div className="absolute bottom-0 left-0 right-0 p-4">
-                          {item.title && (
-                            <h3 className="text-white font-medium mb-1">{item.title}</h3>
-                          )}
-                          {item.caption && (
-                            <p className="text-white/80 text-sm">{item.caption}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl p-6 mb-8">
+                  <p className="text-[#e5e4e2] text-sm mb-2">
+                    <strong>Tip:</strong> Ta sekcja wyświetla projekty z Portfolio oznaczone tagiem <code className="bg-[#d3bb73]/20 px-2 py-1 rounded text-[#d3bb73]">konferencje</code>
+                  </p>
+                  <Link href="/portfolio" className="text-[#d3bb73] hover:underline text-sm">
+                    → Zarządzaj projektami w Portfolio
+                  </Link>
                 </div>
               )}
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {portfolioProjects.map((project, idx) => (
+                  <Link
+                    key={project.id}
+                    href={`/portfolio/${project.slug || project.id}`}
+                    className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
+                    style={{ animationDelay: `${idx * 100}ms` }}
+                  >
+                    <img
+                      src={project.image || project.image_url}
+                      alt={project.alt || project.title}
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <h3 className="text-white font-medium mb-1">{project.title}</h3>
+                        {project.client && (
+                          <p className="text-white/80 text-sm">{project.client}</p>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
           </section>
         )}
@@ -656,83 +660,54 @@ export default function ConferencesPage() {
           </div>
         </section>
 
-        {/* Packages */}
+        {/* Pricing Section */}
         <section className="py-20 px-6 bg-[#1c1f33]/30">
           <div className="max-w-7xl mx-auto">
             <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center">
-              Gotowe pakiety konferencyjne
+              Orientacyjne ceny
             </h2>
             <p className="text-[#e5e4e2]/60 text-center mb-16">
-              Wybierz pakiet dopasowany do wielkości Twojego eventu
+              Ceny indywidualne dostosowane do specyfiki eventu
             </p>
 
             {isEditMode && (
-              <ConferencesPackagesEditor packages={packages} onUpdate={loadData} />
+              <ConferencesPricingEditor pricing={pricing} onUpdate={loadData} />
             )}
 
             <div className="grid md:grid-cols-3 gap-8">
-              {packages.map((pkg) => (
-                <div key={pkg.id} className={`bg-[#1c1f33] border rounded-xl p-8 ${pkg.package_level === 'pro' ? 'border-[#d3bb73] shadow-xl shadow-[#d3bb73]/20' : 'border-[#d3bb73]/20'}`}>
-                  <div className="text-center mb-6">
-                    <h3 className="text-2xl font-medium text-[#d3bb73] mb-2">
-                      {pkg.package_name}
+              {pricing.map((tier) => (
+                <div key={tier.id} className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-8 hover:border-[#d3bb73]/40 transition-all">
+                  <div className="mb-6">
+                    <h3 className="text-2xl font-medium text-[#d3bb73] mb-3">
+                      {tier.tier_name}
                     </h3>
-
-                    {/* Rating Stars */}
-                    {pkg.rating && (
-                      <div className="flex justify-center gap-1 mb-3">
-                        {[1, 2, 3].map((star) => (
-                          <Star
-                            key={star}
-                            className={`w-5 h-5 ${
-                              star <= pkg.rating
-                                ? 'fill-[#d3bb73] text-[#d3bb73]'
-                                : 'text-[#d3bb73]/20'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    <p className="text-[#e5e4e2]/60 text-sm mb-4">
-                      {pkg.target_audience}
+                    <p className="text-[#e5e4e2] text-3xl font-light mb-2">
+                      {tier.price_range}
                     </p>
-                    <div className="text-3xl font-light text-[#e5e4e2]">
-                      {pkg.price_info}
-                    </div>
+                    <p className="text-[#e5e4e2]/60 text-sm">
+                      {tier.attendees_range}
+                    </p>
                   </div>
 
-                  <p className="text-[#e5e4e2]/80 mb-6">
-                    {pkg.description}
+                  <p className="text-[#e5e4e2]/80 mb-6 text-sm">
+                    {tier.tier_description}
                   </p>
 
-                  <div className="space-y-4 mb-6">
-                    {Object.entries(pkg.features).map(([category, items]: [string, any]) => (
-                      <div key={category}>
-                        <h4 className="text-[#d3bb73] text-sm font-medium mb-2 uppercase">
-                          {category}
-                        </h4>
-                        <ul className="space-y-1">
-                          {items.map((item: string, idx: number) => (
-                            <li key={idx} className="flex items-start gap-2 text-[#e5e4e2]/70 text-sm">
-                              <CheckCircle className="w-4 h-4 text-[#d3bb73] mt-0.5 flex-shrink-0" />
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                        </ul>
+                  <div className="space-y-2 mb-6">
+                    <h4 className="text-[#d3bb73] text-sm font-medium mb-3">Co zawiera:</h4>
+                    {tier.whats_included.map((item: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-2 text-[#e5e4e2]/70 text-sm">
+                        <CheckCircle className="w-4 h-4 text-[#d3bb73] mt-0.5 flex-shrink-0" />
+                        <span>{item}</span>
                       </div>
                     ))}
                   </div>
 
                   <button
                     onClick={() => setIsContactFormOpen(true)}
-                    className={`w-full py-3 rounded-lg font-medium transition-all ${
-                      pkg.package_level === 'pro'
-                        ? 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#c5ad65]'
-                        : 'bg-[#d3bb73]/10 text-[#d3bb73] border border-[#d3bb73]/30 hover:bg-[#d3bb73]/20'
-                    }`}
+                    className="w-full py-3 rounded-lg font-medium transition-all bg-[#d3bb73]/10 text-[#d3bb73] border border-[#d3bb73]/30 hover:bg-[#d3bb73]/20"
                   >
-                    Zapytaj o wycenę
+                    Zapytaj o dokładną wycenę
                   </button>
                 </div>
               ))}
