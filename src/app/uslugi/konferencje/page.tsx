@@ -7,7 +7,7 @@ import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
-  ChevronDown, Mail, ArrowLeft, Presentation
+  ChevronDown, Mail, ArrowLeft, Presentation, Music
 } from 'lucide-react';
 import Link from 'next/link';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
@@ -21,7 +21,8 @@ const iconMap: Record<string, any> = {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
-  Volume2: Mic, Presentation: Monitor, Truck: Package
+  Music, Presentation,
+  Volume2: Mic, Truck: Package
 };
 
 export default function ConferencesPage() {
@@ -43,6 +44,7 @@ export default function ConferencesPage() {
   const [gallery, setGallery] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [ogImage, setOgImage] = useState<string>('');
+  const [serviceCategories, setServiceCategories] = useState<any[]>([]);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
 
@@ -63,7 +65,8 @@ export default function ConferencesPage() {
       faqRes,
       galleryRes,
       citiesRes,
-      ogImageRes
+      ogImageRes,
+      serviceCategoriesRes
     ] = await Promise.all([
       supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
       supabase.from('conferences_problems').select('*').eq('is_active', true).order('display_order'),
@@ -76,7 +79,11 @@ export default function ConferencesPage() {
       supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_gallery').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_cities').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('site_images').select('desktop_url').eq('section', 'konferencje-hero').eq('is_active', true).single()
+      supabase.from('site_images').select('desktop_url').eq('section', 'konferencje-hero').eq('is_active', true).single(),
+      supabase.from('conferences_service_categories').select(`
+        *,
+        items:conferences_service_items(*)
+      `).eq('is_active', true).order('display_order')
     ]);
 
     if (heroRes.data) setHeroData(heroRes.data);
@@ -90,6 +97,7 @@ export default function ConferencesPage() {
     if (faqRes.data) setFaq(faqRes.data);
     if (galleryRes.data) setGallery(galleryRes.data);
     if (citiesRes.data) setCities(citiesRes.data);
+    if (serviceCategoriesRes.data) setServiceCategories(serviceCategoriesRes.data);
     setOgImage(ogImageRes.data?.desktop_url || 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop');
   };
 
@@ -366,6 +374,88 @@ export default function ConferencesPage() {
             </div>
           </div>
         </PageHeroImage>
+
+        {/* Detailed Services Section */}
+        {serviceCategories.length > 0 && (
+          <section className="py-20 px-6 bg-gradient-to-b from-[#0f1119] to-[#1c1f33]">
+            <div className="max-w-7xl mx-auto">
+              <div className="text-center mb-16">
+                <h2 className="text-4xl md:text-5xl font-light text-[#e5e4e2] mb-4">
+                  Pełen Zakres <span className="text-[#d3bb73]">Usług Eventowych</span>
+                </h2>
+                <p className="text-[#e5e4e2]/60 text-lg max-w-3xl mx-auto">
+                  Profesjonalna technika, doświadczony zespół i kompleksowa obsługa – od koncepcji po realizację
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {serviceCategories.map((category, idx) => {
+                  const Icon = getIcon(category.icon);
+                  const activeItems = category.items?.filter((item: any) => item.is_active) || [];
+
+                  return (
+                    <div
+                      key={category.id}
+                      className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-2xl p-6 hover:border-[#d3bb73]/40 transition-all hover:transform hover:scale-105"
+                      style={{ animationDelay: `${idx * 50}ms` }}
+                    >
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <Icon className="w-6 h-6 text-[#d3bb73]" />
+                        </div>
+                        <h3 className="text-xl font-medium text-[#e5e4e2]">
+                          {category.name}
+                        </h3>
+                      </div>
+
+                      {category.description && (
+                        <p className="text-[#e5e4e2]/60 text-sm mb-4">
+                          {category.description}
+                        </p>
+                      )}
+
+                      <ul className="space-y-2">
+                        {activeItems.slice(0, 6).map((item: any) => (
+                          <li key={item.id} className="flex items-start gap-2 text-[#e5e4e2]/70 text-sm">
+                            <CheckCircle className="w-4 h-4 text-[#d3bb73] mt-0.5 flex-shrink-0" />
+                            <div>
+                              <span className={item.is_premium ? 'text-[#d3bb73] font-medium' : ''}>
+                                {item.name}
+                              </span>
+                              {item.description && (
+                                <p className="text-[#e5e4e2]/40 text-xs mt-0.5">{item.description}</p>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                        {activeItems.length > 6 && (
+                          <li className="text-[#e5e4e2]/40 text-xs italic">
+                            ...i więcej ({activeItems.length - 6} dodatkowych usług)
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-12 text-center bg-[#1c1f33]/50 border border-[#d3bb73]/20 rounded-2xl p-8">
+                <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">
+                  Nie znalazłeś tego, czego szukasz?
+                </h3>
+                <p className="text-[#e5e4e2]/60 mb-6 max-w-2xl mx-auto">
+                  Nasze możliwości wykraczają poza standardową ofertę. Skontaktuj się z nami, a znajdziemy idealne rozwiązanie dla Twojego wydarzenia.
+                </p>
+                <button
+                  onClick={() => setIsContactFormOpen(true)}
+                  className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-all hover:scale-105 transform"
+                >
+                  Zapytaj o niestandardową realizację
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Gallery Section */}
         {gallery.length > 0 && (
