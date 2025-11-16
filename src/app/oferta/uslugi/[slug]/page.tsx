@@ -7,19 +7,25 @@ import Head from 'next/head';
 import Link from 'next/link';
 import {
   ArrowLeft, Check, Star, Mail, Phone, Calendar,
-  Package, Award, Shield, Zap, Info
+  Package, Award, Shield, Zap, Info, Edit2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
+import { AdminServiceEditor } from '@/components/AdminServiceEditor';
+import { useEditMode } from '@/contexts/EditModeContext';
+import { WebsiteEditButton } from '@/components/WebsiteEditButton';
 
 export default function ServiceDetailPage() {
   const params = useParams();
+  const { isEditMode } = useEditMode();
   const [service, setService] = useState<any>(null);
   const [category, setCategory] = useState<any>(null);
   const [relatedServices, setRelatedServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState(0);
 
   useEffect(() => {
     loadServiceData();
@@ -141,6 +147,7 @@ export default function ServiceDetailPage() {
       </Head>
 
       <Navbar />
+      <WebsiteEditButton />
       <div className="min-h-screen bg-[#0f1119]">
         {/* Hero Section with Image */}
         <section className="relative h-[60vh] min-h-[500px] overflow-hidden">
@@ -152,6 +159,16 @@ export default function ServiceDetailPage() {
               />
               <div className="absolute inset-0 bg-gradient-to-b from-[#0f1119]/60 via-[#0f1119]/80 to-[#0f1119]" />
             </>
+          )}
+
+          {isEditMode && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="absolute top-6 right-6 z-10 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-all flex items-center gap-2"
+            >
+              <Edit2 className="w-4 h-4" />
+              Edytuj usługę
+            </button>
           )}
 
           <div className="relative h-full flex items-end pb-20 px-6">
@@ -258,6 +275,54 @@ export default function ServiceDetailPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Why MAVINCI */}
+                <div className="bg-gradient-to-br from-[#1c1f33] to-[#0f1119] border border-[#d3bb73]/20 rounded-2xl p-8">
+                  <h2 className="text-3xl font-light text-[#e5e4e2] mb-6">
+                    Dlaczego <span className="text-[#d3bb73]">MAVINCI</span>?
+                  </h2>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Award className="w-6 h-6 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <h4 className="text-[#e5e4e2] font-medium mb-1">Doświadczenie od 2015</h4>
+                        <p className="text-[#e5e4e2]/60 text-sm">Setki zrealizowanych eventów dla topowych klientów</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Shield className="w-6 h-6 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <h4 className="text-[#e5e4e2] font-medium mb-1">Ubezpieczenie OC 1M PLN</h4>
+                        <p className="text-[#e5e4e2]/60 text-sm">Pełne bezpieczeństwo dla Twojego wydarzenia</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Package className="w-6 h-6 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <h4 className="text-[#e5e4e2] font-medium mb-1">Własny sprzęt premium</h4>
+                        <p className="text-[#e5e4e2]/60 text-sm">CODA Audio, Blackmagic, Shure Axient Digital</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Zap className="w-6 h-6 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <h4 className="text-[#e5e4e2] font-medium mb-1">24/7 Wsparcie techniczne</h4>
+                        <p className="text-[#e5e4e2]/60 text-sm">Zawsze dostępni podczas Twojego eventu</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Sidebar */}
@@ -295,70 +360,86 @@ export default function ServiceDetailPage() {
                   </div>
                 </div>
 
-                {/* Benefits */}
-                <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-2xl p-6">
-                  <h4 className="text-lg font-medium text-[#e5e4e2] mb-4">
-                    Dlaczego MAVINCI?
-                  </h4>
-                  <ul className="space-y-3">
-                    <li className="flex items-start gap-3 text-[#e5e4e2]/70 text-sm">
-                      <Award className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
-                      <span>Doświadczenie od 2015 roku</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-[#e5e4e2]/70 text-sm">
-                      <Shield className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
-                      <span>Ubezpieczenie OC 1M PLN</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-[#e5e4e2]/70 text-sm">
-                      <Package className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
-                      <span>Własny sprzęt premium</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-[#e5e4e2]/70 text-sm">
-                      <Zap className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
-                      <span>24/7 wsparcie techniczne</span>
-                    </li>
-                  </ul>
-                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Related Services */}
+        {/* Related Services Carousel */}
         {relatedServices.length > 0 && (
           <section className="py-20 px-6 bg-gradient-to-b from-[#0f1119] to-[#1c1f33]">
             <div className="max-w-7xl mx-auto">
-              <h2 className="text-3xl font-light text-[#e5e4e2] mb-8">
-                Podobne usługi z kategorii <span className="text-[#d3bb73]">{category?.name}</span>
-              </h2>
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-3xl font-light text-[#e5e4e2]">
+                  Podobne usługi z kategorii <span className="text-[#d3bb73]">{category?.name}</span>
+                </h2>
 
-              <div className="grid md:grid-cols-3 gap-6">
-                {relatedServices.map((related) => (
-                  <Link
-                    key={related.id}
-                    href={`/oferta/uslugi/${related.slug}`}
-                    className="group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all"
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCarouselIndex(Math.max(0, carouselIndex - 1))}
+                    disabled={carouselIndex === 0}
+                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    {related.thumbnail_url && (
-                      <div className="aspect-video overflow-hidden bg-[#0f1119]">
-                        <img
-                          src={related.thumbnail_url}
-                          alt={related.name}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                        />
-                      </div>
-                    )}
-                    <div className="p-6">
-                      <h3 className="text-lg font-medium text-[#e5e4e2] mb-2 group-hover:text-[#d3bb73] transition-colors">
-                        {related.name}
-                      </h3>
-                      {related.description && (
-                        <p className="text-[#e5e4e2]/60 text-sm line-clamp-2">
-                          {related.description}
-                        </p>
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setCarouselIndex(Math.min(relatedServices.length - 1, carouselIndex + 1))}
+                    disabled={carouselIndex >= relatedServices.length - 1}
+                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative overflow-hidden">
+                <div
+                  className="flex transition-transform duration-500 ease-out gap-6"
+                  style={{
+                    transform: `translateX(-${carouselIndex * (100 / 3 + 2)}%)`
+                  }}
+                >
+                  {relatedServices.map((related) => (
+                    <Link
+                      key={related.id}
+                      href={`/oferta/uslugi/${related.slug}`}
+                      className="group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all flex-shrink-0"
+                      style={{ width: 'calc(33.333% - 16px)' }}
+                    >
+                      {related.thumbnail_url && (
+                        <div className="aspect-video overflow-hidden bg-[#0f1119]">
+                          <img
+                            src={related.thumbnail_url}
+                            alt={related.name}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                          />
+                        </div>
                       )}
-                    </div>
-                  </Link>
+                      <div className="p-6">
+                        <h3 className="text-lg font-medium text-[#e5e4e2] mb-2 group-hover:text-[#d3bb73] transition-colors">
+                          {related.name}
+                        </h3>
+                        {related.description && (
+                          <p className="text-[#e5e4e2]/60 text-sm line-clamp-2">
+                            {related.description}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dots indicator */}
+              <div className="flex items-center justify-center gap-2 mt-6">
+                {relatedServices.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCarouselIndex(idx)}
+                    className={`w-2 h-2 rounded-full transition-all ${
+                      idx === carouselIndex ? 'bg-[#d3bb73] w-8' : 'bg-[#e5e4e2]/20'
+                    }`}
+                  />
                 ))}
               </div>
             </div>
@@ -370,6 +451,14 @@ export default function ServiceDetailPage() {
             isOpen={isContactFormOpen}
             onClose={() => setIsContactFormOpen(false)}
             defaultSubject={`Zapytanie o: ${service.name}`}
+          />
+        )}
+
+        {isEditing && (
+          <AdminServiceEditor
+            serviceId={service.id}
+            onClose={() => setIsEditing(false)}
+            onSaved={loadServiceData}
           />
         )}
       </div>

@@ -27,11 +27,19 @@ import {
   Star,
   ArrowRight,
   Mail,
+  Plus,
+  Trash2,
+  Edit2
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import Link from 'next/link';
+import { useEditMode } from '@/contexts/EditModeContext';
+import { WebsiteEditButton } from '@/components/WebsiteEditButton';
+import { AdminAddServiceModal } from '@/components/AdminAddServiceModal';
+import { AdminServiceEditor } from '@/components/AdminServiceEditor';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 const iconMap: Record<string, any> = {
   Mic,
@@ -63,11 +71,15 @@ const getIcon = (iconName: string) => {
 };
 
 export default function UslugiPage() {
+  const { isEditMode } = useEditMode();
+  const { showSnackbar } = useSnackbar();
   const [serviceCategories, setServiceCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
+  const [addingToCategoryId, setAddingToCategoryId] = useState<string | null>(null);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
 
   useEffect(() => {
     loadServices();
@@ -93,6 +105,27 @@ export default function UslugiPage() {
       console.error('Error loading services:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string, serviceName: string) => {
+    if (!confirm(`Czy na pewno chcesz usunąć usługę "${serviceName}"?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('conferences_service_items')
+        .delete()
+        .eq('id', serviceId);
+
+      if (error) throw error;
+
+      showSnackbar('Usługa usunięta', 'success');
+      loadServices();
+    } catch (error) {
+      console.error('Error deleting service:', error);
+      showSnackbar('Błąd usuwania usługi', 'error');
     }
   };
 
@@ -206,6 +239,7 @@ export default function UslugiPage() {
       </Head>
 
       <Navbar />
+      <WebsiteEditButton />
       <div className="min-h-screen bg-[#0f1119]">
         {/* Hero Section */}
         <section className="bg-gradient-to-b from-[#1c1f33] to-[#0f1119] px-6 py-20">
@@ -314,25 +348,60 @@ export default function UslugiPage() {
                   className="animate-fade-in-up"
                   style={{ animationDelay: `${idx * 100}ms` }}
                 >
-                  <div className="mb-8 flex items-center gap-4">
-                    <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-[#d3bb73]/10">
-                      <Icon className="h-8 w-8 text-[#d3bb73]" />
+                  <div className="mb-8 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-[#d3bb73]/10">
+                        <Icon className="h-8 w-8 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <h2 className="text-3xl font-light text-[#e5e4e2]">{category.name}</h2>
+                        {category.description && (
+                          <p className="mt-1 text-sm text-[#e5e4e2]/60">{category.description}</p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="text-3xl font-light text-[#e5e4e2]">{category.name}</h2>
-                      {category.description && (
-                        <p className="mt-1 text-sm text-[#e5e4e2]/60">{category.description}</p>
-                      )}
-                    </div>
+
+                    {isEditMode && (
+                      <button
+                        onClick={() => setAddingToCategoryId(category.id)}
+                        className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Dodaj usługę
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {category.items.map((item: any) => (
-                      <Link
-                        key={item.id}
-                        href={`/oferta/uslugi/${item.slug}`}
-                        className="group rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] overflow-hidden transition-all hover:scale-105 hover:transform hover:border-[#d3bb73]/40"
-                      >
+                      <div key={item.id} className="relative group">
+                        {isEditMode && (
+                          <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setEditingServiceId(item.id);
+                              }}
+                              className="bg-[#d3bb73] text-[#1c1f33] p-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleDeleteService(item.id, item.name);
+                              }}
+                              className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition-colors shadow-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+
+                        <Link
+                          href={`/oferta/uslugi/${item.slug}`}
+                          className="block rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] overflow-hidden transition-all hover:scale-105 hover:transform hover:border-[#d3bb73]/40"
+                        >
                         {item.thumbnail_url && (
                           <div className="aspect-video overflow-hidden bg-[#0f1119]">
                             <img
@@ -372,7 +441,8 @@ export default function UslugiPage() {
                             </span>
                           </div>
                         </div>
-                      </Link>
+                        </Link>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -430,7 +500,26 @@ export default function UslugiPage() {
           <ContactFormWithTracking
             isOpen={isContactFormOpen}
             onClose={() => setIsContactFormOpen(false)}
-            sourcePage={'/uslugi'}
+            defaultSubject="Zapytanie o usługi eventowe"
+          />
+        )}
+
+        {addingToCategoryId && (
+          <AdminAddServiceModal
+            categoryId={addingToCategoryId}
+            categoryName={
+              serviceCategories.find((cat) => cat.id === addingToCategoryId)?.name || ''
+            }
+            onClose={() => setAddingToCategoryId(null)}
+            onAdded={loadServices}
+          />
+        )}
+
+        {editingServiceId && (
+          <AdminServiceEditor
+            serviceId={editingServiceId}
+            onClose={() => setEditingServiceId(null)}
+            onSaved={loadServices}
           />
         )}
       </div>
