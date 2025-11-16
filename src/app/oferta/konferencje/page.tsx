@@ -533,12 +533,12 @@ export default function ConferencesPage() {
                 </div>
               )}
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {portfolioProjects.map((project, idx) => (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {portfolioProjects.slice(0, 6).map((project, idx) => (
                   <Link
                     key={project.id}
                     href={`/portfolio/${project.slug || project.id}`}
-                    className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
+                    className="group relative overflow-hidden rounded-xl aspect-video cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
                     style={{ animationDelay: `${idx * 100}ms` }}
                   >
                     <img
@@ -557,6 +557,18 @@ export default function ConferencesPage() {
                   </Link>
                 ))}
               </div>
+
+              {portfolioProjects.length > 6 && (
+                <div className="text-center mt-8">
+                  <Link
+                    href="/portfolio"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    Zobacz wszystkie projekty
+                    <ArrowLeft className="w-4 h-4 rotate-180" />
+                  </Link>
+                </div>
+              )}
             </div>
           </section>
         )}

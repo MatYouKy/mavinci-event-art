@@ -45,6 +45,8 @@ export default function ProjectDetailPage() {
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
   const [location, setLocation] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [description, setDescription] = useState('');
@@ -97,6 +99,7 @@ export default function ProjectDetailPage() {
   const loadProjectData = (proj: PortfolioProject) => {
     setTitle(proj.title);
     setCategory(proj.category);
+    setTags(proj.tags || []);
     setLocation(proj.location || 'Polska');
     setEventDate(proj.event_date || new Date().toISOString().split('T')[0]);
     setDescription(proj.description);
@@ -146,6 +149,7 @@ export default function ProjectDetailPage() {
       const payload = {
         title,
         category,
+        tags,
         image: imageUrl,
         alt: imageData?.alt || title,
         image_metadata: imageMetadata,
@@ -342,6 +346,57 @@ export default function ProjectDetailPage() {
                     {title}
                   </h1>
                 )}
+
+                {/* Tags */}
+                {isEditing ? (
+                  <div className="mb-6">
+                    <label className="text-[#e5e4e2]/70 text-sm mb-2 block">
+                      Tagi (np. konferencje, eventy, audio-video)
+                    </label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {tags.map((tag, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-3 py-1"
+                        >
+                          <span className="text-[#d3bb73] text-sm">{tag}</span>
+                          <button
+                            onClick={() => setTags(tags.filter((_, i) => i !== idx))}
+                            className="text-[#d3bb73]/70 hover:text-[#d3bb73]"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter' && newTag.trim()) {
+                            setTags([...tags, newTag.trim()]);
+                            setNewTag('');
+                          }
+                        }}
+                        placeholder="Dodaj tag (Enter)"
+                        className="flex-1 bg-[#1c1f33]/40 border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73] transition-colors"
+                      />
+                    </div>
+                  </div>
+                ) : tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-3 py-1"
+                      >
+                        <span className="text-[#d3bb73] text-sm">{tag}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
 
                 {/* Location & Date */}
                 <div className="flex flex-wrap gap-6 mb-8">
