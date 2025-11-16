@@ -1,180 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useState } from 'react';
+import { useGetAnalyticsStatsQuery } from '@/store/api/analyticsApi';
 import { BarChart3, TrendingUp, Users, Clock, Mail, Globe, MonitorSmartphone, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
-interface AnalyticsStats {
-  totalVisits: number;
-  uniqueVisitors: number;
-  avgTimeOnPage: number;
-  contactForms: number;
-  topPages: Array<{
-    page_url: string;
-    visits: number;
-    unique_visitors: number;
-    avg_time: number;
-  }>;
-  trafficSources: Array<{
-    source: string;
-    visits: number;
-  }>;
-  deviceBreakdown: Array<{
-    device_type: string;
-    visits: number;
-    percentage: number;
-  }>;
-  topCities: Array<{
-    city_interest: string;
-    submissions: number;
-  }>;
-  dailyVisits: Array<{
-    date: string;
-    visits: number;
-  }>;
-}
-
 export default function AnalyticsPage() {
-  const [stats, setStats] = useState<AnalyticsStats>({
-    totalVisits: 0,
-    uniqueVisitors: 0,
-    avgTimeOnPage: 0,
-    contactForms: 0,
-    topPages: [],
-    trafficSources: [],
-    deviceBreakdown: [],
-    topCities: [],
-    dailyVisits: [],
-  });
-
-  const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState(30);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [dateRange]);
-
-  const fetchAnalytics = async () => {
-    setLoading(true);
-    try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - dateRange);
-
-      const { data: analytics } = await supabase
-        .from('page_analytics')
-        .select('*')
-        .gte('created_at', startDate.toISOString());
-
-      const { data: forms } = await supabase
-        .from('contact_form_submissions')
-        .select('*')
-        .gte('created_at', startDate.toISOString());
-
-      if (analytics) {
-        const uniqueVisitors = new Set(analytics.map(a => a.session_id)).size;
-        const avgTime = analytics
-          .filter(a => a.time_on_page > 0)
-          .reduce((acc, a) => acc + a.time_on_page, 0) /
-          (analytics.filter(a => a.time_on_page > 0).length || 1);
-
-        const pageStats = analytics.reduce((acc: any, curr) => {
-          if (!acc[curr.page_url]) {
-            acc[curr.page_url] = { visits: 0, sessions: new Set(), totalTime: 0, timeCount: 0 };
-          }
-          acc[curr.page_url].visits++;
-          acc[curr.page_url].sessions.add(curr.session_id);
-          if (curr.time_on_page > 0) {
-            acc[curr.page_url].totalTime += curr.time_on_page;
-            acc[curr.page_url].timeCount++;
-          }
-          return acc;
-        }, {});
-
-        const topPages = Object.entries(pageStats)
-          .map(([url, data]: [string, any]) => ({
-            page_url: url,
-            visits: data.visits,
-            unique_visitors: data.sessions.size,
-            avg_time: data.timeCount > 0 ? Math.round(data.totalTime / data.timeCount) : 0,
-          }))
-          .sort((a, b) => b.visits - a.visits)
-          .slice(0, 10);
-
-        const sourceStats = analytics.reduce((acc: any, curr) => {
-          let source = 'Direct';
-          if (curr.referrer?.includes('google')) source = 'Google';
-          else if (curr.referrer?.includes('facebook')) source = 'Facebook';
-          else if (curr.referrer?.includes('linkedin')) source = 'LinkedIn';
-          else if (curr.referrer && curr.referrer !== '') source = 'Other';
-
-          acc[source] = (acc[source] || 0) + 1;
-          return acc;
-        }, {});
-
-        const trafficSources = Object.entries(sourceStats)
-          .map(([source, visits]) => ({ source, visits: visits as number }))
-          .sort((a, b) => b.visits - a.visits);
-
-        const deviceStats = analytics.reduce((acc: any, curr) => {
-          const device = curr.device_type || 'unknown';
-          acc[device] = (acc[device] || 0) + 1;
-          return acc;
-        }, {});
-
-        const totalDevices = analytics.length;
-        const deviceBreakdown = Object.entries(deviceStats)
-          .map(([device_type, visits]) => ({
-            device_type,
-            visits: visits as number,
-            percentage: Math.round(((visits as number) / totalDevices) * 100),
-          }))
-          .sort((a, b) => b.visits - a.visits);
-
-        const dailyStats = analytics.reduce((acc: any, curr) => {
-          const date = new Date(curr.created_at).toISOString().split('T')[0];
-          acc[date] = (acc[date] || 0) + 1;
-          return acc;
-        }, {});
-
-        const dailyVisits = Object.entries(dailyStats)
-          .map(([date, visits]) => ({ date, visits: visits as number }))
-          .sort((a, b) => a.date.localeCompare(b.date));
-
-        setStats({
-          totalVisits: analytics.length,
-          uniqueVisitors,
-          avgTimeOnPage: Math.round(avgTime),
-          contactForms: forms?.length || 0,
-          topPages,
-          trafficSources,
-          deviceBreakdown,
-          topCities: [],
-          dailyVisits,
-        });
-      }
-
-      if (forms) {
-        const cityStats = forms.reduce((acc: any, curr) => {
-          if (curr.city_interest) {
-            acc[curr.city_interest] = (acc[curr.city_interest] || 0) + 1;
-          }
-          return acc;
-        }, {});
-
-        const topCities = Object.entries(cityStats)
-          .map(([city_interest, submissions]) => ({ city_interest, submissions: submissions as number }))
-          .sort((a, b) => b.submissions - a.submissions)
-          .slice(0, 5);
-
-        setStats(prev => ({ ...prev, topCities }));
-      }
-    } catch (error) {
-      console.error('Error fetching analytics:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: stats, isLoading, error } = useGetAnalyticsStatsQuery({ dateRange });
 
   const formatTime = (seconds: number) => {
     if (seconds < 60) return `${seconds}s`;
@@ -183,7 +17,9 @@ export default function AnalyticsPage() {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
-  const maxVisits = Math.max(...stats.dailyVisits.map(d => d.visits), 1);
+  const maxVisits = stats?.dailyVisits && stats.dailyVisits.length > 0
+    ? Math.max.apply(null, stats.dailyVisits.map(d => d.visits))
+    : 1;
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
@@ -228,9 +64,11 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-12 text-[#e5e4e2]/50">Ładowanie danych...</div>
-        ) : (
+        ) : error ? (
+          <div className="text-center py-12 text-red-400">Błąd ładowania danych</div>
+        ) : stats ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
