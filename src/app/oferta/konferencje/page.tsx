@@ -903,37 +903,62 @@ export default function ConferencesPage() {
 
               {isEditMode && (
                 <div className="mb-8 bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl p-6">
-                  <h3 className="text-[#d3bb73] text-lg font-medium mb-4">Tryb edycji - Wybierz usługi do wyświetlenia</h3>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[#d3bb73] text-lg font-medium">Tryb edycji - Wybierz usługi do wyświetlenia</h3>
+                    <span className="text-[#e5e4e2]/60 text-sm">
+                      Wybrano: {selectedServiceIds.size}
+                    </span>
+                  </div>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto pr-2">
                     {allServiceItems.map((item) => (
                       <label
                         key={item.id}
-                        className="flex items-start gap-3 p-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
+                        className={`flex items-start gap-3 p-3 bg-[#0f1119] border rounded-lg cursor-pointer transition-all ${
+                          selectedServiceIds.has(item.id)
+                            ? 'border-[#d3bb73] bg-[#d3bb73]/5'
+                            : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                        }`}
                       >
                         <input
                           type="checkbox"
                           checked={selectedServiceIds.has(item.id)}
                           onChange={async (e) => {
                             const newSelected = new Set(selectedServiceIds);
+
                             if (e.target.checked) {
                               newSelected.add(item.id);
+                              setSelectedServiceIds(newSelected);
+
                               await supabase.from('conferences_related_services').insert({
                                 service_item_id: item.id,
                                 display_order: newSelected.size
                               });
                             } else {
                               newSelected.delete(item.id);
-                              await supabase.from('conferences_related_services').delete().eq('service_item_id', item.id);
+                              setSelectedServiceIds(newSelected);
+
+                              await supabase.from('conferences_related_services')
+                                .delete()
+                                .eq('service_item_id', item.id);
                             }
-                            setSelectedServiceIds(newSelected);
-                            loadData();
                           }}
-                          className="mt-1 w-4 h-4 rounded border-[#d3bb73] text-[#d3bb73] focus:ring-[#d3bb73]"
+                          className="mt-1 w-5 h-5 rounded border-[#d3bb73] text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0 cursor-pointer"
                         />
-                        <div className="flex-1">
-                          <span className="text-[#e5e4e2] text-sm font-medium block">{item.name}</span>
+
+                        {item.thumbnail_url && (
+                          <div className="w-16 h-16 rounded-lg overflow-hidden bg-[#0f1119] border border-[#d3bb73]/10 flex-shrink-0">
+                            <img
+                              src={item.thumbnail_url}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[#e5e4e2] text-sm font-medium block mb-1">{item.name}</span>
                           {item.description && (
-                            <span className="text-[#e5e4e2]/60 text-xs">{item.description}</span>
+                            <span className="text-[#e5e4e2]/60 text-xs line-clamp-2">{item.description}</span>
                           )}
                         </div>
                       </label>
