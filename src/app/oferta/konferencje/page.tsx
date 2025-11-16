@@ -18,6 +18,7 @@ import { EditableContent } from '@/components/EditableContent';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { ConferencesGalleryEditor } from '@/components/ConferencesGalleryEditor';
 import { ConferencesPackagesEditor } from '@/components/ConferencesPackagesEditor';
+import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
 
 const iconMap: Record<string, any> = {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
@@ -621,6 +622,10 @@ export default function ConferencesPage() {
             <p className="text-[#e5e4e2]/60 text-center mb-16">
               Kompleksowa realizacja audio-video dla Twojej konferencji
             </p>
+
+            {isEditMode && (
+              <ConferencesServicesEditor services={services} onUpdate={loadData} />
+            )}
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {services.map((service) => {
