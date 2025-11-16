@@ -3,6 +3,7 @@ import Hero from '@/components/Hero';
 import Stats from '@/components/Stats';
 import Divider from '@/components/Divider';
 import Services from '@/components/Services';
+import OfertaSection from '@/components/OfertaSection';
 import Portfolio from '@/components/Portfolio';
 import DividerTwo from '@/components/DividerTwo';
 import Team from '@/components/Team';
@@ -21,6 +22,7 @@ export default function HomePage() {
       <Stats />
       <Divider />
       <Services />
+      <OfertaSection />
       <Portfolio />
       <DividerTwo />
       <Team />
