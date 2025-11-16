@@ -7,8 +7,9 @@ import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
-  ChevronDown, Mail
+  ChevronDown, Mail, ArrowLeft, Presentation
 } from 'lucide-react';
+import Link from 'next/link';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -27,6 +28,11 @@ const iconMap: Record<string, any> = {
 export default function ConferencesPage() {
   const { isEditMode } = useEditMode();
   const [heroData, setHeroData] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editHeroTitle, setEditHeroTitle] = useState('');
+  const [editHeroSubtitle, setEditHeroSubtitle] = useState('');
+  const [editHeroDescription, setEditHeroDescription] = useState('');
+  const [editHeroOpacity, setEditHeroOpacity] = useState(0.7);
   const [problems, setProblems] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [packages, setPackages] = useState<any[]>([]);
@@ -84,6 +90,41 @@ export default function ConferencesPage() {
     if (citiesRes.data) setCities(citiesRes.data);
   };
 
+  useEffect(() => {
+    if (heroData && !isEditing) {
+      setEditHeroTitle(heroData.title || '');
+      setEditHeroSubtitle(heroData.subtitle || '');
+      setEditHeroDescription(heroData.trust_badge || '');
+      setEditHeroOpacity(0.7);
+    }
+  }, [heroData, isEditing]);
+
+  const handleSaveHero = async () => {
+    try {
+      const { error } = await supabase
+        .from('conferences_hero')
+        .update({
+          title: editHeroTitle,
+          subtitle: editHeroSubtitle,
+          trust_badge: editHeroDescription,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', heroData.id);
+
+      if (error) throw error;
+
+      setHeroData({
+        ...heroData,
+        title: editHeroTitle,
+        subtitle: editHeroSubtitle,
+        trust_badge: editHeroDescription
+      });
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving hero:', error);
+    }
+  };
+
   const getIcon = (iconName: string) => {
     const Icon = iconMap[iconName] || Settings;
     return Icon;
@@ -126,58 +167,141 @@ export default function ConferencesPage() {
         <PageHeroImage
           section="konferencje-hero"
           defaultImage="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1920"
-          defaultAlt="Profesjonalna obsługa konferencji"
-          overlayOpacity={0.6}
-        />
+          defaultOpacity={editHeroOpacity}
+          className="py-24 md:py-32 overflow-hidden"
+        >
+          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {!isEditing && (
+              <Link href="/#uslugi" className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8">
+                <ArrowLeft className="w-4 h-4" />
+                Powrót do usług
+              </Link>
+            )}
 
-        <div className="relative -mt-32 z-10">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="bg-gradient-to-br from-[#1c1f33]/95 to-[#0f1119]/95 backdrop-blur-sm border border-[#d3bb73]/30 rounded-2xl p-8 md:p-12 shadow-2xl animate-fade-in-up">
-              <div className="text-center">
-                <EditableContent
-                  table="conferences_hero"
-                  column="title"
-                  defaultValue={heroData.title}
-                  className="text-4xl md:text-5xl font-light text-[#e5e4e2] mb-4"
-                />
-                <EditableContent
-                  table="conferences_hero"
-                  column="subtitle"
-                  defaultValue={heroData.subtitle}
-                  className="text-xl text-[#e5e4e2]/80 mb-8 max-w-3xl mx-auto"
-                  multiline
-                />
-
-                <div className="flex flex-wrap gap-4 justify-center mb-6">
-                  <button
-                    onClick={() => setIsContactFormOpen(true)}
-                    className="px-8 py-4 bg-[#d3bb73] text-[#1c1f33] font-medium rounded-lg hover:bg-[#c5ad65] transition-all shadow-lg hover:shadow-xl hover:scale-105 transform"
-                  >
-                    {heroData.cta_primary}
-                  </button>
-                  {heroData.cta_secondary && (
-                    <button
-                      onClick={() => setIsContactFormOpen(true)}
-                      className="px-8 py-4 bg-[#1c1f33] text-[#d3bb73] font-medium rounded-lg border border-[#d3bb73]/30 hover:border-[#d3bb73] transition-all hover:scale-105 transform"
-                    >
-                      {heroData.cta_secondary}
-                    </button>
-                  )}
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
+                  <Presentation className="w-5 h-5 text-[#d3bb73]" />
+                  <span className="text-[#d3bb73] text-sm font-medium">Obsługa Konferencji</span>
                 </div>
 
-                <div className="flex items-center justify-center gap-2 text-[#e5e4e2]/60">
-                  <MapPin className="w-5 h-5 text-[#d3bb73]" />
-                  <EditableContent
-                    table="conferences_hero"
-                    column="trust_badge"
-                    defaultValue={heroData.trust_badge}
-                    className="text-sm"
-                  />
+                {isEditMode && (
+                  <div className="mb-4 flex gap-2">
+                    {!isEditing ? (
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg text-sm font-medium hover:bg-[#c5ad65] transition-colors"
+                      >
+                        Edytuj sekcję
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={handleSaveHero}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                        >
+                          Zapisz
+                        </button>
+                        <button
+                          onClick={() => setIsEditing(false)}
+                          className="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+                        >
+                          Anuluj
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {isEditing ? (
+                  <div className="space-y-4 mb-8">
+                    <div>
+                      <label className="block text-[#e5e4e2]/70 text-sm mb-2">Tytuł</label>
+                      <input
+                        type="text"
+                        value={editHeroTitle}
+                        onChange={(e) => setEditHeroTitle(e.target.value)}
+                        className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] text-3xl font-light focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[#e5e4e2]/70 text-sm mb-2">Podtytuł</label>
+                      <textarea
+                        value={editHeroSubtitle}
+                        onChange={(e) => setEditHeroSubtitle(e.target.value)}
+                        rows={3}
+                        className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[#e5e4e2]/70 text-sm mb-2">Opis</label>
+                      <textarea
+                        value={editHeroDescription}
+                        onChange={(e) => setEditHeroDescription(e.target.value)}
+                        rows={2}
+                        className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] text-sm focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[#e5e4e2]/70 text-sm mb-2">
+                        Przeźroczystość tła: {Math.round(editHeroOpacity * 100)}%
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={editHeroOpacity * 100}
+                        onChange={(e) => setEditHeroOpacity(parseInt(e.target.value) / 100)}
+                        className="w-full h-2 bg-[#1c1f33] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
+                      {heroData.title.split(' ')[0]} <span className="text-[#d3bb73]">{heroData.title.split(' ').slice(1).join(' ')}</span>
+                    </h1>
+
+                    <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed mb-4">
+                      {heroData.subtitle}
+                    </p>
+
+                    <p className="text-[#e5e4e2]/50 text-sm font-light leading-relaxed mb-8">
+                      {heroData.trust_badge}
+                    </p>
+                  </>
+                )}
+
+                {!isEditing && (
+                  <div className="flex flex-wrap gap-4">
+                    <button
+                      onClick={() => setIsContactFormOpen(true)}
+                      className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                    >
+                      Zapytaj o wycenę
+                    </button>
+                    <Link href="/#uslugi" className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/20 transition-colors">
+                      Zobacz inne usługi
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#0f1119]/20 rounded-3xl blur-3xl"></div>
+                  <div className="relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-3xl p-8">
+                    <Mic className="w-24 h-24 text-[#d3bb73] mb-6" />
+                    <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">Profesjonalizm i Technika</h3>
+                    <p className="text-[#e5e4e2]/70 font-light">
+                      Kompleksowa obsługa audio-video, streaming live, wielokamerowa realizacja. Od małych szkoleń po duże konferencje międzynarodowe.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </PageHeroImage>
 
         {/* Gallery Section */}
         {gallery.length > 0 && (
