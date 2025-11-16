@@ -61,7 +61,7 @@ export default function ServiceDetailPage() {
           .eq('category_id', categoryData.id)
           .eq('is_active', true)
           .neq('id', serviceData.id)
-          .limit(3);
+          .limit(10);
 
         if (related) {
           setRelatedServices(related);
@@ -365,16 +365,14 @@ export default function ServiceDetailPage() {
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setCarouselIndex(Math.max(0, carouselIndex - 1))}
-                    disabled={carouselIndex === 0}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    onClick={() => setCarouselIndex((prev) => (prev - 1 + relatedServices.length) % relatedServices.length)}
+                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setCarouselIndex(Math.min(relatedServices.length - 1, carouselIndex + 1))}
-                    disabled={carouselIndex >= relatedServices.length - 1}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    onClick={() => setCarouselIndex((prev) => (prev + 1) % relatedServices.length)}
+                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>

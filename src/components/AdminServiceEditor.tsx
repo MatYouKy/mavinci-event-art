@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { X, Plus, Save, Trash2, Image as ImageIcon, Edit2 } from 'lucide-react';
+import { X, Plus, Save, Trash2, Image as ImageIcon, Edit2, Upload } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from './SimpleImageUploader';
+import { uploadOptimizedImage } from '@/lib/storage';
+import { IUploadImage } from '@/types/image';
 
 interface AdminServiceEditorProps {
   serviceId: string;
@@ -143,17 +145,32 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
     setTechnicalSpecs(updated);
   };
 
-  const handleImageUpload = (url: string) => {
-    if (showImageUploader === 'hero') {
-      setHeroImageUrl(url);
-      const thumbnailUrl = url.includes('pexels.com')
-        ? url.replace(/w=\d+/, 'w=400&h=300&fit=crop')
-        : url;
-      setThumbnailUrl(thumbnailUrl);
-    } else if (showImageUploader === 'thumbnail') {
-      setThumbnailUrl(url);
+  const handleImageUpload = async (imageData: IUploadImage) => {
+    if (!imageData.file) {
+      showSnackbar('Nie wybrano pliku', 'error');
+      return;
     }
-    setShowImageUploader(null);
+
+    try {
+      showSnackbar('Uploading...', 'info');
+
+      const folder = showImageUploader === 'hero' ? 'services/hero' : 'services/thumbnails';
+      const result = await uploadOptimizedImage(imageData.file, folder);
+
+      if (showImageUploader === 'hero') {
+        setHeroImageUrl(result.desktop);
+        setThumbnailUrl(result.thumbnail);
+        showSnackbar('Zdjęcie hero uploaded', 'success');
+      } else if (showImageUploader === 'thumbnail') {
+        setThumbnailUrl(result.thumbnail);
+        showSnackbar('Miniatura uploaded', 'success');
+      }
+
+      setShowImageUploader(null);
+    } catch (error) {
+      console.error('Upload error:', error);
+      showSnackbar('Błąd uploadu zdjęcia', 'error');
+    }
   };
 
   if (loading) {
@@ -444,13 +461,38 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       </div>
 
       {showImageUploader && (
-        <SimpleImageUploader
-          onImageSelect={handleImageUpload}
-          onClose={() => setShowImageUploader(null)}
-          currentImageUrl={showImageUploader === 'hero' ? heroImageUrl : thumbnailUrl}
-          maxSizeMB={showImageUploader === 'hero' ? 1.2 : 0.5}
-          targetWidth={showImageUploader === 'hero' ? 1920 : 400}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-[#1c1f33] p-6">
+            <button
+              onClick={() => setShowImageUploader(null)}
+              className="absolute right-4 top-4 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+            >
+              <X className="h-6 w-6" />
+            </button>
+
+            <h3 className="mb-4 text-xl font-medium text-[#e5e4e2]">
+              {showImageUploader === 'hero' ? 'Upload Hero Image' : 'Upload Thumbnail'}
+            </h3>
+
+            <SimpleImageUploader
+              onImageSelect={handleImageUpload}
+              initialImage={{
+                src: showImageUploader === 'hero' ? heroImageUrl : thumbnailUrl,
+                alt: name
+              }}
+              showPreview={true}
+            />
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setShowImageUploader(null)}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40"
+              >
+                Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
