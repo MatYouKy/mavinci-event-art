@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { EditModeProvider } from '@/contexts/EditModeContext';
+import { SessionTracker } from '@/components/SessionTracker';
 import { Providers } from './providers';
 import '@/index.css';
 
@@ -137,6 +138,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <AuthProvider>
             <EditModeProvider>
+              <SessionTracker />
               {children}
             </EditModeProvider>
           </AuthProvider>

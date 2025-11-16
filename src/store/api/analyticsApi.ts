@@ -83,18 +83,16 @@ export const analyticsApi = createApi({
     getOnlineUsers: builder.query<number, void>({
       async queryFn() {
         try {
-          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          await supabase.rpc('cleanup_stale_sessions');
 
-          const { data, error } = await supabase
-            .from('page_analytics')
-            .select('session_id')
-            .gte('created_at', fiveMinutesAgo)
+          const { count, error } = await supabase
+            .from('active_sessions')
+            .select('*', { count: 'exact', head: true })
             .not('page_url', 'like', '%/crm%');
 
           if (error) throw error;
 
-          const uniqueSessions = new Set(data?.map(d => d.session_id) || []);
-          return { data: uniqueSessions.size };
+          return { data: count || 0 };
         } catch (error: any) {
           return { error: { status: 'CUSTOM_ERROR', error: error.message } };
         }

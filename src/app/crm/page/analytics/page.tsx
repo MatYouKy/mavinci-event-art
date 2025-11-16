@@ -19,44 +19,37 @@ export default function AnalyticsPage() {
     }
 
     const channel = supabase
-      .channel('online-users')
+      .channel('online-users-realtime')
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'page_analytics',
-          filter: 'page_url=not.like.%/crm%',
+          table: 'active_sessions',
         },
-        async () => {
-          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-          const { data } = await supabase
-            .from('page_analytics')
-            .select('session_id')
-            .gte('created_at', fiveMinutesAgo)
-            .not('page_url', 'like', '%/crm%');
-
-          const uniqueSessions = new Set(data?.map(d => d.session_id) || []);
-          setOnlineUsers(uniqueSessions.size);
+        (payload: any) => {
+          if (!payload.new.page_url?.includes('/crm')) {
+            setOnlineUsers(prev => prev + 1);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'active_sessions',
+        },
+        (payload: any) => {
+          if (!payload.old.page_url?.includes('/crm')) {
+            setOnlineUsers(prev => Math.max(0, prev - 1));
+          }
         }
       )
       .subscribe();
 
-    const interval = setInterval(async () => {
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { data } = await supabase
-        .from('page_analytics')
-        .select('session_id')
-        .gte('created_at', fiveMinutesAgo)
-        .not('page_url', 'like', '%/crm%');
-
-      const uniqueSessions = new Set(data?.map(d => d.session_id) || []);
-      setOnlineUsers(uniqueSessions.size);
-    }, 10000);
-
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(interval);
     };
   }, [initialOnlineUsers]);
 
@@ -136,8 +129,9 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
                 <div className="text-5xl font-light text-[#d3bb73]">{onlineUsers}</div>
-                <div className="text-xs text-[#e5e4e2]/40 mt-2">
-                  Realtime WebSocket • Odświeżanie co 10s
+                <div className="text-xs text-[#e5e4e2]/40 mt-2 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  Realtime WebSocket • Instant Updates
                 </div>
               </div>
             </div>
