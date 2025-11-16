@@ -12,6 +12,10 @@ import {
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { PageHeroImage } from '@/components/PageHeroImage';
+import { EditableContent } from '@/components/EditableContent';
+import { WebsiteEditButton } from '@/components/WebsiteEditButton';
+import { useEditMode } from '@/contexts/EditModeContext';
 
 const iconMap: Record<string, any> = {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
@@ -21,6 +25,7 @@ const iconMap: Record<string, any> = {
 };
 
 export default function ConferencesPage() {
+  const { isEditMode } = useEditMode();
   const [heroData, setHeroData] = useState<any>(null);
   const [problems, setProblems] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
@@ -30,6 +35,8 @@ export default function ConferencesPage() {
   const [process, setProcess] = useState<any[]>([]);
   const [pricing, setPricing] = useState<any[]>([]);
   const [faq, setFaq] = useState<any[]>([]);
+  const [gallery, setGallery] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
 
@@ -47,7 +54,9 @@ export default function ConferencesPage() {
       advantagesRes,
       processRes,
       pricingRes,
-      faqRes
+      faqRes,
+      galleryRes,
+      citiesRes
     ] = await Promise.all([
       supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
       supabase.from('conferences_problems').select('*').eq('is_active', true).order('display_order'),
@@ -57,7 +66,9 @@ export default function ConferencesPage() {
       supabase.from('conferences_advantages').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_process').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_pricing').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order')
+      supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
+      supabase.from('conferences_gallery').select('*').eq('is_active', true).order('display_order'),
+      supabase.from('conferences_cities').select('*').eq('is_active', true)
     ]);
 
     if (heroRes.data) setHeroData(heroRes.data);
@@ -69,6 +80,8 @@ export default function ConferencesPage() {
     if (processRes.data) setProcess(processRes.data);
     if (pricingRes.data) setPricing(pricingRes.data);
     if (faqRes.data) setFaq(faqRes.data);
+    if (galleryRes.data) setGallery(galleryRes.data);
+    if (citiesRes.data) setCities(citiesRes.data);
   };
 
   const getIcon = (iconName: string) => {
@@ -98,7 +111,7 @@ export default function ConferencesPage() {
         />
         <meta
           name="keywords"
-          content="obsługa konferencji, nagłośnienie konferencyjne, technika AV, streaming konferencji, obsługa multimedialna, realizacja live, kamery konferencje, oświetlenie sceniczne"
+          content="obsługa konferencji warszawa, nagłośnienie konferencyjne gdańsk, technika av bydgoszcz, streaming konferencji toruń, realizacja live olsztyn, konferencje łódź, obsługa multimedialna białystok, technika konferencyjna rzeszów"
         />
         <meta property="og:title" content="Obsługa Konferencji - MAVINCI Event & ART" />
         <meta property="og:description" content="Profesjonalne nagłośnienie, multimedia i realizacja live dla konferencji. Pakiety BASIC, STANDARD, PRO." />
@@ -106,46 +119,158 @@ export default function ConferencesPage() {
         <link rel="canonical" href="https://mavinci.pl/uslugi/konferencje" />
       </Head>
       <Navbar />
-      <div className="min-h-screen bg-[#0f1119] pt-20">
-        {/* Hero Section */}
-        <section className="relative py-24 px-6 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33] to-[#0f1119]" />
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-20 left-20 w-72 h-72 bg-[#d3bb73] rounded-full blur-3xl" />
-            <div className="absolute bottom-20 right-20 w-96 h-96 bg-[#d3bb73] rounded-full blur-3xl" />
+      <div className="min-h-screen bg-[#0f1119]">
+        <WebsiteEditButton />
+
+        {/* Hero Section with PageHeroImage */}
+        <PageHeroImage
+          section="konferencje-hero"
+          defaultImage="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1920"
+          defaultAlt="Profesjonalna obsługa konferencji"
+          overlayOpacity={0.6}
+        />
+
+        <div className="relative -mt-32 z-10">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="bg-gradient-to-br from-[#1c1f33]/95 to-[#0f1119]/95 backdrop-blur-sm border border-[#d3bb73]/30 rounded-2xl p-8 md:p-12 shadow-2xl animate-fade-in-up">
+              <div className="text-center">
+                <EditableContent
+                  table="conferences_hero"
+                  column="title"
+                  defaultValue={heroData.title}
+                  className="text-4xl md:text-5xl font-light text-[#e5e4e2] mb-4"
+                />
+                <EditableContent
+                  table="conferences_hero"
+                  column="subtitle"
+                  defaultValue={heroData.subtitle}
+                  className="text-xl text-[#e5e4e2]/80 mb-8 max-w-3xl mx-auto"
+                  multiline
+                />
+
+                <div className="flex flex-wrap gap-4 justify-center mb-6">
+                  <button
+                    onClick={() => setIsContactFormOpen(true)}
+                    className="px-8 py-4 bg-[#d3bb73] text-[#1c1f33] font-medium rounded-lg hover:bg-[#c5ad65] transition-all shadow-lg hover:shadow-xl hover:scale-105 transform"
+                  >
+                    {heroData.cta_primary}
+                  </button>
+                  {heroData.cta_secondary && (
+                    <button
+                      onClick={() => setIsContactFormOpen(true)}
+                      className="px-8 py-4 bg-[#1c1f33] text-[#d3bb73] font-medium rounded-lg border border-[#d3bb73]/30 hover:border-[#d3bb73] transition-all hover:scale-105 transform"
+                    >
+                      {heroData.cta_secondary}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-center gap-2 text-[#e5e4e2]/60">
+                  <MapPin className="w-5 h-5 text-[#d3bb73]" />
+                  <EditableContent
+                    table="conferences_hero"
+                    column="trust_badge"
+                    defaultValue={heroData.trust_badge}
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
 
-          <div className="relative max-w-7xl mx-auto text-center">
-            <h1 className="text-5xl md:text-6xl font-light text-[#e5e4e2] mb-6">
-              {heroData.title}
-            </h1>
-            <p className="text-xl text-[#e5e4e2]/80 mb-8 max-w-3xl mx-auto">
-              {heroData.subtitle}
-            </p>
+        {/* Gallery Section */}
+        {gallery.length > 0 && (
+          <section className="py-20 px-6">
+            <div className="max-w-7xl mx-auto">
+              <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center animate-fade-in-up">
+                Nasze realizacje w obiektywie
+              </h2>
+              <p className="text-[#e5e4e2]/60 text-center mb-16 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+                Galeria zdjęć z obsłużonych konferencji
+              </p>
 
-            <div className="flex flex-wrap gap-4 justify-center mb-8">
-              <button
-                onClick={() => setIsContactFormOpen(true)}
-                className="px-8 py-4 bg-[#d3bb73] text-[#1c1f33] font-medium rounded-lg hover:bg-[#c5ad65] transition-all shadow-lg hover:shadow-xl"
-              >
-                {heroData.cta_primary}
-              </button>
-              {heroData.cta_secondary && (
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {gallery.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
+                    style={{ animationDelay: `${idx * 100}ms` }}
+                  >
+                    <img
+                      src={item.image_url}
+                      alt={item.alt_text}
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        {item.title && (
+                          <h3 className="text-white font-medium mb-1">{item.title}</h3>
+                        )}
+                        {item.caption && (
+                          <p className="text-white/80 text-sm">{item.caption}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Multi-City SEO Section */}
+        {cities.length > 0 && (
+          <section className="py-20 px-6 bg-[#1c1f33]/30">
+            <div className="max-w-7xl mx-auto">
+              <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center animate-fade-in-up">
+                Obsługujemy konferencje w całej północno-wschodniej Polsce
+              </h2>
+              <p className="text-[#e5e4e2]/60 text-center mb-16 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+                7 województw, dziesiątki miast
+              </p>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {cities.map((city, idx) => (
+                  <div
+                    key={city.id}
+                    className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 hover:border-[#d3bb73]/40 transition-all hover:transform hover:scale-105 animate-fade-in-up"
+                    style={{ animationDelay: `${idx * 100}ms` }}
+                  >
+                    <div className="flex items-start gap-3 mb-4">
+                      <MapPin className="w-6 h-6 text-[#d3bb73] flex-shrink-0 mt-1" />
+                      <div>
+                        <h3 className="text-xl font-medium text-[#e5e4e2] mb-1">
+                          {city.city_name}
+                        </h3>
+                        <p className="text-[#e5e4e2]/60 text-sm">
+                          woj. {city.voivodeship}
+                        </p>
+                      </div>
+                    </div>
+                    <ul className="space-y-2">
+                      {city.highlights.map((highlight: string, idx: number) => (
+                        <li key={idx} className="flex items-start gap-2 text-[#e5e4e2]/70 text-sm">
+                          <CheckCircle className="w-4 h-4 text-[#d3bb73] mt-0.5 flex-shrink-0" />
+                          <span>{highlight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-12 text-center animate-fade-in-up" style={{ animationDelay: '400ms' }}>
                 <button
                   onClick={() => setIsContactFormOpen(true)}
-                  className="px-8 py-4 bg-[#1c1f33] text-[#d3bb73] font-medium rounded-lg border border-[#d3bb73]/30 hover:border-[#d3bb73] transition-all"
+                  className="px-8 py-4 bg-[#d3bb73] text-[#1c1f33] font-medium rounded-lg hover:bg-[#c5ad65] transition-all hover:scale-105 transform"
                 >
-                  {heroData.cta_secondary}
+                  Zapytaj o obsługę w Twoim mieście
                 </button>
-              )}
+              </div>
             </div>
-
-            <div className="flex items-center justify-center gap-2 text-[#e5e4e2]/60">
-              <MapPin className="w-5 h-5 text-[#d3bb73]" />
-              <span>{heroData.trust_badge}</span>
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Problems and Solutions */}
         <section className="py-20 px-6 bg-[#1c1f33]/30">
@@ -530,6 +655,24 @@ export default function ConferencesPage() {
         />
       </div>
       <Footer />
+
+      <style jsx global>{`
+        @keyframes fade-in-up {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in-up {
+          animation: fade-in-up 0.8s ease-out forwards;
+          opacity: 0;
+        }
+      `}</style>
     </>
   );
 }
