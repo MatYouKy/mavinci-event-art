@@ -24,6 +24,23 @@ export default function ServiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [itemsPerView, setItemsPerView] = useState(3);
+
+  useEffect(() => {
+    const updateItemsPerView = () => {
+      if (window.innerWidth < 768) {
+        setItemsPerView(1);
+      } else if (window.innerWidth < 1024) {
+        setItemsPerView(2);
+      } else {
+        setItemsPerView(3);
+      }
+    };
+
+    updateItemsPerView();
+    window.addEventListener('resize', updateItemsPerView);
+    return () => window.removeEventListener('resize', updateItemsPerView);
+  }, []);
 
   useEffect(() => {
     loadServiceData();
@@ -365,13 +382,20 @@ export default function ServiceDetailPage() {
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setCarouselIndex((prev) => (prev - 1 + relatedServices.length) % relatedServices.length)}
+                    onClick={() => setCarouselIndex((prev) => {
+                      const newIndex = prev - 1;
+                      return newIndex < 0 ? Math.max(0, relatedServices.length - itemsPerView) : newIndex;
+                    })}
                     className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setCarouselIndex((prev) => (prev + 1) % relatedServices.length)}
+                    onClick={() => setCarouselIndex((prev) => {
+                      const maxIndex = Math.max(0, relatedServices.length - itemsPerView);
+                      const newIndex = prev + 1;
+                      return newIndex > maxIndex ? 0 : newIndex;
+                    })}
                     className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors"
                   >
                     <ChevronRight className="w-5 h-5" />
@@ -381,9 +405,9 @@ export default function ServiceDetailPage() {
 
               <div className="relative overflow-hidden">
                 <div
-                  className="flex transition-transform duration-500 ease-out gap-6"
+                  className="flex transition-transform duration-500 ease-out gap-4 md:gap-6"
                   style={{
-                    transform: `translateX(-${carouselIndex * (100 / 3 + 2)}%)`
+                    transform: `translateX(-${carouselIndex * (100 / itemsPerView)}%)`
                   }}
                 >
                   {relatedServices.map((related) => (
@@ -391,7 +415,13 @@ export default function ServiceDetailPage() {
                       key={related.id}
                       href={`/uslugi/${related.slug}`}
                       className="group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all flex-shrink-0"
-                      style={{ width: 'calc(33.333% - 16px)' }}
+                      style={{
+                        width: itemsPerView === 1
+                          ? 'calc(100% - 0px)'
+                          : itemsPerView === 2
+                          ? 'calc(50% - 8px)'
+                          : 'calc(33.333% - 16px)'
+                      }}
                     >
                       {related.thumbnail_url && (
                         <div className="aspect-video overflow-hidden bg-[#0f1119]">
@@ -419,7 +449,7 @@ export default function ServiceDetailPage() {
 
               {/* Dots indicator */}
               <div className="flex items-center justify-center gap-2 mt-6">
-                {relatedServices.map((_, idx) => (
+                {Array.from({ length: Math.max(1, relatedServices.length - itemsPerView + 1) }).map((_, idx) => (
                   <button
                     key={idx}
                     onClick={() => setCarouselIndex(idx)}
