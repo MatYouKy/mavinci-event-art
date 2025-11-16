@@ -86,6 +86,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
     { label: 'O Nas', href: '/o-nas' },
     { label: 'Portfolio', href: '/portfolio' },
     { label: 'Zespół', href: '/zespol' },
+    { label: 'Usługi', href: '/uslugi' },
     { label: 'Kontakt', href: '/#kontakt' }
   ];
 
