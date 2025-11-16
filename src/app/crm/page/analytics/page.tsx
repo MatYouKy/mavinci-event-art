@@ -18,6 +18,17 @@ export default function AnalyticsPage() {
       setOnlineUsers(initialOnlineUsers);
     }
 
+    const updateCount = async () => {
+      await supabase.rpc('cleanup_stale_sessions');
+
+      const { count } = await supabase
+        .from('active_sessions')
+        .select('*', { count: 'exact', head: true })
+        .not('page_url', 'like', '%/crm%');
+
+      setOnlineUsers(count || 0);
+    };
+
     const channel = supabase
       .channel('online-users-realtime')
       .on(
@@ -48,8 +59,11 @@ export default function AnalyticsPage() {
       )
       .subscribe();
 
+    const cleanupInterval = setInterval(updateCount, 5000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(cleanupInterval);
     };
   }, [initialOnlineUsers]);
 
@@ -125,13 +139,13 @@ export default function AnalyticsPage() {
                   </div>
                   <div>
                     <span className="text-sm text-[#e5e4e2]/60 block">Online teraz</span>
-                    <span className="text-xs text-[#e5e4e2]/40">Użytkownicy poza CRM (ostatnie 5 min)</span>
+                    <span className="text-xs text-[#e5e4e2]/40">Heartbeat co 10s • Auto-cleanup 30s</span>
                   </div>
                 </div>
                 <div className="text-5xl font-light text-[#d3bb73]">{onlineUsers}</div>
                 <div className="text-xs text-[#e5e4e2]/40 mt-2 flex items-center gap-2">
                   <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  Realtime WebSocket • Instant Updates
+                  Realtime WebSocket • Aktualizacja co 5s
                 </div>
               </div>
             </div>

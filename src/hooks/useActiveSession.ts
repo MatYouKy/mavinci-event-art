@@ -61,7 +61,7 @@ export function useActiveSession(pageUrl: string) {
 
     heartbeatIntervalRef.current = setInterval(() => {
       sendHeartbeat();
-    }, 30000);
+    }, 10000);
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -70,26 +70,17 @@ export function useActiveSession(pageUrl: string) {
         }
       } else {
         sendHeartbeat();
-        heartbeatIntervalRef.current = setInterval(sendHeartbeat, 30000);
+        heartbeatIntervalRef.current = setInterval(sendHeartbeat, 10000);
       }
     };
 
-    const handleBeforeUnload = () => {
-      navigator.sendBeacon(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/active_sessions?session_id=eq.${sessionIdRef.current}`,
-        JSON.stringify({ method: 'DELETE' })
-      );
-    };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
       removeSession();
     };
   }, [pageUrl]);
