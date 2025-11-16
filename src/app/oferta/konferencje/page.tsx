@@ -7,7 +7,7 @@ import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
-  ChevronDown, Mail, ArrowLeft, Presentation, Music
+  ChevronDown, Mail, ArrowLeft, Presentation, Music, Star
 } from 'lucide-react';
 import Link from 'next/link';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
@@ -16,6 +16,8 @@ import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableContent } from '@/components/EditableContent';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { ConferencesGalleryEditor } from '@/components/ConferencesGalleryEditor';
+import { ConferencesPackagesEditor } from '@/components/ConferencesPackagesEditor';
 
 const iconMap: Record<string, any> = {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
@@ -509,7 +511,7 @@ export default function ConferencesPage() {
         )}
 
         {/* Gallery Section */}
-        {gallery.length > 0 && (
+        {(gallery.length > 0 || isEditMode) && (
           <section className="py-20 px-6">
             <div className="max-w-7xl mx-auto">
               <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center animate-fade-in-up">
@@ -519,31 +521,37 @@ export default function ConferencesPage() {
                 Galeria zdjęć z obsłużonych konferencji
               </p>
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {gallery.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
-                    style={{ animationDelay: `${idx * 100}ms` }}
-                  >
-                    <img
-                      src={item.image_url}
-                      alt={item.alt_text}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <div className="absolute bottom-0 left-0 right-0 p-4">
-                        {item.title && (
-                          <h3 className="text-white font-medium mb-1">{item.title}</h3>
-                        )}
-                        {item.caption && (
-                          <p className="text-white/80 text-sm">{item.caption}</p>
-                        )}
+              {isEditMode && (
+                <ConferencesGalleryEditor items={gallery} onUpdate={loadData} />
+              )}
+
+              {gallery.length > 0 && (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {gallery.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
+                      style={{ animationDelay: `${idx * 100}ms` }}
+                    >
+                      <img
+                        src={item.image_url}
+                        alt={item.alt_text}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="absolute bottom-0 left-0 right-0 p-4">
+                          {item.title && (
+                            <h3 className="text-white font-medium mb-1">{item.title}</h3>
+                          )}
+                          {item.caption && (
+                            <p className="text-white/80 text-sm">{item.caption}</p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -653,6 +661,10 @@ export default function ConferencesPage() {
               Wybierz pakiet dopasowany do wielkości Twojego eventu
             </p>
 
+            {isEditMode && (
+              <ConferencesPackagesEditor packages={packages} onUpdate={loadData} />
+            )}
+
             <div className="grid md:grid-cols-3 gap-8">
               {packages.map((pkg) => (
                 <div key={pkg.id} className={`bg-[#1c1f33] border rounded-xl p-8 ${pkg.package_level === 'pro' ? 'border-[#d3bb73] shadow-xl shadow-[#d3bb73]/20' : 'border-[#d3bb73]/20'}`}>
@@ -660,6 +672,23 @@ export default function ConferencesPage() {
                     <h3 className="text-2xl font-medium text-[#d3bb73] mb-2">
                       {pkg.package_name}
                     </h3>
+
+                    {/* Rating Stars */}
+                    {pkg.rating && (
+                      <div className="flex justify-center gap-1 mb-3">
+                        {[1, 2, 3].map((star) => (
+                          <Star
+                            key={star}
+                            className={`w-5 h-5 ${
+                              star <= pkg.rating
+                                ? 'fill-[#d3bb73] text-[#d3bb73]'
+                                : 'text-[#d3bb73]/20'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+
                     <p className="text-[#e5e4e2]/60 text-sm mb-4">
                       {pkg.target_audience}
                     </p>
