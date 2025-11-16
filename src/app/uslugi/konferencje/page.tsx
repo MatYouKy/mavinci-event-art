@@ -343,54 +343,23 @@ export default function ConferencesPage() {
           </section>
         )}
 
-        {/* Multi-City SEO Section */}
+        {/* Multi-City SEO Section - Simple List */}
         {cities.length > 0 && (
-          <section className="py-20 px-6 bg-[#1c1f33]/30">
+          <section className="py-16 px-6 border-t border-[#1c1f33]">
             <div className="max-w-7xl mx-auto">
-              <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center animate-fade-in-up">
-                Obsługujemy konferencje w całej północno-wschodniej Polsce
-              </h2>
-              <p className="text-[#e5e4e2]/60 text-center mb-16 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-                7 województw, dziesiątki miast
-              </p>
-
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {cities.map((city, idx) => (
-                  <div
-                    key={city.id}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 hover:border-[#d3bb73]/40 transition-all hover:transform hover:scale-105 animate-fade-in-up"
-                    style={{ animationDelay: `${idx * 100}ms` }}
-                  >
-                    <div className="flex items-start gap-3 mb-4">
-                      <MapPin className="w-6 h-6 text-[#d3bb73] flex-shrink-0 mt-1" />
-                      <div>
-                        <h3 className="text-xl font-medium text-[#e5e4e2] mb-1">
-                          {city.city_name}
-                        </h3>
-                        <p className="text-[#e5e4e2]/60 text-sm">
-                          woj. {city.voivodeship}
-                        </p>
-                      </div>
-                    </div>
-                    <ul className="space-y-2">
-                      {city.highlights.map((highlight: string, idx: number) => (
-                        <li key={idx} className="flex items-start gap-2 text-[#e5e4e2]/70 text-sm">
-                          <CheckCircle className="w-4 h-4 text-[#d3bb73] mt-0.5 flex-shrink-0" />
-                          <span>{highlight}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-12 text-center animate-fade-in-up" style={{ animationDelay: '400ms' }}>
-                <button
-                  onClick={() => setIsContactFormOpen(true)}
-                  className="px-8 py-4 bg-[#d3bb73] text-[#1c1f33] font-medium rounded-lg hover:bg-[#c5ad65] transition-all hover:scale-105 transform"
-                >
-                  Zapytaj o obsługę w Twoim mieście
-                </button>
+              <div className="text-center mb-8">
+                <p className="text-[#e5e4e2]/40 text-sm mb-3">Obsługujemy konferencje w miastach:</p>
+                <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+                  {cities.map((city) => (
+                    <Link
+                      key={city.id}
+                      href={`/uslugi/konferencje/${city.slug}`}
+                      className="text-[#e5e4e2]/60 hover:text-[#d3bb73] transition-colors text-sm"
+                    >
+                      {city.city_name}
+                    </Link>
+                  ))}
+                </div>
               </div>
             </div>
           </section>
