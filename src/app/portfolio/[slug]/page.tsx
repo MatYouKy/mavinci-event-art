@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle, FileSearch } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import Link from 'next/link';
+import Head from 'next/head';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PortfolioProject, GalleryImage, PortfolioProjectFeature, supabase } from '@/lib/supabase';
@@ -47,6 +48,9 @@ export default function ProjectDetailPage() {
   const [category, setCategory] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [newKeyword, setNewKeyword] = useState('');
+  const [metaDescription, setMetaDescription] = useState('');
   const [location, setLocation] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [description, setDescription] = useState('');
@@ -100,6 +104,8 @@ export default function ProjectDetailPage() {
     setTitle(proj.title);
     setCategory(proj.category);
     setTags(proj.tags || []);
+    setKeywords((proj as any).keywords || []);
+    setMetaDescription((proj as any).meta_description || '');
     setLocation(proj.location || 'Polska');
     setEventDate(proj.event_date || new Date().toISOString().split('T')[0]);
     setDescription(proj.description);
@@ -150,6 +156,8 @@ export default function ProjectDetailPage() {
         title,
         category,
         tags,
+        keywords,
+        meta_description: metaDescription,
         image: imageUrl,
         alt: imageData?.alt || title,
         image_metadata: imageMetadata,
@@ -245,8 +253,45 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    name: title,
+    description: metaDescription || description,
+    startDate: eventDate,
+    location: {
+      '@type': 'Place',
+      name: location,
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: location,
+        addressCountry: 'PL',
+      },
+    },
+    image: previewImage,
+    organizer: {
+      '@type': 'Organization',
+      name: 'Mavinci',
+      url: 'https://mavinci.pl',
+    },
+    keywords: keywords.join(', '),
+  };
+
   return (
     <>
+      <Head>
+        <title>{title} | Portfolio Mavinci</title>
+        <meta name="description" content={metaDescription || description} />
+        <meta name="keywords" content={keywords.join(', ')} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={metaDescription || description} />
+        <meta property="og:image" content={previewImage} />
+        <meta property="og:type" content="website" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
+      </Head>
       <Navbar />
       <main className="min-h-screen bg-gradient-to-b from-[#0a0c15] via-[#0f1119] to-[#1c1f33]">
         {/* Hero Section - Editable or View Mode */}
@@ -397,6 +442,58 @@ export default function ProjectDetailPage() {
                     ))}
                   </div>
                 ) : null}
+
+                {/* SEO Keywords (only in edit mode) */}
+                {isEditing && (
+                  <div className="mb-6 bg-[#1c1f33]/60 border border-[#d3bb73]/20 rounded-lg p-4">
+                    <label className="text-[#e5e4e2]/70 text-sm mb-2 block flex items-center gap-2">
+                      <FileSearch className="w-4 h-4" />
+                      SEO Keywords (niewidoczne dla użytkowników)
+                    </label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {keywords.map((keyword, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded px-2 py-1"
+                        >
+                          <span className="text-[#d3bb73] text-xs">{keyword}</span>
+                          <button
+                            onClick={() => setKeywords(keywords.filter((_, i) => i !== idx))}
+                            className="text-[#d3bb73]/70 hover:text-[#d3bb73]"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={newKeyword}
+                      onChange={(e) => setNewKeyword(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && newKeyword.trim()) {
+                          setKeywords([...keywords, newKeyword.trim()]);
+                          setNewKeyword('');
+                        }
+                      }}
+                      placeholder="Dodaj słowo kluczowe (Enter)"
+                      className="w-full bg-[#1c1f33]/40 border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73] transition-colors"
+                    />
+
+                    <div className="mt-3">
+                      <label className="text-[#e5e4e2]/70 text-xs mb-1 block">Meta Description (dla Google)</label>
+                      <textarea
+                        value={metaDescription}
+                        onChange={(e) => setMetaDescription(e.target.value)}
+                        placeholder="Krótki opis wydarzenia dla wyszukiwarek (maks 160 znaków)"
+                        maxLength={160}
+                        rows={2}
+                        className="w-full bg-[#1c1f33]/40 border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] text-xs outline-none focus:border-[#d3bb73] transition-colors resize-none"
+                      />
+                      <div className="text-[#e5e4e2]/40 text-xs mt-1">{metaDescription.length}/160</div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Location & Date */}
                 <div className="flex flex-wrap gap-6 mb-8">

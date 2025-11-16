@@ -47,6 +47,7 @@ export default function ConferencesPage() {
   const [portfolioProjects, setPortfolioProjects] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [ogImage, setOgImage] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
   const [serviceCategories, setServiceCategories] = useState<any[]>([]);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
@@ -134,7 +135,10 @@ export default function ConferencesPage() {
       supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name')
     ]);
 
-    if (heroRes.data) setHeroData(heroRes.data);
+    if (heroRes.data) {
+      setHeroData(heroRes.data);
+      setKeywords(heroRes.data.keywords || []);
+    }
     if (problemsRes.data) setProblems(problemsRes.data);
     if (servicesRes.data) setServices(servicesRes.data);
     if (packagesRes.data) setPackages(packagesRes.data);
@@ -207,6 +211,34 @@ export default function ConferencesPage() {
     );
   }
 
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    name: 'Obsługa Konferencji',
+    description: 'Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo.',
+    provider: {
+      '@type': 'Organization',
+      name: 'MAVINCI Event & ART',
+      url: 'https://mavinci.pl',
+      logo: 'https://mavinci.pl/logo-mavinci-crm.png',
+      address: {
+        '@type': 'PostalAddress',
+        addressCountry: 'PL',
+      },
+    },
+    areaServed: cities.map(city => ({
+      '@type': 'City',
+      name: city.name,
+    })),
+    offers: pricing.map(tier => ({
+      '@type': 'Offer',
+      name: tier.tier_name,
+      description: tier.tier_description,
+      priceRange: tier.price_range,
+    })),
+    keywords: keywords.join(', '),
+  };
+
   return (
     <>
       <Head>
@@ -217,7 +249,11 @@ export default function ConferencesPage() {
         />
         <meta
           name="keywords"
-          content="obsługa konferencji warszawa, nagłośnienie konferencyjne gdańsk, technika av bydgoszcz, streaming konferencji toruń, realizacja live olsztyn, konferencje łódź, obsługa multimedialna białystok, technika konferencyjna rzeszów"
+          content={keywords.join(', ') || "obsługa konferencji, nagłośnienie konferencyjne, technika av, streaming konferencji, realizacja live"}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
 
         {/* Open Graph */}
