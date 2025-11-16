@@ -969,17 +969,14 @@ export default function ConferencesPage() {
                                 newSelected.add(item.id);
                                 setSelectedServiceIds(newSelected);
 
-                                const response = await fetch('/api/conferences/related-services', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
+                                const { error } = await supabase
+                                  .from('conferences_related_services')
+                                  .insert({
                                     service_item_id: item.id,
                                     display_order: newSelected.size
-                                  })
-                                });
+                                  });
 
-                                if (!response.ok) {
-                                  const error = await response.json();
+                                if (error) {
                                   console.error('Failed to add service:', error);
                                   newSelected.delete(item.id);
                                   setSelectedServiceIds(newSelected);
@@ -988,12 +985,12 @@ export default function ConferencesPage() {
                                 newSelected.delete(item.id);
                                 setSelectedServiceIds(newSelected);
 
-                                const response = await fetch(`/api/conferences/related-services?service_item_id=${item.id}`, {
-                                  method: 'DELETE'
-                                });
+                                const { error } = await supabase
+                                  .from('conferences_related_services')
+                                  .delete()
+                                  .eq('service_item_id', item.id);
 
-                                if (!response.ok) {
-                                  const error = await response.json();
+                                if (error) {
                                   console.error('Failed to remove service:', error);
                                   newSelected.add(item.id);
                                   setSelectedServiceIds(newSelected);
