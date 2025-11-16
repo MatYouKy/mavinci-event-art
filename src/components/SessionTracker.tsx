@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useActiveSession } from '@/hooks/useActiveSession';
+import { usePageAnalytics } from '@/hooks/usePageAnalytics';
 
 export function SessionTracker() {
   const pathname = usePathname();
-  const isCRMPage = pathname?.startsWith('/crm');
+  const isCRMPage = pathname?.startsWith('/crm') || pathname?.startsWith('/admin');
 
-  useActiveSession(!isCRMPage ? pathname || '/' : '');
+  const trackingUrl = !isCRMPage ? (pathname || '/') : '';
+  useActiveSession(trackingUrl);
+  usePageAnalytics(undefined, !isCRMPage);
 
   return null;
 }

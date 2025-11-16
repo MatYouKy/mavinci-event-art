@@ -6,7 +6,7 @@ export function useActiveSession(pageUrl: string) {
   const heartbeatIntervalRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !pageUrl) return;
 
     let sessionId = sessionStorage.getItem('analytics_session_id');
     if (!sessionId) {

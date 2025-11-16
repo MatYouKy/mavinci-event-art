@@ -4,13 +4,13 @@ import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export function usePageAnalytics(pageTitle?: string) {
+export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
   const pathname = usePathname();
   const sessionId = useRef<string>('');
   const startTime = useRef<number>(0);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !enabled) return;
 
     if (!sessionId.current) {
       sessionId.current = crypto.randomUUID();
