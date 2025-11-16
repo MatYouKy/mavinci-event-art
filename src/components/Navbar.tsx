@@ -90,16 +90,16 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   ];
 
   const servicesLinks = [
-    { label: 'Wszystkie usługi', href: '/uslugi' },
-    { label: 'Konferencje', href: '/uslugi/konferencje' },
-    { label: 'Integracje firmowe', href: '/uslugi/integracje' },
-    { label: 'Wieczory tematyczne', href: '/uslugi/wieczory-tematyczne' },
-    { label: 'Quizy i teleturnieje', href: '/uslugi/quizy-teleturnieje' },
-    { label: 'Kasyno', href: '/uslugi/kasyno' },
-    { label: 'Symulatory VR', href: '/uslugi/symulatory-vr' },
-    { label: 'Technika sceniczna', href: '/uslugi/technika-sceniczna' },
-    { label: 'Nagłośnienie', href: '/uslugi/naglosnienie' },
-    { label: 'Streaming', href: '/uslugi/streaming' },
+    { label: 'Wszystkie usługi', href: '/oferta' },
+    { label: 'Konferencje', href: '/oferta/konferencje' },
+    { label: 'Integracje firmowe', href: '/oferta/integracje' },
+    { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
+    { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
+    { label: 'Kasyno', href: '/oferta/kasyno' },
+    { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
+    { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
+    { label: 'Nagłośnienie', href: '/oferta/naglosnienie' },
+    { label: 'Streaming', href: '/oferta/streaming' },
   ];
 
   useEffect(() => {
