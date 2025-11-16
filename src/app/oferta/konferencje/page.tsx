@@ -969,17 +969,35 @@ export default function ConferencesPage() {
                                 newSelected.add(item.id);
                                 setSelectedServiceIds(newSelected);
 
-                                await supabase.from('conferences_related_services').insert({
-                                  service_item_id: item.id,
-                                  display_order: newSelected.size
+                                const response = await fetch('/api/conferences/related-services', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    service_item_id: item.id,
+                                    display_order: newSelected.size
+                                  })
                                 });
+
+                                if (!response.ok) {
+                                  const error = await response.json();
+                                  console.error('Failed to add service:', error);
+                                  newSelected.delete(item.id);
+                                  setSelectedServiceIds(newSelected);
+                                }
                               } else {
                                 newSelected.delete(item.id);
                                 setSelectedServiceIds(newSelected);
 
-                                await supabase.from('conferences_related_services')
-                                  .delete()
-                                  .eq('service_item_id', item.id);
+                                const response = await fetch(`/api/conferences/related-services?service_item_id=${item.id}`, {
+                                  method: 'DELETE'
+                                });
+
+                                if (!response.ok) {
+                                  const error = await response.json();
+                                  console.error('Failed to remove service:', error);
+                                  newSelected.add(item.id);
+                                  setSelectedServiceIds(newSelected);
+                                }
                               }
                             } finally {
                               setTimeout(() => setIsSaving(false), 500);
