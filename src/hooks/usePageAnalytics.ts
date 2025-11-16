@@ -20,19 +20,59 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
 
     const trackPageView = async () => {
       try {
-        const deviceType = /Mobile|Android|iPhone/i.test(navigator.userAgent)
+        const ua = navigator.userAgent;
+        const deviceType = /Mobile|Android|iPhone/i.test(ua)
           ? 'mobile'
-          : /iPad|Tablet/i.test(navigator.userAgent)
+          : /iPad|Tablet/i.test(ua)
           ? 'tablet'
           : 'desktop';
+
+        const browser = /Chrome/i.test(ua) && !/Edge/i.test(ua)
+          ? 'Chrome'
+          : /Firefox/i.test(ua)
+          ? 'Firefox'
+          : /Safari/i.test(ua) && !/Chrome/i.test(ua)
+          ? 'Safari'
+          : /Edge/i.test(ua)
+          ? 'Edge'
+          : 'Other';
+
+        const os = /Windows/i.test(ua)
+          ? 'Windows'
+          : /Mac/i.test(ua)
+          ? 'macOS'
+          : /Linux/i.test(ua)
+          ? 'Linux'
+          : /Android/i.test(ua)
+          ? 'Android'
+          : /iOS|iPhone|iPad/i.test(ua)
+          ? 'iOS'
+          : 'Other';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const utmSource = urlParams.get('utm_source');
+        const utmMedium = urlParams.get('utm_medium');
+        const utmCampaign = urlParams.get('utm_campaign');
+        const utmTerm = urlParams.get('utm_term');
+        const utmContent = urlParams.get('utm_content');
 
         await supabase.from('page_analytics').insert({
           page_url: pathname,
           page_title: pageTitle || document.title,
           referrer: document.referrer || null,
-          user_agent: navigator.userAgent,
+          user_agent: ua,
           session_id: sessionId.current,
           device_type: deviceType,
+          browser,
+          os,
+          screen_width: window.screen.width,
+          screen_height: window.screen.height,
+          language: navigator.language,
+          utm_source: utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
+          utm_term: utmTerm,
+          utm_content: utmContent,
           time_on_page: 0,
         });
       } catch (error) {

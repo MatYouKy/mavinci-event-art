@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Send, Mail, Phone, User, MessageSquare } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useFormTracking } from '@/hooks/useFormTracking';
 
 interface ContactFormProps {
   isOpen: boolean;
@@ -34,6 +35,11 @@ export default function ContactFormWithTracking({
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  const { trackFormStart, trackFieldFilled, trackFormComplete, trackFormAbandoned } = useFormTracking({
+    formName: 'contact-form',
+    enabled: isOpen,
+  });
+
   useEffect(() => {
     if (isOpen) {
       setFormData(prev => ({
@@ -43,6 +49,9 @@ export default function ContactFormWithTracking({
       }));
       setSubmitSuccess(false);
       setSubmitError('');
+      trackFormStart();
+    } else if (formData.name || formData.email || formData.phone || formData.message) {
+      trackFormAbandoned();
     }
   }, [isOpen, defaultCity, defaultEventType]);
 
@@ -77,6 +86,7 @@ export default function ContactFormWithTracking({
 
       if (error) throw error;
 
+      trackFormComplete(formData);
       setSubmitSuccess(true);
 
       setTimeout(() => {
@@ -145,7 +155,10 @@ export default function ContactFormWithTracking({
                   type="text"
                   required
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value });
+                    if (e.target.value) trackFieldFilled('name');
+                  }}
                   className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
                   placeholder="Jan Kowalski"
                 />
@@ -161,7 +174,10 @@ export default function ContactFormWithTracking({
                     type="email"
                     required
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, email: e.target.value });
+                      if (e.target.value) trackFieldFilled('email');
+                    }}
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
                     placeholder="jan@example.com"
                   />
@@ -175,7 +191,10 @@ export default function ContactFormWithTracking({
                   <input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, phone: e.target.value });
+                      if (e.target.value) trackFieldFilled('phone');
+                    }}
                     className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
                     placeholder="+48 123 456 789"
                   />
@@ -190,7 +209,10 @@ export default function ContactFormWithTracking({
                     </label>
                     <select
                       value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, city: e.target.value });
+                        if (e.target.value) trackFieldFilled('city');
+                      }}
                       className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
                     >
                       <option value="">Wybierz miasto</option>
