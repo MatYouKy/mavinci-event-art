@@ -123,7 +123,7 @@ export default function CityConferencePage() {
         <meta property="og:type" content="website" />
         <meta property="og:title" content={city.seo_title} />
         <meta property="og:description" content={city.seo_description} />
-        <meta property="og:url" content={`https://mavinci.pl/uslugi/konferencje/${city.slug}`} />
+        <meta property="og:url" content={`https://mavinci.pl/oferta/konferencje/${city.slug}`} />
         <meta property="og:image" content={ogImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
@@ -137,7 +137,7 @@ export default function CityConferencePage() {
         <meta name="twitter:image" content={ogImage} />
         <meta name="twitter:image:alt" content={`MAVINCI Obsługa Konferencji ${city.city_name}`} />
 
-        <link rel="canonical" href={`https://mavinci.pl/uslugi/konferencje/${city.slug}`} />
+        <link rel="canonical" href={`https://mavinci.pl/oferta/konferencje/${city.slug}`} />
 
         <script
           type="application/ld+json"
@@ -150,7 +150,7 @@ export default function CityConferencePage() {
         <section className="py-20 px-6 bg-gradient-to-b from-[#1c1f33] to-[#0f1119]">
           <div className="max-w-4xl mx-auto">
             <Link
-              href="/uslugi/konferencje"
+              href="/oferta/konferencje"
               className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8"
             >
               <ArrowLeft className="w-4 h-4" />

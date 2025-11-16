@@ -91,6 +91,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
 
   const servicesLinks = [
     { label: 'Wszystkie usługi', href: '/oferta' },
+    { label: 'Katalog usług eventowych', href: '/oferta/uslugi', highlight: true },
     { label: 'Konferencje', href: '/oferta/konferencje' },
     { label: 'Integracje firmowe', href: '/oferta/integracje' },
     { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
@@ -234,7 +235,11 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                         key={service.href}
                         href={service.href}
                         onClick={() => setIsServicesOpen(false)}
-                        className="block px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 transition-colors"
+                        className={`block px-4 py-2 text-sm transition-colors ${
+                          service.highlight
+                            ? 'text-[#d3bb73] font-medium hover:bg-[#d3bb73]/20 border-l-2 border-[#d3bb73]'
+                            : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+                        }`}
                       >
                         {service.label}
                       </Link>
@@ -443,7 +448,11 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                         setIsServicesOpen(false);
                         setIsMenuOpen(false);
                       }}
-                      className="block text-white/70 active:text-white text-xs font-light py-3 px-3 rounded active:bg-[#d3bb73]/20 transition-colors touch-manipulation"
+                      className={`block text-xs py-3 px-3 rounded transition-colors touch-manipulation ${
+                        service.highlight
+                          ? 'text-[#d3bb73] font-medium active:bg-[#d3bb73]/20 border-l-2 border-[#d3bb73]'
+                          : 'text-white/70 font-light active:text-white active:bg-[#d3bb73]/20'
+                      }`}
                     >
                       {service.label}
                     </Link>

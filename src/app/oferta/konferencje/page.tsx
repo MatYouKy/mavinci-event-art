@@ -170,7 +170,7 @@ export default function ConferencesPage() {
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Obsługa Konferencji - Profesjonalne Nagłośnienie | MAVINCI Event & ART" />
         <meta property="og:description" content="Profesjonalne nagłośnienie, multimedia i realizacja live dla konferencji. Pakiety BASIC, STANDARD, PRO. Warszawa, Gdańsk, Bydgoszcz." />
-        <meta property="og:url" content="https://mavinci.pl/uslugi/konferencje" />
+        <meta property="og:url" content="https://mavinci.pl/oferta/konferencje" />
         <meta property="og:image" content={ogImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
@@ -186,7 +186,7 @@ export default function ConferencesPage() {
         <meta name="twitter:image:alt" content="MAVINCI Obsługa Konferencji" />
 
         {/* Canonical */}
-        <link rel="canonical" href="https://mavinci.pl/uslugi/konferencje" />
+        <link rel="canonical" href="https://mavinci.pl/oferta/konferencje" />
 
         {/* JSON-LD Schema */}
         <script
