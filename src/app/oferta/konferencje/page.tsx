@@ -47,6 +47,9 @@ export default function ConferencesPage() {
   const [serviceCategories, setServiceCategories] = useState<any[]>([]);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
+  const [relatedServices, setRelatedServices] = useState<any[]>([]);
+  const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadData();
@@ -66,7 +69,9 @@ export default function ConferencesPage() {
       galleryRes,
       citiesRes,
       ogImageRes,
-      serviceCategoriesRes
+      serviceCategoriesRes,
+      relatedServicesRes,
+      allServiceItemsRes
     ] = await Promise.all([
       supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
       supabase.from('conferences_problems').select('*').eq('is_active', true).order('display_order'),
@@ -83,7 +88,12 @@ export default function ConferencesPage() {
       supabase.from('conferences_service_categories').select(`
         *,
         items:conferences_service_items(*)
-      `).eq('is_active', true).order('display_order')
+      `).eq('is_active', true).order('display_order'),
+      supabase.from('conferences_related_services').select(`
+        *,
+        service_item:conferences_service_items(*)
+      `).eq('is_active', true).order('display_order'),
+      supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name')
     ]);
 
     if (heroRes.data) setHeroData(heroRes.data);
@@ -98,6 +108,12 @@ export default function ConferencesPage() {
     if (galleryRes.data) setGallery(galleryRes.data);
     if (citiesRes.data) setCities(citiesRes.data);
     if (serviceCategoriesRes.data) setServiceCategories(serviceCategoriesRes.data);
+
+    if (relatedServicesRes.data) {
+      setRelatedServices(relatedServicesRes.data.map(r => r.service_item));
+      setSelectedServiceIds(new Set(relatedServicesRes.data.map(r => r.service_item_id)));
+    }
+    if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
     setOgImage(ogImageRes.data?.desktop_url || 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop');
   };
 
@@ -871,6 +887,109 @@ export default function ConferencesPage() {
             </div>
           </div>
         </section>
+
+        {/* Related Services Section */}
+        {(relatedServices.length > 0 || isEditMode) && (
+          <section className="py-20 px-6 bg-gradient-to-b from-[#0f1119] to-[#1c1f33]">
+            <div className="max-w-7xl mx-auto">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+                  Nasze <span className="text-[#d3bb73]">Usługi</span> Konferencyjne
+                </h2>
+                <p className="text-[#e5e4e2]/70 text-lg">
+                  Poznaj szczegóły naszych rozwiązań technicznych
+                </p>
+              </div>
+
+              {isEditMode && (
+                <div className="mb-8 bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl p-6">
+                  <h3 className="text-[#d3bb73] text-lg font-medium mb-4">Tryb edycji - Wybierz usługi do wyświetlenia</h3>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                    {allServiceItems.map((item) => (
+                      <label
+                        key={item.id}
+                        className="flex items-start gap-3 p-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedServiceIds.has(item.id)}
+                          onChange={async (e) => {
+                            const newSelected = new Set(selectedServiceIds);
+                            if (e.target.checked) {
+                              newSelected.add(item.id);
+                              await supabase.from('conferences_related_services').insert({
+                                service_item_id: item.id,
+                                display_order: newSelected.size
+                              });
+                            } else {
+                              newSelected.delete(item.id);
+                              await supabase.from('conferences_related_services').delete().eq('service_item_id', item.id);
+                            }
+                            setSelectedServiceIds(newSelected);
+                            loadData();
+                          }}
+                          className="mt-1 w-4 h-4 rounded border-[#d3bb73] text-[#d3bb73] focus:ring-[#d3bb73]"
+                        />
+                        <div className="flex-1">
+                          <span className="text-[#e5e4e2] text-sm font-medium block">{item.name}</span>
+                          {item.description && (
+                            <span className="text-[#e5e4e2]/60 text-xs">{item.description}</span>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {relatedServices.map((service) => {
+                  const Icon = iconMap[service.icon] || Package;
+                  return (
+                    <Link
+                      key={service.id}
+                      href={`/uslugi/${service.slug}`}
+                      className="group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all hover:-translate-y-1"
+                    >
+                      {service.thumbnail_url && (
+                        <div className="aspect-video overflow-hidden bg-[#0f1119]">
+                          <img
+                            src={service.thumbnail_url}
+                            alt={service.name}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                          />
+                        </div>
+                      )}
+                      <div className="p-6">
+                        <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center mb-4 group-hover:bg-[#d3bb73]/20 transition-colors">
+                          <Icon className="w-6 h-6 text-[#d3bb73]" />
+                        </div>
+                        <h3 className="text-[#e5e4e2] text-lg font-medium mb-2 group-hover:text-[#d3bb73] transition-colors">
+                          {service.name}
+                        </h3>
+                        {service.description && (
+                          <p className="text-[#e5e4e2]/60 text-sm line-clamp-2">
+                            {service.description}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              <div className="text-center mt-12">
+                <Link
+                  href="/uslugi"
+                  className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-all"
+                >
+                  Zobacz wszystkie usługi
+                  <ArrowLeft className="w-4 h-4 rotate-180" />
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Contact CTA */}
         <section className="py-20 px-6 bg-gradient-to-br from-[#1c1f33] to-[#0f1119]">
