@@ -13,18 +13,16 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
-import { useEditMode } from '@/contexts/EditModeContext';
-import { WebsiteEditButton } from '@/components/WebsiteEditButton';
+import { useEditMode } from '@/contexts/EditModeContext'; 
 
 export default function ServiceDetailPage() {
   const params = useParams();
-  const { isEditMode } = useEditMode();
+  const { isEditMode, setIsEditMode } = useEditMode();
   const [service, setService] = useState<any>(null);
   const [category, setCategory] = useState<any>(null);
   const [relatedServices, setRelatedServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
 
   useEffect(() => {
@@ -147,7 +145,6 @@ export default function ServiceDetailPage() {
       </Head>
 
       <Navbar />
-      <WebsiteEditButton />
       <div className="min-h-screen bg-[#0f1119]">
         {/* Hero Section with Image */}
         <section className="relative h-[60vh] min-h-[500px] overflow-hidden">
@@ -161,20 +158,12 @@ export default function ServiceDetailPage() {
             </>
           )}
 
-          {isEditMode && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="absolute top-6 right-6 z-10 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-all flex items-center gap-2"
-            >
-              <Edit2 className="w-4 h-4" />
-              Edytuj usługę
-            </button>
-          )}
+         
 
           <div className="relative h-full flex items-end pb-20 px-6">
             <div className="max-w-7xl mx-auto w-full">
               <Link
-                href="/oferta/uslugi"
+                href="/uslugi"
                 className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-6"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -184,7 +173,7 @@ export default function ServiceDetailPage() {
               <div className="mb-4">
                 {category && (
                   <Link
-                    href="/oferta/uslugi"
+                    href="/uslugi"
                     className="inline-block text-[#d3bb73] text-sm font-medium mb-2 hover:underline"
                   >
                     {category.name}
@@ -402,7 +391,7 @@ export default function ServiceDetailPage() {
                   {relatedServices.map((related) => (
                     <Link
                       key={related.id}
-                      href={`/oferta/uslugi/${related.slug}`}
+                      href={`/uslugi/${related.slug}`}
                       className="group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all flex-shrink-0"
                       style={{ width: 'calc(33.333% - 16px)' }}
                     >
@@ -450,14 +439,14 @@ export default function ServiceDetailPage() {
           <ContactFormWithTracking
             isOpen={isContactFormOpen}
             onClose={() => setIsContactFormOpen(false)}
-            defaultSubject={`Zapytanie o: ${service.name}`}
+            sourcePage={`/uslugi/${params.slug}`}
           />
         )}
 
-        {isEditing && (
+        {isEditMode && (
           <AdminServiceEditor
             serviceId={service.id}
-            onClose={() => setIsEditing(false)}
+            onClose={() => setIsEditMode(false)}
             onSaved={loadServiceData}
           />
         )}

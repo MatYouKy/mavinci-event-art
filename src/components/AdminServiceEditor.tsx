@@ -85,7 +85,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
           seo_title: seoTitle,
           seo_description: seoDescription,
           seo_keywords: seoKeywords,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', serviceId);
 
@@ -123,7 +123,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
     if (newSpecKey.trim() && newSpecValue.trim()) {
       setTechnicalSpecs({
         ...technicalSpecs,
-        [newSpecKey.trim()]: newSpecValue.trim()
+        [newSpecKey.trim()]: newSpecValue.trim(),
       });
       setNewSpecKey('');
       setNewSpecValue('');
@@ -158,7 +158,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
         <div className="text-[#d3bb73]">Ładowanie...</div>
       </div>
     );
@@ -166,52 +166,54 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33]">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#d3bb73]/20">
+          <div className="flex items-center justify-between border-b border-[#d3bb73]/20 px-6 py-4">
             <h2 className="text-2xl font-light text-[#e5e4e2]">Edycja usługi</h2>
             <button
               onClick={onClose}
-              className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+              className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
             >
-              <X className="w-6 h-6" />
+              <X className="h-6 w-6" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          <div className="flex-1 space-y-8 overflow-y-auto p-6">
             {/* Basic Info */}
             <div className="space-y-4">
               <h3 className="text-xl font-medium text-[#e5e4e2]">Podstawowe informacje</h3>
 
               <div>
-                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Nazwa usługi</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Nazwa usługi</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Krótki opis (katalog)</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                  Krótki opis (katalog)
+                </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={2}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Szczegółowy opis</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Szczegółowy opis</label>
                 <textarea
                   value={longDescription}
                   onChange={(e) => setLongDescription(e.target.value)}
                   rows={4}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
@@ -221,9 +223,9 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   id="isPremium"
                   checked={isPremium}
                   onChange={(e) => setIsPremium(e.target.checked)}
-                  className="w-4 h-4"
+                  className="h-4 w-4"
                 />
-                <label htmlFor="isPremium" className="text-[#e5e4e2]/70 text-sm">
+                <label htmlFor="isPremium" className="text-sm text-[#e5e4e2]/70">
                   Usługa Premium
                 </label>
               </div>
@@ -233,47 +235,53 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
             <div className="space-y-4">
               <h3 className="text-xl font-medium text-[#e5e4e2]">Obrazy</h3>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-[#e5e4e2]/70 text-sm mb-2">Hero Image (1920px)</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                    Hero Image (1920px)
+                  </label>
                   {heroImageUrl ? (
-                    <div className="relative aspect-video rounded-lg overflow-hidden border border-[#d3bb73]/20">
-                      <img src={heroImageUrl} alt="Hero" className="w-full h-full object-cover" />
+                    <div className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20">
+                      <img src={heroImageUrl} alt="Hero" className="h-full w-full object-cover" />
                       <button
                         onClick={() => setShowImageUploader('hero')}
-                        className="absolute top-2 right-2 bg-[#d3bb73] text-[#1c1f33] p-2 rounded-lg hover:bg-[#d3bb73]/90"
+                        className="absolute right-2 top-2 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        <Edit2 className="h-4 w-4" />
                       </button>
                     </div>
                   ) : (
                     <button
                       onClick={() => setShowImageUploader('hero')}
-                      className="w-full aspect-video border-2 border-dashed border-[#d3bb73]/20 rounded-lg flex items-center justify-center hover:border-[#d3bb73]/40 transition-colors"
+                      className="flex aspect-video w-full items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]/20 transition-colors hover:border-[#d3bb73]/40"
                     >
-                      <ImageIcon className="w-8 h-8 text-[#e5e4e2]/40" />
+                      <ImageIcon className="h-8 w-8 text-[#e5e4e2]/40" />
                     </button>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-[#e5e4e2]/70 text-sm mb-2">Miniaturka (400px)</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">Miniaturka (400px)</label>
                   {thumbnailUrl ? (
-                    <div className="relative aspect-video rounded-lg overflow-hidden border border-[#d3bb73]/20">
-                      <img src={thumbnailUrl} alt="Thumbnail" className="w-full h-full object-cover" />
+                    <div className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20">
+                      <img
+                        src={thumbnailUrl}
+                        alt="Thumbnail"
+                        className="h-full w-full object-cover"
+                      />
                       <button
                         onClick={() => setShowImageUploader('thumbnail')}
-                        className="absolute top-2 right-2 bg-[#d3bb73] text-[#1c1f33] p-2 rounded-lg hover:bg-[#d3bb73]/90"
+                        className="absolute right-2 top-2 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        <Edit2 className="h-4 w-4" />
                       </button>
                     </div>
                   ) : (
                     <button
                       onClick={() => setShowImageUploader('thumbnail')}
-                      className="w-full aspect-video border-2 border-dashed border-[#d3bb73]/20 rounded-lg flex items-center justify-center hover:border-[#d3bb73]/40 transition-colors"
+                      className="flex aspect-video w-full items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]/20 transition-colors hover:border-[#d3bb73]/40"
                     >
-                      <ImageIcon className="w-8 h-8 text-[#e5e4e2]/40" />
+                      <ImageIcon className="h-8 w-8 text-[#e5e4e2]/40" />
                     </button>
                   )}
                 </div>
@@ -291,13 +299,13 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                       type="text"
                       value={feature}
                       onChange={(e) => updateFeature(index, e.target.value)}
-                      className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                     <button
                       onClick={() => removeFeature(index)}
-                      className="text-red-400 hover:text-red-300 transition-colors"
+                      className="text-red-400 transition-colors hover:text-red-300"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="h-5 w-5" />
                     </button>
                   </div>
                 ))}
@@ -310,13 +318,13 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   onChange={(e) => setNewFeature(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && addFeature()}
                   placeholder="Nowa cecha..."
-                  className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
                 <button
                   onClick={addFeature}
-                  className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="h-5 w-5" />
                 </button>
               </div>
             </div>
@@ -333,20 +341,20 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                       value={key}
                       onChange={(e) => updateTechnicalSpec(key, e.target.value, value)}
                       placeholder="Klucz"
-                      className="w-1/3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      className="w-1/3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                     <input
                       type="text"
                       value={value}
                       onChange={(e) => updateTechnicalSpec(key, key, e.target.value)}
                       placeholder="Wartość"
-                      className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                     <button
                       onClick={() => removeTechnicalSpec(key)}
-                      className="text-red-400 hover:text-red-300 transition-colors"
+                      className="text-red-400 transition-colors hover:text-red-300"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="h-5 w-5" />
                     </button>
                   </div>
                 ))}
@@ -358,7 +366,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   value={newSpecKey}
                   onChange={(e) => setNewSpecKey(e.target.value)}
                   placeholder="Klucz (np. brightness)"
-                  className="w-1/3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-1/3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
                 <input
                   type="text"
@@ -366,13 +374,13 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   onChange={(e) => setNewSpecValue(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && addTechnicalSpec()}
                   placeholder="Wartość (np. 5000 nits)"
-                  className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
                 <button
                   onClick={addTechnicalSpec}
-                  className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="h-5 w-5" />
                 </button>
               </div>
             </div>
@@ -382,51 +390,53 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
               <h3 className="text-xl font-medium text-[#e5e4e2]">SEO</h3>
 
               <div>
-                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Tytuł SEO</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Tytuł SEO</label>
                 <input
                   type="text"
                   value={seoTitle}
                   onChange={(e) => setSeoTitle(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Opis SEO</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Opis SEO</label>
                 <textarea
                   value={seoDescription}
                   onChange={(e) => setSeoDescription(e.target.value)}
                   rows={2}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#e5e4e2]/70 text-sm mb-2">Słowa kluczowe (oddzielone przecinkami)</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                  Słowa kluczowe (oddzielone przecinkami)
+                </label>
                 <input
                   type="text"
                   value={seoKeywords}
                   onChange={(e) => setSeoKeywords(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#d3bb73]/20">
+          <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 px-6 py-4">
             <button
               onClick={onClose}
-              className="px-6 py-2 text-[#e5e4e2] hover:text-[#e5e4e2]/70 transition-colors"
+              className="px-6 py-2 text-[#e5e4e2] transition-colors hover:text-[#e5e4e2]/70"
             >
               Anuluj
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
+              <Save className="h-4 w-4" />
               {saving ? 'Zapisywanie...' : 'Zapisz'}
             </button>
           </div>
@@ -435,7 +445,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
 
       {showImageUploader && (
         <SimpleImageUploader
-          onUpload={handleImageUpload}
+          onImageSelect={handleImageUpload}
           onClose={() => setShowImageUploader(null)}
           currentImageUrl={showImageUploader === 'hero' ? heroImageUrl : thumbnailUrl}
           maxSizeMB={showImageUploader === 'hero' ? 1.2 : 0.5}

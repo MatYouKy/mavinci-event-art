@@ -239,7 +239,6 @@ export default function UslugiPage() {
       </Head>
 
       <Navbar />
-      <WebsiteEditButton />
       <div className="min-h-screen bg-[#0f1119]">
         {/* Hero Section */}
         <section className="bg-gradient-to-b from-[#1c1f33] to-[#0f1119] px-6 py-20">
@@ -399,7 +398,7 @@ export default function UslugiPage() {
                         )}
 
                         <Link
-                          href={`/oferta/uslugi/${item.slug}`}
+                          href={`/uslugi/${item.slug}`}
                           className="block rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] overflow-hidden transition-all hover:scale-105 hover:transform hover:border-[#d3bb73]/40"
                         >
                         {item.thumbnail_url && (
@@ -500,7 +499,7 @@ export default function UslugiPage() {
           <ContactFormWithTracking
             isOpen={isContactFormOpen}
             onClose={() => setIsContactFormOpen(false)}
-            defaultSubject="Zapytanie o usługi eventowe"
+            sourcePage="/uslugi"
           />
         )}
 

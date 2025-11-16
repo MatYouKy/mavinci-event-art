@@ -10,7 +10,7 @@ interface WebsiteEditButtonProps {
   className?: string;
 }
 
-export default function WebsiteEditButton({
+export function WebsiteEditButton({
   href,
   label = 'Edytuj sekcję',
   className = '',
@@ -31,3 +31,5 @@ export default function WebsiteEditButton({
     </Link>
   );
 }
+
+export default WebsiteEditButton;
