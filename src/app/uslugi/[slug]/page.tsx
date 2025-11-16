@@ -25,6 +25,7 @@ export default function ServiceDetailPage() {
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [itemsPerView, setItemsPerView] = useState(3);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   useEffect(() => {
     const updateItemsPerView = () => {
@@ -41,6 +42,37 @@ export default function ServiceDetailPage() {
     window.addEventListener('resize', updateItemsPerView);
     return () => window.removeEventListener('resize', updateItemsPerView);
   }, []);
+
+  const extendedServices = relatedServices.length > 0
+    ? [...relatedServices, ...relatedServices, ...relatedServices]
+    : [];
+
+  useEffect(() => {
+    if (relatedServices.length > 0) {
+      setCarouselIndex(relatedServices.length);
+    }
+  }, [relatedServices.length]);
+
+  const handlePrev = () => {
+    if (isTransitioning) return;
+    setIsTransitioning(true);
+    setCarouselIndex((prev) => prev - 1);
+  };
+
+  const handleNext = () => {
+    if (isTransitioning) return;
+    setIsTransitioning(true);
+    setCarouselIndex((prev) => prev + 1);
+  };
+
+  const handleTransitionEnd = () => {
+    setIsTransitioning(false);
+    if (carouselIndex <= 0) {
+      setCarouselIndex(relatedServices.length);
+    } else if (carouselIndex >= relatedServices.length * 2) {
+      setCarouselIndex(relatedServices.length);
+    }
+  };
 
   useEffect(() => {
     loadServiceData();
@@ -382,21 +414,16 @@ export default function ServiceDetailPage() {
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setCarouselIndex((prev) => {
-                      const newIndex = prev - 1;
-                      return newIndex < 0 ? Math.max(0, relatedServices.length - itemsPerView) : newIndex;
-                    })}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors"
+                    onClick={handlePrev}
+                    disabled={isTransitioning}
+                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors disabled:opacity-50"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setCarouselIndex((prev) => {
-                      const maxIndex = Math.max(0, relatedServices.length - itemsPerView);
-                      const newIndex = prev + 1;
-                      return newIndex > maxIndex ? 0 : newIndex;
-                    })}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors"
+                    onClick={handleNext}
+                    disabled={isTransitioning}
+                    className="bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] p-3 rounded-full hover:border-[#d3bb73]/40 transition-colors disabled:opacity-50"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
@@ -405,14 +432,16 @@ export default function ServiceDetailPage() {
 
               <div className="relative overflow-hidden">
                 <div
-                  className="flex transition-transform duration-500 ease-out gap-4 md:gap-6"
+                  className="flex gap-4 md:gap-6"
                   style={{
-                    transform: `translateX(-${carouselIndex * (100 / itemsPerView)}%)`
+                    transform: `translateX(-${carouselIndex * (100 / itemsPerView)}%)`,
+                    transition: isTransitioning ? 'transform 500ms ease-out' : 'none'
                   }}
+                  onTransitionEnd={handleTransitionEnd}
                 >
-                  {relatedServices.map((related) => (
+                  {extendedServices.map((related, idx) => (
                     <Link
-                      key={related.id}
+                      key={`${related.id}-${idx}`}
                       href={`/uslugi/${related.slug}`}
                       className="group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all flex-shrink-0"
                       style={{
@@ -449,15 +478,21 @@ export default function ServiceDetailPage() {
 
               {/* Dots indicator */}
               <div className="flex items-center justify-center gap-2 mt-6">
-                {Array.from({ length: Math.max(1, relatedServices.length - itemsPerView + 1) }).map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCarouselIndex(idx)}
-                    className={`w-2 h-2 rounded-full transition-all ${
-                      idx === carouselIndex ? 'bg-[#d3bb73] w-8' : 'bg-[#e5e4e2]/20'
-                    }`}
-                  />
-                ))}
+                {relatedServices.map((_, idx) => {
+                  const actualIndex = ((carouselIndex - relatedServices.length) % relatedServices.length + relatedServices.length) % relatedServices.length;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setIsTransitioning(true);
+                        setCarouselIndex(relatedServices.length + idx);
+                      }}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        idx === actualIndex ? 'bg-[#d3bb73] w-8' : 'bg-[#e5e4e2]/20'
+                      }`}
+                    />
+                  );
+                })}
               </div>
             </div>
           </section>
