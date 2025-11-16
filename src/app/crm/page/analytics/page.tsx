@@ -1,17 +1,14 @@
 'use client';
 
-import { useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useGetPageStatsQuery } from '@/store/api/analyticsApi';
-import { ArrowLeft, BarChart3, Users, Clock, TrendUp, Globe, MonitorSmartphone, Mail } from 'lucide-react';
+import { useState } from 'react';
+import { useGetAnalyticsStatsQuery } from '@/store/api/analyticsApi';
+import { BarChart3, TrendingUp, Users, Clock, Mail, Globe, MonitorSmartphone, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
-function PageAnalyticsContent() {
-  const searchParams = useSearchParams();
-  const pageUrl = searchParams?.get('url') || '/';
+export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState(30);
 
-  const { data: stats, isLoading, error } = useGetPageStatsQuery({ pageUrl, dateRange });
+  const { data: stats, isLoading, error } = useGetAnalyticsStatsQuery({ dateRange });
 
   const formatTime = (seconds: number) => {
     if (seconds < 60) return `${seconds}s`;
@@ -20,60 +17,50 @@ function PageAnalyticsContent() {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
-  const maxVisits = stats?.daily_visits && stats.daily_visits.length > 0
-    ? Math.max.apply(null, stats.daily_visits.map(d => d.visits))
+  const maxVisits = stats?.dailyVisits && stats.dailyVisits.length > 0
+    ? stats.dailyVisits.reduce((max, d) => d.visits > max ? d.visits : max, 0)
     : 1;
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <Link
-            href="/crm/page"
-            className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Powrót do listy stron
-          </Link>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-light text-[#e5e4e2]">Analytics Dashboard</h1>
+            <p className="text-[#e5e4e2]/60 mt-1">Statystyki odwiedzin strony</p>
+          </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-light text-[#e5e4e2]">Analityka podstrony</h1>
-              <p className="text-[#e5e4e2]/60 mt-1">{pageUrl}</p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setDateRange(7)}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  dateRange === 7
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-                }`}
-              >
-                7 dni
-              </button>
-              <button
-                onClick={() => setDateRange(30)}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  dateRange === 30
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-                }`}
-              >
-                30 dni
-              </button>
-              <button
-                onClick={() => setDateRange(90)}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  dateRange === 90
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-                }`}
-              >
-                90 dni
-              </button>
-            </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDateRange(7)}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                dateRange === 7
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              7 dni
+            </button>
+            <button
+              onClick={() => setDateRange(30)}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                dateRange === 30
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              30 dni
+            </button>
+            <button
+              onClick={() => setDateRange(90)}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                dateRange === 90
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              90 dni
+            </button>
           </div>
         </div>
 
@@ -91,7 +78,7 @@ function PageAnalyticsContent() {
                   </div>
                   <span className="text-sm text-[#e5e4e2]/60">Wizyty</span>
                 </div>
-                <div className="text-3xl font-light text-[#d3bb73]">{stats.visits}</div>
+                <div className="text-3xl font-light text-[#d3bb73]">{stats.totalVisits}</div>
                 <div className="text-xs text-[#e5e4e2]/40 mt-1">Ostatnie {dateRange} dni</div>
               </div>
 
@@ -102,8 +89,8 @@ function PageAnalyticsContent() {
                   </div>
                   <span className="text-sm text-[#e5e4e2]/60">Unikalni</span>
                 </div>
-                <div className="text-3xl font-light text-[#d3bb73]">{stats.unique_visitors}</div>
-                <div className="text-xs text-[#e5e4e2]/40 mt-1">Unikalnych odwiedzających</div>
+                <div className="text-3xl font-light text-[#d3bb73]">{stats.uniqueVisitors}</div>
+                <div className="text-xs text-[#e5e4e2]/40 mt-1">Unikalnych sesji</div>
               </div>
 
               <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
@@ -113,30 +100,30 @@ function PageAnalyticsContent() {
                   </div>
                   <span className="text-sm text-[#e5e4e2]/60">Śr. czas</span>
                 </div>
-                <div className="text-3xl font-light text-[#d3bb73]">{formatTime(stats.avg_time)}</div>
-                <div className="text-xs text-[#e5e4e2]/40 mt-1">Średni czas na stronie</div>
+                <div className="text-3xl font-light text-[#d3bb73]">{formatTime(stats.avgTimeOnPage)}</div>
+                <div className="text-xs text-[#e5e4e2]/40 mt-1">Na stronie</div>
               </div>
 
               <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 bg-[#d3bb73]/10 rounded-full flex items-center justify-center">
-                    <TrendUp className="w-5 h-5 text-[#d3bb73]" />
+                    <Mail className="w-5 h-5 text-[#d3bb73]" />
                   </div>
-                  <span className="text-sm text-[#e5e4e2]/60">Konwersja</span>
+                  <span className="text-sm text-[#e5e4e2]/60">Formularze</span>
                 </div>
-                <div className="text-3xl font-light text-[#d3bb73]">{stats.conversion_rate}%</div>
-                <div className="text-xs text-[#e5e4e2]/40 mt-1">Współczynnik konwersji</div>
+                <div className="text-3xl font-light text-[#d3bb73]">{stats.contactForms}</div>
+                <div className="text-xs text-[#e5e4e2]/40 mt-1">Wysłanych zapytań</div>
               </div>
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
               <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
                 <h2 className="text-xl font-light text-[#e5e4e2] mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-[#d3bb73]" />
+                  <TrendingUp className="w-5 h-5 text-[#d3bb73]" />
                   Wizyty w czasie
                 </h2>
                 <div className="space-y-2">
-                  {stats.daily_visits.slice(-14).map((day) => (
+                  {stats.dailyVisits.slice(-14).map((day) => (
                     <div key={day.date} className="flex items-center gap-3">
                       <span className="text-xs text-[#e5e4e2]/60 w-20">
                         {new Date(day.date).toLocaleDateString('pl-PL', { month: 'short', day: 'numeric' })}
@@ -160,12 +147,18 @@ function PageAnalyticsContent() {
                   Źródła ruchu
                 </h2>
                 <div className="space-y-3">
-                  {stats.top_referrers.map((ref) => (
-                    <div key={ref.referrer} className="flex items-center justify-between">
-                      <span className="text-[#e5e4e2]/70 text-sm truncate max-w-[200px]">
-                        {ref.referrer === 'Direct' ? 'Bezpośrednie' : ref.referrer}
-                      </span>
-                      <span className="text-[#d3bb73] font-medium">{ref.count}</span>
+                  {stats.trafficSources.map((source) => (
+                    <div key={source.source} className="flex items-center justify-between">
+                      <span className="text-[#e5e4e2]/70">{source.source}</span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-32 bg-[#0f1119] rounded-full h-2">
+                          <div
+                            className="bg-[#d3bb73] h-full rounded-full"
+                            style={{ width: `${(source.visits / stats.totalVisits) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-[#d3bb73] font-medium w-12 text-right">{source.visits}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -179,7 +172,7 @@ function PageAnalyticsContent() {
                   Urządzenia
                 </h2>
                 <div className="space-y-3">
-                  {stats.device_breakdown.map((device) => (
+                  {stats.deviceBreakdown.map((device) => (
                     <div key={device.device_type} className="flex items-center justify-between">
                       <span className="text-[#e5e4e2]/70 capitalize">{device.device_type}</span>
                       <div className="flex items-center gap-3">
@@ -196,85 +189,57 @@ function PageAnalyticsContent() {
                 </div>
               </div>
 
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
-                <h2 className="text-xl font-light text-[#e5e4e2] mb-4 flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-[#d3bb73]" />
-                  Formularze kontaktowe
-                </h2>
-                {stats.contact_forms.length > 0 ? (
-                  <div className="space-y-2">
-                    {stats.contact_forms.slice(0, 5).map((form) => (
-                      <div key={form.id} className="text-sm text-[#e5e4e2]/70 py-2 border-b border-[#d3bb73]/10 last:border-0">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-[#e5e4e2]">{form.name}</span>
-                          <span className="text-xs text-[#e5e4e2]/50">
-                            {new Date(form.created_at).toLocaleDateString('pl-PL')}
-                          </span>
-                        </div>
-                        {form.city_interest && (
-                          <div className="text-xs text-[#d3bb73] mt-1">{form.city_interest}</div>
-                        )}
+              {stats.topCities.length > 0 && (
+                <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
+                  <h2 className="text-xl font-light text-[#e5e4e2] mb-4">Najpopularniejsze miasta</h2>
+                  <div className="space-y-3">
+                    {stats.topCities.map((city) => (
+                      <div key={city.city_interest} className="flex items-center justify-between">
+                        <span className="text-[#e5e4e2]/70">{city.city_interest}</span>
+                        <span className="text-[#d3bb73] font-medium">{city.submissions} zapytań</span>
                       </div>
                     ))}
-                    {stats.contact_forms.length > 5 && (
-                      <p className="text-xs text-center text-[#e5e4e2]/40 mt-3">
-                        + {stats.contact_forms.length - 5} więcej
-                      </p>
-                    )}
                   </div>
-                ) : (
-                  <p className="text-[#e5e4e2]/50 text-sm">Brak formularzy z tej strony</p>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
-            <div className="bg-[#1c1f33]/60 border border-[#d3bb73]/10 rounded-xl p-6">
-              <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Metryki wydajności</h2>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <div className="text-sm text-[#e5e4e2]/60 mb-1">Bounce Rate</div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 bg-[#0f1119] rounded-full h-2">
-                      <div
-                        className="bg-[#d3bb73] h-full rounded-full"
-                        style={{ width: `${stats.bounce_rate}%` }}
-                      />
-                    </div>
-                    <span className="text-[#d3bb73] font-medium">{stats.bounce_rate}%</span>
-                  </div>
-                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
-                    Procent odwiedzin trwających krócej niż 10s
-                  </p>
-                </div>
-
-                <div>
-                  <div className="text-sm text-[#e5e4e2]/60 mb-1">Conversion Rate</div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 bg-[#0f1119] rounded-full h-2">
-                      <div
-                        className="bg-[#d3bb73] h-full rounded-full"
-                        style={{ width: `${Math.min(stats.conversion_rate * 10, 100)}%` }}
-                      />
-                    </div>
-                    <span className="text-[#d3bb73] font-medium">{stats.conversion_rate}%</span>
-                  </div>
-                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
-                    Procent odwiedzających którzy wysłali formularz
-                  </p>
-                </div>
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-light text-[#e5e4e2]">Top 10 podstron</h2>
+                <Link
+                  href="/crm/page"
+                  className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80 flex items-center gap-1"
+                >
+                  Struktura strony <ExternalLink className="w-4 h-4" />
+                </Link>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#d3bb73]/10">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-[#e5e4e2]/60">Strona</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-[#e5e4e2]/60">Wizyty</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-[#e5e4e2]/60">Unikalni</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-[#e5e4e2]/60">Śr. czas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.topPages.map((page) => (
+                      <tr key={page.page_url} className="border-b border-[#d3bb73]/5 hover:bg-[#d3bb73]/5">
+                        <td className="py-3 px-4 text-[#e5e4e2]/70 text-sm">{page.page_url}</td>
+                        <td className="py-3 px-4 text-right text-[#d3bb73] font-medium">{page.visits}</td>
+                        <td className="py-3 px-4 text-right text-[#e5e4e2]/70">{page.unique_visitors}</td>
+                        <td className="py-3 px-4 text-right text-[#e5e4e2]/70">{formatTime(page.avg_time)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </>
         )}
       </div>
     </div>
-  );
-}
-
-export default function PageAnalyticsDetailPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-[#0f1119] p-6 flex items-center justify-center text-[#e5e4e2]/50">Ładowanie...</div>}>
-      <PageAnalyticsContent />
-    </Suspense>
   );
 }
