@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Head from 'next/head';
 import {
@@ -51,10 +51,44 @@ export default function ConferencesPage() {
   const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [triplicatedServices, setTriplicatedServices] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (relatedServices.length > 0) {
+      setTriplicatedServices([...relatedServices, ...relatedServices, ...relatedServices]);
+      setCurrentIndex(relatedServices.length);
+    }
+  }, [relatedServices]);
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => {
+      const next = prev + 1;
+      if (next >= relatedServices.length * 2) {
+        setTimeout(() => {
+          setCurrentIndex(relatedServices.length);
+        }, 700);
+      }
+      return next;
+    });
+  };
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => {
+      const next = prev - 1;
+      if (next < relatedServices.length) {
+        setTimeout(() => {
+          setCurrentIndex(relatedServices.length * 2 - 1);
+        }, 700);
+      }
+      return next;
+    });
+  };
 
   const loadData = async () => {
     const [
@@ -1005,41 +1039,85 @@ export default function ConferencesPage() {
                 </div>
               )}
 
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {relatedServices.map((service) => {
-                  const Icon = iconMap[service.icon] || Package;
-                  return (
-                    <Link
-                      key={service.id}
-                      href={`/uslugi/${service.slug}`}
-                      className="group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all hover:-translate-y-1"
-                    >
-                      {service.thumbnail_url && (
-                        <div className="aspect-video overflow-hidden bg-[#0f1119]">
-                          <img
-                            src={service.thumbnail_url}
-                            alt={service.name}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                          />
-                        </div>
-                      )}
-                      <div className="p-6">
-                        <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center mb-4 group-hover:bg-[#d3bb73]/20 transition-colors">
-                          <Icon className="w-6 h-6 text-[#d3bb73]" />
-                        </div>
-                        <h3 className="text-[#e5e4e2] text-lg font-medium mb-2 group-hover:text-[#d3bb73] transition-colors">
-                          {service.name}
-                        </h3>
-                        {service.description && (
-                          <p className="text-[#e5e4e2]/60 text-sm line-clamp-2">
-                            {service.description}
-                          </p>
+              {/* Infinite Carousel */}
+              <div className="relative overflow-hidden" ref={carouselRef}>
+                <div
+                  className="flex gap-6 transition-transform duration-700 ease-out"
+                  style={{ transform: `translateX(-${currentIndex * (100 / 3)}%)` }}
+                >
+                  {triplicatedServices.map((service, idx) => {
+                    const Icon = iconMap[service.icon] || Package;
+                    return (
+                      <Link
+                        key={`${service.id}-${idx}`}
+                        href={`/uslugi/${service.slug}`}
+                        className="flex-shrink-0 w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] group bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-all hover:-translate-y-1"
+                      >
+                        {service.thumbnail_url && (
+                          <div className="aspect-video overflow-hidden bg-[#0f1119]">
+                            <img
+                              src={service.thumbnail_url}
+                              alt={service.name}
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            />
+                          </div>
                         )}
-                      </div>
-                    </Link>
-                  );
-                })}
+                        <div className="p-6">
+                          <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center mb-4 group-hover:bg-[#d3bb73]/20 transition-colors">
+                            <Icon className="w-6 h-6 text-[#d3bb73]" />
+                          </div>
+                          <h3 className="text-[#e5e4e2] text-lg font-medium mb-2 group-hover:text-[#d3bb73] transition-colors">
+                            {service.name}
+                          </h3>
+                          {service.description && (
+                            <p className="text-[#e5e4e2]/60 text-sm line-clamp-2">
+                              {service.description}
+                            </p>
+                          )}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                {/* Navigation Arrows */}
+                {relatedServices.length > 3 && (
+                  <>
+                    <button
+                      onClick={handlePrev}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 bg-[#d3bb73] text-[#1c1f33] p-3 rounded-full hover:bg-[#d3bb73]/90 transition-all z-10 shadow-lg"
+                      aria-label="Previous services"
+                    >
+                      <ArrowLeft className="w-6 h-6" />
+                    </button>
+                    <button
+                      onClick={handleNext}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 bg-[#d3bb73] text-[#1c1f33] p-3 rounded-full hover:bg-[#d3bb73]/90 transition-all z-10 shadow-lg"
+                      aria-label="Next services"
+                    >
+                      <ArrowLeft className="w-6 h-6 rotate-180" />
+                    </button>
+                  </>
+                )}
               </div>
+
+              {/* Dots Indicator */}
+              {relatedServices.length > 1 && (
+                <div className="flex justify-center gap-2 mt-8">
+                  {relatedServices.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentIndex(idx + relatedServices.length)}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        currentIndex % relatedServices.length === idx
+                          ? 'bg-[#d3bb73] w-8'
+                          : 'bg-[#d3bb73]/30 hover:bg-[#d3bb73]/50'
+                      }`}
+                      aria-label={`Go to service ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
 
               <div className="text-center mt-12">
                 <Link
