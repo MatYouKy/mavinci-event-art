@@ -20,39 +20,52 @@ export default function PageManagementPage() {
   const { data: pages, isLoading } = useGetAllPagesQuery({ dateRange });
 
   const pageTree = useMemo(() => {
-    if (!pages) return [];
+    const getVisits = (url: string) => pages?.find(p => p.url === url)?.visits || 0;
 
-    const tree: PageNode[] = [];
-    const pathMap = new Map<string, PageNode>();
-
-    pages.forEach(page => {
-      const node: PageNode = {
-        url: page.url,
-        title: page.title,
-        visits: page.visits,
+    const hardcodedStructure: PageNode[] = [
+      {
+        url: '/',
+        title: 'Strona główna',
+        visits: getVisits('/'),
         children: [],
-      };
-      pathMap.set(page.url, node);
-    });
+      },
+      {
+        url: '/o-nas',
+        title: 'O nas',
+        visits: getVisits('/o-nas'),
+        children: [],
+      },
+      {
+        url: '/uslugi',
+        title: 'Usługi',
+        visits: getVisits('/uslugi'),
+        children: [
+          { url: '/uslugi/kasyno', title: 'Kasyno', visits: getVisits('/uslugi/kasyno'), children: [] },
+          { url: '/uslugi/naglosnienie', title: 'Nagłośnienie', visits: getVisits('/uslugi/naglosnienie'), children: [] },
+          { url: '/uslugi/streaming', title: 'Streaming', visits: getVisits('/uslugi/streaming'), children: [] },
+          { url: '/uslugi/quizy-teleturnieje', title: 'Quizy i Teleturnieje', visits: getVisits('/uslugi/quizy-teleturnieje'), children: [] },
+          { url: '/uslugi/symulatory-vr', title: 'Symulatory VR', visits: getVisits('/uslugi/symulatory-vr'), children: [] },
+          { url: '/uslugi/technika-sceniczna', title: 'Technika Sceniczna', visits: getVisits('/uslugi/technika-sceniczna'), children: [] },
+          { url: '/uslugi/wieczory-tematyczne', title: 'Wieczory Tematyczne', visits: getVisits('/uslugi/wieczory-tematyczne'), children: [] },
+          { url: '/uslugi/konferencje', title: 'Konferencje', visits: getVisits('/uslugi/konferencje'), children: [] },
+          { url: '/uslugi/integracje', title: 'Integracje', visits: getVisits('/uslugi/integracje'), children: [] },
+        ],
+      },
+      {
+        url: '/portfolio',
+        title: 'Portfolio',
+        visits: getVisits('/portfolio'),
+        children: [],
+      },
+      {
+        url: '/zespol',
+        title: 'Zespół',
+        visits: getVisits('/zespol'),
+        children: [],
+      },
+    ];
 
-    pages.forEach(page => {
-      const parts = page.url.split('/').filter(Boolean);
-
-      if (parts.length === 0) {
-        tree.push(pathMap.get(page.url)!);
-      } else {
-        const parentPath = '/' + parts.slice(0, -1).join('/');
-        const parent = pathMap.get(parentPath === '/' ? '/' : parentPath);
-
-        if (parent) {
-          parent.children.push(pathMap.get(page.url)!);
-        } else {
-          tree.push(pathMap.get(page.url)!);
-        }
-      }
-    });
-
-    return tree;
+    return hardcodedStructure;
   }, [pages]);
 
   const filteredTree = useMemo(() => {
@@ -169,7 +182,7 @@ export default function PageManagementPage() {
           </div>
 
           <Link
-            href="/crm/analytics"
+            href="/crm/page/analytics"
             className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
           >
             <BarChart3 className="w-4 h-4" />

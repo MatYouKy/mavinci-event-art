@@ -78,8 +78,30 @@ export interface PageStats {
 export const analyticsApi = createApi({
   reducerPath: 'analyticsApi',
   baseQuery: fakeBaseQuery(),
-  tagTypes: ['Analytics', 'PageStats', 'ContactForms'],
+  tagTypes: ['Analytics', 'PageStats', 'ContactForms', 'OnlineUsers'],
   endpoints: (builder) => ({
+    getOnlineUsers: builder.query<number, void>({
+      async queryFn() {
+        try {
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+          const { data, error } = await supabase
+            .from('page_analytics')
+            .select('session_id')
+            .gte('created_at', fiveMinutesAgo)
+            .not('page_url', 'like', '%/crm%');
+
+          if (error) throw error;
+
+          const uniqueSessions = new Set(data?.map(d => d.session_id) || []);
+          return { data: uniqueSessions.size };
+        } catch (error: any) {
+          return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+        }
+      },
+      providesTags: ['OnlineUsers'],
+    }),
+
     getAnalyticsStats: builder.query<AnalyticsStats, { dateRange: number }>({
       async queryFn({ dateRange }) {
         try {
@@ -335,4 +357,5 @@ export const {
   useGetAnalyticsStatsQuery,
   useGetPageStatsQuery,
   useGetAllPagesQuery,
+  useGetOnlineUsersQuery,
 } = analyticsApi;
