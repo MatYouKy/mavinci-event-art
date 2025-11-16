@@ -50,6 +50,7 @@ export default function ConferencesPage() {
   const [relatedServices, setRelatedServices] = useState<any[]>([]);
   const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -909,6 +910,9 @@ export default function ConferencesPage() {
                       Wybrano: {selectedServiceIds.size}
                     </span>
                   </div>
+                  <p className="text-[#e5e4e2]/70 text-sm mb-4">
+                    Wybierz usługi, które mają być wyświetlane w tej sekcji. Zmiany zapisują się automatycznie.
+                  </p>
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto pr-2">
                     {allServiceItems.map((item) => (
                       <label
@@ -924,22 +928,27 @@ export default function ConferencesPage() {
                           checked={selectedServiceIds.has(item.id)}
                           onChange={async (e) => {
                             const newSelected = new Set(selectedServiceIds);
+                            setIsSaving(true);
 
-                            if (e.target.checked) {
-                              newSelected.add(item.id);
-                              setSelectedServiceIds(newSelected);
+                            try {
+                              if (e.target.checked) {
+                                newSelected.add(item.id);
+                                setSelectedServiceIds(newSelected);
 
-                              await supabase.from('conferences_related_services').insert({
-                                service_item_id: item.id,
-                                display_order: newSelected.size
-                              });
-                            } else {
-                              newSelected.delete(item.id);
-                              setSelectedServiceIds(newSelected);
+                                await supabase.from('conferences_related_services').insert({
+                                  service_item_id: item.id,
+                                  display_order: newSelected.size
+                                });
+                              } else {
+                                newSelected.delete(item.id);
+                                setSelectedServiceIds(newSelected);
 
-                              await supabase.from('conferences_related_services')
-                                .delete()
-                                .eq('service_item_id', item.id);
+                                await supabase.from('conferences_related_services')
+                                  .delete()
+                                  .eq('service_item_id', item.id);
+                              }
+                            } finally {
+                              setTimeout(() => setIsSaving(false), 500);
                             }
                           }}
                           className="mt-1 w-5 h-5 rounded border-[#d3bb73] text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0 cursor-pointer"
@@ -963,6 +972,35 @@ export default function ConferencesPage() {
                         </div>
                       </label>
                     ))}
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-between pt-4 border-t border-[#d3bb73]/20">
+                    <div className="flex items-center gap-2">
+                      {isSaving ? (
+                        <span className="text-[#d3bb73] text-sm flex items-center gap-2">
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Zapisywanie...
+                        </span>
+                      ) : (
+                        <span className="text-green-500 text-sm flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          Zapisano automatycznie
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => loadData()}
+                      className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Odśwież podgląd
+                    </button>
                   </div>
                 </div>
               )}
