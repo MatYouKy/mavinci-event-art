@@ -15,7 +15,6 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableContent } from '@/components/EditableContent';
-import WebsiteEditButton from '@/components/WebsiteEditButton';
 import { useEditMode } from '@/contexts/EditModeContext';
 
 const iconMap: Record<string, any> = {
@@ -43,6 +42,7 @@ export default function ConferencesPage() {
   const [faq, setFaq] = useState<any[]>([]);
   const [gallery, setGallery] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
+  const [ogImage, setOgImage] = useState<string>('');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
 
@@ -62,7 +62,8 @@ export default function ConferencesPage() {
       pricingRes,
       faqRes,
       galleryRes,
-      citiesRes
+      citiesRes,
+      ogImageRes
     ] = await Promise.all([
       supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
       supabase.from('conferences_problems').select('*').eq('is_active', true).order('display_order'),
@@ -74,7 +75,8 @@ export default function ConferencesPage() {
       supabase.from('conferences_pricing').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
       supabase.from('conferences_gallery').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_cities').select('*').eq('is_active', true)
+      supabase.from('conferences_cities').select('*').eq('is_active', true).order('display_order'),
+      supabase.from('site_images').select('desktop_url').eq('section', 'konferencje-hero').eq('is_active', true).single()
     ]);
 
     if (heroRes.data) setHeroData(heroRes.data);
@@ -88,6 +90,7 @@ export default function ConferencesPage() {
     if (faqRes.data) setFaq(faqRes.data);
     if (galleryRes.data) setGallery(galleryRes.data);
     if (citiesRes.data) setCities(citiesRes.data);
+    setOgImage(ogImageRes.data?.desktop_url || 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop');
   };
 
   useEffect(() => {
@@ -145,7 +148,7 @@ export default function ConferencesPage() {
   return (
     <>
       <Head>
-        <title>Obsługa Konferencji - Profesjonalne Nagłośnienie i Multimedia | MAVINCI</title>
+        <title>Obsługa Konferencji - Profesjonalne Nagłośnienie i Multimedia | MAVINCI Event & ART</title>
         <meta
           name="description"
           content="Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo. Pakiety dla 50-500+ uczestników. Północna i centralna Polska."
@@ -154,15 +157,76 @@ export default function ConferencesPage() {
           name="keywords"
           content="obsługa konferencji warszawa, nagłośnienie konferencyjne gdańsk, technika av bydgoszcz, streaming konferencji toruń, realizacja live olsztyn, konferencje łódź, obsługa multimedialna białystok, technika konferencyjna rzeszów"
         />
-        <meta property="og:title" content="Obsługa Konferencji - MAVINCI Event & ART" />
-        <meta property="og:description" content="Profesjonalne nagłośnienie, multimedia i realizacja live dla konferencji. Pakiety BASIC, STANDARD, PRO." />
+
+        {/* Open Graph */}
         <meta property="og:type" content="website" />
+        <meta property="og:title" content="Obsługa Konferencji - Profesjonalne Nagłośnienie | MAVINCI Event & ART" />
+        <meta property="og:description" content="Profesjonalne nagłośnienie, multimedia i realizacja live dla konferencji. Pakiety BASIC, STANDARD, PRO. Warszawa, Gdańsk, Bydgoszcz." />
+        <meta property="og:url" content="https://mavinci.pl/uslugi/konferencje" />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="MAVINCI Obsługa Konferencji" />
+        <meta property="og:site_name" content="MAVINCI Event & ART" />
+        <meta property="og:locale" content="pl_PL" />
+
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Obsługa Konferencji - MAVINCI Event & ART" />
+        <meta name="twitter:description" content="Profesjonalne nagłośnienie, multimedia i realizacja live dla konferencji. Pakiety BASIC, STANDARD, PRO." />
+        <meta name="twitter:image" content={ogImage} />
+        <meta name="twitter:image:alt" content="MAVINCI Obsługa Konferencji" />
+
+        {/* Canonical */}
         <link rel="canonical" href="https://mavinci.pl/uslugi/konferencje" />
+
+        {/* JSON-LD Schema */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'Service',
+              name: 'Obsługa Konferencji',
+              description: 'Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo.',
+              provider: {
+                '@type': 'Organization',
+                name: 'MAVINCI Event & ART',
+                url: 'https://mavinci.pl',
+                logo: 'https://mavinci.pl/logo-mavinci-crm.png',
+                address: {
+                  '@type': 'PostalAddress',
+                  addressLocality: 'Bydgoszcz',
+                  addressRegion: 'Kujawsko-Pomorskie',
+                  addressCountry: 'PL'
+                },
+                telephone: '+48-123-456-789',
+                email: 'kontakt@mavinci.pl'
+              },
+              areaServed: [
+                { '@type': 'City', name: 'Warszawa' },
+                { '@type': 'City', name: 'Gdańsk' },
+                { '@type': 'City', name: 'Bydgoszcz' },
+                { '@type': 'City', name: 'Toruń' },
+                { '@type': 'City', name: 'Olsztyn' },
+                { '@type': 'City', name: 'Łódź' },
+                { '@type': 'City', name: 'Białystok' },
+                { '@type': 'City', name: 'Rzeszów' },
+                { '@type': 'City', name: 'Poznań' },
+                { '@type': 'City', name: 'Kraków' }
+              ],
+              serviceType: 'Obsługa Techniczna Konferencji',
+              offers: {
+                '@type': 'AggregateOffer',
+                priceCurrency: 'PLN',
+                availability: 'https://schema.org/InStock'
+              }
+            })
+          }}
+        />
       </Head>
       <Navbar />
       <div className="min-h-screen bg-[#0f1119]">
-        <WebsiteEditButton href={''} />
-
         {/* Hero Section with PageHeroImage */}
         <PageHeroImage
           section="konferencje-hero"
