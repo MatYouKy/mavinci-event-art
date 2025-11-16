@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { X, Plus, Save, Trash2, Image as ImageIcon, Edit2, Upload } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from './SimpleImageUploader';
 import { uploadOptimizedImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
+import { slugify } from '@/lib/slugify';
 
 interface AdminServiceEditorProps {
   serviceId: string;
@@ -15,9 +17,11 @@ interface AdminServiceEditorProps {
 }
 
 export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminServiceEditorProps) {
+  const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [originalSlug, setOriginalSlug] = useState('');
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -52,6 +56,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       if (!data) return;
 
       setName(data.name || '');
+      setOriginalSlug(data.slug || '');
       setDescription(data.description || '');
       setLongDescription(data.long_description || '');
       setHeroImageUrl(data.hero_image_url || '');
@@ -73,10 +78,13 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const handleSave = async () => {
     setSaving(true);
     try {
+      const newSlug = slugify(name);
+
       const { error } = await supabase
         .from('conferences_service_items')
         .update({
           name,
+          slug: newSlug,
           description,
           long_description: longDescription,
           hero_image_url: heroImageUrl,
@@ -96,6 +104,10 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       showSnackbar('Usługa zaktualizowana pomyślnie', 'success');
       onSaved();
       onClose();
+
+      if (newSlug !== originalSlug) {
+        router.push(`/uslugi/${newSlug}`);
+      }
     } catch (error) {
       console.error('Error saving service:', error);
       showSnackbar('Błąd zapisu usługi', 'error');
