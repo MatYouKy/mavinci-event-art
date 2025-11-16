@@ -15,7 +15,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableContent } from '@/components/EditableContent';
-import { WebsiteEditButton } from '@/components/WebsiteEditButton';
+import WebsiteEditButton from '@/components/WebsiteEditButton';
 import { useEditMode } from '@/contexts/EditModeContext';
 
 const iconMap: Record<string, any> = {
@@ -161,7 +161,7 @@ export default function ConferencesPage() {
       </Head>
       <Navbar />
       <div className="min-h-screen bg-[#0f1119]">
-        <WebsiteEditButton />
+        <WebsiteEditButton href={''} />
 
         {/* Hero Section with PageHeroImage */}
         <PageHeroImage
