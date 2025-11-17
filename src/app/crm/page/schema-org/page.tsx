@@ -87,15 +87,18 @@ export default function SchemaOrgManagementPage() {
       .replace(/ś/g, 's')
       .replace(/ź|ż/g, 'z');
 
+    const addedLocalities = places.map(p => p.locality.toLowerCase());
+
     const { data, error } = await supabase
       .from('polish_cities')
       .select('*')
       .or(`name.ilike.%${query}%,slug.ilike.%${normalizedQuery}%`)
       .order('population', { ascending: false })
-      .limit(10);
+      .limit(20);
 
     if (data && !error) {
-      setCitySuggestions(data);
+      const filtered = data.filter(city => !addedLocalities.includes(city.slug.toLowerCase()));
+      setCitySuggestions(filtered.slice(0, 10));
       setShowSuggestions(true);
     }
   };
