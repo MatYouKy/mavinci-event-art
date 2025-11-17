@@ -102,11 +102,12 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       if (error) throw error;
 
       showSnackbar('Usługa zaktualizowana pomyślnie', 'success');
-      onSaved();
       onClose();
 
       if (newSlug !== originalSlug) {
         router.push(`/uslugi/${newSlug}`);
+      } else {
+        onSaved();
       }
     } catch (error) {
       console.error('Error saving service:', error);
