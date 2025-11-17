@@ -136,7 +136,7 @@ export default function ConferencesPage() {
       supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
       supabase.from('portfolio_projects').select('*').contains('tags', ['konferencje']).order('order_index'),
       supabase.from('conferences_cities').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('site_images').select('desktop_url').eq('section', 'konferencje-hero').eq('is_active', true).single(),
+      supabase.from('site_images').select('desktop_url').eq('section', 'konferencje-hero').eq('is_active', true).maybeSingle(),
       supabase.from('conferences_service_categories').select(`
         *,
         items:conferences_service_items(*)
@@ -146,7 +146,7 @@ export default function ConferencesPage() {
         service_item:conferences_service_items(*)
       `).eq('is_active', true).order('display_order'),
       supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
-      supabase.from('schema_org_business').select('*').eq('page_slug', 'konferencje').eq('is_active', true).single()
+      supabase.from('schema_org_business').select('*').eq('page_slug', 'konferencje').eq('is_active', true).maybeSingle()
     ]);
 
     if (heroRes.data) {
