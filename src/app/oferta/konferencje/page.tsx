@@ -18,6 +18,7 @@ import { EditableContent } from '@/components/EditableContent';
 import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
 import { ConferencesPricingEditor } from '@/components/ConferencesPricingEditor';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import ConferencesServicesAccordion from '@/components/ConferencesServicesAccordion';
 import SchemaLayout from '@/components/SchemaLayout';
 
 
@@ -507,56 +508,7 @@ export default function ConferencesPage() {
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {serviceCategories.map((category, idx) => {
-                  const Icon = getIcon(category.icon);
-                  const activeItems = category.items?.filter((item: any) => item.is_active) || [];
-
-                  return (
-                    <div
-                      key={category.id}
-                      className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-2xl p-6 hover:border-[#d3bb73]/40 transition-all hover:transform hover:scale-105"
-                      style={{ animationDelay: `${idx * 50}ms` }}
-                    >
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                          <Icon className="w-6 h-6 text-[#d3bb73]" />
-                        </div>
-                        <h3 className="text-xl font-medium text-[#e5e4e2]">
-                          {category.name}
-                        </h3>
-                      </div>
-
-                      {category.description && (
-                        <p className="text-[#e5e4e2]/60 text-sm mb-4">
-                          {category.description}
-                        </p>
-                      )}
-
-                      <ul className="space-y-2">
-                        {activeItems.slice(0, 6).map((item: any) => (
-                          <li key={item.id} className="flex items-start gap-2 text-[#e5e4e2]/70 text-sm">
-                            <CheckCircle className="w-4 h-4 text-[#d3bb73] mt-0.5 flex-shrink-0" />
-                            <div>
-                              <span className={item.is_premium ? 'text-[#d3bb73] font-medium' : ''}>
-                                {item.name}
-                              </span>
-                              {item.description && (
-                                <p className="text-[#e5e4e2]/40 text-xs mt-0.5">{item.description}</p>
-                              )}
-                            </div>
-                          </li>
-                        ))}
-                        {activeItems.length > 6 && (
-                          <li className="text-[#e5e4e2]/40 text-xs italic">
-                            ...i więcej ({activeItems.length - 6} dodatkowych usług)
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-                  );
-                })}
-              </div>
+              <ConferencesServicesAccordion />
 
               <div className="mt-12 text-center bg-[#1c1f33]/50 border border-[#d3bb73]/20 rounded-2xl p-8">
                 <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">
