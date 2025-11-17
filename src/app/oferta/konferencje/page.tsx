@@ -491,7 +491,7 @@ export default function ConferencesPage() {
         </PageHeroImage>
         <section className="pt-6 px-6 border-t border-b border-[#d3bb73]/20">
         <div className="max-w-7xl mx-auto">
-        <CategoryBreadcrumb />
+        <CategoryBreadcrumb pageSlug="konferencje" />
         </div>
         </section>
         {/* Detailed Services Section */}

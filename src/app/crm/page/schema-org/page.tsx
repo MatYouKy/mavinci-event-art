@@ -76,10 +76,21 @@ export default function SchemaOrgManagementPage() {
   };
 
   const searchCities = async (query: string) => {
+    const normalizedQuery = query
+      .toLowerCase()
+      .replace(/ą/g, 'a')
+      .replace(/ć/g, 'c')
+      .replace(/ę/g, 'e')
+      .replace(/ł/g, 'l')
+      .replace(/ń/g, 'n')
+      .replace(/ó/g, 'o')
+      .replace(/ś/g, 's')
+      .replace(/ź|ż/g, 'z');
+
     const { data, error } = await supabase
       .from('polish_cities')
       .select('*')
-      .ilike('name', `%${query}%`)
+      .or(`name.ilike.%${query}%,slug.ilike.%${normalizedQuery}%`)
       .order('population', { ascending: false })
       .limit(10);
 

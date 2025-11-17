@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home } from 'lucide-react';
+import { Home, Edit2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useEditMode } from '@/contexts/EditModeContext';
+import { PageMetadataModal } from './PageMetadataModal';
 
 import {
   Breadcrumb,
@@ -19,12 +21,15 @@ import { categoryNavLinks, type CategoryNode } from './Navbar';
 
 interface CategoryBreadcrumbProps {
   productName?: string;
+  pageSlug?: string;
 }
 
-export function CategoryBreadcrumb({ productName }: CategoryBreadcrumbProps) {
+export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumbProps) {
   const pathname = usePathname();
+  const { isEditMode } = useEditMode();
   const [dynamicTree, setDynamicTree] = useState<CategoryNode[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
 
   // 🔥 1. Ładujemy dynamiczne kategorie usług
   useEffect(() => {
@@ -121,9 +126,15 @@ export function CategoryBreadcrumb({ productName }: CategoryBreadcrumbProps) {
 
   if (loading || trail.length === 0) return null;
 
+  const lastTrailItem = trail[trail.length - 1];
+  const currentPageSlug = pageSlug || pathname.split('/').filter(Boolean).pop() || '';
+  const currentPageName = lastTrailItem?.label || productName || '';
+
   return (
-    <Breadcrumb className="mb-4">
-      <BreadcrumbList className="text-white">
+    <>
+      <div className="flex items-center gap-3 mb-4">
+        <Breadcrumb className="flex-1">
+          <BreadcrumbList className="text-white">
         {/* HOME */}
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
@@ -159,7 +170,29 @@ export function CategoryBreadcrumb({ productName }: CategoryBreadcrumbProps) {
             </BreadcrumbItem>
           );
         })}
-      </BreadcrumbList>
-    </Breadcrumb>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        {isEditMode && currentPageSlug && (
+          <button
+            onClick={() => setIsMetadataModalOpen(true)}
+            className="px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors flex items-center gap-2 text-sm"
+            title="Edytuj metadata strony (keywords, title, description)"
+          >
+            <Edit2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Metadata</span>
+          </button>
+        )}
+      </div>
+
+      {isMetadataModalOpen && (
+        <PageMetadataModal
+          isOpen={isMetadataModalOpen}
+          onClose={() => setIsMetadataModalOpen(false)}
+          pageSlug={currentPageSlug}
+          pageName={currentPageName}
+        />
+      )}
+    </>
   );
 }
