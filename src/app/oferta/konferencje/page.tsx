@@ -66,6 +66,8 @@ export default function ConferencesPage() {
   const [editingCity, setEditingCity] = useState<any>(null);
   const [isAddingCity, setIsAddingCity] = useState(false);
   const [newCityName, setNewCityName] = useState('');
+  const [schemaOrgData, setSchemaOrgData] = useState<any>(null);
+  const [schemaOrgPlaces, setSchemaOrgPlaces] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
@@ -119,7 +121,9 @@ export default function ConferencesPage() {
       ogImageRes,
       serviceCategoriesRes,
       relatedServicesRes,
-      allServiceItemsRes
+      allServiceItemsRes,
+      schemaOrgBusinessRes,
+      schemaOrgPlacesRes
     ] = await Promise.all([
       supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
       supabase.from('conferences_problems').select('*').eq('is_active', true).order('display_order'),
@@ -141,7 +145,9 @@ export default function ConferencesPage() {
         *,
         service_item:conferences_service_items(*)
       `).eq('is_active', true).order('display_order'),
-      supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name')
+      supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
+      supabase.from('schema_org_business').select('*').eq('page_slug', 'konferencje').eq('is_active', true).single(),
+      supabase.from('schema_org_places').select('*').eq('is_active', true).order('display_order')
     ]);
 
     if (heroRes.data) {
@@ -158,6 +164,13 @@ export default function ConferencesPage() {
     if (faqRes.data) setFaq(faqRes.data);
     if (portfolioRes.data) setPortfolioProjects(portfolioRes.data);
     if (citiesRes.data) setCities(citiesRes.data);
+    if (schemaOrgBusinessRes.data) setSchemaOrgData(schemaOrgBusinessRes.data);
+    if (schemaOrgPlacesRes.data && schemaOrgBusinessRes.data) {
+      const filteredPlaces = schemaOrgPlacesRes.data.filter(
+        (p: any) => p.business_id === schemaOrgBusinessRes.data.id
+      );
+      setSchemaOrgPlaces(filteredPlaces);
+    }
     if (serviceCategoriesRes.data) setServiceCategories(serviceCategoriesRes.data);
 
     if (relatedServicesRes.data) {
@@ -316,7 +329,59 @@ export default function ConferencesPage() {
     );
   }
 
-  const structuredData = {
+  const structuredData = schemaOrgData ? {
+    '@context': 'http://schema.org',
+    '@type': schemaOrgData.schema_type || 'LocalBusiness',
+    name: schemaOrgData.name,
+    description: schemaOrgData.description,
+    image: schemaOrgData.image_url,
+    telephone: schemaOrgData.telephone,
+    email: schemaOrgData.email,
+    url: schemaOrgData.url,
+    priceRange: schemaOrgData.price_range,
+    openingHours: schemaOrgData.opening_hours,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: schemaOrgData.street_address,
+      addressLocality: schemaOrgData.locality,
+      postalCode: schemaOrgData.postal_code,
+      addressRegion: schemaOrgData.region,
+      addressCountry: schemaOrgData.country,
+    },
+    areaServed: schemaOrgPlaces.map(place => ({
+      '@type': 'Place',
+      name: place.name,
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: place.locality,
+        postalCode: place.postal_code,
+        addressRegion: place.region,
+        addressCountry: {
+          '@type': 'Country',
+          name: place.country,
+        },
+      },
+    })),
+    sameAs: [
+      schemaOrgData.facebook_url,
+      schemaOrgData.instagram_url,
+      schemaOrgData.linkedin_url,
+    ].filter(Boolean),
+    aggregateRating: schemaOrgData.rating_value ? {
+      '@type': 'AggregateRating',
+      ratingValue: schemaOrgData.rating_value.toString(),
+      bestRating: schemaOrgData.best_rating.toString(),
+      reviewCount: schemaOrgData.review_count.toString(),
+    } : undefined,
+    potentialAction: {
+      '@type': 'CommunicateAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: `tel:${schemaOrgData.telephone}`,
+      },
+      name: 'Zadzwoń do nas',
+    },
+  } : {
     '@context': 'https://schema.org',
     '@type': 'Service',
     name: 'Obsługa Konferencji',
