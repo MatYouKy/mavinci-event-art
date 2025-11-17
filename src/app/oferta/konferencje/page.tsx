@@ -123,7 +123,8 @@ export default function ConferencesPage() {
       serviceCategoriesRes,
       relatedServicesRes,
       allServiceItemsRes,
-      schemaOrgBusinessRes
+      schemaOrgBusinessRes,
+      galleryRes
     ] = await Promise.all([
       supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
       supabase.from('conferences_problems').select('*').eq('is_active', true).order('display_order'),
@@ -146,7 +147,8 @@ export default function ConferencesPage() {
         service_item:conferences_service_items(*)
       `).eq('is_active', true).order('display_order'),
       supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
-      supabase.from('schema_org_business').select('*').eq('page_slug', 'konferencje').eq('is_active', true).maybeSingle()
+      supabase.from('schema_org_business').select('*').eq('page_slug', 'konferencje').eq('is_active', true).maybeSingle(),
+      supabase.from('conferences_gallery').select('*').eq('is_active', true).order('display_order')
     ]);
 
     if (heroRes.data) {
@@ -171,6 +173,7 @@ export default function ConferencesPage() {
       setSelectedServiceIds(new Set(relatedServicesRes.data.map(r => r.service_item_id)));
     }
     if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
+    if (galleryRes.data) setGallery(galleryRes.data);
     setOgImage(ogImageRes.data?.desktop_url || 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop');
   };
 
