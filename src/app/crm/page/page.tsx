@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useGetAllPagesQuery } from '@/store/api/analyticsApi';
-import { FileText, ChevronRight, ChevronDown, BarChart3, Edit, Search } from 'lucide-react';
+import { FileText, ChevronRight, ChevronDown, BarChart3, Edit, Search, Code } from 'lucide-react';
 import Link from 'next/link';
 
 interface PageNode {
@@ -181,13 +181,22 @@ export default function PageManagementPage() {
             <p className="text-[#e5e4e2]/60 mt-1">Struktura i statystyki podstron</p>
           </div>
 
-          <Link
-            href="/crm/page/analytics"
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
-          >
-            <BarChart3 className="w-4 h-4" />
-            Analytics Dashboard
-          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/crm/page/schema-org"
+              className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:bg-[#1c1f33]/80 hover:border-[#d3bb73]/40 transition-colors text-sm"
+            >
+              <Code className="w-4 h-4" />
+              Schema.org
+            </Link>
+            <Link
+              href="/crm/page/analytics"
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Analytics
+            </Link>
+          </div>
         </div>
 
         <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
