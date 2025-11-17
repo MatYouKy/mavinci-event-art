@@ -19,6 +19,7 @@ import { ConferencesServicesEditor } from '@/components/ConferencesServicesEdito
 import { ConferencesPricingEditor } from '@/components/ConferencesPricingEditor';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import ConferencesServicesAccordion from '@/components/ConferencesServicesAccordion';
+import { ConferencesGalleryEditor } from '@/components/ConferencesGalleryEditor';
 import SchemaLayout from '@/components/SchemaLayout';
 
 
@@ -528,8 +529,8 @@ export default function ConferencesPage() {
           </section>
         )}
 
-        {/* Portfolio Section - Filtered by 'konferencje' tag */}
-        {gallery.length > 0 && (
+        {/* Gallery Section */}
+        {(gallery.length > 0 || isEditMode) && (
           <section className="py-20 px-6">
             <div className="max-w-7xl mx-auto">
               <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center animate-fade-in-up">
@@ -539,7 +540,12 @@ export default function ConferencesPage() {
                 Galeria zdjęć z obsłużonych konferencji
               </p>
 
-              <ConferencesGalleryEditor />
+              {isEditMode && (
+                <ConferencesGalleryEditor
+                  items={gallery}
+                  onUpdate={loadData}
+                />
+              )}
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {gallery.map((image, idx) => (
