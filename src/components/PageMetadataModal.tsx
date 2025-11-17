@@ -19,12 +19,28 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
   const [description, setDescription] = useState('');
   const [ogImage, setOgImage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [availableImages, setAvailableImages] = useState<any[]>([]);
+  const [showImagePicker, setShowImagePicker] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       loadMetadata();
+      loadAvailableImages();
     }
   }, [isOpen, pageSlug]);
+
+  const loadAvailableImages = async () => {
+    const { data, error } = await supabase
+      .from('site_images')
+      .select('*')
+      .or(`section.ilike.%${pageSlug}%,section.eq.global`)
+      .eq('is_active', true)
+      .order('section');
+
+    if (data && !error) {
+      setAvailableImages(data);
+    }
+  };
 
   const loadMetadata = async () => {
     const { data, error } = await supabase
@@ -148,15 +164,80 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
           {/* OG Image */}
           <div>
             <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-              Open Graph Image URL (opcjonalny)
+              Open Graph Image (opcjonalny)
             </label>
-            <input
-              type="url"
-              value={ogImage}
-              onChange={(e) => setOgImage(e.target.value)}
-              placeholder="https://mavinci.pl/images/og-image.jpg"
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
-            />
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowImagePicker(!showImagePicker)}
+                className="w-full px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors border border-[#d3bb73]/20"
+              >
+                {ogImage ? 'Zmień obrazek' : 'Wybierz obrazek z galerii'}
+              </button>
+
+              {showImagePicker && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded">
+                  {availableImages.length > 0 ? (
+                    availableImages.map((img) => (
+                      <button
+                        key={img.id}
+                        onClick={() => {
+                          setOgImage(img.desktop_url);
+                          setShowImagePicker(false);
+                        }}
+                        className={`relative aspect-video rounded overflow-hidden border-2 transition-all hover:scale-105 ${
+                          ogImage === img.desktop_url
+                            ? 'border-[#d3bb73]'
+                            : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/50'
+                        }`}
+                      >
+                        <img
+                          src={img.desktop_url}
+                          alt={img.alt_text || img.section}
+                          className="w-full h-full object-cover"
+                        />
+                        {ogImage === img.desktop_url && (
+                          <div className="absolute inset-0 bg-[#d3bb73]/20 flex items-center justify-center">
+                            <div className="bg-[#d3bb73] text-[#1c1f33] rounded-full p-2">
+                              ✓
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="col-span-full text-[#e5e4e2]/40 text-sm text-center py-4">
+                      Brak dostępnych obrazków
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {ogImage && (
+                <div className="relative">
+                  <img
+                    src={ogImage}
+                    alt="Selected OG Image"
+                    className="w-full max-h-40 object-cover rounded border border-[#d3bb73]/20"
+                  />
+                  <button
+                    onClick={() => setOgImage('')}
+                    className="absolute top-2 right-2 bg-[#800020] text-white rounded-full p-2 hover:bg-[#800020]/80"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <input
+                type="url"
+                value={ogImage}
+                onChange={(e) => setOgImage(e.target.value)}
+                placeholder="Lub wklej URL ręcznie"
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73]"
+              />
+            </div>
           </div>
 
           {/* Keywords */}

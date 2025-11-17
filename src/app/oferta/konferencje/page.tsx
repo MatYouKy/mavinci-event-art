@@ -758,6 +758,16 @@ export default function ConferencesPage() {
                     </>
                   )}
                 </div>
+
+                <div className="text-center mt-8">
+                  <Link
+                    href="/oferta/konferencje/lokalizacje"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors border border-[#d3bb73]/20"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    Zobacz wszystkie lokalizacje
+                  </Link>
+                </div>
               </div>
             </div>
           </section>
