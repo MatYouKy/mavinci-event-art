@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import Head from 'next/head';
 import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
@@ -19,6 +18,7 @@ import { EditableContent } from '@/components/EditableContent';
 import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
 import { ConferencesPricingEditor } from '@/components/ConferencesPricingEditor';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import SchemaLayout from '@/components/SchemaLayout';
 
 
 const iconMap: Record<string, any> = {
@@ -67,7 +67,6 @@ export default function ConferencesPage() {
   const [isAddingCity, setIsAddingCity] = useState(false);
   const [newCityName, setNewCityName] = useState('');
   const [schemaOrgData, setSchemaOrgData] = useState<any>(null);
-  const [schemaOrgPlaces, setSchemaOrgPlaces] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
@@ -122,8 +121,7 @@ export default function ConferencesPage() {
       serviceCategoriesRes,
       relatedServicesRes,
       allServiceItemsRes,
-      schemaOrgBusinessRes,
-      schemaOrgPlacesRes
+      schemaOrgBusinessRes
     ] = await Promise.all([
       supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
       supabase.from('conferences_problems').select('*').eq('is_active', true).order('display_order'),
@@ -146,8 +144,7 @@ export default function ConferencesPage() {
         service_item:conferences_service_items(*)
       `).eq('is_active', true).order('display_order'),
       supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
-      supabase.from('schema_org_business').select('*').eq('page_slug', 'konferencje').eq('is_active', true).single(),
-      supabase.from('schema_org_places').select('*').eq('is_active', true).order('display_order')
+      supabase.from('schema_org_business').select('*').eq('page_slug', 'konferencje').eq('is_active', true).single()
     ]);
 
     if (heroRes.data) {
@@ -165,12 +162,6 @@ export default function ConferencesPage() {
     if (portfolioRes.data) setPortfolioProjects(portfolioRes.data);
     if (citiesRes.data) setCities(citiesRes.data);
     if (schemaOrgBusinessRes.data) setSchemaOrgData(schemaOrgBusinessRes.data);
-    if (schemaOrgPlacesRes.data && schemaOrgBusinessRes.data) {
-      const filteredPlaces = schemaOrgPlacesRes.data.filter(
-        (p: any) => p.business_id === schemaOrgBusinessRes.data.id
-      );
-      setSchemaOrgPlaces(filteredPlaces);
-    }
     if (serviceCategoriesRes.data) setServiceCategories(serviceCategoriesRes.data);
 
     if (relatedServicesRes.data) {
@@ -329,163 +320,34 @@ export default function ConferencesPage() {
     );
   }
 
-  const structuredData = schemaOrgData ? {
-    '@context': 'http://schema.org',
-    '@type': schemaOrgData.schema_type || 'LocalBusiness',
-    name: schemaOrgData.name,
-    description: schemaOrgData.description,
-    image: schemaOrgData.image_url,
-    telephone: schemaOrgData.telephone,
-    email: schemaOrgData.email,
-    url: schemaOrgData.url,
-    priceRange: schemaOrgData.price_range,
-    openingHours: schemaOrgData.opening_hours,
-    address: {
-      '@type': 'PostalAddress',
-      streetAddress: schemaOrgData.street_address,
-      addressLocality: schemaOrgData.locality,
-      postalCode: schemaOrgData.postal_code,
-      addressRegion: schemaOrgData.region,
-      addressCountry: schemaOrgData.country,
-    },
-    areaServed: schemaOrgPlaces.map(place => ({
-      '@type': 'Place',
-      name: place.name,
-      address: {
-        '@type': 'PostalAddress',
-        addressLocality: place.locality,
-        postalCode: place.postal_code,
-        addressRegion: place.region,
-        addressCountry: {
-          '@type': 'Country',
-          name: place.country,
-        },
-      },
-    })),
-    sameAs: [
-      schemaOrgData.facebook_url,
-      schemaOrgData.instagram_url,
-      schemaOrgData.linkedin_url,
-    ].filter(Boolean),
-    aggregateRating: schemaOrgData.rating_value ? {
-      '@type': 'AggregateRating',
-      ratingValue: schemaOrgData.rating_value.toString(),
-      bestRating: schemaOrgData.best_rating.toString(),
-      reviewCount: schemaOrgData.review_count.toString(),
-    } : undefined,
-    potentialAction: {
-      '@type': 'CommunicateAction',
-      target: {
-        '@type': 'EntryPoint',
-        urlTemplate: `tel:${schemaOrgData.telephone}`,
-      },
-      name: 'Zadzwoń do nas',
-    },
-  } : {
-    '@context': 'https://schema.org',
-    '@type': 'Service',
-    name: 'Obsługa Konferencji',
-    description: 'Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo.',
-    provider: {
-      '@type': 'Organization',
-      name: 'MAVINCI Event & ART',
-      url: 'https://mavinci.pl',
-      logo: 'https://mavinci.pl/logo-mavinci-crm.png',
-      address: {
-        '@type': 'PostalAddress',
-        addressCountry: 'PL',
-      },
-    },
-    areaServed: cities.map(city => ({
-      '@type': 'City',
-      name: city.name,
-    })),
-    offers: pricing.map(tier => ({
-      '@type': 'Offer',
-      name: tier.tier_name,
-      description: tier.tier_description,
-      priceRange: tier.price_range,
-    })),
-    keywords: keywords.join(', '),
-  };
-
-  const breadcrumbLd = {
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Start',
-        item: 'https://mavinci.pl/',
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'Oferta',
-        item: 'https://mavinci.pl/oferta',
-      },
-      {
-        '@type': 'ListItem',
-        position: 3,
-        name: 'Obsługa Konferencji',
-        item: 'https://mavinci.pl/oferta/konferencje',
-      },
-    ],
-  };
-
   return (
-    <>
-      <Head>
-        <title>Obsługa Konferencji - Profesjonalne Nagłośnienie i Multimedia | MAVINCI Event & ART</title>
-        <meta
-          name="description"
-          content="Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo. Pakiety dla 50-500+ uczestników. Północna i centralna Polska."
-        />
-        <meta
-          name="keywords"
-          content={keywords.join(', ') || "obsługa konferencji, nagłośnienie konferencyjne, technika av, streaming konferencji, realizacja live"}
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-        />
-
-        {/* Open Graph */}
-        <meta property="og:type" content="website" />
-        <meta property="og:title" content="Obsługa Konferencji - Profesjonalne Nagłośnienie | MAVINCI Event & ART" />
-        <meta property="og:description" content="Profesjonalne nagłośnienie, multimedia i realizacja live dla konferencji. Pakiety BASIC, STANDARD, PRO. Warszawa, Gdańsk, Bydgoszcz." />
-        <meta property="og:url" content="https://mavinci.pl/oferta/konferencje" />
-        <meta property="og:image" content={ogImage} />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta property="og:image:alt" content="MAVINCI Obsługa Konferencji" />
-        <meta property="og:site_name" content="MAVINCI Event & ART" />
-        <meta property="og:locale" content="pl_PL" />
-
-        {/* Twitter Card */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Obsługa Konferencji - MAVINCI Event & ART" />
-        <meta name="twitter:description" content="Profesjonalne nagłośnienie, multimedia i realizacja live dla konferencji. Pakiety BASIC, STANDARD, PRO." />
-        <meta name="twitter:image" content={ogImage} />
-        <meta name="twitter:image:alt" content="MAVINCI Obsługa Konferencji" />
-
-        {/* Canonical */}
-        <link rel="canonical" href="https://mavinci.pl/oferta/konferencje" />
-
-        {/* JSON-LD Schema */}
-        <script
-  type="application/ld+json"
-  dangerouslySetInnerHTML={{
-    __html: JSON.stringify({
-      '@context': 'https://schema.org',
-      '@graph': [
-        structuredData,   // Twój obiekt Service
-        breadcrumbLd      // BreadcrumbList z realną ścieżką strony
-      ]
-    })
-  }}
-/>
-      </Head>
+    <SchemaLayout
+      pageSlug="konferencje"
+      defaultTitle="Obsługa Konferencji - Profesjonalne Nagłośnienie i Multimedia | MAVINCI Event & ART"
+      defaultDescription="Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo. Pakiety dla 50-500+ uczestników. Północna i centralna Polska."
+      breadcrumb={[
+        { name: 'Start', url: 'https://mavinci.pl/' },
+        { name: 'Oferta', url: 'https://mavinci.pl/oferta' },
+        { name: 'Obsługa Konferencji', url: 'https://mavinci.pl/oferta/konferencje' }
+      ]}
+      customSchemaData={{
+        priceRange: '$$$',
+        aggregateRating: schemaOrgData?.rating_value ? {
+          '@type': 'AggregateRating',
+          ratingValue: schemaOrgData.rating_value.toString(),
+          bestRating: schemaOrgData.best_rating.toString(),
+          reviewCount: schemaOrgData.review_count.toString(),
+        } : undefined,
+        potentialAction: {
+          '@type': 'CommunicateAction',
+          target: {
+            '@type': 'EntryPoint',
+            urlTemplate: `tel:+48698212279`,
+          },
+          name: 'Zadzwoń do nas',
+        }
+      }}
+    >
       <Navbar />
       <div className="min-h-screen bg-[#0f1119]">
         {/* Hero Section with PageHeroImage */}
@@ -1594,7 +1456,8 @@ export default function ConferencesPage() {
           opacity: 0;
         }
         `}</style>
-      
-    </div>  </>
+
+      </div>
+    </SchemaLayout>
   );
 }
