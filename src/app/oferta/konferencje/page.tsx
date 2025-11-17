@@ -7,15 +7,15 @@ import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
-  ChevronDown, Mail, ArrowLeft, Presentation, Music
+  ChevronDown, Mail, ArrowLeft, Presentation, Music, Trash2, Plus, Edit2
 } from 'lucide-react';
 import Link from 'next/link';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { useEditMode } from '@/contexts/EditModeContext';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableContent } from '@/components/EditableContent';
-import { useEditMode } from '@/contexts/EditModeContext';
 import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
 import { ConferencesPricingEditor } from '@/components/ConferencesPricingEditor';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
@@ -62,6 +62,10 @@ export default function ConferencesPage() {
   const [triplicatedServices, setTriplicatedServices] = useState<any[]>([]);
   const [isEditingProcess, setIsEditingProcess] = useState(false);
   const [editingProcessStep, setEditingProcessStep] = useState<any>(null);
+  const [isEditingCities, setIsEditingCities] = useState(false);
+  const [editingCity, setEditingCity] = useState<any>(null);
+  const [isAddingCity, setIsAddingCity] = useState(false);
+  const [newCityName, setNewCityName] = useState('');
 
   useEffect(() => {
     loadData();
@@ -224,6 +228,79 @@ export default function ConferencesPage() {
     } catch (error) {
       console.error('Error saving process step:', error);
       alert('Błąd podczas zapisywania');
+    }
+  };
+
+  const handleAddCity = async () => {
+    if (!newCityName.trim()) return;
+
+    try {
+      const slug = newCityName.toLowerCase()
+        .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e')
+        .replace(/ł/g, 'l').replace(/ń/g, 'n').replace(/ó/g, 'o')
+        .replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+      const { error } = await supabase
+        .from('conferences_cities')
+        .insert({
+          city_name: newCityName.trim(),
+          name: newCityName.trim(),
+          slug,
+          is_active: true,
+          display_order: cities.length + 1,
+        });
+
+      if (error) throw error;
+
+      await loadData();
+      setNewCityName('');
+      setIsAddingCity(false);
+      alert('Miasto dodane!');
+    } catch (error) {
+      console.error('Error adding city:', error);
+      alert('Błąd podczas dodawania miasta');
+    }
+  };
+
+  const handleUpdateCity = async (cityData: any) => {
+    try {
+      const { error } = await supabase
+        .from('conferences_cities')
+        .update({
+          city_name: cityData.city_name,
+          name: cityData.city_name,
+          voivodeship: cityData.voivodeship,
+        })
+        .eq('id', cityData.id);
+
+      if (error) throw error;
+
+      await loadData();
+      setEditingCity(null);
+      alert('Miasto zaktualizowane!');
+    } catch (error) {
+      console.error('Error updating city:', error);
+      alert('Błąd podczas aktualizacji');
+    }
+  };
+
+  const handleDeleteCity = async (cityId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć to miasto?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('conferences_cities')
+        .delete()
+        .eq('id', cityId);
+
+      if (error) throw error;
+
+      await loadData();
+      alert('Miasto usunięte!');
+    } catch (error) {
+      console.error('Error deleting city:', error);
+      alert('Błąd podczas usuwania');
     }
   };
 
@@ -639,17 +716,120 @@ export default function ConferencesPage() {
           <section className="py-16 px-6 border-t border-[#1c1f33]">
             <div className="max-w-7xl mx-auto">
               <div className="text-center mb-8">
-                <p className="text-[#e5e4e2]/40 text-sm mb-3">Obsługujemy konferencje w miastach:</p>
-                <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-                  {cities.map((city) => (
-                    <Link
-                      key={city.id}
-                      href={`/uslugi/konferencje/${city.slug}`}
-                      className="text-[#e5e4e2]/60 hover:text-[#d3bb73] transition-colors text-sm"
+                <div className="flex items-center justify-center gap-4 mb-3">
+                  <p className="text-[#e5e4e2]/40 text-sm">Obsługujemy konferencje w miastach:</p>
+                  {isEditMode && !isEditingCities && (
+                    <button
+                      onClick={() => setIsEditingCities(true)}
+                      className="px-3 py-1 bg-[#d3bb73] text-[#1c1f33] rounded text-xs hover:bg-[#d3bb73]/90"
                     >
-                      {city.city_name}
-                    </Link>
-                  ))}
+                      Edytuj miasta
+                    </button>
+                  )}
+                  {isEditMode && isEditingCities && (
+                    <button
+                      onClick={() => {
+                        setIsEditingCities(false);
+                        setEditingCity(null);
+                        setIsAddingCity(false);
+                      }}
+                      className="px-3 py-1 bg-[#800020] text-[#e5e4e2] rounded text-xs hover:bg-[#800020]/90"
+                    >
+                      Zamknij edycję
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+                  {cities.map((city) => {
+                    const isEditing = editingCity?.id === city.id;
+                    return isEditing ? (
+                      <div key={city.id} className="inline-flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1">
+                        <input
+                          type="text"
+                          value={editingCity.city_name}
+                          onChange={(e) => setEditingCity({ ...editingCity, city_name: e.target.value })}
+                          className="bg-[#0f1119] border border-[#d3bb73]/20 rounded px-2 py-0.5 text-[#e5e4e2] text-sm w-32 outline-none focus:border-[#d3bb73]"
+                        />
+                        <button
+                          onClick={() => handleUpdateCity(editingCity)}
+                          className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-xs"
+                        >
+                          Zapisz
+                        </button>
+                        <button
+                          onClick={() => setEditingCity(null)}
+                          className="text-[#800020] hover:text-[#800020]/80 text-xs"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
+                    ) : (
+                      <div key={city.id} className="inline-flex items-center gap-2">
+                        <Link
+                          href={`/uslugi/konferencje/${city.slug}`}
+                          className="text-[#e5e4e2]/60 hover:text-[#d3bb73] transition-colors text-sm"
+                        >
+                          {city.city_name}
+                        </Link>
+                        {isEditMode && isEditingCities && (
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setEditingCity(city)}
+                              className="text-[#d3bb73] hover:text-[#d3bb73]/80"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCity(city.id)}
+                              className="text-[#800020] hover:text-[#800020]/80"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {isEditMode && isEditingCities && (
+                    <>
+                      {isAddingCity ? (
+                        <div className="inline-flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1">
+                          <input
+                            type="text"
+                            value={newCityName}
+                            onChange={(e) => setNewCityName(e.target.value)}
+                            placeholder="Nazwa miasta"
+                            className="bg-[#0f1119] border border-[#d3bb73]/20 rounded px-2 py-0.5 text-[#e5e4e2] text-sm w-32 outline-none focus:border-[#d3bb73]"
+                          />
+                          <button
+                            onClick={handleAddCity}
+                            className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-xs"
+                          >
+                            Dodaj
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsAddingCity(false);
+                              setNewCityName('');
+                            }}
+                            className="text-[#800020] hover:text-[#800020]/80 text-xs"
+                          >
+                            Anuluj
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setIsAddingCity(true)}
+                          className="inline-flex items-center gap-1 text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Dodaj miasto
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
