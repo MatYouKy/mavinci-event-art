@@ -4,12 +4,62 @@ import { ShieldCheck, LogOut, Settings, User, ChevronDown, LayoutDashboard, Glob
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEditMode } from '../contexts/EditModeContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAppSelector } from '../store/hooks';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from './crm/NotificationCenter';
 import { canEditWebsite, isAdmin } from '@/lib/permissions';
+
+const navLinks = [
+  { label: 'O Nas', href: '/o-nas' },
+  { label: 'Portfolio', href: '/portfolio' },
+  { label: 'Zespół', href: '/zespol' },
+  { label: 'Usługi', href: '/uslugi' },
+  { label: 'Kontakt', href: '/#kontakt' }
+];
+
+const servicesLinks = [
+  { label: 'Wszystkie usługi', href: '/oferta', highlight: false },
+  { label: 'Konferencje', href: '/oferta/konferencje' },
+  { label: 'Integracje firmowe', href: '/oferta/integracje' },
+  { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
+  { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
+  { label: 'Kasyno', href: '/oferta/kasyno' },
+  { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
+  { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
+  { label: 'Nagłośnienie', href: '/oferta/naglosnienie' },
+  { label: 'Streaming', href: '/oferta/streaming' },
+];
+
+const servicesCategories = [
+  { label: 'Konferencje', href: '/oferta/konferencje' },
+  { label: 'Integracje firmowe', href: '/oferta/integracje' },
+  { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
+  { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
+  { label: 'Kasyno', href: '/oferta/kasyno' },
+  { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
+  { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
+  { label: 'Nagłośnienie', href: '/oferta/naglosnienie' },
+  { label: 'Streaming', href: '/oferta/streaming' },
+];
+
+
+
+export interface CategoryNode {
+  label: string;
+  href: string;
+  children?: CategoryNode[];
+}
+
+export const categoryNavLinks: CategoryNode[] = [
+  { label: 'O Nas', href: '/o-nas' },
+  { label: 'Portfolio', href: '/portfolio' },
+  { label: 'Zespół', href: '/zespol' },
+  { label: 'Usługi', href: '/uslugi', children: [] },
+  { label: 'Oferta', href: '/oferta', children: servicesCategories },
+  { label: 'Kontakt', href: '/#kontakt' }
+];
 
 interface NavbarProps {
   onAdminClick?: () => void;
@@ -28,6 +78,15 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const { signOut, user } = useAuth();
   const { isEditMode, toggleEditMode } = useEditMode();
   const router = useRouter();
+  const pathname = usePathname();
+
+  const isActivePath = (href: string) => {
+    if (href === '/') return pathname === '/';
+    // dopasowanie dokładne lub z dziećmi, np. /oferta/konferencje
+    return pathname === href || pathname.startsWith(href + '/');
+  };
+
+  const isOfferActive = pathname.startsWith('/oferta');
   const authUser = useAppSelector((state) => state.auth.user);
   const [crmUser, setCrmUser] = useState<any>(null);
   const [employee, setEmployee] = useState<any>(null);
@@ -82,27 +141,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [isHovered]);
 
-  const navLinks = [
-    { label: 'O Nas', href: '/o-nas' },
-    { label: 'Portfolio', href: '/portfolio' },
-    { label: 'Zespół', href: '/zespol' },
-    { label: 'Usługi', href: '/uslugi' },
-    { label: 'Kontakt', href: '/#kontakt' }
-  ];
 
-  const servicesLinks = [
-    { label: 'Wszystkie usługi', href: '/oferta' },
-    { label: 'Katalog usług eventowych', href: '/oferta/uslugi', highlight: true },
-    { label: 'Konferencje', href: '/oferta/konferencje' },
-    { label: 'Integracje firmowe', href: '/oferta/integracje' },
-    { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
-    { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
-    { label: 'Kasyno', href: '/oferta/kasyno' },
-    { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
-    { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
-    { label: 'Nagłośnienie', href: '/oferta/naglosnienie' },
-    { label: 'Streaming', href: '/oferta/streaming' },
-  ];
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -210,45 +249,66 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
           </Link>
 
           <div className="hidden md:flex items-center gap-8">
-            {navLinks.map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                className="text-[#e5e4e2]/90 hover:text-[#d3bb73] text-sm font-light transition-colors duration-200"
-              >
-                {link.label}
-              </Link>
-            ))}
-            <div className="relative" ref={servicesRef}>
-              <button
-                onClick={() => setIsServicesOpen(!isServicesOpen)}
-                className="flex items-center gap-1 text-[#e5e4e2]/90 hover:text-[#d3bb73] text-sm font-light transition-colors duration-200"
-              >
-                Oferta
-                <ChevronDown className={`w-4 h-4 transition-transform ${isServicesOpen ? 'rotate-180' : ''}`} />
-              </button>
+          {navLinks.map((link) => {
+  const isActive = isActivePath(link.href);
 
-              {isServicesOpen && (
-                <div className="absolute left-0 mt-2 w-64 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl overflow-hidden">
-                  <div className="py-2">
-                    {servicesLinks.map((service) => (
-                      <Link
-                        key={service.href}
-                        href={service.href}
-                        onClick={() => setIsServicesOpen(false)}
-                        className={`block px-4 py-2 text-sm transition-colors ${
-                          service.highlight
-                            ? 'text-[#d3bb73] font-medium hover:bg-[#d3bb73]/20 border-l-2 border-[#d3bb73]'
-                            : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
-                        }`}
-                      >
-                        {service.label}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+  return (
+    <Link
+      key={link.label}
+      href={link.href}
+      className={`text-sm font-light transition-colors duration-200 ${
+        isActive
+          ? 'text-[#d3bb73]' // aktywny
+          : 'text-[#e5e4e2]/90 hover:text-[#d3bb73]' // normalny
+      }`}
+    >
+      {link.label}
+    </Link>
+  );
+})}
+<div className="relative" ref={servicesRef}>
+  <button
+    onClick={() => setIsServicesOpen(!isServicesOpen)}
+    className={`flex items-center gap-1 text-sm font-light transition-colors duration-200 ${
+      isOfferActive ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/90 hover:text-[#d3bb73]'
+    }`}
+  >
+    Oferta
+    <ChevronDown
+      className={`w-4 h-4 transition-transform ${
+        isServicesOpen ? 'rotate-180' : ''
+      }`}
+    />
+  </button>
+
+  {isServicesOpen && (
+    <div className="absolute left-0 mt-2 w-64 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl overflow-hidden">
+      <div className="py-2">
+        {servicesLinks.map((service) => {
+          const isServiceActive =
+          service.href === '/oferta'
+            ? pathname === '/oferta'          // tylko dokładny match
+            : isActivePath(service.href);
+
+          return (
+            <Link
+              key={service.href}
+              href={service.href}
+              onClick={() => setIsServicesOpen(false)}
+              className={`block px-4 py-2 text-sm transition-colors ${
+                isServiceActive && isOfferActive
+                  ? 'text-[#d3bb73] font-medium hover:bg-[#d3bb73]/20 border-l-2 border-[#d3bb73]'
+                  : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+              }`}
+            >
+              {service.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  )}
+</div>
           </div>
 
           <div className="hidden md:flex items-center gap-3">
@@ -421,16 +481,24 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
       {isMenuOpen && (
         <div className="md:hidden bg-[#1c1f33]/95 backdrop-blur-lg rounded-b-3xl mt-2 max-h-[80vh] overflow-y-auto">
           <div className="px-4 py-4 space-y-3">
-            {navLinks.map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                onClick={() => setIsMenuOpen(false)}
-                className="block text-white/90 hover:text-white text-sm font-light py-2"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              const isActive = isActivePath (link.href);
+
+              return (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  onClick={() => setIsMenuOpen(false)}
+                  className={`block text-white/90 hover:text-white text-sm font-light py-2 ${
+                    isActive
+                      ? 'text-[#d3bb73]' // aktywny
+                      : 'text-[#e5e4e2]/90 hover:text-[#d3bb73]' // normalny
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
             <div>
               <button
                 onClick={() => setIsServicesOpen(!isServicesOpen)}
@@ -441,23 +509,34 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
               </button>
               {isServicesOpen && (
                 <div className="mt-2 ml-4 space-y-2">
-                  {servicesLinks.map((service) => (
-                    <Link
-                      key={service.href}
-                      href={service.href}
-                      onClick={() => {
-                        setIsServicesOpen(false);
-                        setIsMenuOpen(false);
-                      }}
-                      className={`block text-xs py-3 px-3 rounded transition-colors touch-manipulation ${
-                        service.highlight
-                          ? 'text-[#d3bb73] font-medium active:bg-[#d3bb73]/20 border-l-2 border-[#d3bb73]'
-                          : 'text-white/70 font-light active:text-white active:bg-[#d3bb73]/20'
-                      }`}
-                    >
-                      {service.label}
-                    </Link>
-                  ))}
+                  {isServicesOpen && (
+  <div className="mt-2 ml-4 space-y-2">
+    {servicesLinks.map((service) => {
+      const isServiceActive =
+      service.href === '/oferta'
+        ? pathname === '/oferta'          // tylko dokładny match
+        : isActivePath(service.href);
+
+      return (
+        <Link
+          key={service.href}
+          href={service.href}
+          onClick={() => {
+            setIsServicesOpen(false);
+            setIsMenuOpen(false);
+          }}
+          className={`block text-xs py-3 px-3 rounded transition-colors touch-manipulation ${
+            isServiceActive
+              ? 'text-[#d3bb73] font-medium active:bg-[#d3bb73]/20 border-l-2 border-[#d3bb73]'
+              : 'text-white/70 font-light active:text-white active:bg-[#d3bb73]/20'
+          }`}
+        >
+          {service.label}
+        </Link>
+      );
+    })}
+  </div>
+)}
                 </div>
               )}
             </div>

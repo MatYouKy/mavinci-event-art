@@ -1,5 +1,6 @@
 'use client';
 
+import Head from 'next/head';
 import { useState, useEffect } from 'react';
 import { Dices, Spade, CheckCircle2, ArrowLeft, ChevronLeft, ChevronRight, XCircle, Edit, Save, X, Image as ImageIcon } from 'lucide-react';
 import Link from 'next/link';
@@ -16,6 +17,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
 interface CasinoTable {
   id: string;
@@ -400,9 +402,107 @@ export default function KasynoPage() {
       default: return 'grid-cols-1';
     }
   };
+  const canonicalUrl = 'https://mavinci.pl/uslugi/kasyno';
+  const serviceName = pageSettings.hero_title.split(' ')[0];
 
   return (
     <>
+    <Head>
+      <title>{`${serviceName} – MAVINCI Event & ART`}</title>
+      <meta
+        name="description"
+        content="Kasyno eventowe na wydarzenia firmowe i gale: stoły do ruletki, blackjacka i pokera, profesjonalni krupierzy, elegancka scenografia – wszystko w formie rozrywki bez hazardu pieniężnego."
+      />
+      <meta
+        name="keywords"
+        content="kasyno eventowe, wieczór w kasynie, ruletka event, blackjack event, poker texas hold'em, stoły kasynowe, kasyno na event, MAVINCI"
+      />
+
+      {/* Open Graph */}
+      <meta property="og:type" content="website" />
+      <meta property="og:title" content={`${serviceName} – MAVINCI Event & ART`} />
+      <meta
+        property="og:description"
+        content="Profesjonalne kasyno eventowe na imprezy firmowe: ruletka, blackjack, poker, stoły kasynowe i krupierzy – bez hazardu, w formie eleganckiej rozrywki."
+      />
+      <meta property="og:url" content={canonicalUrl} />
+      <meta
+        property="og:image"
+        content="https://images.pexels.com/photos/262508/pexels-photo-262508.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
+      />
+      <meta property="og:site_name" content="MAVINCI Event & ART" />
+      <meta property="og:locale" content="pl_PL" />
+
+      {/* Twitter */}
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={`${serviceName} – MAVINCI Event & ART`} />
+      <meta
+        name="twitter:description"
+        content="Wieczór w kasynie na Twoim evencie: ruletka, blackjack, poker i stoły kasynowe w bezpiecznej, rozrywkowej formule."
+      />
+      <meta
+        name="twitter:image"
+        content="https://images.pexels.com/photos/262508/pexels-photo-262508.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
+      />
+
+      {/* Canonical */}
+      <link rel="canonical" href={canonicalUrl} />
+
+      {/* JSON-LD: Service + Breadcrumb w jednym @graph */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@graph': [
+              {
+                '@type': 'Service',
+                name: serviceName,
+                description:
+                  'Kasyno eventowe na wydarzenia firmowe, gale i bankiety: stoły do ruletki, blackjacka i pokera z profesjonalną obsługą krupierską – wyłącznie forma rozrywki, bez gier hazardowych o realne pieniądze.',
+                url: canonicalUrl,
+                provider: {
+                  '@type': 'Organization',
+                  name: 'MAVINCI Event & ART',
+                  url: 'https://mavinci.pl',
+                },
+                areaServed: {
+                  '@type': 'Country',
+                  name: 'Polska',
+                },
+                audience: {
+                  '@type': 'Audience',
+                  audienceType: 'Firmy, agencje eventowe, organizatorzy wydarzeń',
+                },
+              },
+              {
+                '@type': 'BreadcrumbList',
+                itemListElement: [
+                  {
+                    '@type': 'ListItem',
+                    position: 1,
+                    name: 'Strona główna',
+                    item: 'https://mavinci.pl/',
+                  },
+                  {
+                    '@type': 'ListItem',
+                    position: 2,
+                    name: 'Usługi',
+                    item: 'https://mavinci.pl/uslugi',
+                  },
+                  {
+                    '@type': 'ListItem',
+                    position: 3,
+                    name: serviceName,
+                    item: canonicalUrl,
+                  },
+                ],
+              },
+            ],
+          }),
+        }}
+      />
+    </Head>
       <Navbar />
           <main className="min-h-screen bg-[#0f1119]">
             {isEditing && (
@@ -541,6 +641,11 @@ export default function KasynoPage() {
                 </div>
               </div>
             </PageHeroImage>
+            <section className="pt-6 px-6 border-t border-b border-[#d3bb73]/20">
+        <div className="max-w-7xl mx-auto">
+        <CategoryBreadcrumb />
+        </div>
+        </section>
 
             {features.length > 0 && (
               <section className="py-24 bg-[#0f1119]">

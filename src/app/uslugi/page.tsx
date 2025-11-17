@@ -40,6 +40,7 @@ import { WebsiteEditButton } from '@/components/WebsiteEditButton';
 import { AdminAddServiceModal } from '@/components/AdminAddServiceModal';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
 const iconMap: Record<string, any> = {
   Mic,
@@ -160,6 +161,61 @@ export default function UslugiPage() {
     0,
   );
 
+  // 🔗 Canonical dla tej strony
+  const canonicalUrl = 'https://mavinci.pl/oferta/uslugi';
+
+  // 📦 JSON-LD: ItemList (katalog usług)
+  const itemListJsonLd = {
+    '@type': 'ItemList',
+    name: 'Usługi Eventowe MAVINCI',
+    description: 'Kompletny katalog usług technicznych i kreatywnych dla wydarzeń',
+    numberOfItems: totalServices,
+    itemListElement: serviceCategories.map((category, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      item: {
+        '@type': 'Service',
+        name: category.name,
+        description: category.description,
+        provider: {
+          '@type': 'Organization',
+          name: 'MAVINCI Event & ART',
+        },
+      },
+    })),
+  };
+
+  // 🧭 JSON-LD: BreadcrumbList dla tej podstrony
+  const breadcrumbJsonLd = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Strona główna',
+        item: 'https://mavinci.pl/',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Oferta',
+        item: 'https://mavinci.pl/oferta',
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: 'Katalog usług eventowych',
+        item: canonicalUrl,
+      },
+    ],
+  };
+
+  // 🔗 Jeden wspólny JSON-LD z @graph
+  const combinedJsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [itemListJsonLd, breadcrumbJsonLd],
+  };
+
   if (loading) {
     return (
       <>
@@ -190,7 +246,7 @@ export default function UslugiPage() {
           property="og:description"
           content="Katalog 67+ usług eventowych: audio, video, streaming, interakcje, foto atrakcje i więcej."
         />
-        <meta property="og:url" content="https://mavinci.pl/oferta/uslugi" />
+        <meta property="og:url" content={canonicalUrl} />
         <meta
           property="og:image"
           content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
@@ -209,31 +265,13 @@ export default function UslugiPage() {
           content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
         />
 
-        <link rel="canonical" href="https://mavinci.pl/oferta/uslugi" />
+        <link rel="canonical" href={canonicalUrl} />
 
+        {/* ✅ Jeden script z ItemList + BreadcrumbList */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'ItemList',
-              name: 'Usługi Eventowe MAVINCI',
-              description: 'Kompletny katalog usług technicznych i kreatywnych dla wydarzeń',
-              numberOfItems: totalServices,
-              itemListElement: serviceCategories.map((category, idx) => ({
-                '@type': 'ListItem',
-                position: idx + 1,
-                item: {
-                  '@type': 'Service',
-                  name: category.name,
-                  description: category.description,
-                  provider: {
-                    '@type': 'Organization',
-                    name: 'MAVINCI Event & ART',
-                  },
-                },
-              })),
-            }),
+            __html: JSON.stringify(combinedJsonLd),
           }}
         />
       </Head>
@@ -335,6 +373,13 @@ export default function UslugiPage() {
           </div>
         </section>
 
+        {/* ✅ Breadcrumb pod hero */}
+        <section className="pt-4 px-6 border-b border-[#d3bb73]/20">
+          <div className="max-w-7xl mx-auto">
+            <CategoryBreadcrumb />
+          </div>
+        </section>
+
         {/* Services List */}
         <section className="px-6 py-20">
           <div className="mx-auto max-w-7xl space-y-16">
@@ -401,45 +446,49 @@ export default function UslugiPage() {
                           href={`/uslugi/${item.slug}`}
                           className="block rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] overflow-hidden transition-all hover:scale-105 hover:transform hover:border-[#d3bb73]/40"
                         >
-                        {item.thumbnail_url && (
-                          <div className="aspect-video overflow-hidden bg-[#0f1119]">
-                            <img
-                              src={item.thumbnail_url}
-                              alt={item.name}
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                              loading="lazy"
-                            />
-                          </div>
-                        )}
-
-                        <div className="p-6">
-                          <div className="mb-3 flex items-start justify-between">
-                            <h3
-                              className={`text-lg font-medium ${item.is_premium ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'}`}
-                            >
-                              {item.name}
-                            </h3>
-                            {item.is_premium && (
-                              <div className="flex items-center gap-1 rounded-full bg-[#d3bb73]/10 px-2 py-1 flex-shrink-0">
-                                <Star className="h-3 w-3 fill-[#d3bb73] text-[#d3bb73]" />
-                                <span className="text-xs font-medium text-[#d3bb73]">Premium</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {item.description && (
-                            <p className="text-sm leading-relaxed text-[#e5e4e2]/60 line-clamp-2">
-                              {item.description}
-                            </p>
+                          {item.thumbnail_url && (
+                            <div className="aspect-video overflow-hidden bg-[#0f1119]">
+                              <img
+                                src={item.thumbnail_url}
+                                alt={item.name}
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                loading="lazy"
+                              />
+                            </div>
                           )}
 
-                          <div className="mt-4 border-t border-[#d3bb73]/10 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
-                            <span className="flex items-center gap-2 text-sm font-medium text-[#d3bb73] transition-all group-hover:gap-3">
-                              Zobacz szczegóły
-                              <ArrowRight className="h-4 w-4" />
-                            </span>
+                          <div className="p-6">
+                            <div className="mb-3 flex items-start justify-between">
+                              <h3
+                                className={`text-lg font-medium ${
+                                  item.is_premium ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
+                                }`}
+                              >
+                                {item.name}
+                              </h3>
+                              {item.is_premium && (
+                                <div className="flex items-center gap-1 rounded-full bg-[#d3bb73]/10 px-2 py-1 flex-shrink-0">
+                                  <Star className="h-3 w-3 fill-[#d3bb73] text-[#d3bb73]" />
+                                  <span className="text-xs font-medium text-[#d3bb73]">
+                                    Premium
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {item.description && (
+                              <p className="text-sm leading-relaxed text-[#e5e4e2]/60 line-clamp-2">
+                                {item.description}
+                              </p>
+                            )}
+
+                            <div className="mt-4 border-t border-[#d3bb73]/10 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
+                              <span className="flex items-center gap-2 text-sm font-medium text-[#d3bb73] transition-all group-hover:gap-3">
+                                Zobacz szczegóły
+                                <ArrowRight className="h-4 w-4" />
+                              </span>
+                            </div>
                           </div>
-                        </div>
                         </Link>
                       </div>
                     ))}

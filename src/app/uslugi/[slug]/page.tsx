@@ -14,6 +14,7 @@ import Footer from '@/components/Footer';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
 import { useEditMode } from '@/contexts/EditModeContext'; 
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
 export default function ServiceDetailPage() {
   const params = useParams();
@@ -149,6 +150,53 @@ export default function ServiceDetailPage() {
   const features = Array.isArray(service.features) ? service.features : [];
   const technicalSpecs = service.technical_specs || {};
 
+  const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
+
+  const productJsonLd = {
+    '@type': 'Product',
+    name: service.name,
+    description: service.long_description || service.description,
+    image: service.hero_image_url || service.thumbnail_url,
+    brand: {
+      '@type': 'Brand',
+      name: 'MAVINCI Event & ART',
+    },
+    offers: {
+      '@type': 'Offer',
+      availability: 'https://schema.org/InStock',
+      priceCurrency: 'PLN',
+    },
+  };
+
+  const breadcrumbJsonLd = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Strona główna',
+        item: 'https://mavinci.pl/',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Usługi',
+        item: 'https://mavinci.pl/uslugi',
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: service.name,
+        item: canonicalUrl,
+      },
+    ],
+  };
+
+  const combinedJsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [productJsonLd, breadcrumbJsonLd],
+  };
+
   return (
     <>
       <Head>
@@ -168,27 +216,12 @@ export default function ServiceDetailPage() {
         <meta name="twitter:description" content={service.seo_description || service.description} />
         <meta name="twitter:image" content={service.hero_image_url || service.thumbnail_url} />
 
-        <link rel="canonical" href={`https://mavinci.pl/oferta/uslugi/${service.slug}`} />
+        <link rel="canonical" href={canonicalUrl} />
 
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'Product',
-              name: service.name,
-              description: service.long_description || service.description,
-              image: service.hero_image_url,
-              brand: {
-                '@type': 'Brand',
-                name: 'MAVINCI Event & ART'
-              },
-              offers: {
-                '@type': 'Offer',
-                availability: 'https://schema.org/InStock',
-                priceCurrency: 'PLN'
-              }
-            })
+            __html: JSON.stringify(combinedJsonLd),
           }}
         />
       </Head>
@@ -206,8 +239,6 @@ export default function ServiceDetailPage() {
               <div className="absolute inset-0 bg-gradient-to-b from-[#0f1119]/60 via-[#0f1119]/80 to-[#0f1119]" />
             </>
           )}
-
-         
 
           <div className="relative h-full flex items-end pb-20 px-6">
             <div className="max-w-7xl mx-auto w-full">
@@ -246,7 +277,11 @@ export default function ServiceDetailPage() {
             </div>
           </div>
         </section>
-
+        <section className="pt-6 px-6 border-t border-b border-[#d3bb73]/20">
+        <div className="max-w-7xl mx-auto">
+        <CategoryBreadcrumb productName={service?.name} />
+        </div>
+        </section>
         {/* Main Content */}
         <section className="py-20 px-6">
           <div className="max-w-7xl mx-auto">

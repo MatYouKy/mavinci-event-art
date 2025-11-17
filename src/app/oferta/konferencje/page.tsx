@@ -18,6 +18,8 @@ import { EditableContent } from '@/components/EditableContent';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
 import { ConferencesPricingEditor } from '@/components/ConferencesPricingEditor';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+
 
 const iconMap: Record<string, any> = {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
@@ -64,6 +66,7 @@ export default function ConferencesPage() {
   useEffect(() => {
     loadData();
   }, []);
+
 
   useEffect(() => {
     if (relatedServices.length > 0) {
@@ -264,6 +267,30 @@ export default function ConferencesPage() {
     keywords: keywords.join(', '),
   };
 
+  const breadcrumbLd = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Start',
+        item: 'https://mavinci.pl/',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Oferta',
+        item: 'https://mavinci.pl/oferta',
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: 'Obsługa Konferencji',
+        item: 'https://mavinci.pl/oferta/konferencje',
+      },
+    ],
+  };
+
   return (
     <>
       <Head>
@@ -305,48 +332,17 @@ export default function ConferencesPage() {
 
         {/* JSON-LD Schema */}
         <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'Service',
-              name: 'Obsługa Konferencji',
-              description: 'Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo.',
-              provider: {
-                '@type': 'Organization',
-                name: 'MAVINCI Event & ART',
-                url: 'https://mavinci.pl',
-                logo: 'https://mavinci.pl/logo-mavinci-crm.png',
-                address: {
-                  '@type': 'PostalAddress',
-                  addressLocality: 'Bydgoszcz',
-                  addressRegion: 'Kujawsko-Pomorskie',
-                  addressCountry: 'PL'
-                },
-                telephone: '+48-123-456-789',
-                email: 'kontakt@mavinci.pl'
-              },
-              areaServed: [
-                { '@type': 'City', name: 'Warszawa' },
-                { '@type': 'City', name: 'Gdańsk' },
-                { '@type': 'City', name: 'Bydgoszcz' },
-                { '@type': 'City', name: 'Toruń' },
-                { '@type': 'City', name: 'Olsztyn' },
-                { '@type': 'City', name: 'Łódź' },
-                { '@type': 'City', name: 'Białystok' },
-                { '@type': 'City', name: 'Rzeszów' },
-                { '@type': 'City', name: 'Poznań' },
-                { '@type': 'City', name: 'Kraków' }
-              ],
-              serviceType: 'Obsługa Techniczna Konferencji',
-              offers: {
-                '@type': 'AggregateOffer',
-                priceCurrency: 'PLN',
-                availability: 'https://schema.org/InStock'
-              }
-            })
-          }}
-        />
+  type="application/ld+json"
+  dangerouslySetInnerHTML={{
+    __html: JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [
+        structuredData,   // Twój obiekt Service
+        breadcrumbLd      // BreadcrumbList z realną ścieżką strony
+      ]
+    })
+  }}
+/>
       </Head>
       <Navbar />
       <div className="min-h-screen bg-[#0f1119]">
@@ -489,7 +485,11 @@ export default function ConferencesPage() {
             </div>
           </div>
         </PageHeroImage>
-
+        <section className="pt-6 px-6 border-t border-b border-[#d3bb73]/20">
+        <div className="max-w-7xl mx-auto">
+        <CategoryBreadcrumb />
+        </div>
+        </section>
         {/* Detailed Services Section */}
         {serviceCategories.length > 0 && (
           <section className="py-20 px-6 bg-gradient-to-b from-[#0f1119] to-[#1c1f33]">
@@ -1330,7 +1330,6 @@ export default function ConferencesPage() {
           sourceSection="conferences"
           defaultEventType="Konferencja"
         />
-      </div>
       <Footer />
 
       <style jsx global>{`
@@ -1349,7 +1348,8 @@ export default function ConferencesPage() {
           animation: fade-in-up 0.8s ease-out forwards;
           opacity: 0;
         }
-      `}</style>
-    </>
+        `}</style>
+      
+    </div>  </>
   );
 }

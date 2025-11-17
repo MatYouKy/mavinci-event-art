@@ -19,15 +19,23 @@ export default function CityConferencePage() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.miasto]);
 
   const loadData = async () => {
     try {
+      const slug =
+        typeof params.miasto === 'string'
+          ? params.miasto
+          : Array.isArray(params.miasto)
+          ? params.miasto[0]
+          : '';
+
       const [cityRes, ogImageRes] = await Promise.all([
         supabase
           .from('conferences_cities')
           .select('*')
-          .eq('slug', params.miasto)
+          .eq('slug', slug)
           .eq('is_active', true)
           .maybeSingle(),
         supabase
@@ -35,7 +43,7 @@ export default function CityConferencePage() {
           .select('desktop_url')
           .eq('section', 'konferencje-hero')
           .eq('is_active', true)
-          .maybeSingle()
+          .maybeSingle(),
       ]);
 
       if (!cityRes.data) {
@@ -44,7 +52,10 @@ export default function CityConferencePage() {
       }
 
       setCity(cityRes.data);
-      setOgImage(ogImageRes.data?.desktop_url || 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop');
+      setOgImage(
+        ogImageRes.data?.desktop_url ||
+          'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop'
+      );
     } catch (error) {
       console.error('Error loading city data:', error);
       notFound();
@@ -52,12 +63,6 @@ export default function CityConferencePage() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (city) {
-      document.title = city.seo_title;
-    }
-  }, [city]);
 
   if (loading) {
     return (
@@ -75,8 +80,10 @@ export default function CityConferencePage() {
     return null;
   }
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
+  const canonicalUrl = `https://mavinci.pl/oferta/konferencje/${city.slug}`;
+
+  // 🔹 Schema.org: Service + BreadcrumbList w jednym @graph
+  const serviceSchema = {
     '@type': 'Service',
     name: `Obsługa Konferencji ${city.city_name}`,
     description: city.seo_description,
@@ -89,25 +96,60 @@ export default function CityConferencePage() {
         '@type': 'PostalAddress',
         addressLocality: 'Bydgoszcz',
         addressRegion: 'Kujawsko-Pomorskie',
-        addressCountry: 'PL'
+        addressCountry: 'PL',
       },
       telephone: '+48-123-456-789',
-      email: 'kontakt@mavinci.pl'
+      email: 'kontakt@mavinci.pl',
     },
     areaServed: {
       '@type': 'City',
       name: city.city_name,
       containedIn: {
         '@type': 'State',
-        name: `Województwo ${city.voivodeship}`
-      }
+        name: `Województwo ${city.voivodeship}`,
+      },
     },
     serviceType: 'Obsługa Techniczna Konferencji',
     offers: {
       '@type': 'Offer',
       availability: 'https://schema.org/InStock',
-      priceRange: '$$'
-    }
+      priceRange: '$$',
+    },
+  };
+
+  const breadcrumbSchema = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Strona główna',
+        item: 'https://mavinci.pl/',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Oferta',
+        item: 'https://mavinci.pl/oferta',
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: 'Konferencje',
+        item: 'https://mavinci.pl/oferta/konferencje',
+      },
+      {
+        '@type': 'ListItem',
+        position: 4,
+        name: `Obsługa Konferencji ${city.city_name}`,
+        item: canonicalUrl,
+      },
+    ],
+  };
+
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@graph': [serviceSchema, breadcrumbSchema],
   };
 
   return (
@@ -120,28 +162,38 @@ export default function CityConferencePage() {
           content={`obsługa konferencji ${city.city_name}, nagłośnienie konferencyjne ${city.city_name}, technika av ${city.city_name}, streaming konferencji ${city.city_name}, realizacja live ${city.city_name}`}
         />
 
+        {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content={city.seo_title} />
         <meta property="og:description" content={city.seo_description} />
-        <meta property="og:url" content={`https://mavinci.pl/oferta/konferencje/${city.slug}`} />
+        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={ogImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
-        <meta property="og:image:alt" content={`MAVINCI Obsługa Konferencji ${city.city_name}`} />
+        <meta
+          property="og:image:alt"
+          content={`MAVINCI Obsługa Konferencji ${city.city_name}`}
+        />
         <meta property="og:site_name" content="MAVINCI Event & ART" />
         <meta property="og:locale" content="pl_PL" />
 
+        {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={city.seo_title} />
         <meta name="twitter:description" content={city.seo_description} />
         <meta name="twitter:image" content={ogImage} />
-        <meta name="twitter:image:alt" content={`MAVINCI Obsługa Konferencji ${city.city_name}`} />
+        <meta
+          name="twitter:image:alt"
+          content={`MAVINCI Obsługa Konferencji ${city.city_name}`}
+        />
 
-        <link rel="canonical" href={`https://mavinci.pl/oferta/konferencje/${city.slug}`} />
+        {/* Canonical */}
+        <link rel="canonical" href={canonicalUrl} />
 
+        {/* ✅ JSON-LD: Service + BreadcrumbList */}
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
       </Head>
 
@@ -160,11 +212,14 @@ export default function CityConferencePage() {
             <div className="mb-8">
               <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                 <MapPin className="w-5 h-5 text-[#d3bb73]" />
-                <span className="text-[#d3bb73] text-sm font-medium">{city.voivodeship}</span>
+                <span className="text-[#d3bb73] text-sm font-medium">
+                  {city.voivodeship}
+                </span>
               </div>
 
               <h1 className="text-4xl md:text-5xl font-light text-[#e5e4e2] mb-6">
-                Obsługa Konferencji <span className="text-[#d3bb73]">{city.city_name}</span>
+                Obsługa Konferencji{' '}
+                <span className="text-[#d3bb73]">{city.city_name}</span>
               </h1>
 
               <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed mb-8">
@@ -179,7 +234,9 @@ export default function CityConferencePage() {
 
               <div className="grid md:grid-cols-2 gap-6 mb-8">
                 <div>
-                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">Nagłośnienie i Audio</h3>
+                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">
+                    Nagłośnienie i Audio
+                  </h3>
                   <ul className="space-y-2 text-[#e5e4e2]/70 text-sm">
                     <li>• Systemy line-array premium</li>
                     <li>• Mikrofony wieloczęstotliwościowe</li>
@@ -189,7 +246,9 @@ export default function CityConferencePage() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">Multimedia i Wizualizacje</h3>
+                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">
+                    Multimedia i Wizualizacje
+                  </h3>
                   <ul className="space-y-2 text-[#e5e4e2]/70 text-sm">
                     <li>• Ekrany LED indoor/outdoor</li>
                     <li>• Projekcje HD/4K</li>
@@ -199,7 +258,9 @@ export default function CityConferencePage() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">Oświetlenie</h3>
+                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">
+                    Oświetlenie
+                  </h3>
                   <ul className="space-y-2 text-[#e5e4e2]/70 text-sm">
                     <li>• Oświetlenie konferencyjne</li>
                     <li>• Oświetlenie sceniczne LED</li>
@@ -209,7 +270,9 @@ export default function CityConferencePage() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">Scena i Konstrukcje</h3>
+                  <h3 className="text-lg font-medium text-[#d3bb73] mb-3">
+                    Scena i Konstrukcje
+                  </h3>
                   <ul className="space-y-2 text-[#e5e4e2]/70 text-sm">
                     <li>• Sceny modułowe</li>
                     <li>• Konstrukcje kratowe</li>
@@ -220,23 +283,33 @@ export default function CityConferencePage() {
               </div>
 
               <div className="border-t border-[#d3bb73]/10 pt-6">
-                <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Dlaczego MAVINCI w {city.city_name}?</h3>
+                <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">
+                  Dlaczego MAVINCI w {city.city_name}?
+                </h3>
                 <ul className="space-y-3 text-[#e5e4e2]/70">
                   <li className="flex items-start gap-3">
                     <div className="w-2 h-2 bg-[#d3bb73] rounded-full mt-2 flex-shrink-0"></div>
-                    <span>Doświadczenie w obsłudze konferencji od 50 do 5000+ osób</span>
+                    <span>
+                      Doświadczenie w obsłudze konferencji od 50 do 5000+ osób
+                    </span>
                   </li>
                   <li className="flex items-start gap-3">
                     <div className="w-2 h-2 bg-[#d3bb73] rounded-full mt-2 flex-shrink-0"></div>
-                    <span>Własny sprzęt premium - CODA Audio, Shure, Blackmagic</span>
+                    <span>
+                      Własny sprzęt premium - CODA Audio, Shure, Blackmagic
+                    </span>
                   </li>
                   <li className="flex items-start gap-3">
                     <div className="w-2 h-2 bg-[#d3bb73] rounded-full mt-2 flex-shrink-0"></div>
-                    <span>Zespół doświadczonych realizatorów i techników</span>
+                    <span>
+                      Zespół doświadczonych realizatorów i techników
+                    </span>
                   </li>
                   <li className="flex items-start gap-3">
                     <div className="w-2 h-2 bg-[#d3bb73] rounded-full mt-2 flex-shrink-0"></div>
-                    <span>Kompleksowa obsługa - od projektu po demontaż</span>
+                    <span>
+                      Kompleksowa obsługa - od projektu po demontaż
+                    </span>
                   </li>
                 </ul>
               </div>
@@ -261,7 +334,7 @@ export default function CityConferencePage() {
           <ContactFormWithTracking
             isOpen={isContactFormOpen}
             onClose={() => setIsContactFormOpen(false)}
-            defaultSubject={`Zapytanie o obsługę konferencji w ${city.city_name}`}
+            sourcePage='konferencje'
           />
         )}
       </div>
