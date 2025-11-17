@@ -48,10 +48,22 @@ export default function SchemaOrgManagementPage() {
     postal_code: '',
     region: 'Województwo Mazowieckie',
   });
+  const [citySearch, setCitySearch] = useState('');
+  const [citySuggestions, setCitySuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (citySearch.length >= 2) {
+      searchCities(citySearch);
+    } else {
+      setCitySuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [citySearch]);
 
   const loadData = async () => {
     const [globalRes, placesRes] = await Promise.all([
@@ -61,6 +73,31 @@ export default function SchemaOrgManagementPage() {
 
     if (globalRes.data) setGlobalConfig(globalRes.data);
     if (placesRes.data) setPlaces(placesRes.data);
+  };
+
+  const searchCities = async (query: string) => {
+    const { data, error } = await supabase
+      .from('polish_cities')
+      .select('*')
+      .ilike('name', `%${query}%`)
+      .order('population', { ascending: false })
+      .limit(10);
+
+    if (data && !error) {
+      setCitySuggestions(data);
+      setShowSuggestions(true);
+    }
+  };
+
+  const selectCity = (city: any) => {
+    setNewPlace({
+      name: city.name,
+      locality: city.slug,
+      postal_code: city.postal_code,
+      region: city.region,
+    });
+    setCitySearch('');
+    setShowSuggestions(false);
   };
 
   const handleSaveGlobal = async () => {
@@ -361,36 +398,46 @@ export default function SchemaOrgManagementPage() {
 
             {isAddingPlace && (
               <div className="mb-4 p-4 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg space-y-3">
-                <input
-                  type="text"
-                  placeholder="Nazwa miasta (np. Warszawa)"
-                  value={newPlace.name}
-                  onChange={(e) => setNewPlace({ ...newPlace, name: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 outline-none focus:border-[#d3bb73]"
-                />
-                <input
-                  type="text"
-                  placeholder="Locality (slug, np. warszawa)"
-                  value={newPlace.locality}
-                  onChange={(e) => setNewPlace({ ...newPlace, locality: e.target.value })}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 outline-none focus:border-[#d3bb73]"
-                />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
                   <input
                     type="text"
-                    placeholder="Kod pocztowy"
-                    value={newPlace.postal_code}
-                    onChange={(e) => setNewPlace({ ...newPlace, postal_code: e.target.value })}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 outline-none focus:border-[#d3bb73]"
+                    placeholder="Wpisz nazwę miasta (np. Olsztyn)"
+                    value={citySearch}
+                    onChange={(e) => setCitySearch(e.target.value)}
+                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 outline-none focus:border-[#d3bb73]"
                   />
-                  <input
-                    type="text"
-                    placeholder="Województwo"
-                    value={newPlace.region}
-                    onChange={(e) => setNewPlace({ ...newPlace, region: e.target.value })}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 outline-none focus:border-[#d3bb73]"
-                  />
+                  {showSuggestions && citySuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded shadow-lg max-h-60 overflow-y-auto">
+                      {citySuggestions.map((city) => (
+                        <button
+                          key={city.id}
+                          onClick={() => selectCity(city)}
+                          className="w-full px-3 py-2 text-left hover:bg-[#d3bb73]/10 transition-colors"
+                        >
+                          <div className="font-medium text-[#e5e4e2]">{city.name}</div>
+                          <div className="text-sm text-[#e5e4e2]/60">
+                            {city.postal_code} · {city.region}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
+                <div className="p-3 bg-[#1c1f33] border border-[#d3bb73]/10 rounded">
+                  <div className="text-xs text-[#e5e4e2]/40 mb-2">Wybrane miasto:</div>
+                  {newPlace.name ? (
+                    <div>
+                      <div className="font-medium text-[#e5e4e2]">{newPlace.name}</div>
+                      <div className="text-sm text-[#e5e4e2]/60">
+                        {newPlace.locality} · {newPlace.postal_code} · {newPlace.region}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[#e5e4e2]/40 text-sm">Wyszukaj miasto...</div>
+                  )}
+                </div>
+
                 <div className="flex gap-2">
                   <button
                     onClick={handleAddPlace}
