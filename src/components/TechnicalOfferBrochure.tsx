@@ -19,7 +19,15 @@ import {
 
 const TechnicalOfferBrochure = () => {
   const handleDownloadPDF = () => {
-    window.print();
+    const printContent = document.getElementById('brochure-content');
+    const originalContent = document.body.innerHTML;
+
+    if (printContent) {
+      document.body.innerHTML = printContent.innerHTML;
+      window.print();
+      document.body.innerHTML = originalContent;
+      window.location.reload();
+    }
   };
 
   return (
@@ -33,6 +41,8 @@ const TechnicalOfferBrochure = () => {
           body {
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
+            margin: 0;
+            padding: 0;
           }
           .no-print {
             display: none !important;
@@ -48,73 +58,120 @@ const TechnicalOfferBrochure = () => {
           overflow: hidden;
         }
 
+        /* Siatka kropek */
         .brochure-page::before {
           content: '';
           position: absolute;
-          width: 600px;
-          height: 600px;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(211, 187, 115, 0.08) 0%, transparent 70%);
-          top: -200px;
-          right: -200px;
+          width: 100%;
+          height: 100%;
+          background-image:
+            radial-gradient(circle, rgba(211, 187, 115, 0.15) 1px, transparent 1px);
+          background-size: 30px 30px;
+          top: 0;
+          left: 0;
           pointer-events: none;
+          opacity: 0.4;
         }
 
+        /* Wzór linii */
         .brochure-page::after {
           content: '';
           position: absolute;
-          width: 400px;
-          height: 400px;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(211, 187, 115, 0.05) 0%, transparent 70%);
-          bottom: -150px;
-          left: -150px;
+          width: 100%;
+          height: 100%;
+          background-image:
+            repeating-linear-gradient(
+              45deg,
+              transparent,
+              transparent 50px,
+              rgba(211, 187, 115, 0.03) 50px,
+              rgba(211, 187, 115, 0.03) 51px
+            );
+          top: 0;
+          left: 0;
           pointer-events: none;
         }
 
         .decorative-shape {
           position: absolute;
-          opacity: 0.03;
           pointer-events: none;
         }
 
+        /* Duży złoty gradient circle */
         .shape-1 {
+          width: 500px;
+          height: 500px;
+          background: radial-gradient(circle, rgba(211, 187, 115, 0.15) 0%, transparent 70%);
+          border-radius: 50%;
+          top: -150px;
+          right: -150px;
+          opacity: 0.6;
+        }
+
+        /* Siatka złotych kwadratów */
+        .shape-2 {
+          width: 400px;
+          height: 400px;
+          background-image:
+            linear-gradient(rgba(211, 187, 115, 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(211, 187, 115, 0.08) 1px, transparent 1px);
+          background-size: 40px 40px;
+          bottom: -100px;
+          left: -100px;
+          opacity: 0.5;
+          transform: rotate(15deg);
+        }
+
+        /* Koncentryczne okręgi */
+        .shape-3 {
           width: 300px;
           height: 300px;
-          background: linear-gradient(135deg, #d3bb73 0%, transparent 70%);
-          border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
-          top: 20%;
-          left: -100px;
-          transform: rotate(45deg);
+          background-image:
+            radial-gradient(circle, transparent 40%, rgba(211, 187, 115, 0.1) 40%, rgba(211, 187, 115, 0.1) 41%, transparent 41%),
+            radial-gradient(circle, transparent 60%, rgba(211, 187, 115, 0.08) 60%, rgba(211, 187, 115, 0.08) 61%, transparent 61%),
+            radial-gradient(circle, transparent 80%, rgba(211, 187, 115, 0.06) 80%, rgba(211, 187, 115, 0.06) 81%, transparent 81%);
+          top: 30%;
+          right: 5%;
+          opacity: 0.7;
         }
 
-        .shape-2 {
+        /* Hexagon pattern */
+        .shape-4 {
+          width: 350px;
+          height: 350px;
+          background-image:
+            repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(211, 187, 115, 0.06) 40px, rgba(211, 187, 115, 0.06) 42px),
+            repeating-linear-gradient(60deg, transparent, transparent 40px, rgba(211, 187, 115, 0.06) 40px, rgba(211, 187, 115, 0.06) 42px),
+            repeating-linear-gradient(120deg, transparent, transparent 40px, rgba(211, 187, 115, 0.06) 40px, rgba(211, 187, 115, 0.06) 42px);
+          bottom: 20%;
+          left: 10%;
+          opacity: 0.6;
+          transform: rotate(-20deg);
+        }
+
+        /* Spirala z kropek */
+        .shape-5 {
           width: 250px;
           height: 250px;
-          background: linear-gradient(225deg, #d3bb73 0%, transparent 70%);
-          border-radius: 70% 30% 30% 70% / 70% 70% 30% 30%;
-          top: 60%;
-          right: -80px;
-          transform: rotate(-30deg);
+          background-image:
+            radial-gradient(circle, rgba(211, 187, 115, 0.2) 2px, transparent 2px);
+          background-size: 25px 25px;
+          top: 50%;
+          left: -80px;
+          opacity: 0.5;
+          transform: rotate(30deg);
         }
 
-        .shape-3 {
-          width: 200px;
-          height: 200px;
-          border: 2px solid rgba(211, 187, 115, 0.1);
-          border-radius: 50%;
-          top: 40%;
+        /* Duże kropki rozmieszczone */
+        .shape-6 {
+          width: 300px;
+          height: 300px;
+          background-image:
+            radial-gradient(circle, rgba(211, 187, 115, 0.12) 3px, transparent 3px);
+          background-size: 50px 50px;
+          bottom: 10%;
           right: 10%;
-        }
-
-        .shape-4 {
-          width: 150px;
-          height: 150px;
-          border: 1px solid rgba(211, 187, 115, 0.08);
-          border-radius: 30%;
-          bottom: 30%;
-          left: 5%;
-          transform: rotate(15deg);
+          opacity: 0.6;
         }
       `}</style>
 
@@ -129,12 +186,13 @@ const TechnicalOfferBrochure = () => {
         </button>
       </div>
 
-      {/* STRONA 1 – OKŁADKA */}
-      <div className="brochure-page page-break relative">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-1"></div>
-        <div className="decorative-shape shape-2"></div>
-        <div className="decorative-shape shape-3"></div>
+      <div id="brochure-content">
+        {/* STRONA 1 – OKŁADKA */}
+        <div className="brochure-page page-break relative">
+          {/* Decorative Shapes */}
+          <div className="decorative-shape shape-1"></div>
+          <div className="decorative-shape shape-3"></div>
+          <div className="decorative-shape shape-5"></div>
 
         <div className="absolute inset-0 bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
           <img
@@ -189,6 +247,7 @@ const TechnicalOfferBrochure = () => {
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
+        <div className="decorative-shape shape-6"></div>
 
         <div className="mx-auto max-w-4xl space-y-12">
           <div className="space-y-4 text-center">
@@ -256,6 +315,7 @@ const TechnicalOfferBrochure = () => {
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-1"></div>
         <div className="decorative-shape shape-3"></div>
+        <div className="decorative-shape shape-6"></div>
 
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
@@ -350,6 +410,7 @@ const TechnicalOfferBrochure = () => {
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
+        <div className="decorative-shape shape-5"></div>
 
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
@@ -463,6 +524,7 @@ const TechnicalOfferBrochure = () => {
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-1"></div>
         <div className="decorative-shape shape-3"></div>
+        <div className="decorative-shape shape-6"></div>
 
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
@@ -555,6 +617,7 @@ const TechnicalOfferBrochure = () => {
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
+        <div className="decorative-shape shape-5"></div>
 
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
@@ -664,6 +727,7 @@ const TechnicalOfferBrochure = () => {
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-1"></div>
         <div className="decorative-shape shape-3"></div>
+        <div className="decorative-shape shape-6"></div>
 
         <div className="mx-auto max-w-4xl space-y-12">
           <div className="space-y-4 text-center">
@@ -770,6 +834,7 @@ const TechnicalOfferBrochure = () => {
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
+        <div className="decorative-shape shape-5"></div>
 
         <div className="max-w-4xl mx-auto space-y-12 h-full flex flex-col justify-between">
           <div className="text-center space-y-4">
@@ -875,6 +940,7 @@ const TechnicalOfferBrochure = () => {
             <p className="text-[#e5e4e2]/60">www.mavinci.pl</p>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
