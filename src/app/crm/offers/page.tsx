@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload } from 'lucide-react';
+import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload, BookOpen } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -280,6 +280,13 @@ export default function OffersPage() {
             Zarządzaj ofertami, katalogiem produktów i szablonami
           </p>
         </div>
+        <button
+          onClick={() => router.push('/technical')}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-medium rounded-lg transition-all duration-300 hover:scale-105"
+        >
+          <BookOpen className="w-5 h-5" />
+          <span>Broszura techniczna</span>
+        </button>
       </div>
 
       {/* Tabs */}
