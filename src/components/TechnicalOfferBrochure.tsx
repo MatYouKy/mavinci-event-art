@@ -25,28 +25,67 @@ const TechnicalOfferBrochure = () => {
       style.id = styleId;
       style.textContent = `
         @media print {
-          .page-break {
-            page-break-after: always;
-            break-after: page;
+          * {
+            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
           }
+
           body {
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-            margin: 0;
-            padding: 0;
+            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #0f1119 !important;
           }
+
+          .page-break {
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+          }
+
           .no-print {
             display: none !important;
           }
+
+          .brochure-page {
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #0f1119 !important;
+            position: relative !important;
+            overflow: hidden !important;
+            page-break-inside: avoid !important;
+          }
+
+          .brochure-page::before,
+          .brochure-page::after,
+          .decorative-shape {
+            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact !important;
+          }
+        }
+
+        @page {
+          size: A4;
+          margin: 0;
         }
 
         .brochure-page {
           width: 210mm;
+          height: 297mm;
           min-height: 297mm;
+          max-height: 297mm;
           margin: 0 auto;
           background: #0f1119;
           position: relative;
           overflow: hidden;
+          display: flex;
+          flex-direction: column;
         }
 
         /* Siatka kropek */
