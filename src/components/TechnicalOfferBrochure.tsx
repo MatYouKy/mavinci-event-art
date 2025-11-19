@@ -12,9 +12,14 @@ import {
   Sparkles,
   Tv,
   Radio,
+  Download,
 } from 'lucide-react';
 
 const TechnicalOfferBrochure = () => {
+  const handleDownloadPDF = () => {
+    window.print();
+  };
+
   return (
     <div className="bg-[#0f1119]">
       <style>{`
@@ -27,6 +32,9 @@ const TechnicalOfferBrochure = () => {
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
           }
+          .no-print {
+            display: none !important;
+          }
         }
 
         .brochure-page {
@@ -38,6 +46,17 @@ const TechnicalOfferBrochure = () => {
           overflow: hidden;
         }
       `}</style>
+
+      {/* Floating Download Button */}
+      <div className="no-print fixed top-8 right-8 z-50">
+        <button
+          onClick={handleDownloadPDF}
+          className="group flex items-center gap-3 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-bold px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105 hover:shadow-[#d3bb73]/50"
+        >
+          <Download className="w-6 h-6 group-hover:animate-bounce" />
+          <span className="text-lg">Pobierz PDF</span>
+        </button>
+      </div>
 
       {/* STRONA 1 – OKŁADKA */}
       <div className="brochure-page page-break relative">
