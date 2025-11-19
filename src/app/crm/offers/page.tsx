@@ -6,8 +6,9 @@ import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package,
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import TechnicalBrochureEditor from './TechnicalBrochureEditor';
 
-type Tab = 'offers' | 'catalog' | 'templates';
+type Tab = 'offers' | 'catalog' | 'templates' | 'brochure';
 
 interface Offer {
   id: string;
@@ -350,6 +351,23 @@ export default function OffersPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
+
+        <button
+          onClick={() => handleTabChange('brochure')}
+          className={`px-6 py-3 font-medium transition-colors relative ${
+            activeTab === 'brochure'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <BookOpen className="w-5 h-5" />
+            <span>Technika Estradowa</span>
+          </div>
+          {activeTab === 'brochure' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
       </div>
 
       {/* Content */}
@@ -395,6 +413,14 @@ export default function OffersPage() {
             setShowTemplateModal(true);
           }}
         />
+      )}
+
+      {activeTab === 'brochure' && (
+        <div className="bg-[#1c1f33]/50 rounded-xl border border-[#d3bb73]/20">
+          <div className="p-6">
+            <TechnicalBrochureEditor employee={employee} />
+          </div>
+        </div>
       )}
 
       {/* Template Modal */}
