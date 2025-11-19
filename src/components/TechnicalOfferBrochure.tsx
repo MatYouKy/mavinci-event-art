@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Music,
   Mic2,
@@ -18,21 +18,12 @@ import {
 } from 'lucide-react';
 
 const TechnicalOfferBrochure = () => {
-  const handleDownloadPDF = () => {
-    const printContent = document.getElementById('brochure-content');
-    const originalContent = document.body.innerHTML;
-
-    if (printContent) {
-      document.body.innerHTML = printContent.innerHTML;
-      window.print();
-      document.body.innerHTML = originalContent;
-      window.location.reload();
-    }
-  };
-
-  return (
-    <div className="bg-[#0f1119]">
-      <style>{`
+  useEffect(() => {
+    const styleId = 'brochure-styles';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
         @media print {
           .page-break {
             page-break-after: always;
@@ -173,8 +164,32 @@ const TechnicalOfferBrochure = () => {
           right: 10%;
           opacity: 0.6;
         }
-      `}</style>
+      `;
+      document.head.appendChild(style);
+    }
 
+    return () => {
+      const existingStyle = document.getElementById(styleId);
+      if (existingStyle) {
+        existingStyle.remove();
+      }
+    };
+  }, []);
+
+  const handleDownloadPDF = () => {
+    const printContent = document.getElementById('brochure-content');
+    const originalContent = document.body.innerHTML;
+
+    if (printContent) {
+      document.body.innerHTML = printContent.innerHTML;
+      window.print();
+      document.body.innerHTML = originalContent;
+      window.location.reload();
+    }
+  };
+
+  return (
+    <div className="bg-[#0f1119]">
       {/* Floating Download Button */}
       <div className="no-print fixed top-8 right-8 z-50">
         <button
