@@ -80,7 +80,15 @@ export default function SchemaLayout({
     return <>{children}</>;
   }
 
-  const title = pageMetadata?.title || defaultTitle || globalConfig.organization_name;
+  const cleanedPageTitle = pageMetadata?.title?.trim();
+  const cleanedDefault = defaultTitle?.trim();
+  
+  const title = cleanedPageTitle
+    ? cleanedPageTitle
+    : cleanedDefault
+    ? cleanedDefault
+    : globalConfig.organization_name;
+    
   const description = pageMetadata?.description || defaultDescription || '';
   const ogImage = pageMetadata?.og_image || globalConfig.organization_logo || '/og-default.jpg';
   const keywords = pageMetadata?.keywords || [];

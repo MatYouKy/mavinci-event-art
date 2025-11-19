@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Plus, Trash2, Save } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface PageMetadataModalProps {
   isOpen: boolean;
@@ -11,7 +12,12 @@ interface PageMetadataModalProps {
   pageName: string;
 }
 
-export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageMetadataModalProps) {
+export function PageMetadataModal({
+  isOpen,
+  onClose,
+  pageSlug,
+  pageName,
+}: PageMetadataModalProps) {
   const [metadata, setMetadata] = useState<any>(null);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [newKeyword, setNewKeyword] = useState('');
@@ -21,12 +27,16 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
   const [isSaving, setIsSaving] = useState(false);
   const [availableImages, setAvailableImages] = useState<any[]>([]);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const { showSnackbar } = useSnackbar();
+
+  const isEdit = !!metadata?.id;
 
   useEffect(() => {
     if (isOpen) {
       loadMetadata();
       loadAvailableImages();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, pageSlug]);
 
   const loadAvailableImages = async () => {
@@ -49,6 +59,10 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
       .eq('page_slug', pageSlug)
       .maybeSingle();
 
+    if (error) {
+      console.error('Error loading metadata', error);
+    }
+
     if (data) {
       setMetadata(data);
       setKeywords(data.keywords || []);
@@ -65,19 +79,20 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
   };
 
   const handleAddKeyword = () => {
-    if (newKeyword.trim() && !keywords.includes(newKeyword.trim())) {
-      setKeywords([...keywords, newKeyword.trim()]);
+    const trimmed = newKeyword.trim();
+    if (trimmed && !keywords.includes(trimmed)) {
+      setKeywords((prev) => [...prev, trimmed]);
       setNewKeyword('');
     }
   };
 
   const handleRemoveKeyword = (keyword: string) => {
-    setKeywords(keywords.filter(k => k !== keyword));
+    setKeywords((prev) => prev.filter((k) => k !== keyword));
   };
 
   const handleSave = async () => {
     setIsSaving(true);
-
+  
     const payload = {
       page_slug: pageSlug,
       title: title || null,
@@ -87,8 +102,9 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
       is_active: true,
       updated_at: new Date().toISOString(),
     };
-
+  
     let error;
+  
     if (metadata) {
       const result = await supabase
         .from('schema_org_page_metadata')
@@ -96,33 +112,58 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
         .eq('id', metadata.id);
       error = result.error;
     } else {
-      const result = await supabase
-        .from('schema_org_page_metadata')
-        .insert(payload);
+      const result = await supabase.from('schema_org_page_metadata').insert(payload);
       error = result.error;
     }
-
+    if (!error) {
+      showSnackbar(
+        isEdit ? 'Zaktualizowano metadane strony' : 'Dodano metadane strony',
+        'success'
+      );
+    
+      onClose();
+    
+      // daj Reactowi się odmalować, a dopiero potem przeładuj
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
+    }
+  
     setIsSaving(false);
-
+  
     if (error) {
-      alert('Błąd podczas zapisywania');
-      console.error(error);
+      console.error('Error saving metadata', error);
+      showSnackbar('Błąd podczas zapisywania', 'error');
       return;
     }
-
-    alert('Zapisano!');
+  
+    showSnackbar(
+      isEdit
+        ? 'Zaktualizowano metadane strony. Odśwież stronę, aby zobaczyć zmiany w meta tagach.'
+        : 'Dodano metadane strony. Odśwież stronę, aby zobaczyć zmiany w meta tagach.',
+      'success'
+    );
+  
     onClose();
   };
+
+  
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-[#1c1f33] rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-[#d3bb73]/20">
+        {/* HEADER */}
         <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-6 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-light text-[#e5e4e2]">Metadata strony</h2>
-            <p className="text-[#e5e4e2]/60 text-sm">{pageName}</p>
+            <h2 className="text-2xl font-light text-[#e5e4e2]">
+              {isEdit ? 'Edytujesz metadane strony' : 'Dodajesz metadane strony'}
+            </h2>
+            <p className="text-[#e5e4e2]/60 text-sm">
+              {pageName}{' '}
+              <span className="text-[#e5e4e2]/40">({pageSlug})</span>
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -132,6 +173,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
           </button>
         </div>
 
+        {/* BODY */}
         <div className="p-6 space-y-6">
           {/* Title */}
           <div>
@@ -251,7 +293,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
                 type="text"
                 value={newKeyword}
                 onChange={(e) => setNewKeyword(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAddKeyword()}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddKeyword())}
                 placeholder="Wpisz słowo kluczowe..."
                 className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
               />
@@ -298,6 +340,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
           </div>
         </div>
 
+        {/* FOOTER */}
         <div className="sticky bottom-0 bg-[#1c1f33] border-t border-[#d3bb73]/20 p-6 flex justify-end gap-3">
           <button
             onClick={onClose}
@@ -311,7 +354,11 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
             className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            {isSaving ? 'Zapisywanie...' : 'Zapisz'}
+            {isSaving
+              ? 'Zapisywanie...'
+              : isEdit
+              ? 'Zapisz zmiany'
+              : 'Dodaj metadane'}
           </button>
         </div>
       </div>

@@ -6,8 +6,6 @@ import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, Ch
 import * as Icons from 'lucide-react';
 import Link from 'next/link';
 import Head from 'next/head';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
 import { PortfolioProject, GalleryImage, PortfolioProjectFeature, supabase } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -29,11 +27,11 @@ const MOCK_PROJECTS: PortfolioProject[] = [
     event_date: '2024-05-15',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    tags: []
   },
 ];
 
 export default function ProjectDetailPage() {
-  const router = useRouter();
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
   const params = useParams();
@@ -227,11 +225,9 @@ export default function ProjectDetailPage() {
   if (loading) {
     return (
       <>
-        <Navbar />
         <main className="min-h-screen bg-[#0f1119] flex items-center justify-center">
           <div className="text-[#d3bb73] text-lg">Ładowanie projektu...</div>
         </main>
-        <Footer />
       </>
     );
   }
@@ -239,7 +235,6 @@ export default function ProjectDetailPage() {
   if (!project) {
     return (
       <>
-        <Navbar />
         <main className="min-h-screen bg-[#0f1119] flex items-center justify-center">
           <div className="text-center">
             <h1 className="text-3xl font-light text-[#e5e4e2] mb-4">Projekt nie znaleziony</h1>
@@ -248,7 +243,6 @@ export default function ProjectDetailPage() {
             </Link>
           </div>
         </main>
-        <Footer />
       </>
     );
   }
@@ -292,7 +286,6 @@ export default function ProjectDetailPage() {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
       </Head>
-      <Navbar />
       <main className="min-h-screen bg-gradient-to-b from-[#0a0c15] via-[#0f1119] to-[#1c1f33]">
         {/* Hero Section - Editable or View Mode */}
         <section className="relative py-24 md:py-32 overflow-hidden">
@@ -860,7 +853,6 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </main>
-      <Footer />
     </>
   );
 }

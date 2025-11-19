@@ -75,7 +75,7 @@ export default function TeamPage() {
       }));
 
       console.log('[fetchTeam] Fetched team members:', teamMembers.length);
-      setTeam(teamMembers);
+      setTeam(teamMembers as TeamMember[]);
     } catch (error) {
       console.error('[fetchTeam] Error:', error);
       setTeam([]);
@@ -120,7 +120,6 @@ export default function TeamPage() {
 
   return (
     <>
-      <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
         <PageHeroImage
           section="team"
@@ -355,7 +354,6 @@ export default function TeamPage() {
           }
         `}</style>
       </main>
-      <Footer />
       <WebsiteEditPanel />
 
       {/* Image Position Editor Modal */}

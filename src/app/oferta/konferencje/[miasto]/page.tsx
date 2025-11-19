@@ -7,6 +7,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { MapPin, ArrowRight, Clock } from 'lucide-react';
 import SchemaLayout from '@/components/SchemaLayout';
+import { ProblemAndSolution } from '../sections/ProblemAndSolution';
 
 export default function CityConferencePage() {
   const params = useParams();
@@ -14,6 +15,7 @@ export default function CityConferencePage() {
   const [city, setCity] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(3);
+  const [problems, setProblems] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
@@ -48,6 +50,17 @@ export default function CityConferencePage() {
         .eq('is_global', true)
         .eq('is_active', true)
         .maybeSingle();
+
+      const { data: problemsData, error: problemsError } = await supabase
+        .from('conferences_problems')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order')
+        .single();
+
+      if (problemsData) {
+        setProblems(problemsData);
+      }
 
       if (!data || error) {
         notFound();
@@ -136,7 +149,9 @@ export default function CityConferencePage() {
                 <div className="text-[#e5e4e2]/60 text-xs">{city.region}</div>
               </div>
             </div>
-          </div>
+          </div>   
+          <ProblemAndSolution problems={problems} />
+
 
           {/* Main Content */}
           <div className="text-center mb-12">

@@ -17,7 +17,6 @@ import WebsiteEditPanel from '@/components/WebsiteEditPanel';
 export default function HomePage() {
   return (
     <div className="min-h-screen">
-      <Navbar />
       <Hero />
       <Stats />
       <Divider />
@@ -30,7 +29,6 @@ export default function HomePage() {
       <Process />
       <DividerFour />
       <Contact />
-      <Footer />
       <WebsiteEditPanel />
     </div>
   );

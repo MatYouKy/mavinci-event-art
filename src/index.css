@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body {
+  overscroll-behavior: none;
+  background-color: #0f1119; /* Twoje tło */
+  color-scheme: dark; /* ważne – eliminuje biały błysk w Safari */
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;
@@ -14,6 +20,7 @@
 
 @layer base {
   * {
+    /* background-color: #0f1119; */
     scrollbar-width: thin;
     scrollbar-color: rgba(211, 187, 115, 0.5) rgba(28, 31, 51, 0.3);
   }

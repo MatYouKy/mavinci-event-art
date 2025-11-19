@@ -33,7 +33,6 @@ export default function AboutPage() {
   const stats = [
     { value: '15+', label: 'Lat doświadczenia' },
     { value: '500+', label: 'Zrealizowanych eventów' },
-    { value: '50+', label: 'Zadowolonych klientów' },
     { value: '100%', label: 'Zaangażowania' },
   ];
 

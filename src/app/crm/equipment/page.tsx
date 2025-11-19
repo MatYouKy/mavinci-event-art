@@ -146,13 +146,14 @@ export default function EquipmentPage() {
     return { available, total, color: 'text-green-400' };
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = async (id: string) => {
     const ok = await showConfirm('Czy na pewno chcesz usunąć?', 'Usuń');
     if (!ok) return;
+  
     try {
       await deleteEquipment(id).unwrap();
       showSnackbar('Usunięto', 'success');
+  
       // po usunięciu odśwież bieżący feed od strony 0
       setPage(0);
       refetch();
@@ -369,20 +370,26 @@ export default function EquipmentPage() {
                     }
                     className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 cursor-pointer relative"
                   >
-                    {canManageModule('equipment') && (
-                      <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
-                        <ResponsiveActionBar
-                          actions={[
-                            {
-                              label: deleting ? 'Usuwanie…' : 'Usuń',
-                              onClick: (e) => handleDelete(item.id, e as any),
-                              icon: <Trash2 className="w-4 h-4" />,
-                              variant: 'danger',
-                            },
-                          ]}
-                        />
-                      </div>
-                    )}
+{canManageModule('equipment') && (
+  <div
+    className="absolute top-2 right-2"
+    onClick={(e) => e.stopPropagation()}
+  >
+    <ResponsiveActionBar
+      actions={[
+        {
+          label: deleting ? 'Usuwanie…' : 'Usuń',
+          onClick: () => {
+            // ignorujemy Promise żeby zgadzał się typ () => void
+            void handleDelete(item.id);
+          },
+          icon: <Trash2 className="w-4 h-4" />,
+          variant: 'danger',
+        },
+      ]}
+    />
+  </div>
+)}
                     <div className="relative">
                       {item.thumbnail_url ? (
                         <img src={item.thumbnail_url} alt={item.name} className="w-full h-32 object-cover rounded-lg mb-4" />
@@ -474,19 +481,25 @@ export default function EquipmentPage() {
                         </span>
                       )}
                       {canManageModule('equipment') && (
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <ResponsiveActionBar
-                            actions={[
-                              {
-                                label: deleting ? 'Usuwanie…' : 'Usuń',
-                                onClick: (e) => handleDelete(item.id, e as any),
-                                icon: <Trash2 className="w-4 h-4" />,
-                                variant: 'danger',
-                              },
-                            ]}
-                          />
-                        </div>
-                      )}
+  <div
+    className="absolute top-2 right-2"
+    onClick={(e) => e.stopPropagation()}
+  >
+    <ResponsiveActionBar
+      actions={[
+        {
+          label: deleting ? 'Usuwanie…' : 'Usuń',
+          onClick: () => {
+            // ignorujemy Promise żeby zgadzał się typ () => void
+            void handleDelete(item.id);
+          },
+          icon: <Trash2 className="w-4 h-4" />,
+          variant: 'danger',
+        },
+      ]}
+    />
+  </div>
+)}
                     </div>
                   </div>
                 );

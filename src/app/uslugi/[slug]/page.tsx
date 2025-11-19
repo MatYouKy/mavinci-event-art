@@ -549,7 +549,6 @@ export default function ServiceDetailPage() {
           />
         )}
       </div>
-      <Footer />
     </>
   );
 }

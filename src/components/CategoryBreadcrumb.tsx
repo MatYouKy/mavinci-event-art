@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Edit2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { PageMetadataModal } from './PageMetadataModal';
@@ -18,10 +19,11 @@ import {
 } from '@/components/UI/breadcrumb';
 
 import { categoryNavLinks, type CategoryNode } from './Navbar';
+import { BreadcrumbJsonLd } from './Layout/BreadcrumbJsonLd';
 
 interface CategoryBreadcrumbProps {
   productName?: string;
-  pageSlug?: string;
+  pageSlug?: string; // np. "oferta/konferencje"
 }
 
 export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumbProps) {
@@ -31,7 +33,7 @@ export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumb
   const [loading, setLoading] = useState(true);
   const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
 
-  // 🔥 1. Ładujemy dynamiczne kategorie usług
+  // 1. dynamiczne usługi
   useEffect(() => {
     const loadServices = async () => {
       try {
@@ -78,10 +80,10 @@ export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumb
 
   const tree = useMemo(() => dynamicTree ?? categoryNavLinks, [dynamicTree]);
 
-  // 🔥 2. Budowanie ścieżki breadcrumb
+  // 2. budowa ścieżki
   const buildTrail = (nodes: CategoryNode[], path: string): CategoryNode[] | null => {
     for (const node of nodes) {
-      if (node.href.startsWith('/#')) continue; // pomijamy anchor
+      if (node.href.startsWith('/#')) continue;
 
       const isExactMatch = path === node.href;
       const isChildPath =
@@ -103,89 +105,99 @@ export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumb
 
     const baseTrail = buildTrail(tree, pathname) ?? [];
 
-    if (!productName) {
-      return baseTrail;
-    }
+    if (!productName) return baseTrail;
 
     const last = baseTrail[baseTrail.length - 1];
-
-    // jeśli productName jest taki sam jak ostatni element breadcrumb (case-insensitive),
-    // to NIE dokładamy go drugi raz
     if (last && last.label.toLowerCase() === productName.toLowerCase()) {
       return baseTrail;
     }
 
-    return [
-      ...baseTrail,
-      {
-        label: productName,
-        href: '#',
-      },
-    ];
+    return [...baseTrail, { label: productName, href: '#' }];
   }, [tree, pathname, productName, loading]);
+
+  const normalizedPathSlug = pathname.replace(/^\/+|\/+$/g, '');
+  const normalizedPropSlug = pageSlug ? pageSlug.replace(/^\/+|\/+$/g, '') : '';
+  const currentPageSlug = normalizedPropSlug || normalizedPathSlug;
 
   if (loading || trail.length === 0) return null;
 
   const lastTrailItem = trail[trail.length - 1];
-  const currentPageSlug = pageSlug || pathname.split('/').filter(Boolean).pop() || '';
   const currentPageName = lastTrailItem?.label || productName || '';
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-4">
-        <Breadcrumb className="flex-1">
-          <BreadcrumbList className="text-white">
-        {/* HOME */}
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link href="/" className="text-white/80 hover:text-[#d3bb73] transition-colors">
-              <span className="inline-flex items-center gap-1.5">
-                <Home className="h-4 w-4" />
-                <span className="hidden sm:inline">Start</span>
-              </span>
-            </Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-
-        {trail.map((item, index) => {
-          const isLast = index === trail.length - 1;
-
-          return (
-            <BreadcrumbItem key={`${item.href}-${index}`} className="text-white">
-              <BreadcrumbSeparator className="text-white/40" />
-
-              {isLast ? (
-                // ⭐ OSTATNI ELEMENT – highlight
-                <BreadcrumbPage className="text-[#d3bb73] font-medium">
-                  {item.label}
-                </BreadcrumbPage>
-              ) : (
-                <BreadcrumbLink
-                  asChild
-                  className="text-white/80 hover:text-[#d3bb73] transition-colors"
-                >
-                  <Link href={item.href}>{item.label}</Link>
-                </BreadcrumbLink>
-              )}
-            </BreadcrumbItem>
-          );
-        })}
-          </BreadcrumbList>
-        </Breadcrumb>
-
-        {isEditMode && currentPageSlug && (
-          <button
-            onClick={() => setIsMetadataModalOpen(true)}
-            className="px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors flex items-center gap-2 text-sm"
-            title="Edytuj metadata strony (keywords, title, description)"
+      <AnimatePresence mode="wait">
+        {!loading && trail.length > 0 && (
+          <motion.div
+            key={currentPageSlug || pathname}
+            initial={{ opacity: 0, y: -32 }}        // start: wyżej, niewidoczny
+            animate={{ opacity: 1, y: 0 }}          // koniec: w swoim miejscu
+            exit={{ opacity: 0, y: -32 }}           // przy przejściu na inną stronę
+            transition={{
+              delay: 1,                             // ⬅️ 1 sekunda po załadowaniu
+              duration: 0.45,
+              ease: 'easeOut',
+            }}
+            className="flex items-center gap-3 mb-4"
           >
-            <Edit2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Metadata</span>
-          </button>
-        )}
-      </div>
+            <Breadcrumb className="flex-1">
+              <BreadcrumbList className="text-white">
+                {/* HOME */}
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link
+                      href="/"
+                      className="text-white/80 hover:text-[#d3bb73] transition-colors"
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <Home className="h-4 w-4" />
+                        <span className="hidden sm:inline">Start</span>
+                      </span>
+                    </Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
 
-      {isMetadataModalOpen && (
+                {trail.map((item, index) => {
+                  const isLast = index === trail.length - 1;
+
+                  return (
+                    <Fragment key={`${item.href}-${index}`}>
+                      <BreadcrumbSeparator className="text-white/40" />
+                      <BreadcrumbItem className="text-white">
+                        {isLast ? (
+                          <BreadcrumbPage className="text-[#d3bb73] font-medium">
+                            {item.label}
+                          </BreadcrumbPage>
+                        ) : (
+                          <BreadcrumbLink
+                            asChild
+                            className="text-white/80 hover:text-[#d3bb73] transition-colors"
+                          >
+                            <Link href={item.href}>{item.label}</Link>
+                          </BreadcrumbLink>
+                        )}
+                      </BreadcrumbItem>
+                    </Fragment>
+                  );
+                })}
+              </BreadcrumbList>
+            </Breadcrumb>
+
+            {isEditMode && currentPageSlug && (
+              <button
+                onClick={() => setIsMetadataModalOpen(true)}
+                className="px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors flex items-center gap-2 text-sm"
+                title="Edytuj metadata strony (keywords, title, description)"
+              >
+                <Edit2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Metadata</span>
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {isMetadataModalOpen && currentPageSlug && (
         <PageMetadataModal
           isOpen={isMetadataModalOpen}
           onClose={() => setIsMetadataModalOpen(false)}
@@ -193,6 +205,11 @@ export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumb
           pageName={currentPageName}
         />
       )}
+
+      <BreadcrumbJsonLd
+        items={trail.map((t) => ({ name: t.label, href: t.href }))}
+        baseUrl="https://mavinci.pl"
+      />
     </>
   );
 }
