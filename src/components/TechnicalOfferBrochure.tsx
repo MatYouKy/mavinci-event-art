@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import {
   Music,
@@ -45,6 +47,75 @@ const TechnicalOfferBrochure = () => {
           position: relative;
           overflow: hidden;
         }
+
+        .brochure-page::before {
+          content: '';
+          position: absolute;
+          width: 600px;
+          height: 600px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(211, 187, 115, 0.08) 0%, transparent 70%);
+          top: -200px;
+          right: -200px;
+          pointer-events: none;
+        }
+
+        .brochure-page::after {
+          content: '';
+          position: absolute;
+          width: 400px;
+          height: 400px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(211, 187, 115, 0.05) 0%, transparent 70%);
+          bottom: -150px;
+          left: -150px;
+          pointer-events: none;
+        }
+
+        .decorative-shape {
+          position: absolute;
+          opacity: 0.03;
+          pointer-events: none;
+        }
+
+        .shape-1 {
+          width: 300px;
+          height: 300px;
+          background: linear-gradient(135deg, #d3bb73 0%, transparent 70%);
+          border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+          top: 20%;
+          left: -100px;
+          transform: rotate(45deg);
+        }
+
+        .shape-2 {
+          width: 250px;
+          height: 250px;
+          background: linear-gradient(225deg, #d3bb73 0%, transparent 70%);
+          border-radius: 70% 30% 30% 70% / 70% 70% 30% 30%;
+          top: 60%;
+          right: -80px;
+          transform: rotate(-30deg);
+        }
+
+        .shape-3 {
+          width: 200px;
+          height: 200px;
+          border: 2px solid rgba(211, 187, 115, 0.1);
+          border-radius: 50%;
+          top: 40%;
+          right: 10%;
+        }
+
+        .shape-4 {
+          width: 150px;
+          height: 150px;
+          border: 1px solid rgba(211, 187, 115, 0.08);
+          border-radius: 30%;
+          bottom: 30%;
+          left: 5%;
+          transform: rotate(15deg);
+        }
       `}</style>
 
       {/* Floating Download Button */}
@@ -60,6 +131,11 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 1 – OKŁADKA */}
       <div className="brochure-page page-break relative">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-1"></div>
+        <div className="decorative-shape shape-2"></div>
+        <div className="decorative-shape shape-3"></div>
+
         <div className="absolute inset-0 bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
           <img
             src="https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920"
@@ -110,6 +186,10 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 2 – O NAS */}
       <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119] p-16">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-2"></div>
+        <div className="decorative-shape shape-4"></div>
+
         <div className="mx-auto max-w-4xl space-y-12">
           <div className="space-y-4 text-center">
             <h2 className="text-5xl font-bold text-[#e5e4e2]">Mavinci Event & Art</h2>
@@ -173,6 +253,10 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 3 – NAGŁOŚNIENIE */}
       <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16] p-16">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-1"></div>
+        <div className="decorative-shape shape-3"></div>
+
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
             <div className="flex items-center justify-center gap-4">
@@ -263,6 +347,10 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 4 – OŚWIETLENIE */}
       <div className="brochure-page page-break bg-[#05060a] p-16">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-2"></div>
+        <div className="decorative-shape shape-4"></div>
+
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
             <div className="flex items-center justify-center gap-4">
@@ -372,6 +460,10 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 5 – SCENA & MULTIMEDIA */}
       <div className="brochure-page page-break bg-[#0b0d16] p-16">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-1"></div>
+        <div className="decorative-shape shape-3"></div>
+
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
             <div className="flex items-center justify-center gap-4">
@@ -460,6 +552,10 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 6 – REALIZACJE */}
       <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16] p-16">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-2"></div>
+        <div className="decorative-shape shape-4"></div>
+
         <div className="mx-auto max-w-4xl space-y-10">
           <div className="space-y-4 text-center">
             <h2 className="text-5xl font-bold text-[#e5e4e2]">Nasze realizacje</h2>
@@ -565,6 +661,10 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 7 – USŁUGI */}
       <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119] p-16">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-1"></div>
+        <div className="decorative-shape shape-3"></div>
+
         <div className="mx-auto max-w-4xl space-y-12">
           <div className="space-y-4 text-center">
             <h2 className="text-5xl font-bold text-[#e5e4e2]">
@@ -667,6 +767,10 @@ const TechnicalOfferBrochure = () => {
 
       {/* STRONA 8 – KONTAKT */}
       <div className="brochure-page bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119] p-16">
+        {/* Decorative Shapes */}
+        <div className="decorative-shape shape-2"></div>
+        <div className="decorative-shape shape-4"></div>
+
         <div className="max-w-4xl mx-auto space-y-12 h-full flex flex-col justify-between">
           <div className="text-center space-y-4">
             <h2 className="text-5xl font-bold text-[#e5e4e2]">Kontakt</h2>
