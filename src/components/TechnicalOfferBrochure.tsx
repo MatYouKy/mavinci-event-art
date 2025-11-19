@@ -55,7 +55,8 @@ const TechnicalOfferBrochure = () => {
             min-height: 297mm !important;
             max-height: 297mm !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 15mm !important;
+            box-sizing: border-box !important;
             background: #0f1119 !important;
             position: relative !important;
             overflow: hidden !important;
@@ -81,9 +82,19 @@ const TechnicalOfferBrochure = () => {
           min-height: 297mm;
           max-height: 297mm;
           margin: 0 auto;
+          padding: 15mm;
+          box-sizing: border-box;
           background: #0f1119;
           position: relative;
           overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .brochure-content-wrapper {
+          position: relative;
+          z-index: 10;
+          flex: 1;
           display: flex;
           flex-direction: column;
         }
@@ -257,7 +268,7 @@ const TechnicalOfferBrochure = () => {
           <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119] via-[#0f1119]/80 to-transparent" />
         </div>
 
-        <div className="relative z-10 flex h-full flex-col justify-between p-16">
+        <div className="brochure-content-wrapper relative z-10 flex h-full flex-col justify-between">
           <div className="flex items-center gap-4">
             <img
               src="/logo mavinci-simple.svg"
@@ -289,7 +300,7 @@ const TechnicalOfferBrochure = () => {
       </div>
 
       {/* STRONA 2 – O NAS */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119] p-16">
+      <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
@@ -357,7 +368,7 @@ const TechnicalOfferBrochure = () => {
       </div>
 
       {/* STRONA 3 – NAGŁOŚNIENIE */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16] p-16">
+      <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16]">
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-1"></div>
         <div className="decorative-shape shape-3"></div>
@@ -452,7 +463,7 @@ const TechnicalOfferBrochure = () => {
       </div>
 
       {/* STRONA 4 – OŚWIETLENIE */}
-      <div className="brochure-page page-break bg-[#05060a] p-16">
+      <div className="brochure-page page-break bg-[#05060a]">
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
@@ -566,7 +577,7 @@ const TechnicalOfferBrochure = () => {
       </div>
 
       {/* STRONA 5 – SCENA & MULTIMEDIA */}
-      <div className="brochure-page page-break bg-[#0b0d16] p-16">
+      <div className="brochure-page page-break bg-[#0b0d16]">
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-1"></div>
         <div className="decorative-shape shape-3"></div>
@@ -659,7 +670,7 @@ const TechnicalOfferBrochure = () => {
       </div>
 
       {/* STRONA 6 – REALIZACJE */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16] p-16">
+      <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16]">
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
@@ -769,7 +780,7 @@ const TechnicalOfferBrochure = () => {
       </div>
 
       {/* STRONA 7 – USŁUGI */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119] p-16">
+      <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-1"></div>
         <div className="decorative-shape shape-3"></div>
@@ -876,7 +887,7 @@ const TechnicalOfferBrochure = () => {
       </div>
 
       {/* STRONA 8 – KONTAKT */}
-      <div className="brochure-page bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119] p-16">
+      <div className="brochure-page bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
         {/* Decorative Shapes */}
         <div className="decorative-shape shape-2"></div>
         <div className="decorative-shape shape-4"></div>
