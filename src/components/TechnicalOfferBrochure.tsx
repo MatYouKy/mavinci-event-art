@@ -225,14 +225,6 @@ const TechnicalOfferBrochure = () => {
               alt="Mavinci Logo"
               className="h-16 w-16"
             />
-            <div>
-              <h2 className="text-3xl font-bold tracking-wider text-[#e5e4e2]">
-                MAVINCI
-              </h2>
-              <p className="text-sm tracking-[0.3em] text-[#d3bb73] uppercase">
-                Event & Art
-              </p>
-            </div>
           </div>
 
           <div className="space-y-8">
@@ -947,10 +939,7 @@ const TechnicalOfferBrochure = () => {
                 alt="Mavinci Logo"
                 className="h-12 w-12"
               />
-              <div>
-                <h2 className="text-2xl font-bold tracking-wider text-[#e5e4e2]">MAVINCI</h2>
-                <p className="text-sm tracking-[0.3em] text-[#d3bb73] uppercase">Event & Art</p>
-              </div>
+            
             </div>
             <p className="text-[#e5e4e2]/60">www.mavinci.pl</p>
           </div>
