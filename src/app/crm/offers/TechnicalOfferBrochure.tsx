@@ -1,23 +1,49 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import {
-  Music,
-  Mic2,
-  Lightbulb,
-  Gauge,
-  Users,
-  Award,
-  Phone,
-  Mail,
-  MapPin,
-  Sparkles,
-  Tv,
-  Radio,
-  Download,
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { Edit2, Save, X, Eye, Download, Phone, Mail, MapPin } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
-const TechnicalOfferBrochure = () => {
+interface BrochureContent {
+  id: string;
+  section: string;
+  content_key: string;
+  content_value: string;
+  content_type: string;
+  order_index: number;
+  is_visible: boolean;
+  metadata: any;
+}
+
+interface BrochureImage {
+  id: string;
+  section: string;
+  image_url: string;
+  alt_text: string;
+  position_x: number;
+  position_y: number;
+  object_fit: string;
+  order_index: number;
+  is_visible: boolean;
+}
+
+interface TechnicalOfferBrochureProps {
+  editMode?: boolean;
+  showControls?: boolean;
+}
+
+const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showControls = true }: TechnicalOfferBrochureProps) => {
+  const [editMode, setEditMode] = useState(externalEditMode);
+  const [content, setContent] = useState<Record<string, BrochureContent>>({});
+  const [images, setImages] = useState<BrochureImage[]>([]);
+  const [editingContent, setEditingContent] = useState<string | null>(null);
+  const [editingImage, setEditingImage] = useState<BrochureImage | null>(null);
+  const { showSnackbar } = useSnackbar();
+  const { employee } = useCurrentEmployee();
+
   useEffect(() => {
     const styleId = 'brochure-styles';
     if (!document.getElementById(styleId)) {
@@ -99,57 +125,20 @@ const TechnicalOfferBrochure = () => {
           flex-direction: column;
         }
 
-        /* Siatka kropek */
-        .brochure-page::before {
-          content: '';
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          background-image:
-            radial-gradient(circle, rgba(211, 187, 115, 0.15) 1px, transparent 1px);
-          background-size: 30px 30px;
-          top: 0;
-          left: 0;
-          pointer-events: none;
-          opacity: 0.4;
-        }
-
-        /* Wzór linii */
-        .brochure-page::after {
-          content: '';
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          background-image:
-            repeating-linear-gradient(
-              45deg,
-              transparent,
-              transparent 50px,
-              rgba(211, 187, 115, 0.03) 50px,
-              rgba(211, 187, 115, 0.03) 51px
-            );
-          top: 0;
-          left: 0;
-          pointer-events: none;
-        }
-
         .decorative-shape {
           position: absolute;
           pointer-events: none;
         }
 
-        /* Duży złoty gradient circle */
         .shape-1 {
           width: 500px;
           height: 500px;
-          background: radial-gradient(circle, rgba(211, 187, 115, 0.15) 0%, transparent 70%);
-          border-radius: 50%;
+          background: radial-gradient(circle, rgba(211, 187, 115, 0.1) 0%, transparent 70%);
           top: -150px;
           right: -150px;
-          opacity: 0.6;
+          border-radius: 50%;
         }
 
-        /* Siatka złotych kwadratów */
         .shape-2 {
           width: 400px;
           height: 400px;
@@ -163,7 +152,6 @@ const TechnicalOfferBrochure = () => {
           transform: rotate(15deg);
         }
 
-        /* Koncentryczne okręgi */
         .shape-3 {
           width: 300px;
           height: 300px;
@@ -176,7 +164,6 @@ const TechnicalOfferBrochure = () => {
           opacity: 0.7;
         }
 
-        /* Hexagon pattern */
         .shape-4 {
           width: 350px;
           height: 350px;
@@ -190,7 +177,6 @@ const TechnicalOfferBrochure = () => {
           transform: rotate(-20deg);
         }
 
-        /* Spirala z kropek */
         .shape-5 {
           width: 250px;
           height: 250px;
@@ -203,7 +189,6 @@ const TechnicalOfferBrochure = () => {
           transform: rotate(30deg);
         }
 
-        /* Duże kropki rozmieszczone */
         .shape-6 {
           width: 300px;
           height: 300px;
@@ -218,6 +203,9 @@ const TechnicalOfferBrochure = () => {
       document.head.appendChild(style);
     }
 
+    fetchContent();
+    fetchImages();
+
     return () => {
       const existingStyle = document.getElementById(styleId);
       if (existingStyle) {
@@ -225,6 +213,71 @@ const TechnicalOfferBrochure = () => {
       }
     };
   }, []);
+
+  const fetchContent = async () => {
+    const { data, error } = await supabase
+      .from('technical_brochure_content')
+      .select('*')
+      .eq('is_visible', true)
+      .order('order_index');
+
+    if (!error && data) {
+      const contentMap: Record<string, BrochureContent> = {};
+      data.forEach((item) => {
+        contentMap[item.content_key] = item;
+      });
+      setContent(contentMap);
+    }
+  };
+
+  const fetchImages = async () => {
+    const { data, error } = await supabase
+      .from('technical_brochure_images')
+      .select('*')
+      .eq('is_visible', true)
+      .order('order_index');
+
+    if (!error && data) {
+      setImages(data);
+    }
+  };
+
+  const updateContent = async (key: string, value: string) => {
+    const { error } = await supabase
+      .from('technical_brochure_content')
+      .update({ content_value: value, updated_at: new Date().toISOString() })
+      .eq('content_key', key);
+
+    if (error) {
+      showSnackbar('Błąd zapisu treści', 'error');
+    } else {
+      showSnackbar('Zapisano treść', 'success');
+      fetchContent();
+      setEditingContent(null);
+    }
+  };
+
+  const updateImage = async (image: BrochureImage) => {
+    const { error } = await supabase
+      .from('technical_brochure_images')
+      .update({
+        image_url: image.image_url,
+        alt_text: image.alt_text,
+        position_x: image.position_x,
+        position_y: image.position_y,
+        object_fit: image.object_fit,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', image.id);
+
+    if (error) {
+      showSnackbar('Błąd zapisu obrazu', 'error');
+    } else {
+      showSnackbar('Zapisano obraz', 'success');
+      fetchImages();
+      setEditingImage(null);
+    }
+  };
 
   const handleDownloadPDF = () => {
     const printContent = document.getElementById('brochure-content');
@@ -238,763 +291,337 @@ const TechnicalOfferBrochure = () => {
     }
   };
 
+  const getContentValue = (key: string, fallback: string = '') => {
+    return content[key]?.content_value || fallback;
+  };
+
+  const getEmployeePhone = () => {
+    return employee?.phone || getContentValue('phone', '+48 123 456 789');
+  };
+
+  const getEmployeeEmail = () => {
+    return employee?.email || getContentValue('email', 'kontakt@mavinci.pl');
+  };
+
+  const getImageBySection = (section: string, index: number = 0): BrochureImage | null => {
+    const sectionImages = images.filter(img => img.section === section);
+    return sectionImages[index] || null;
+  };
+
+  const renderEditableText = (key: string, defaultValue: string, className: string, multiline: boolean = false) => {
+    const isEditing = editingContent === key;
+    const value = getContentValue(key, defaultValue);
+
+    if (!editMode) {
+      return <span className={className}>{value}</span>;
+    }
+
+    if (isEditing) {
+      return (
+        <div className="flex items-center gap-2">
+          {multiline ? (
+            <textarea
+              value={value}
+              onChange={(e) => setContent({ ...content, [key]: { ...content[key], content_value: e.target.value } })}
+              className="flex-1 bg-[#0a0d1a] border border-[#d3bb73]/30 rounded px-3 py-2 text-[#e5e4e2]"
+              rows={3}
+            />
+          ) : (
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => setContent({ ...content, [key]: { ...content[key], content_value: e.target.value } })}
+              className="flex-1 bg-[#0a0d1a] border border-[#d3bb73]/30 rounded px-3 py-2 text-[#e5e4e2]"
+            />
+          )}
+          <button
+            onClick={() => updateContent(key, value)}
+            className="p-2 bg-green-500/20 text-green-400 rounded hover:bg-green-500/30"
+          >
+            <Save className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              setEditingContent(null);
+              fetchContent();
+            }}
+            className="p-2 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <span
+        onClick={() => setEditingContent(key)}
+        className={`${className} ${editMode ? 'cursor-pointer hover:bg-[#d3bb73]/10 px-2 py-1 rounded transition-colors' : ''}`}
+      >
+        {value}
+      </span>
+    );
+  };
+
+  const renderEditableImage = (section: string, index: number = 0, className: string, alt: string) => {
+    const image = getImageBySection(section, index);
+    if (!image) {
+      return <div className={`${className} bg-[#1c1f33]/50 flex items-center justify-center text-[#e5e4e2]/40`}>Brak obrazu</div>;
+    }
+
+    if (editMode && editingImage?.id === image.id) {
+      return (
+        <ImagePositionEditor
+          imageUrl={image.image_url}
+          positionX={image.position_x}
+          positionY={image.position_y}
+          objectFit={image.object_fit as 'cover' | 'contain' | 'fill'}
+          onSave={(newUrl, posX, posY, fit) => {
+            updateImage({ ...image, image_url: newUrl, position_x: posX, position_y: posY, object_fit: fit });
+          }}
+          onCancel={() => setEditingImage(null)}
+        />
+      );
+    }
+
+    return (
+      <div className="relative group">
+        <img
+          src={image.image_url}
+          alt={image.alt_text || alt}
+          className={className}
+          style={{
+            objectFit: image.object_fit as any,
+            objectPosition: `${image.position_x}% ${image.position_y}%`
+          }}
+        />
+        {editMode && (
+          <button
+            onClick={() => setEditingImage(image)}
+            className="absolute top-2 right-2 p-2 bg-[#d3bb73]/90 text-[#1c1f33] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-20"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="bg-[#0f1119]">
-      {/* Floating Download Button */}
-      <div className="no-print fixed top-8 right-8 z-50">
-        <button
-          onClick={handleDownloadPDF}
-          className="group flex items-center gap-3 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-bold px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105 hover:shadow-[#d3bb73]/50"
-        >
-          <Download className="w-6 h-6 group-hover:animate-bounce" />
-          <span className="text-lg">Pobierz PDF</span>
-        </button>
-      </div>
+      {/* Floating Controls */}
+      {showControls && (
+        <div className="no-print fixed top-8 right-8 z-50 flex items-center gap-3">
+          <button
+            onClick={() => setEditMode(!editMode)}
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105 ${
+              editMode
+                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
+            }`}
+          >
+            {editMode ? <X className="w-5 h-5" /> : <Edit2 className="w-5 h-5" />}
+            <span className="font-semibold">{editMode ? 'Zakończ edycję' : 'Tryb edycji'}</span>
+          </button>
 
-      <div id="brochure-content">
-        {/* STRONA 1 – OKŁADKA */}
-        <div className="brochure-page page-break relative">
-          {/* Decorative Shapes */}
+          <button
+            onClick={handleDownloadPDF}
+            className="group flex items-center gap-3 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-bold px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105 hover:shadow-[#d3bb73]/50"
+          >
+            <Download className="w-6 h-6 group-hover:animate-bounce" />
+            <span>Pobierz PDF</span>
+          </button>
+        </div>
+      )}
+
+      {/* Brochure Content */}
+      <div id="brochure-content" className="min-h-screen">
+        {/* Page 1: Hero + Services */}
+        <div className="brochure-page page-break">
           <div className="decorative-shape shape-1"></div>
+          <div className="decorative-shape shape-2"></div>
           <div className="decorative-shape shape-3"></div>
-          <div className="decorative-shape shape-5"></div>
 
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
-          <img
-            src="https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=1920"
-            alt="Stage"
-            className="h-full w-full object-cover opacity-40"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119] via-[#0f1119]/80 to-transparent" />
-        </div>
+          <div className="brochure-content-wrapper">
+            {/* Hero Section */}
+            <div className="relative h-[350px] rounded-3xl overflow-hidden mb-12 shadow-2xl">
+              {renderEditableImage('hero', 0, 'absolute inset-0 w-full h-full', 'Stage lighting hero')}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent"></div>
 
-        <div className="brochure-content-wrapper relative z-10 flex h-full flex-col justify-between">
-          <div className="flex items-center gap-4">
-            <img
-              src="/logo mavinci-simple.svg"
-              alt="Mavinci Logo"
-              className="h-16 w-16"
-            />
-          </div>
-
-          <div className="space-y-8">
-            <h1 className="text-7xl font-bold leading-tight text-[#e5e4e2]">
-              Kompleksowa
-              <br />
-              obsługa
-              <br />
-              eventowa
-            </h1>
-            <div className="h-1 w-32 bg-[#d3bb73]" />
-            <p className="max-w-2xl text-2xl font-light leading-relaxed text-[#e5e4e2]/90">
-              Nagłośnienie • Oświetlenie • Scena • Multimedia
-              <br />
-              <span className="text-[#d3bb73]">Premium events dla wymagających klientów</span>
-            </p>
-          </div>
-
-          <div className="text-sm tracking-wider text-[#e5e4e2]/60">
-            2024 / MAVINCI EVENT & ART
-          </div>
-        </div>
-      </div>
-
-      {/* STRONA 2 – O NAS */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-2"></div>
-        <div className="decorative-shape shape-4"></div>
-        <div className="decorative-shape shape-6"></div>
-
-        <div className="mx-auto max-w-4xl space-y-12">
-          <div className="space-y-4 text-center">
-            <h2 className="text-5xl font-bold text-[#e5e4e2]">Mavinci Event & Art</h2>
-            <div className="mx-auto h-1 w-24 bg-[#d3bb73]" />
-            <p className="text-xl text-[#d3bb73]">Profesjonalna obsługa techniczna wydarzeń</p>
-          </div>
-
-          <div className="my-12 grid grid-cols-3 gap-8">
-            <div className="space-y-3 text-center">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#d3bb73]">
-                <Award className="h-10 w-10 text-[#1c1f33]" />
-              </div>
-              <h3 className="text-3xl font-bold text-[#e5e4e2]">15+</h3>
-              <p className="font-medium text-[#e5e4e2]/70">Lat doświadczenia</p>
-            </div>
-            <div className="space-y-3 text-center">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#d3bb73]">
-                <Users className="h-10 w-10 text-[#1c1f33]" />
-              </div>
-              <h3 className="text-3xl font-bold text-[#e5e4e2]">500+</h3>
-              <p className="font-medium text-[#e5e4e2]/70">Zrealizowanych eventów</p>
-            </div>
-            <div className="space-y-3 text-center">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#d3bb73]">
-                <Sparkles className="h-10 w-10 text-[#1c1f33]" />
-              </div>
-              <h3 className="text-3xl font-bold text-[#e5e4e2]">Premium</h3>
-              <p className="font-medium text-[#e5e4e2]/70">Sprzęt i obsługa</p>
-            </div>
-          </div>
-
-          <div className="space-y-6 rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33]/90 p-10 shadow-xl">
-            <p className="text-xl leading-relaxed text-[#e5e4e2]/90">
-              Mavinci Event & Art to zespół specjalistów z pasją do perfekcji.
-              Realizujemy konferencje, gale, koncerty i wydarzenia korporacyjne
-              na najwyższym poziomie. Łączymy nowoczesny sprzęt z wieloletnim
-              doświadczeniem i dbałością o każdy detal.
-            </p>
-            <p className="text-xl leading-relaxed text-[#e5e4e2]/90">
-              Pracujemy w najlepszych hotelach, centrach konferencyjnych i przestrzeniach
-              eventowych w Polsce. Nasi klienci to firmy z sektora premium, które
-              oczekują nie tylko sprawnej techniki, ale także kultury obsługi
-              i zrozumienia dla specyfiki prestiżowych wydarzeń.
-            </p>
-          </div>
-
-          <div className="mt-12 grid grid-cols-2 gap-6">
-            <img
-              src="https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg?auto=compress&cs=tinysrgb&w=800"
-              alt="Konferencja Mavinci"
-              className="h-64 w-full rounded-xl object-cover shadow-lg"
-            />
-            <img
-              src="https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=800"
-              alt="Event Mavinci"
-              className="h-64 w-full rounded-xl object-cover shadow-lg"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* STRONA 3 – NAGŁOŚNIENIE */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16]">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-1"></div>
-        <div className="decorative-shape shape-3"></div>
-        <div className="decorative-shape shape-6"></div>
-
-        <div className="mx-auto max-w-4xl space-y-10">
-          <div className="space-y-4 text-center">
-            <div className="flex items-center justify-center gap-4">
-              <div className="h-px w-16 bg-[#d3bb73]" />
-              <Mic2 className="h-12 w-12 text-[#d3bb73]" />
-              <div className="h-px w-16 bg-[#d3bb73]" />
-            </div>
-            <h2 className="text-5xl font-bold text-[#e5e4e2]">Nagłośnienie</h2>
-            <p className="text-xl text-[#e5e4e2]/70">
-              Krystalicznie czysty dźwięk – od konferencji po koncert
-            </p>
-          </div>
-
-          <div className="mb-10 grid grid-cols-2 gap-6">
-            <img
-              src="https://images.pexels.com/photos/442540/pexels-photo-442540.jpeg?auto=compress&cs=tinysrgb&w=800"
-              alt="Sprzęt nagłośnieniowy Mavinci"
-              className="h-80 w-full rounded-xl object-cover shadow-2xl"
-            />
-            <img
-              src="https://images.pexels.com/photos/1626481/pexels-photo-1626481.jpeg?auto=compress&cs=tinysrgb&w=800"
-              alt="Konsoleta mikserska"
-              className="h-80 w-full rounded-xl object-cover shadow-2xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-8">
-            <div className="space-y-4 rounded-xl border border-[#d3bb73]/30 bg-[#151827]/90 p-8 backdrop-blur">
-              <h3 className="text-2xl font-bold text-[#d3bb73]">
-                Systemy audio premium
-              </h3>
-              <ul className="space-y-3 text-lg text-[#e5e4e2]/80">
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Line array najwyższej klasy – czytelny dźwięk dla 50-5000 osób</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Subbasy i systemy niskotonowe – potężny bas bez przesterowań</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Monitory sceniczne i in-ear dla artystów</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Systemy strefowe, delay, front fill – pokrycie całej sali</span>
-                </li>
-              </ul>
-            </div>
-
-            <div className="space-y-4 rounded-xl border border-[#d3bb73]/30 bg-[#151827]/90 p-8 backdrop-blur">
-              <h3 className="text-2xl font-bold text-[#d3bb73]">
-                Mikrofony i realizacja
-              </h3>
-              <ul className="space-y-3 text-lg text-[#e5e4e2]/80">
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Mikrofony bezprzewodowe Shure, Sennheiser – handheld, headset, lav</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Mikrofony studyjne do instrumentów i nagrań</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Konsole cyfrowe 32-64 kanały (Yamaha, Allen & Heath)</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 text-[#d3bb73]">•</span>
-                  <span>Realizatorzy dźwięku z wieloletnim doświadczeniem</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-[#d3bb73]/40 bg-[#1c1f33]/80 p-8">
-            <p className="text-center text-lg leading-relaxed text-[#e5e4e2]">
-              <span className="font-bold text-[#d3bb73]">
-                Doświadczeni realizatorzy
-              </span>{' '}
-              dbają o perfekcyjne brzmienie – od pierwszej próby mikrofonu
-              po ostatni akord finałowego show.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* STRONA 4 – OŚWIETLENIE */}
-      <div className="brochure-page page-break bg-[#05060a]">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-2"></div>
-        <div className="decorative-shape shape-4"></div>
-        <div className="decorative-shape shape-5"></div>
-
-        <div className="mx-auto max-w-4xl space-y-10">
-          <div className="space-y-4 text-center">
-            <div className="flex items-center justify-center gap-4">
-              <div className="h-px w-16 bg-[#d3bb73]" />
-              <Lightbulb className="h-12 w-12 text-[#d3bb73]" />
-              <div className="h-px w-16 bg-[#d3bb73]" />
-            </div>
-            <h2 className="text-5xl font-bold text-[#e5e4e2]">Oświetlenie</h2>
-            <p className="text-xl text-[#e5e4e2]/70">
-              Światło, które tworzy atmosferę i buduje emocje
-            </p>
-          </div>
-
-          <div className="my-10 grid grid-cols-3 gap-6">
-            <img
-              src="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=600"
-              alt="Oświetlenie sceniczne Mavinci"
-              className="h-56 w-full rounded-xl object-cover shadow-2xl"
-            />
-            <img
-              src="https://images.pexels.com/photos/1763067/pexels-photo-1763067.jpeg?auto=compress&cs=tinysrgb&w=600"
-              alt="Light show"
-              className="h-56 w-full rounded-xl object-cover shadow-2xl"
-            />
-            <img
-              src="https://images.pexels.com/photos/1160993/pexels-photo-1160993.jpeg?auto=compress&cs=tinysrgb&w=600"
-              alt="Stage lights"
-              className="h-56 w-full rounded-xl object-cover shadow-2xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-8">
-            <div className="space-y-6">
-              <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#29163b] via-[#1c1f33] to-[#29163b] p-8">
-                <h3 className="text-2xl font-bold text-[#d3bb73]">
-                  Oświetlenie sceniczne
-                </h3>
-                <ul className="space-y-3 text-lg text-[#e5e4e2]/80">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Ruchome głowy LED – pełne spektrum kolorów RGB/RGBW</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>LED PAR i bary – równomierne wash sceny i sali</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Profilowe reflektory, beam lights, spot lights</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Uplighty architektoniczne dla przestrzeni i elewacji</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#0c2738] via-[#1c1f33] to-[#0c2738] p-8">
-                <h3 className="text-2xl font-bold text-[#d3bb73]">
-                  Efekty specjalne
-                </h3>
-                <ul className="space-y-3 text-lg text-[#e5e4e2]/80">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Lasery RGB, projekcje gobo z logo klienta</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Ciężki dym na wejścia, finały i momenty kluczowe</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Hazer do plastyki światła i atmosfery</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#402019] via-[#1c1f33] to-[#402019] p-8">
-                <h3 className="text-2xl font-bold text-[#d3bb73]">Sterowanie</h3>
-                <ul className="space-y-3 text-lg text-[#e5e4e2]/80">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Konsole oświetleniowe DMX – pełna kontrola show</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Preprogramowane scenariusze dopasowane do eventu</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Synchronizacja światła z dźwiękiem i wideo</span>
-                  </li>
-                </ul>
-              </div>
-
-              <img
-                src="https://images.pexels.com/photos/1047442/pexels-photo-1047442.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="Light control"
-                className="h-64 w-full rounded-xl object-cover shadow-2xl"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* STRONA 5 – SCENA & MULTIMEDIA */}
-      <div className="brochure-page page-break bg-[#0b0d16]">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-1"></div>
-        <div className="decorative-shape shape-3"></div>
-        <div className="decorative-shape shape-6"></div>
-
-        <div className="mx-auto max-w-4xl space-y-10">
-          <div className="space-y-4 text-center">
-            <div className="flex items-center justify-center gap-4">
-              <div className="h-px w-16 bg-[#d3bb73]" />
-              <Music className="h-12 w-12 text-[#d3bb73]" />
-              <div className="h-px w-16 bg-[#d3bb73]" />
-            </div>
-            <h2 className="text-5xl font-bold text-[#e5e4e2]">Scena & Multimedia</h2>
-            <p className="text-xl text-[#e5e4e2]/70">
-              Solidna podstawa i nowoczesne rozwiązania AV
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-8">
-            <div className="space-y-6">
-              <div className="space-y-4 rounded-xl border border-[#2b304a] bg-[#151827] p-8">
-                <div className="flex items-center gap-3">
-                  <Music className="h-8 w-8 text-[#d3bb73]" />
-                  <h3 className="text-2xl font-bold text-[#d3bb73]">
-                    Konstrukcje sceniczne
-                  </h3>
-                </div>
-                <ul className="space-y-3 text-lg text-[#e5e4e2]/80">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Sceny modułowe od 4×3 m do dużych konstrukcji</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Zadaszenia i konstrukcje trussowe – bezpieczne i stabilne</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Podesty, risery, schody, rampy</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Wykończenia: wykładziny, listwy, blackbox</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="space-y-4 rounded-xl border border-[#2b304a] bg-[#151827] p-8">
-                <div className="flex items-center gap-3">
-                  <Tv className="h-8 w-8 text-[#d3bb73]" />
-                  <h3 className="text-2xl font-bold text-[#d3bb73]">
-                    Multimedia & LED
-                  </h3>
-                </div>
-                <ul className="space-y-3 text-lg text-[#e5e4e2]/80">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Projektory Full HD i 4K – prezentacje premium</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Ekrany LED modułowe – żywy obraz na żywo</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Kamery i realizacja wideo live</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 text-[#d3bb73]">•</span>
-                    <span>Streaming online i nagrania eventów</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <img
-                src="https://images.pexels.com/photos/1916824/pexels-photo-1916824.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="Konstrukcja sceniczna"
-                className="h-72 w-full rounded-xl object-cover shadow-2xl"
-              />
-              <img
-                src="https://images.pexels.com/photos/2147029/pexels-photo-2147029.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="LED screen"
-                className="h-64 w-full rounded-xl object-cover shadow-2xl"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* STRONA 6 – REALIZACJE */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0b0d16] via-[#1c1f33] to-[#0b0d16]">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-2"></div>
-        <div className="decorative-shape shape-4"></div>
-        <div className="decorative-shape shape-5"></div>
-
-        <div className="mx-auto max-w-4xl space-y-10">
-          <div className="space-y-4 text-center">
-            <h2 className="text-5xl font-bold text-[#e5e4e2]">Nasze realizacje</h2>
-            <div className="mx-auto h-1 w-24 bg-[#d3bb73]" />
-            <p className="text-xl text-[#e5e4e2]/70">
-              Wybrane projekty z portfolio Mavinci
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-6">
-            <div className="group relative overflow-hidden rounded-xl shadow-2xl">
-              <img
-                src="https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="Konferencja korporacyjna"
-                className="h-64 w-full transform object-cover transition-transform duration-500 group-hover:scale-110"
-              />
-              <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 to-transparent p-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                    Konferencja Tech Summit
-                  </h3>
-                  <p className="text-[#e5e4e2]/80">
-                    500 uczestników • full HD streaming • 3 sale równolegle
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="group relative overflow-hidden rounded-xl shadow-2xl">
-              <img
-                src="https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="Gala firmowa"
-                className="h-64 w-full transform object-cover transition-transform duration-500 group-hover:scale-110"
-              />
-              <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 to-transparent p-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                    Gala jubileuszowa
-                  </h3>
-                  <p className="text-[#e5e4e2]/80">
-                    Elegancka oprawa • light show • live band
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="group relative overflow-hidden rounded-xl shadow-2xl">
-              <img
-                src="https://images.pexels.com/photos/1190298/pexels-photo-1190298.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="Premiera produktu"
-                className="h-64 w-full transform object-cover transition-transform duration-500 group-hover:scale-110"
-              />
-              <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 to-transparent p-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                    Premiera produktu
-                  </h3>
-                  <p className="text-[#e5e4e2]/80">
-                    Brand activation • multimedia • VIP guests
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="group relative overflow-hidden rounded-xl shadow-2xl">
-              <img
-                src="https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="Koncert plenerowy"
-                className="h-64 w-full transform object-cover transition-transform duration-500 group-hover:scale-110"
-              />
-              <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 to-transparent p-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                    Festiwal miejski
-                  </h3>
-                  <p className="text-[#e5e4e2]/80">
-                    Outdoor stage • 2000+ attendees • full production
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-10 grid grid-cols-3 gap-6">
-            <img
-              src="https://images.pexels.com/photos/1763067/pexels-photo-1763067.jpeg?auto=compress&cs=tinysrgb&w=600"
-              alt="Detail 1"
-              className="h-48 w-full rounded-xl object-cover shadow-xl"
-            />
-            <img
-              src="https://images.pexels.com/photos/1160993/pexels-photo-1160993.jpeg?auto=compress&cs=tinysrgb&w=600"
-              alt="Detail 2"
-              className="h-48 w-full rounded-xl object-cover shadow-xl"
-            />
-            <img
-              src="https://images.pexels.com/photos/1677710/pexels-photo-1677710.jpeg?auto=compress&cs=tinysrgb&w=600"
-              alt="Detail 3"
-              className="h-48 w-full rounded-xl object-cover shadow-xl"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* STRONA 7 – USŁUGI */}
-      <div className="brochure-page page-break bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-1"></div>
-        <div className="decorative-shape shape-3"></div>
-        <div className="decorative-shape shape-6"></div>
-
-        <div className="mx-auto max-w-4xl space-y-12">
-          <div className="space-y-4 text-center">
-            <h2 className="text-5xl font-bold text-[#e5e4e2]">
-              Nasze usługi
-            </h2>
-            <div className="mx-auto h-1 w-24 bg-[#d3bb73]" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-8">
-            <div className="space-y-4 rounded-2xl border-2 border-[#d3bb73]/30 bg-[#1c1f33]/90 p-8 shadow-xl">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]">
-                <Users className="h-8 w-8 text-[#1c1f33]" />
-              </div>
-              <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                Konferencje biznesowe
-              </h3>
-              <p className="text-lg leading-relaxed text-[#e5e4e2]/80">
-                Kompleksowa obsługa techniczna konferencji, seminariów i szkoleń.
-                Nagłośnienie sali, prezentacje multimedia, transmisje online.
-              </p>
-            </div>
-
-            <div className="space-y-4 rounded-2xl border-2 border-[#d3bb73]/30 bg-[#1c1f33]/90 p-8 shadow-xl">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]">
-                <Award className="h-8 w-8 text-[#1c1f33]" />
-              </div>
-              <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                Gale i eventy premium
-              </h3>
-              <p className="text-lg leading-relaxed text-[#e5e4e2]/80">
-                Elegancka oprawa techniczna gal, jubileuszy i wydarzeń VIP.
-                Światło, dźwięk i scenografia na najwyższym poziomie.
-              </p>
-            </div>
-
-            <div className="space-y-4 rounded-2xl border-2 border-[#d3bb73]/30 bg-[#1c1f33]/90 p-8 shadow-xl">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]">
-                <Music className="h-8 w-8 text-[#1c1f33]" />
-              </div>
-              <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                Koncerty i festiwale
-              </h3>
-              <p className="text-lg leading-relaxed text-[#e5e4e2]/80">
-                Pełna produkcja techniczna koncertów – od klubowych po festiwalowe.
-                Line array, stage, lighting design, realizacja dźwięku.
-              </p>
-            </div>
-
-            <div className="space-y-4 rounded-2xl border-2 border-[#d3bb73]/30 bg-[#1c1f33]/90 p-8 shadow-xl">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]">
-                <Gauge className="h-8 w-8 text-[#1c1f33]" />
-              </div>
-              <h3 className="text-2xl font-bold text-[#e5e4e2]">
-                Wynajem sprzętu
-              </h3>
-              <p className="text-lg leading-relaxed text-[#e5e4e2]/80">
-                Profesjonalny sprzęt audio, lighting i video w opcji dry hire
-                lub z obsługą techniczną i realizatorem.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] p-10 shadow-2xl">
-            <h3 className="mb-6 text-3xl font-bold text-[#1c1f33]">
-              Dlaczego Mavinci?
-            </h3>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-[#1c1f33]" />
-                  <p className="text-lg text-[#1c1f33]">15+ lat doświadczenia w branży eventowej</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-[#1c1f33]" />
-                  <p className="text-lg text-[#1c1f33]">Sprzęt premium renomowanych marek</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-[#1c1f33]" />
-                  <p className="text-lg text-[#1c1f33]">Doświadczeni realizatorzy i technicy</p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-[#1c1f33]" />
-                  <p className="text-lg text-[#1c1f33]">Kultura obsługi klienta premium</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-[#1c1f33]" />
-                  <p className="text-lg text-[#1c1f33]">Elastyczność i indywidualne podejście</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-[#1c1f33]" />
-                  <p className="text-lg text-[#1c1f33]">Bezpieczeństwo i powtarzalna jakość</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* STRONA 8 – KONTAKT */}
-      <div className="brochure-page bg-gradient-to-br from-[#0f1119] via-[#1c1f33] to-[#0f1119]">
-        {/* Decorative Shapes */}
-        <div className="decorative-shape shape-2"></div>
-        <div className="decorative-shape shape-4"></div>
-        <div className="decorative-shape shape-5"></div>
-
-        <div className="max-w-4xl mx-auto space-y-12 h-full flex flex-col justify-between">
-          <div className="text-center space-y-4">
-            <h2 className="text-5xl font-bold text-[#e5e4e2]">Kontakt</h2>
-            <div className="h-1 w-24 bg-[#d3bb73] mx-auto"></div>
-            <p className="text-xl text-[#e5e4e2]/70">Porozmawiajmy o Twoim projekcie</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-12">
-            <div className="space-y-8">
-              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-2xl p-8 border border-[#d3bb73]/30">
-                <h3 className="text-2xl font-bold text-[#d3bb73] mb-6">Dane kontaktowe</h3>
-
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center z-10 px-12">
                 <div className="space-y-6">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Phone className="w-6 h-6 text-[#d3bb73]" />
-                    </div>
-                    <div>
-                      <p className="text-[#e5e4e2]/60 text-sm mb-1">Telefon</p>
-                      <p className="text-[#e5e4e2] text-xl font-semibold">+48 123 456 789</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Mail className="w-6 h-6 text-[#d3bb73]" />
-                    </div>
-                    <div>
-                      <p className="text-[#e5e4e2]/60 text-sm mb-1">Email</p>
-                      <p className="text-[#e5e4e2] text-xl font-semibold">kontakt@mavinci.pl</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-full flex items-center justify-center flex-shrink-0">
-                      <MapPin className="w-6 h-6 text-[#d3bb73]" />
-                    </div>
-                    <div>
-                      <p className="text-[#e5e4e2]/60 text-sm mb-1">Biuro</p>
-                      <p className="text-[#e5e4e2] text-xl font-semibold">Polska</p>
-                      <p className="text-[#e5e4e2]/80 text-lg">Działamy w całym kraju</p>
-                    </div>
-                  </div>
+                  <h1 className="text-7xl font-black tracking-tight">
+                    {renderEditableText('title', 'Technika Estradowa', 'text-7xl font-black tracking-tight bg-gradient-to-r from-[#d3bb73] via-[#e5d5a0] to-[#d3bb73] bg-clip-text text-transparent', false)}
+                  </h1>
+                  <div className="h-1 w-48 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
+                  <h2 className="text-4xl font-light tracking-widest uppercase">
+                    {renderEditableText('subtitle', 'Premium', 'text-4xl font-light tracking-widest uppercase text-[#e5e4e2]', false)}
+                  </h2>
+                  <p className="text-xl text-[#e5e4e2]/90 max-w-3xl mx-auto leading-relaxed">
+                    {renderEditableText('description', 'Twórz niezapomniane wydarzenia z najlepszym sprzętem scenicznym i profesjonalną obsługą techniczną', 'text-xl text-[#e5e4e2]/90', true)}
+                  </p>
                 </div>
               </div>
-
-              <div className="bg-gradient-to-br from-[#d3bb73] to-[#c1a85f] rounded-2xl p-8 text-center">
-                <p className="text-[#1c1f33] text-lg font-bold mb-2">Dostępność 24/7</p>
-                <p className="text-[#1c1f33]/90">W przypadku pilnych zleceń jesteśmy do dyspozycji</p>
-              </div>
             </div>
 
-            <div className="flex flex-col justify-center space-y-8">
-              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-xl p-8 border border-[#d3bb73]/30">
-                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">Mavinci Event & Art</h3>
-                <p className="text-[#d3bb73] text-lg font-semibold mb-4">Profesjonalna obsługa techniczna eventów</p>
-                <p className="text-[#e5e4e2]/80 leading-relaxed mb-6">
-                  Od ponad 15 lat realizujemy wydarzenia na najwyższym poziomie.
-                  Konferencje, gale, koncerty i eventy korporacyjne – każdy projekt
-                  traktujemy indywidualnie i z pełnym zaangażowaniem.
-                </p>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-[#e5e4e2]/80">
-                    <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                    <span>Nagłośnienie premium</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-[#e5e4e2]/80">
-                    <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                    <span>Oświetlenie sceniczne i architektoniczne</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-[#e5e4e2]/80">
-                    <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                    <span>Konstrukcje sceniczne i multimedia</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-[#e5e4e2]/80">
-                    <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                    <span>Realizacja i streaming online</span>
-                  </div>
+            {/* Services Grid */}
+            <div className="grid grid-cols-3 gap-6">
+              {[
+                { icon: '🎵', titleKey: 'sound_title', descKey: 'sound_desc', defaultTitle: 'Nagłośnienie', defaultDesc: 'Systemy line array premium, mikrofony bezprzewodowe najwyższej klasy, cyfrowe konsole mikserskie' },
+                { icon: '💡', titleKey: 'light_title', descKey: 'light_desc', defaultTitle: 'Oświetlenie', defaultDesc: 'Inteligentne reflektory LED, lasery i efekty specjalne, sterowanie DMX i Art-Net' },
+                { icon: '📺', titleKey: 'led_title', descKey: 'led_desc', defaultTitle: 'Ekrany LED', defaultDesc: 'Ekrany wewnętrzne i zewnętrzne HD, modułowa konstrukcja, pełna obsługa techniczna' },
+                { icon: '🎭', titleKey: 'stage_title', descKey: 'stage_desc', defaultTitle: 'Scena i konstrukcje', defaultDesc: 'Podesty sceniczne, konstrukcje aluminiowe, dekoracje i zabudowy sceniczne' },
+                { icon: '🎬', titleKey: 'streaming_title', descKey: 'streaming_desc', defaultTitle: 'Realizacja i Streaming', defaultDesc: 'Kamery 4K, reżyseria obrazu, transmisje live, nagrania HD' },
+                { icon: '⚡', titleKey: 'power_title', descKey: 'power_desc', defaultTitle: 'Zasilanie i dystrybucja', defaultDesc: 'Agregaty prądotwórcze, systemy UPS, profesjonalna dystrybucja energii' },
+              ].map((service, idx) => (
+                <div key={idx} className="bg-[#1c1f33]/80 backdrop-blur rounded-2xl p-6 border border-[#d3bb73]/30 hover:border-[#d3bb73]/50 transition-all duration-300 hover:transform hover:scale-105 hover:shadow-xl hover:shadow-[#d3bb73]/20">
+                  <div className="text-5xl mb-4 filter drop-shadow-lg">{service.icon}</div>
+                  <h3 className="text-xl font-bold text-[#d3bb73] mb-3">
+                    {renderEditableText(service.titleKey, service.defaultTitle, 'text-xl font-bold text-[#d3bb73]', false)}
+                  </h3>
+                  <p className="text-[#e5e4e2]/80 text-sm leading-relaxed">
+                    {renderEditableText(service.descKey, service.defaultDesc, 'text-[#e5e4e2]/80 text-sm', true)}
+                  </p>
                 </div>
-              </div>
-
-              <img
-                src="https://images.pexels.com/photos/2182970/pexels-photo-2182970.jpeg?auto=compress&cs=tinysrgb&w=800"
-                alt="Mavinci team"
-                className="w-full h-64 object-cover rounded-2xl shadow-2xl"
-              />
+              ))}
             </div>
-          </div>
-
-          <div className="text-center space-y-4 pt-8 border-t border-[#d3bb73]/20">
-            <div className="flex items-center justify-center gap-4">
-              <img
-                src="/logo mavinci-simple.svg"
-                alt="Mavinci Logo"
-                className="h-12 w-12"
-              />
-            
-            </div>
-            <p className="text-[#e5e4e2]/60">www.mavinci.pl</p>
           </div>
         </div>
-      </div>
+
+        {/* Page 2: Contact */}
+        <div className="brochure-page">
+          <div className="decorative-shape shape-4"></div>
+          <div className="decorative-shape shape-5"></div>
+          <div className="decorative-shape shape-6"></div>
+
+          <div className="brochure-content-wrapper justify-center">
+            <div className="text-center mb-12">
+              <h2 className="text-5xl font-bold text-[#d3bb73] mb-4">
+                {renderEditableText('contact_title', 'Skontaktuj się z nami', 'text-5xl font-bold text-[#d3bb73]', false)}
+              </h2>
+              <p className="text-xl text-[#e5e4e2]/70">
+                {renderEditableText('contact_subtitle', 'Porozmawiajmy o Twoim projekcie', 'text-xl text-[#e5e4e2]/70', false)}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-12">
+              <div className="space-y-8">
+                <div className="bg-[#1c1f33]/80 backdrop-blur rounded-2xl p-8 border border-[#d3bb73]/30">
+                  <h3 className="text-2xl font-bold text-[#d3bb73] mb-6">Dane kontaktowe</h3>
+
+                  <div className="space-y-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Phone className="w-6 h-6 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <p className="text-[#e5e4e2]/60 text-sm mb-1">Telefon</p>
+                        <p className="text-[#e5e4e2] text-xl font-semibold">{getEmployeePhone()}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Mail className="w-6 h-6 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <p className="text-[#e5e4e2]/60 text-sm mb-1">Email</p>
+                        <p className="text-[#e5e4e2] text-xl font-semibold">{getEmployeeEmail()}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-full flex items-center justify-center flex-shrink-0">
+                        <MapPin className="w-6 h-6 text-[#d3bb73]" />
+                      </div>
+                      <div>
+                        <p className="text-[#e5e4e2]/60 text-sm mb-1">Biuro</p>
+                        <p className="text-[#e5e4e2] text-xl font-semibold">
+                          {renderEditableText('location', 'Polska', 'text-[#e5e4e2] text-xl font-semibold', false)}
+                        </p>
+                        <p className="text-[#e5e4e2]/80 text-lg">
+                          {renderEditableText('location_desc', 'Działamy w całym kraju', 'text-[#e5e4e2]/80 text-lg', false)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-[#d3bb73] to-[#c1a85f] rounded-2xl p-8 text-center">
+                  <p className="text-[#1c1f33] text-lg font-bold mb-2">
+                    {renderEditableText('availability_title', 'Dostępność 24/7', 'text-[#1c1f33] text-lg font-bold', false)}
+                  </p>
+                  <p className="text-[#1c1f33]/90">
+                    {renderEditableText('availability_desc', 'W przypadku pilnych zleceń jesteśmy do dyspozycji', 'text-[#1c1f33]/90', false)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col justify-center space-y-8">
+                {employee ? (
+                  <div className="bg-[#1c1f33]/80 backdrop-blur rounded-2xl p-8 border border-[#d3bb73]/30 text-center space-y-6">
+                    {employee.avatar_url && (
+                      <img
+                        src={employee.avatar_url}
+                        alt={`${employee.name} ${employee.surname}`}
+                        className="w-48 h-48 rounded-full object-cover mx-auto border-4 border-[#d3bb73]/40 shadow-2xl"
+                      />
+                    )}
+                    <div>
+                      <h3 className="text-3xl font-bold text-[#e5e4e2] mb-2">
+                        {employee.name} {employee.surname}
+                      </h3>
+                      {employee.position && (
+                        <p className="text-[#d3bb73] text-xl font-semibold">{employee.position}</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-[#1c1f33]/80 backdrop-blur rounded-xl p-8 border border-[#d3bb73]/30">
+                    <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">
+                      {renderEditableText('company_name', 'Mavinci Event & Art', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                    </h3>
+                    <p className="text-[#d3bb73] text-lg font-semibold mb-4">
+                      {renderEditableText('company_tagline', 'Profesjonalna obsługa techniczna eventów', 'text-[#d3bb73] text-lg font-semibold', false)}
+                    </p>
+                    <p className="text-[#e5e4e2]/80 leading-relaxed mb-6">
+                      {renderEditableText('company_desc', 'Od ponad 15 lat realizujemy wydarzenia na najwyższym poziomie. Konferencje, gale, koncerty i eventy korporacyjne – każdy projekt traktujemy indywidualnie i z pełnym zaangażowaniem.', 'text-[#e5e4e2]/80 leading-relaxed', true)}
+                    </p>
+                    <div className="space-y-3">
+                      {['feature_1', 'feature_2', 'feature_3', 'feature_4'].map((key, idx) => {
+                        const defaults = [
+                          'Nagłośnienie premium',
+                          'Oświetlenie sceniczne i architektoniczne',
+                          'Konstrukcje sceniczne i multimedia',
+                          'Realizacja i streaming online'
+                        ];
+                        return (
+                          <div key={key} className="flex items-center gap-3 text-[#e5e4e2]/80">
+                            <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
+                            {renderEditableText(key, defaults[idx], 'text-[#e5e4e2]/80', false)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {renderEditableImage('contact', 0, 'w-full h-64 object-cover rounded-2xl shadow-2xl', 'Mavinci team')}
+              </div>
+            </div>
+
+            <div className="text-center space-y-4 pt-8 border-t border-[#d3bb73]/20 mt-12">
+              <div className="flex items-center justify-center gap-4">
+                <img
+                  src="/logo mavinci-simple.svg"
+                  alt="Mavinci Logo"
+                  className="h-12 w-12"
+                />
+              </div>
+              <p className="text-[#e5e4e2]/60">www.mavinci.pl</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
