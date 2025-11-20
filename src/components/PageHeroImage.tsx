@@ -92,14 +92,12 @@ export function PageHeroImage({
     setEditState(s => ({ ...s, posX: position.posX, posY: position.posY, scale: position.scale }));
   };
 
-  const handleSaveOpacity = () => {
+  const handleSaveOpacity = async () => {
+    console.log('[PageHeroImage] handleSaveOpacity - editState.opacity:', editState.opacity);
     setOpacity(editState.opacity);
-    // saveOpacity will be called after setOpacity updates the hook state
-    setTimeout(async () => {
-      await saveOpacity();
-      setIsEditingOpacity(false);
-      setOpacitySubMenu(false);
-    }, 0);
+    await saveOpacity(editState.opacity);
+    setIsEditingOpacity(false);
+    setOpacitySubMenu(false);
   };
 
   const handleSavePosition = () => {

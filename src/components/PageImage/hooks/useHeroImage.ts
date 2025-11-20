@@ -40,7 +40,7 @@ interface UseHeroImageReturn {
   // operacje na bazie
   reload: () => Promise<void>;
   savePosition: () => Promise<void>;
-  saveOpacity: () => Promise<void>;
+  saveOpacity: (opacityValue?: number) => Promise<void>;
   uploadHeroImage: (file: File) => Promise<void>;
   resetPosition: () => Promise<void>;
   deleteHeroImage: () => Promise<void>;
@@ -326,7 +326,9 @@ export function useHeroImage(
     }
   }, [section, siteImage, desktopPosition, mobilePosition, opacity, defaultImage, getTableName, loadImage, showSnackbar]);
 
-  const saveOpacity = useCallback(async () => {
+  const saveOpacity = useCallback(async (opacityValue?: number) => {
+    const valueToSave = opacityValue ?? opacity;
+    console.log('[useHeroImage] saveOpacity called with opacity:', valueToSave);
     setSaving(true);
     const pageTableName = getTableName(section);
 
@@ -341,13 +343,14 @@ export function useHeroImage(
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           if (!existing) {
+            console.log('[useHeroImage] Creating new record with opacity:', valueToSave);
             const { error } = await supabase.from(pageTableName).insert({
               section: 'hero',
               name: `Hero ${section}`,
               description: `Hero image for ${section} page`,
               image_url: siteImage?.desktop_url || defaultImage,
               alt_text: section,
-              opacity,
+              opacity: valueToSave,
               image_metadata: {
                 desktop: {
                   position: { posX: 0, posY: 0, scale: 1 },
@@ -361,10 +364,11 @@ export function useHeroImage(
             });
             if (error) throw error;
           } else {
+            console.log('[useHeroImage] Updating existing record with opacity:', valueToSave);
             const { error } = await supabase
               .from(pageTableName)
               .update({
-                opacity,
+                opacity: valueToSave,
               })
               .eq('section', 'hero');
             if (error) throw error;
@@ -388,7 +392,7 @@ export function useHeroImage(
             description: `Hero image for ${section} page`,
             desktop_url: defaultImage,
             alt_text: section,
-            opacity,
+            opacity: valueToSave,
             image_metadata: {
               desktop: {
                 src: defaultImage,
@@ -410,7 +414,7 @@ export function useHeroImage(
       } else {
         const { error } = await supabase
           .from('site_images')
-          .update({ opacity })
+          .update({ opacity: valueToSave })
           .eq('id', siteImage.id);
 
         if (error) throw error;
