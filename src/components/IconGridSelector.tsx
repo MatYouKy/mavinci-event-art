@@ -56,8 +56,8 @@ export function IconGridSelector({ value, onChange, label }: IconGridSelectorPro
   return (
     <div className="space-y-2">
       {label && <label className="block text-sm text-[#e5e4e2]/70">{label}</label>}
-      <div className="max-h-[400px] overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-4">
-        <div className="grid grid-cols-4 gap-3">
+      <div className="max-h-[240px] overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-3">
+        <div className="grid grid-cols-8 gap-2">
           {icons.map((icon) => {
             const isSelected = value === icon.id;
             return (
@@ -65,7 +65,7 @@ export function IconGridSelector({ value, onChange, label }: IconGridSelectorPro
                 key={icon.id}
                 type="button"
                 onClick={() => onChange(icon.id)}
-                className={`group relative flex flex-col items-center gap-2 rounded-lg border p-4 transition-all hover:scale-105 ${
+                className={`group relative flex items-center justify-center rounded-lg border p-2 transition-all hover:scale-110 ${
                   isSelected
                     ? 'border-[#d3bb73] bg-[#d3bb73]/10'
                     : 'border-[#d3bb73]/20 bg-[#0f1119] hover:border-[#d3bb73]/50'
@@ -73,23 +73,16 @@ export function IconGridSelector({ value, onChange, label }: IconGridSelectorPro
                 title={icon.name}
               >
                 {isSelected && (
-                  <div className="absolute right-1 top-1 rounded-full bg-[#d3bb73] p-0.5">
-                    <Check className="h-3 w-3 text-[#1c1f33]" />
+                  <div className="absolute -right-1 -top-1 rounded-full bg-[#d3bb73] p-0.5">
+                    <Check className="h-2.5 w-2.5 text-[#1c1f33]" />
                   </div>
                 )}
                 <div
-                  className={`h-8 w-8 transition-colors ${
+                  className={`h-5 w-5 transition-colors ${
                     isSelected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/70 group-hover:text-[#d3bb73]'
                   }`}
                   dangerouslySetInnerHTML={{ __html: icon.svg_code }}
                 />
-                <span
-                  className={`text-center text-xs transition-colors ${
-                    isSelected ? 'font-medium text-[#d3bb73]' : 'text-[#e5e4e2]/50 group-hover:text-[#e5e4e2]/70'
-                  }`}
-                >
-                  {icon.name}
-                </span>
               </button>
             );
           })}

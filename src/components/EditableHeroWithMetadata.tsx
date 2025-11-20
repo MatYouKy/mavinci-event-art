@@ -56,6 +56,15 @@ export default function EditableHeroWithMetadata({
   const [buttonText, setButtonText] = useState(initialButtonText);
   const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
 
+  useEffect(() => {
+    setTitle(initialTitle);
+    setDescription(initialDescription);
+    setLabelText(initialLabelText);
+    setLabelIcon(initialLabelIcon);
+    setButtonText(initialButtonText);
+    setWhiteWordsCount(initialWhiteWordsCount);
+  }, [initialTitle, initialDescription, initialLabelText, initialLabelIcon, initialButtonText, initialWhiteWordsCount]);
+
   const {
     imageUrl,
     opacity,
@@ -137,23 +146,34 @@ export default function EditableHeroWithMetadata({
       setSaving(true);
       const tableName = getTableName();
 
-      await supabase
+      const dataToSave = {
+        title,
+        description,
+        label_text: labelText,
+        label_icon: labelIcon,
+        button_text: buttonText,
+        white_words_count: whiteWordsCount,
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log('Saving data:', dataToSave);
+
+      const { error } = await supabase
         .from(tableName)
-        .update({
-          title,
-          description,
-          label_text: labelText,
-          label_icon: labelIcon,
-          button_text: buttonText,
-          white_words_count: whiteWordsCount,
-          updated_at: new Date().toISOString(),
-        })
+        .update(dataToSave)
         .eq('section', 'hero');
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
       setIsEditing(false);
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
 
-      setTimeout(() => router.refresh(), 500);
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     } catch (error) {
       console.error('Error saving hero:', error);
       showSnackbar('Błąd podczas zapisywania zmian', 'error');
