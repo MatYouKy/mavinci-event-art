@@ -27,6 +27,7 @@ export default function OfferLayout({
       <div className="min-h-screen bg-[#0f1119]">
         <EditableHeroSectionServer
           section={section}
+          pageSlug={pageSlug}
           labelTag={etykieta}
           whiteWordsCount={whiteWordsCount}
           buttonText="Zobacz inne oferty"

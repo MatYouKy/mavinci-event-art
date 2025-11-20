@@ -1,8 +1,9 @@
 import { supabaseServer } from '@/lib/supabaseServer';
-import EditableHeroSectionClient from './EditableHeroSectionClient';
+import EditableHeroWithMetadata from './EditableHeroWithMetadata';
 
 interface EditableHeroSectionServerProps {
   section: string;
+  pageSlug: string;
   whiteWordsCount?: number;
   labelTag?: { title: string; icon: React.ReactNode };
   buttonText?: string;
@@ -89,6 +90,7 @@ async function getHeroImageServer(section: string) {
 
 export default async function EditableHeroSectionServer({
   section,
+  pageSlug,
   whiteWordsCount = 1,
   labelTag,
   buttonText,
@@ -96,14 +98,14 @@ export default async function EditableHeroSectionServer({
   const heroData = await getHeroImageServer(section);
 
   return (
-    <EditableHeroSectionClient
+    <EditableHeroWithMetadata
       section={section}
+      pageSlug={pageSlug}
       whiteWordsCount={whiteWordsCount}
       labelTag={labelTag}
       buttonText={buttonText}
       initialImageUrl={heroData.imageUrl}
       initialOpacity={heroData.opacity}
-      initialPosition={heroData.position}
       initialTitle={heroData.title}
       initialDescription={heroData.description}
     />
