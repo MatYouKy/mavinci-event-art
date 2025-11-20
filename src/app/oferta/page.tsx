@@ -23,6 +23,7 @@ interface Service {
   hero_image_url: string | null;
   hero_opacity: number;
   order_index: number;
+  image_metadata?: any;
 }
 
 export default function UslugiPage() {
@@ -35,14 +36,57 @@ export default function UslugiPage() {
 
   async function loadServices() {
     try {
-      const { data, error } = await supabase
-        .from('services_catalog')
-        .select('*')
-        .eq('is_active', true)
-        .order('order_index', { ascending: true });
+      const servicePages = [
+        { slug: 'naglosnienie', table: 'naglosnienie_page_images', icon: 'Mic', order: 1 },
+        { slug: 'konferencje', table: 'konferencje_page_images', icon: 'Presentation', order: 2 },
+        { slug: 'streaming', table: 'streaming_page_images', icon: 'Video', order: 3 },
+        { slug: 'symulatory-vr', table: 'symulatory-vr_page_images', icon: 'Gamepad2', order: 4 },
+        { slug: 'quizy-teleturnieje', table: 'quizy-teleturnieje_page_images', icon: 'Sparkles', order: 5 },
+        { slug: 'integracje', table: 'integracje_page_images', icon: 'Users', order: 6 },
+        { slug: 'kasyno', table: 'kasyno_page_images', icon: 'Sparkles', order: 7 },
+        { slug: 'wieczory-tematyczne', table: 'wieczory-tematyczne_page_images', icon: 'Lamp', order: 8 },
+        { slug: 'technika-sceniczna', table: 'technika-sceniczna_page_images', icon: 'Monitor', order: 9 },
+      ];
 
-      if (error) throw error;
-      setServices(data || []);
+      const servicesData: Service[] = [];
+
+      for (const page of servicePages) {
+        try {
+          const { data, error } = await supabase
+            .from(page.table)
+            .select('*')
+            .eq('section', 'hero')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (error) {
+            console.error(`Error loading ${page.table}:`, error);
+            continue;
+          }
+
+          if (data) {
+            servicesData.push({
+              id: data.id,
+              slug: page.slug,
+              title: data.title || page.slug,
+              description: data.description || '',
+              icon_name: page.icon,
+              color_from: 'blue-500/20',
+              color_to: 'blue-600/20',
+              border_color: 'border-blue-500/30',
+              hero_image_url: data.image_url,
+              hero_opacity: parseFloat(data.opacity) || 1,
+              order_index: page.order,
+              image_metadata: data.image_metadata,
+            });
+          }
+        } catch (err) {
+          console.error(`Error processing ${page.slug}:`, err);
+        }
+      }
+
+      servicesData.sort((a, b) => a.order_index - b.order_index);
+      setServices(servicesData);
     } catch (error) {
       console.error('Error loading services:', error);
     } finally {
@@ -191,6 +235,7 @@ export default function UslugiPage() {
                 borderColor={service.border_color}
                 heroImageUrl={service.hero_image_url || undefined}
                 heroOpacity={service.hero_opacity}
+                imageMetadata={service.image_metadata}
                 index={index}
               />
             ))}
