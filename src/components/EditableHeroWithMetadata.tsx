@@ -57,6 +57,12 @@ export default function EditableHeroWithMetadata({
   const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
 
   useEffect(() => {
+    console.log('[CLIENT] useEffect - syncing with initial props:', {
+      initialTitle,
+      initialLabelText,
+      initialLabelIcon,
+      initialDescription: initialDescription?.substring(0, 50),
+    });
     setTitle(initialTitle);
     setDescription(initialDescription);
     setLabelText(initialLabelText);
@@ -201,12 +207,13 @@ export default function EditableHeroWithMetadata({
         throw error;
       }
 
-      setIsEditing(false);
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
 
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      await loadCurrentData();
+
+      setIsEditing(false);
+
+      router.refresh();
     } catch (error) {
       console.error('Error saving hero:', error);
       showSnackbar('Błąd podczas zapisywania zmian', 'error');
