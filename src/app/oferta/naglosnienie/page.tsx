@@ -1,23 +1,28 @@
-import { Metadata } from 'next';
-import { Music, Volume2, Radio, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
-import { PageHeroImage } from '@/components/PageHeroImage';
-import { EditableImageSection } from '@/components/EditableImageSection';
-import { EditableContent } from '@/components/EditableContent';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+import { buildMetadataForSlug } from '@/lib/seo-helpers';
+import OfferLayout from '../OfferLayout';
 import { NaglosnieniaContent } from './NaglosnieniaContent';
-import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
-export const metadata: Metadata = {
-  title: 'Nagłośnienie Eventów | Mavinci',
-  description:
-    'Profesjonalne systemy nagłośnieniowe na eventy, koncerty i imprezy. Sprzęt najwyższej klasy z obsługą techniczną.',
-  keywords:
-    'nagłośnienie, systemy audio, sprzęt nagłaśniający, obsługa dźwięku, eventy',
-};
+const pageSlug = 'oferta/naglosnienie';
 
-export default function NaglosnieniaPage() {
+export async function generateMetadata() {
+  return buildMetadataForSlug(pageSlug);
+}
+
+export default async function Page() {
+  return (
+    <OfferLayout
+      pageSlug={pageSlug}
+      section="naglosnienie-hero"
+    >
+      <NaglosnieniaContent />
+    </OfferLayout>
+  );
+}
+
+function NaglosnieniaPageOLD() {
   const canonicalUrl = 'https://mavinci.pl/uslugi/naglosnienie';
 
   // 🔹 JSON-LD: Service + BreadcrumbList
@@ -91,13 +96,6 @@ export default function NaglosnieniaPage() {
 
   return (
     <>
-      {/* ✅ JSON-LD w klienckim komponencie (app router) */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-      />
-
-      <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
         <PageHeroImage
           section="naglosnienie-hero"
@@ -420,7 +418,6 @@ export default function NaglosnieniaPage() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   );
 }
