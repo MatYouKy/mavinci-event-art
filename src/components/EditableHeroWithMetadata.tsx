@@ -2,12 +2,13 @@
 
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { ArrowLeft, Edit, Save, X, Presentation, Video, Mic, Zap, Gamepad2, Theater, PartyPopper, Plug } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X } from 'lucide-react';
 import Link from 'next/link';
-import React, { useMemo, useState } from 'react';
-import { ServerSideHeroImage } from './ServerSideHeroImage';
+import React, { useMemo, useState, useEffect } from 'react';
+import { PageHeroImage } from './PageHeroImage';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMobile } from '@/hooks/useMobile';
+import { useHeroImage } from './PageImage/hooks/useHeroImage';
 import { supabase } from '@/lib/supabase';
 
 interface EditableHeroWithMetadataProps {
@@ -28,17 +29,11 @@ interface EditableHeroWithMetadataProps {
   initialDescription?: string;
 }
 
-const iconComponents: Record<string, React.ReactNode> = {
-  presentation: <Presentation className="w-5 h-5 text-[#d3bb73]" />,
-  video: <Video className="w-5 h-5 text-[#d3bb73]" />,
-  mic: <Mic className="w-5 h-5 text-[#d3bb73]" />,
-  casino: <Zap className="w-5 h-5 text-[#d3bb73]" />,
-  plug: <Plug className="w-5 h-5 text-[#d3bb73]" />,
-  vr: <Zap className="w-5 h-5 text-[#d3bb73]" />,
-  gamepad: <Gamepad2 className="w-5 h-5 text-[#d3bb73]" />,
-  theater: <Theater className="w-5 h-5 text-[#d3bb73]" />,
-  party: <PartyPopper className="w-5 h-5 text-[#d3bb73]" />,
-};
+interface CustomIcon {
+  id: string;
+  name: string;
+  svg_code: string;
+}
 
 export default function EditableHeroWithMetadata({
   section,
@@ -65,6 +60,18 @@ export default function EditableHeroWithMetadata({
   const [labelIcon, setLabelIcon] = useState(initialLabelIcon);
   const [buttonText, setButtonText] = useState(initialButtonText);
   const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
+  const [availableIcons, setAvailableIcons] = useState<CustomIcon[]>([]);
+
+  const {
+    imageUrl,
+    opacity,
+    uploadHeroImage,
+    saveOpacity,
+    uploading,
+  } = useHeroImage(section, {
+    defaultImage: initialImageUrl,
+    defaultOpacity: initialOpacity,
+  });
 
   const pathname = usePathname();
 
@@ -75,6 +82,62 @@ export default function EditableHeroWithMetadata({
     const parent = '/' + segments.slice(0, -1).join('/');
     return parent || '/';
   }, [pathname]);
+
+  useEffect(() => {
+    const fetchIcons = async () => {
+      const { data } = await supabase
+        .from('custom_icons')
+        .select('id, name, svg_code')
+        .order('name');
+
+      if (data) {
+        setAvailableIcons(data);
+      }
+    };
+
+    if (isEditMode) {
+      fetchIcons();
+    }
+  }, [isEditMode]);
+
+  const updateMetadataOgImage = async (newImageUrl: string) => {
+    try {
+      const normalizedSlug = pageSlug.replace(/^\/+/, '').replace(/\/+$/, '');
+      const { data: existing } = await supabase
+        .from('schema_org_page_metadata')
+        .select('id')
+        .eq('page_slug', normalizedSlug)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('schema_org_page_metadata')
+          .update({
+            og_image: newImageUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('schema_org_page_metadata')
+          .insert({
+            page_slug: normalizedSlug,
+            og_image: newImageUrl,
+            title: title || 'Obsługa Konferencji',
+            description: description || '',
+            keywords: [],
+          });
+      }
+    } catch (error) {
+      console.error('Error updating metadata:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (imageUrl && imageUrl !== initialImageUrl) {
+      updateMetadataOgImage(imageUrl);
+    }
+  }, [imageUrl]);
 
   const getTableName = () => {
     const cleanSection = section.replace('-hero', '');
@@ -113,7 +176,6 @@ export default function EditableHeroWithMetadata({
       setIsEditing(false);
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
 
-      // Refresh to get updated data from server
       setTimeout(() => router.refresh(), 500);
     } catch (error) {
       console.error('Error saving hero:', error);
@@ -128,17 +190,14 @@ export default function EditableHeroWithMetadata({
   const beforeTitle = words.slice(0, whiteWordsCount).join(' ');
   const afterTitle = words.slice(whiteWordsCount).join(' ');
 
-  const currentIcon = iconComponents[labelIcon] || iconComponents['presentation'];
+  const currentIconObj = availableIcons.find(icon => icon.id === labelIcon || icon.name.toLowerCase() === labelIcon.toLowerCase());
 
   return (
     <div className="relative">
-      <ServerSideHeroImage
+      <PageHeroImage
         section={section}
-        pageSlug={pageSlug}
-        imageUrl={initialImageUrl}
-        opacity={initialOpacity}
-        position={initialPosition}
-        onImageUpdate={() => router.refresh()}
+        defaultImage={initialImageUrl}
+        defaultOpacity={initialOpacity}
       >
         <section className={`relative overflow-hidden pt-24 pb-2 md:pb-16`}>
           <div className="absolute inset-0 bg-gradient-to-b from-[#0a0c15]/50 via-[#0f1119]/30 to-[#1c1f33]" />
@@ -224,15 +283,11 @@ export default function EditableHeroWithMetadata({
                         onChange={(e) => setLabelIcon(e.target.value)}
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       >
-                        <option value="presentation">Prezentacja</option>
-                        <option value="video">Wideo</option>
-                        <option value="mic">Mikrofon</option>
-                        <option value="casino">Kasyno</option>
-                        <option value="plug">Wtyczka</option>
-                        <option value="vr">VR</option>
-                        <option value="gamepad">Gamepad</option>
-                        <option value="theater">Teatr</option>
-                        <option value="party">Impreza</option>
+                        {availableIcons.map((icon) => (
+                          <option key={icon.id} value={icon.id}>
+                            {icon.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -261,7 +316,14 @@ export default function EditableHeroWithMetadata({
                 ) : (
                   <>
                     <div className={`mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2 ${isMobile ? 'text-xs' : ''}`}>
-                      {currentIcon}
+                      {currentIconObj ? (
+                        <div
+                          className="w-5 h-5 text-[#d3bb73]"
+                          dangerouslySetInnerHTML={{ __html: currentIconObj.svg_code }}
+                        />
+                      ) : (
+                        <div className="w-5 h-5 rounded-full bg-[#d3bb73]/30" />
+                      )}
                       <span className={`text-sm font-medium text-[#d3bb73] ${isMobile ? 'text-xs' : ''}`}>{labelText}</span>
                     </div>
                     <h1 className={`mb-6 text-4xl font-light text-[#e5e4e2] md:text-6xl ${isMobile ? 'text-2xl' : ''}`}>
@@ -297,7 +359,7 @@ export default function EditableHeroWithMetadata({
                   <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl" />
                   <div className="relative overflow-hidden rounded-3xl border border-[#d3bb73]/20">
                     <img
-                      src={initialImageUrl}
+                      src={imageUrl}
                       alt={title || 'Hero image'}
                       className="h-full w-full object-cover"
                     />
@@ -307,7 +369,7 @@ export default function EditableHeroWithMetadata({
             </div>
           </div>
         </section>
-      </ServerSideHeroImage>
+      </PageHeroImage>
     </div>
   );
 }
