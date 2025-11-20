@@ -40,14 +40,41 @@ async function getHeroImageServer(section: string) {
 
   if (!pageImage) {
     console.log(`[SERVER] Brak danych hero w ${pageTableName} dla sekcji: ${section}`);
+
+    // Zwróć domyślne wartości bazowane na sekcji
+    const sectionDefaults: Record<string, any> = {
+      'naglosnienie-hero': {
+        title: 'Nagłośnienie Eventów',
+        description: 'Profesjonalne systemy nagłośnieniowe',
+        labelText: 'Profesjonalne Nagłośnienie',
+        labelIcon: 'Music',
+      },
+      'kasyno-hero': {
+        title: 'Kasyno Eventowe',
+        description: 'Profesjonalne stoły do gier',
+        labelText: 'Wieczory w Kasynie',
+        labelIcon: 'Dices',
+      },
+      'konferencje-hero': {
+        title: 'Techniczna obsługa konferencji',
+        description: 'Profesjonalne nagłośnienie i multimedia',
+        labelText: 'Konferencje',
+        labelIcon: 'Users',
+      },
+    };
+
+    const defaults = sectionDefaults[section] || {
+      title: 'Profesjonalne usługi eventowe',
+      description: 'Kompleksowa obsługa wydarzeń',
+      labelText: 'Eventy',
+      labelIcon: 'Sparkles',
+    };
+
     return {
       imageUrl: '',
       opacity: 0.2,
       position: { posX: 0, posY: 0, scale: 1 },
-      title: '',
-      description: '',
-      labelText: '',
-      labelIcon: '',
+      ...defaults,
       buttonText: 'Zobacz inne oferty',
       whiteWordsCount: 2,
     };

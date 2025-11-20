@@ -222,7 +222,7 @@ export default function EditableHeroWithMetadata({
     }
   };
 
-  const safeTitle = title && title.trim().length > 0 ? title : 'Techniczna obsługa konferencji';
+  const safeTitle = title || '';
   const words = safeTitle.split(' ').filter(Boolean);
   const beforeTitle = words.slice(0, whiteWordsCount).join(' ');
   const afterTitle = words.slice(whiteWordsCount).join(' ');
