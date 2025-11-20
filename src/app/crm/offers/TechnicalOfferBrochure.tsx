@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Edit2, Save, X, Eye, Download, Phone, Mail, MapPin } from 'lucide-react';
+import { Edit2, Save, X, Eye, Download, Phone, Mail, MapPin, Music, Lightbulb, Tv, Sparkles, Radio, Gauge, Users, Award } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -436,51 +436,201 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
 
       {/* Brochure Content */}
       <div id="brochure-content" className="min-h-screen">
-        {/* Page 1: Hero + Services */}
+        {/* Page 1: Cover */}
         <div className="brochure-page page-break">
           <div className="decorative-shape shape-1"></div>
           <div className="decorative-shape shape-2"></div>
-          <div className="decorative-shape shape-3"></div>
-
-          <div className="brochure-content-wrapper">
-            {/* Hero Section */}
-            <div className="relative h-[350px] rounded-3xl overflow-hidden mb-12 shadow-2xl">
-              {renderEditableImage('hero', 0, 'absolute inset-0 w-full h-full', 'Stage lighting hero')}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent"></div>
-
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center z-10 px-12">
-                <div className="space-y-6">
-                  <h1 className="text-7xl font-black tracking-tight">
-                    {renderEditableText('title', 'Technika Estradowa', 'text-7xl font-black tracking-tight bg-gradient-to-r from-[#d3bb73] via-[#e5d5a0] to-[#d3bb73] bg-clip-text text-transparent', false)}
-                  </h1>
-                  <div className="h-1 w-48 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-                  <h2 className="text-4xl font-light tracking-widest uppercase">
-                    {renderEditableText('subtitle', 'Premium', 'text-4xl font-light tracking-widest uppercase text-[#e5e4e2]', false)}
-                  </h2>
-                  <p className="text-xl text-[#e5e4e2]/90 max-w-3xl mx-auto leading-relaxed">
-                    {renderEditableText('description', 'Twórz niezapomniane wydarzenia z najlepszym sprzętem scenicznym i profesjonalną obsługą techniczną', 'text-xl text-[#e5e4e2]/90', true)}
-                  </p>
+          <div className="brochure-content-wrapper items-center justify-center text-center">
+            <div className="space-y-12">
+              <div className="space-y-6">
+                <h1 className="text-8xl font-black tracking-tight leading-tight">
+                  {renderEditableText('title', 'Technika Estradowa', 'text-8xl font-black tracking-tight leading-tight bg-gradient-to-r from-[#d3bb73] via-[#e5d5a0] to-[#d3bb73] bg-clip-text text-transparent', false)}
+                </h1>
+                <div className="h-1 w-64 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
+                <h2 className="text-5xl font-light tracking-[0.3em] uppercase">
+                  {renderEditableText('subtitle', 'Premium', 'text-5xl font-light tracking-[0.3em] uppercase text-[#e5e4e2]', false)}
+                </h2>
+              </div>
+              <p className="text-2xl text-[#e5e4e2]/90 max-w-3xl mx-auto leading-relaxed font-light">
+                {renderEditableText('description', 'Twórz niezapomniane wydarzenia z najlepszym sprzętem scenicznym i profesjonalną obsługą techniczną', 'text-2xl text-[#e5e4e2]/90 max-w-3xl mx-auto leading-relaxed font-light', true)}
+              </p>
+              <div className="pt-12">
+                <div className="inline-block bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] px-12 py-6 rounded-2xl">
+                  <p className="text-[#1c1f33] text-2xl font-bold">www.mavinci.pl</p>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Services Grid */}
-            <div className="grid grid-cols-3 gap-6">
+        {/* Page 2: Hero Image Full */}
+        <div className="brochure-page page-break">
+          <div className="decorative-shape shape-3"></div>
+          <div className="brochure-content-wrapper">
+            <div className="relative h-full rounded-3xl overflow-hidden shadow-2xl">
+              {renderEditableImage('hero', 0, 'absolute inset-0 w-full h-full', 'Stage with professional lighting')}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+              <div className="absolute bottom-12 left-12 right-12 z-10">
+                <h2 className="text-5xl font-bold text-[#d3bb73] mb-4">
+                  {renderEditableText('hero_title', 'Profesjonalizm w każdym detalu', 'text-5xl font-bold text-[#d3bb73]', false)}
+                </h2>
+                <p className="text-2xl text-[#e5e4e2]/90 leading-relaxed max-w-3xl">
+                  {renderEditableText('hero_desc', 'Kompleksowa obsługa techniczna eventów - od koncepcji po realizację. Najnowocześniejszy sprzęt i doświadczony zespół specjalistów.', 'text-2xl text-[#e5e4e2]/90 leading-relaxed', true)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Page 3: Services Part 1 */}
+        <div className="brochure-page page-break">
+          <div className="decorative-shape shape-4"></div>
+          <div className="decorative-shape shape-5"></div>
+          <div className="brochure-content-wrapper">
+            <h2 className="text-6xl font-bold text-[#d3bb73] mb-12 text-center">
+              {renderEditableText('services_title', 'Nasze Usługi', 'text-6xl font-bold text-[#d3bb73]', false)}
+            </h2>
+            <div className="grid grid-cols-2 gap-8 flex-1">
+              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-3xl p-10 border border-[#d3bb73]/30">
+                <Music className="w-20 h-20 text-[#d3bb73] mb-6"/>
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">
+                  {renderEditableText('sound_title', 'Nagłośnienie', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-[#e5e4e2]/80 text-lg leading-relaxed">
+                  {renderEditableText('sound_desc', 'Systemy line array premium od L-Acoustics, d&b audiotechnik, Meyer Sound. Mikrofony bezprzewodowe Shure Axient Digital i Sennheiser Digital 6000.', 'text-[#e5e4e2]/80 text-lg leading-relaxed', true)}
+                </p>
+              </div>
+              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-3xl p-10 border border-[#d3bb73]/30">
+                <Lightbulb className="w-20 h-20 text-[#d3bb73] mb-6"/>
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">
+                  {renderEditableText('light_title', 'Oświetlenie', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-[#e5e4e2]/80 text-lg leading-relaxed">
+                  {renderEditableText('light_desc', 'Inteligentne reflektory LED Robe, Martin by Harman, Clay Paky. Lasery i efekty specjalne. Sterowanie DMX/Art-Net.', 'text-[#e5e4e2]/80 text-lg leading-relaxed', true)}
+                </p>
+              </div>
+              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-3xl p-10 border border-[#d3bb73]/30">
+                <Tv className="w-20 h-20 text-[#d3bb73] mb-6"/>
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">
+                  {renderEditableText('led_title', 'Ekrany LED', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-[#e5e4e2]/80 text-lg leading-relaxed">
+                  {renderEditableText('led_desc', 'Ekrany LED wewnętrzne i zewnętrzne w rozdzielczości HD i 4K. Modułowa konstrukcja, pełna obsługa techniczna.', 'text-[#e5e4e2]/80 text-lg leading-relaxed', true)}
+                </p>
+              </div>
+              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-3xl p-10 border border-[#d3bb73]/30">
+                <Sparkles className="w-20 h-20 text-[#d3bb73] mb-6"/>
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">
+                  {renderEditableText('stage_title', 'Scena i konstrukcje', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-[#e5e4e2]/80 text-lg leading-relaxed">
+                  {renderEditableText('stage_desc', 'Podesty sceniczne Layher i Prolyte. Konstrukcje aluminiowe Ground Support i truss. Dekoracje sceniczne.', 'text-[#e5e4e2]/80 text-lg leading-relaxed', true)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Page 4: Services Part 2 */}
+        <div className="brochure-page page-break">
+          <div className="decorative-shape shape-6"></div>
+          <div className="decorative-shape shape-1"></div>
+          <div className="brochure-content-wrapper">
+            <div className="grid grid-cols-2 gap-8 flex-1">
+              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-3xl p-10 border border-[#d3bb73]/30">
+                <Radio className="w-20 h-20 text-[#d3bb73] mb-6"/>
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">
+                  {renderEditableText('streaming_title', 'Realizacja i Streaming', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-[#e5e4e2]/80 text-lg leading-relaxed">
+                  {renderEditableText('streaming_desc', 'Kamery 4K Sony i Panasonic, reżyseria obrazu, transmisje live. Nagrania HD/4K z postprodukcją.', 'text-[#e5e4e2]/80 text-lg leading-relaxed', true)}
+                </p>
+              </div>
+              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-3xl p-10 border border-[#d3bb73]/30">
+                <Gauge className="w-20 h-20 text-[#d3bb73] mb-6"/>
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4">
+                  {renderEditableText('power_title', 'Zasilanie i dystrybucja', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-[#e5e4e2]/80 text-lg leading-relaxed">
+                  {renderEditableText('power_desc', 'Agregaty prądotwórcze, systemy UPS i ochrona przepięciowa. Profesjonalna dystrybucja energii.', 'text-[#e5e4e2]/80 text-lg leading-relaxed', true)}
+                </p>
+              </div>
+              <div className="bg-[#1c1f33]/80 backdrop-blur rounded-3xl p-10 border border-[#d3bb73]/30 col-span-2">
+                <Users className="w-20 h-20 text-[#d3bb73] mb-6 mx-auto"/>
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-4 text-center">
+                  {renderEditableText('team_title', 'Profesjonalny zespół', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-[#e5e4e2]/80 text-lg leading-relaxed text-center max-w-3xl mx-auto">
+                  {renderEditableText('team_desc', 'Doświadczeni realizatorzy dźwięku, operatorzy świateł, technicy sceniczni. Wieloletnie doświadczenie w branży eventowej.', 'text-[#e5e4e2]/80 text-lg leading-relaxed', true)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Page 5: Portfolio Image 1 */}
+        <div className="brochure-page page-break">
+          <div className="decorative-shape shape-2"></div>
+          <div className="brochure-content-wrapper">
+            <h2 className="text-5xl font-bold text-[#d3bb73] mb-8 text-center">
+              {renderEditableText('portfolio_title', 'Nasze Realizacje', 'text-5xl font-bold text-[#d3bb73]', false)}
+            </h2>
+            <div className="relative flex-1 rounded-3xl overflow-hidden shadow-2xl">
+              {renderEditableImage('portfolio', 0, 'absolute inset-0 w-full h-full', 'Portfolio showcase')}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>
+              <div className="absolute bottom-8 left-8 right-8 z-10">
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-3">
+                  {renderEditableText('portfolio_1_title', 'Konferencje korporacyjne', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-xl text-[#e5e4e2]/90">
+                  {renderEditableText('portfolio_1_desc', 'Kompleksowa obsługa techniczna konferencji dla 500+ uczestników', 'text-xl text-[#e5e4e2]/90', true)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Page 6: Portfolio Image 2 */}
+        <div className="brochure-page page-break">
+          <div className="decorative-shape shape-3"></div>
+          <div className="brochure-content-wrapper">
+            <div className="relative flex-1 rounded-3xl overflow-hidden shadow-2xl">
+              {renderEditableImage('portfolio', 1, 'absolute inset-0 w-full h-full', 'Portfolio showcase 2')}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>
+              <div className="absolute bottom-8 left-8 right-8 z-10">
+                <h3 className="text-3xl font-bold text-[#e5e4e2] mb-3">
+                  {renderEditableText('portfolio_2_title', 'Gale i eventy', 'text-3xl font-bold text-[#e5e4e2]', false)}
+                </h3>
+                <p className="text-xl text-[#e5e4e2]/90">
+                  {renderEditableText('portfolio_2_desc', 'Spektakularne oświetlenie i realizacje multimedialne', 'text-xl text-[#e5e4e2]/90', true)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Page 7: Why Us */}
+        <div className="brochure-page page-break">
+          <div className="decorative-shape shape-4"></div>
+          <div className="decorative-shape shape-5"></div>
+          <div className="brochure-content-wrapper justify-center">
+            <h2 className="text-6xl font-bold text-[#d3bb73] mb-12 text-center">
+              {renderEditableText('why_us_title', 'Dlaczego My?', 'text-6xl font-bold text-[#d3bb73]', false)}
+            </h2>
+            <div className="grid grid-cols-2 gap-8">
               {[
-                { icon: '🎵', titleKey: 'sound_title', descKey: 'sound_desc', defaultTitle: 'Nagłośnienie', defaultDesc: 'Systemy line array premium, mikrofony bezprzewodowe najwyższej klasy, cyfrowe konsole mikserskie' },
-                { icon: '💡', titleKey: 'light_title', descKey: 'light_desc', defaultTitle: 'Oświetlenie', defaultDesc: 'Inteligentne reflektory LED, lasery i efekty specjalne, sterowanie DMX i Art-Net' },
-                { icon: '📺', titleKey: 'led_title', descKey: 'led_desc', defaultTitle: 'Ekrany LED', defaultDesc: 'Ekrany wewnętrzne i zewnętrzne HD, modułowa konstrukcja, pełna obsługa techniczna' },
-                { icon: '🎭', titleKey: 'stage_title', descKey: 'stage_desc', defaultTitle: 'Scena i konstrukcje', defaultDesc: 'Podesty sceniczne, konstrukcje aluminiowe, dekoracje i zabudowy sceniczne' },
-                { icon: '🎬', titleKey: 'streaming_title', descKey: 'streaming_desc', defaultTitle: 'Realizacja i Streaming', defaultDesc: 'Kamery 4K, reżyseria obrazu, transmisje live, nagrania HD' },
-                { icon: '⚡', titleKey: 'power_title', descKey: 'power_desc', defaultTitle: 'Zasilanie i dystrybucja', defaultDesc: 'Agregaty prądotwórcze, systemy UPS, profesjonalna dystrybucja energii' },
-              ].map((service, idx) => (
-                <div key={idx} className="bg-[#1c1f33]/80 backdrop-blur rounded-2xl p-6 border border-[#d3bb73]/30 hover:border-[#d3bb73]/50 transition-all duration-300 hover:transform hover:scale-105 hover:shadow-xl hover:shadow-[#d3bb73]/20">
-                  <div className="text-5xl mb-4 filter drop-shadow-lg">{service.icon}</div>
-                  <h3 className="text-xl font-bold text-[#d3bb73] mb-3">
-                    {renderEditableText(service.titleKey, service.defaultTitle, 'text-xl font-bold text-[#d3bb73]', false)}
+                { icon: Award, key: 'why_1', defaultTitle: '15+ lat doświadczenia', defaultDesc: 'Setki udanych eventów w całej Polsce' },
+                { icon: Users, key: 'why_2', defaultTitle: 'Profesjonalny zespół', defaultDesc: 'Certyfikowani specjaliści z pasją' },
+                { icon: Sparkles, key: 'why_3', defaultTitle: 'Najnowszy sprzęt', defaultDesc: 'Regularnie aktualizowany park maszynowy' },
+                { icon: Gauge, key: 'why_4', defaultTitle: 'Obsługa 24/7', defaultDesc: 'Wsparcie techniczne przez całą dobę' },
+              ].map((item, idx) => (
+                <div key={idx} className="bg-[#1c1f33]/80 backdrop-blur rounded-2xl p-8 border border-[#d3bb73]/30 text-center">
+                  <item.icon className="w-16 h-16 text-[#d3bb73] mx-auto mb-6"/>
+                  <h3 className="text-2xl font-bold text-[#e5e4e2] mb-3">
+                    {renderEditableText(`${item.key}_title`, item.defaultTitle, 'text-2xl font-bold text-[#e5e4e2]', false)}
                   </h3>
-                  <p className="text-[#e5e4e2]/80 text-sm leading-relaxed">
-                    {renderEditableText(service.descKey, service.defaultDesc, 'text-[#e5e4e2]/80 text-sm', true)}
+                  <p className="text-[#e5e4e2]/80 text-lg">
+                    {renderEditableText(`${item.key}_desc`, item.defaultDesc, 'text-[#e5e4e2]/80 text-lg', false)}
                   </p>
                 </div>
               ))}
@@ -488,7 +638,7 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
           </div>
         </div>
 
-        {/* Page 2: Contact */}
+        {/* Page 8: Contact */}
         <div className="brochure-page">
           <div className="decorative-shape shape-4"></div>
           <div className="decorative-shape shape-5"></div>
