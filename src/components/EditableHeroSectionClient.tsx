@@ -5,7 +5,6 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { ArrowLeft, Edit, Save, X } from 'lucide-react';
 import Link from 'next/link';
 import React, { useMemo, useState } from 'react';
-import { PageHeroImage } from './PageHeroImage';
 import { usePathname } from 'next/navigation';
 import { useMobile } from '@/hooks/useMobile';
 
@@ -83,11 +82,24 @@ export default function EditableHeroSectionClient({
 
   return (
     <div className="relative">
-      <PageHeroImage
-        section={section}
-        defaultImage={initialImageUrl}
-        defaultOpacity={initialOpacity}
-      >
+      <div className="relative overflow-hidden">
+        {/* Background Image with Position and Opacity */}
+        <div className="absolute inset-0">
+          <img
+            src={initialImageUrl}
+            alt="Hero background"
+            className="h-full w-full object-cover"
+            style={{
+              transform: `translate(${initialPosition.posX}%, ${initialPosition.posY}%) scale(${initialPosition.scale})`,
+              transformOrigin: 'center center',
+            }}
+          />
+          <div
+            className="absolute inset-0 bg-[#0f1119]"
+            style={{ opacity: initialOpacity }}
+          />
+        </div>
+
         <section className={`relative overflow-hidden pt-24 pb-2 md:pb-16`}>
           <div className="absolute inset-0 bg-gradient-to-b from-[#0a0c15]/50 via-[#0f1119]/30 to-[#1c1f33]" />
 
@@ -206,7 +218,7 @@ export default function EditableHeroSectionClient({
             </div>
           </div>
         </section>
-      </PageHeroImage>
+      </div>
     </div>
   );
 }
