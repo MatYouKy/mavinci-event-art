@@ -109,6 +109,7 @@ export default async function EditableHeroSectionServer({
       buttonText={heroData.buttonText}
       initialImageUrl={heroData.imageUrl}
       initialOpacity={heroData.opacity}
+      initialPosition={heroData.position}
       initialTitle={heroData.title}
       initialDescription={heroData.description}
     />

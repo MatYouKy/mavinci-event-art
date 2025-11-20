@@ -5,10 +5,9 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { ArrowLeft, Edit, Save, X, Presentation, Video, Mic, Zap, Gamepad2, Theater, PartyPopper, Plug } from 'lucide-react';
 import Link from 'next/link';
 import React, { useMemo, useState } from 'react';
-import { PageHeroImage } from './PageHeroImage';
-import { usePathname } from 'next/navigation';
+import { ServerSideHeroImage } from './ServerSideHeroImage';
+import { usePathname, useRouter } from 'next/navigation';
 import { useMobile } from '@/hooks/useMobile';
-import { useHeroImage } from './PageImage/hooks/useHeroImage';
 import { supabase } from '@/lib/supabase';
 
 interface EditableHeroWithMetadataProps {
@@ -20,6 +19,11 @@ interface EditableHeroWithMetadataProps {
   buttonText: string;
   initialImageUrl: string;
   initialOpacity: number;
+  initialPosition: {
+    posX: number;
+    posY: number;
+    scale: number;
+  };
   initialTitle?: string;
   initialDescription?: string;
 }
@@ -45,10 +49,12 @@ export default function EditableHeroWithMetadata({
   buttonText: initialButtonText,
   initialImageUrl,
   initialOpacity,
+  initialPosition,
   initialTitle = '',
   initialDescription = '',
 }: EditableHeroWithMetadataProps) {
   const isMobile = useMobile();
+  const router = useRouter();
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
   const [isEditing, setIsEditing] = useState(false);
@@ -60,17 +66,6 @@ export default function EditableHeroWithMetadata({
   const [buttonText, setButtonText] = useState(initialButtonText);
   const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
 
-  const {
-    imageUrl,
-    opacity,
-    uploadHeroImage,
-    saveOpacity,
-    uploading,
-  } = useHeroImage(section, {
-    defaultImage: initialImageUrl,
-    defaultOpacity: initialOpacity,
-  });
-
   const pathname = usePathname();
 
   const backHref = useMemo(() => {
@@ -80,45 +75,6 @@ export default function EditableHeroWithMetadata({
     const parent = '/' + segments.slice(0, -1).join('/');
     return parent || '/';
   }, [pathname]);
-
-  const updateMetadataOgImage = async (newImageUrl: string) => {
-    try {
-      const normalizedSlug = pageSlug.replace(/^\/+/, '').replace(/\/+$/, '');
-      const { data: existing } = await supabase
-        .from('schema_org_page_metadata')
-        .select('id')
-        .eq('page_slug', normalizedSlug)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase
-          .from('schema_org_page_metadata')
-          .update({
-            og_image: newImageUrl,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('schema_org_page_metadata')
-          .insert({
-            page_slug: normalizedSlug,
-            og_image: newImageUrl,
-            title: title || 'Obsługa Konferencji',
-            description: description || '',
-            keywords: [],
-          });
-      }
-    } catch (error) {
-      console.error('Error updating metadata:', error);
-    }
-  };
-
-  React.useEffect(() => {
-    if (imageUrl && imageUrl !== initialImageUrl) {
-      updateMetadataOgImage(imageUrl);
-    }
-  }, [imageUrl]);
 
   const getTableName = () => {
     const cleanSection = section.replace('-hero', '');
@@ -156,6 +112,9 @@ export default function EditableHeroWithMetadata({
 
       setIsEditing(false);
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
+
+      // Refresh to get updated data from server
+      setTimeout(() => router.refresh(), 500);
     } catch (error) {
       console.error('Error saving hero:', error);
       showSnackbar('Błąd podczas zapisywania zmian', 'error');
@@ -173,10 +132,13 @@ export default function EditableHeroWithMetadata({
 
   return (
     <div className="relative">
-      <PageHeroImage
+      <ServerSideHeroImage
         section={section}
-        defaultImage={initialImageUrl}
-        defaultOpacity={initialOpacity}
+        pageSlug={pageSlug}
+        imageUrl={initialImageUrl}
+        opacity={initialOpacity}
+        position={initialPosition}
+        onImageUpdate={() => router.refresh()}
       >
         <section className={`relative overflow-hidden pt-24 pb-2 md:pb-16`}>
           <div className="absolute inset-0 bg-gradient-to-b from-[#0a0c15]/50 via-[#0f1119]/30 to-[#1c1f33]" />
@@ -335,7 +297,7 @@ export default function EditableHeroWithMetadata({
                   <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl" />
                   <div className="relative overflow-hidden rounded-3xl border border-[#d3bb73]/20">
                     <img
-                      src={imageUrl}
+                      src={initialImageUrl}
                       alt={title || 'Hero image'}
                       className="h-full w-full object-cover"
                     />
@@ -345,7 +307,7 @@ export default function EditableHeroWithMetadata({
             </div>
           </div>
         </section>
-      </PageHeroImage>
+      </ServerSideHeroImage>
     </div>
   );
 }
