@@ -28,6 +28,8 @@ export function PageHeroImage({
     imageUrl,
     opacity,
     position,
+    screenMode,
+    setScreenMode,
     uploadHeroImage,
     setPosition,
     setOpacity,
@@ -170,6 +172,28 @@ export function PageHeroImage({
       {isEditingPosition && positionSubMenu && (
         <div className="absolute inset-0 z-40" style={{ pointerEvents: 'none' }}>
           <div style={{ pointerEvents: 'auto' }}>
+            <div className="absolute top-4 left-4 z-50 bg-[#1c1f33]/95 border border-[#d3bb73]/30 rounded-lg p-2 flex gap-2">
+              <button
+                onClick={() => setScreenMode('desktop')}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                  screenMode === 'desktop'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
+                }`}
+              >
+                Desktop
+              </button>
+              <button
+                onClick={() => setScreenMode('mobile')}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                  screenMode === 'mobile'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
+                }`}
+              >
+                Mobile
+              </button>
+            </div>
             <SliderX
               value={editState.posX}
               min={-100}

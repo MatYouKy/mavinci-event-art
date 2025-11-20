@@ -26,9 +26,15 @@ interface UseHeroImageReturn {
   imageUrl: string;
   opacity: number;
   position: HeroPosition;
+  mobilePosition: HeroPosition;
+  desktopPosition: HeroPosition;
+  screenMode: 'desktop' | 'mobile';
 
   // lokalne zmiany
   setPosition: (position: HeroPosition) => void;
+  setMobilePosition: (position: HeroPosition) => void;
+  setDesktopPosition: (position: HeroPosition) => void;
+  setScreenMode: (mode: 'desktop' | 'mobile') => void;
   setOpacity: (opacity: number) => void;
 
   // operacje na bazie
@@ -60,6 +66,19 @@ export function useHeroImage(
     scale: 1,
   });
 
+  const [mobilePosition, setMobilePosition] = useState<HeroPosition>({
+    posX: 0,
+    posY: 0,
+    scale: 1,
+  });
+
+  const [desktopPosition, setDesktopPosition] = useState<HeroPosition>({
+    posX: 0,
+    posY: 0,
+    scale: 1,
+  });
+
+  const [screenMode, setScreenMode] = useState<'desktop' | 'mobile'>('desktop');
   const [opacity, setOpacity] = useState<number>(defaultOpacity);
 
   // mapowanie sekcji -> tabela
@@ -114,11 +133,22 @@ export function useHeroImage(
         };
 
         setSiteImage(converted);
-        setPosition({
+
+        const deskPos = {
           posX: converted.image_metadata?.desktop?.position?.posX ?? 0,
           posY: converted.image_metadata?.desktop?.position?.posY ?? 0,
           scale: converted.image_metadata?.desktop?.position?.scale ?? 1,
-        });
+        };
+
+        const mobPos = {
+          posX: converted.image_metadata?.mobile?.position?.posX ?? 0,
+          posY: converted.image_metadata?.mobile?.position?.posY ?? 0,
+          scale: converted.image_metadata?.mobile?.position?.scale ?? 1,
+        };
+
+        setDesktopPosition(deskPos);
+        setMobilePosition(mobPos);
+        setPosition(screenMode === 'desktop' ? deskPos : mobPos);
         setOpacity(converted.opacity ?? defaultOpacity);
         setLoading(false);
         return;
@@ -150,6 +180,25 @@ export function useHeroImage(
   useEffect(() => {
     loadImage();
   }, [loadImage]);
+
+  // Synchronize position with screenMode
+  useEffect(() => {
+    if (screenMode === 'desktop') {
+      setPosition(desktopPosition);
+    } else {
+      setPosition(mobilePosition);
+    }
+  }, [screenMode, desktopPosition, mobilePosition]);
+
+  // Override setPosition to update the correct position based on screenMode
+  const setPositionWithMode = useCallback((pos: HeroPosition) => {
+    setPosition(pos);
+    if (screenMode === 'desktop') {
+      setDesktopPosition(pos);
+    } else {
+      setMobilePosition(pos);
+    }
+  }, [screenMode]);
 
   const savePosition = useCallback(async () => {
     setSaving(true);
@@ -191,14 +240,15 @@ export function useHeroImage(
               .update({
                 image_metadata: {
                   desktop: {
-                    position,
+                    position: desktopPosition,
                     objectFit: 'cover',
                   },
                   mobile: {
-                    position,
+                    position: mobilePosition,
                     objectFit: 'cover',
                   },
                 },
+                updated_at: new Date().toISOString(),
               })
               .eq('section', 'hero');
             if (error) throw error;
@@ -274,7 +324,7 @@ export function useHeroImage(
     } finally {
       setSaving(false);
     }
-  }, [section, siteImage, position, opacity, defaultImage, getTableName, loadImage, showSnackbar]);
+  }, [section, siteImage, desktopPosition, mobilePosition, opacity, defaultImage, getTableName, loadImage, showSnackbar]);
 
   const saveOpacity = useCallback(async () => {
     setSaving(true);
@@ -585,7 +635,13 @@ export function useHeroImage(
     imageUrl,
     opacity,
     position,
-    setPosition,
+    mobilePosition,
+    desktopPosition,
+    screenMode,
+    setPosition: setPositionWithMode,
+    setMobilePosition,
+    setDesktopPosition,
+    setScreenMode,
     setOpacity,
     reload: loadImage,
     savePosition,
