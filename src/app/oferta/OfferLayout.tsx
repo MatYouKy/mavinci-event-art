@@ -12,7 +12,7 @@ interface OfferLayoutProps {
 export default function OfferLayout({
   children,
   pageSlug,
-  section = 'konferencje-hero',
+  section,
 }: OfferLayoutProps) {
   return (
     <PageLayout pageSlug={pageSlug}>
