@@ -1,106 +1,169 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import {
-  Mic,
-  Presentation,
-  Monitor,
-  Gamepad2,
-  Sparkles,
-  Users,
-  Video,
-  Lamp,
-  ArrowRight
-} from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
-import PageLayout from '@/components/Layout/PageLayout';
+import { ServiceCard } from '@/components/ServiceCard';
+import { supabase } from '@/lib/supabase';
 
-const services = [
-  {
-    title: 'Nagłośnienie',
-    description: 'Profesjonalne systemy audio i nagłośnienie eventów',
-    href: '/oferta/naglosnienie',
-    icon: Mic,
-    color: 'from-blue-500/20 to-blue-600/20',
-    borderColor: 'border-blue-500/30'
-  },
-  {
-    title: 'Konferencje',
-    description: 'Kompleksowa obsługa techniczna konferencji',
-    href: '/oferta/konferencje',
-    icon: Presentation,
-    color: 'from-green-500/20 to-green-600/20',
-    borderColor: 'border-green-500/30'
-  },
-  {
-    title: 'Streaming',
-    description: 'Transmisje live i produkcja wideo online',
-    href: '/oferta/streaming',
-    icon: Video,
-    color: 'from-red-500/20 to-red-600/20',
-    borderColor: 'border-red-500/30'
-  },
-  {
-    title: 'Symulatory VR',
-    description: 'Wirtualna rzeczywistość i symulatory na eventy',
-    href: '/oferta/symulatory-vr',
-    icon: Gamepad2,
-    color: 'from-purple-500/20 to-purple-600/20',
-    borderColor: 'border-purple-500/30'
-  },
-  {
-    title: 'Quizy & Teleturnieje',
-    description: 'Interaktywne quizy i gry dla gości',
-    href: '/oferta/quizy-teleturnieje',
-    icon: Sparkles,
-    color: 'from-yellow-500/20 to-yellow-600/20',
-    borderColor: 'border-yellow-500/30'
-  },
-  {
-    title: 'Integracje',
-    description: 'Eventy integracyjne i team building',
-    href: '/oferta/integracje',
-    icon: Users,
-    color: 'from-pink-500/20 to-pink-600/20',
-    borderColor: 'border-pink-500/30'
-  },
-  {
-    title: 'Kasyno',
-    description: 'Profesjonalne stoły do gier kasynowych',
-    href: '/oferta/kasyno',
-    icon: Sparkles,
-    color: 'from-orange-500/20 to-orange-600/20',
-    borderColor: 'border-orange-500/30'
-  },
-  {
-    title: 'Wieczory Tematyczne',
-    description: 'Organizacja eventów tematycznych',
-    href: '/oferta/wieczory-tematyczne',
-    icon: Lamp,
-    color: 'from-cyan-500/20 to-cyan-600/20',
-    borderColor: 'border-cyan-500/30'
-  },
-  {
-    title: 'Technika Sceniczna',
-    description: 'Oświetlenie, sceny i efekty specjalne',
-    href: '/oferta/technika-sceniczna',
-    icon: Monitor,
-    color: 'from-indigo-500/20 to-indigo-600/20',
-    borderColor: 'border-indigo-500/30'
-  }
-];
+interface Service {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  icon_name: string;
+  color_from: string;
+  color_to: string;
+  border_color: string;
+  hero_image_url: string | null;
+  hero_opacity: number;
+  order_index: number;
+}
 
 export default function UslugiPage() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadServices();
+  }, []);
+
+  async function loadServices() {
+    try {
+      const { data, error } = await supabase
+        .from('services_catalog')
+        .select('*')
+        .eq('is_active', true)
+        .order('order_index', { ascending: true });
+
+      if (error) throw error;
+      setServices(data || []);
+    } catch (error) {
+      console.error('Error loading services:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const canonicalUrl = 'https://mavinci.pl/oferta';
+
+  const itemListJsonLd = {
+    '@type': 'ItemList',
+    name: 'Główne kategorie usług MAVINCI',
+    description: 'Przegląd kluczowych usług eventowych MAVINCI',
+    numberOfItems: services.length,
+    itemListElement: services.map((service, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      item: {
+        '@type': 'Service',
+        name: service.title,
+        description: service.description,
+        url: `https://mavinci.pl/oferta/${service.slug}`,
+        provider: {
+          '@type': 'Organization',
+          name: 'MAVINCI Event & ART'
+        }
+      }
+    }))
+  };
+
+  const breadcrumbJsonLd = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Strona główna',
+        item: 'https://mavinci.pl/'
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Oferta',
+        item: canonicalUrl
+      }
+    ]
+  };
+
+  const combinedJsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [itemListJsonLd, breadcrumbJsonLd]
+  };
+
+  if (loading) {
+    return (
+      <>
+        <Navbar />
+        <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pt-28 pb-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <div className="animate-pulse text-[#d3bb73]">Ładowanie usług...</div>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
   return (
-    <PageLayout pageSlug="oferta">      
-       
+    <>
+      <Head>
+        <title>Usługi Eventowe – MAVINCI Event & ART</title>
+        <meta
+          name="description"
+          content="Przegląd kluczowych usług MAVINCI: nagłośnienie, konferencje, streaming, symulatory VR, quizy i teleturnieje, integracje, kasyno, wieczory tematyczne oraz technika sceniczna."
+        />
+        <meta
+          name="keywords"
+          content="usługi eventowe, nagłośnienie, konferencje, streaming, symulatory VR, quizy, teleturnieje, integracje, kasyno eventowe, technika sceniczna, wieczory tematyczne"
+        />
+
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content="Usługi Eventowe – MAVINCI Event & ART" />
+        <meta
+          property="og:description"
+          content="Poznaj najważniejsze usługi eventowe MAVINCI – od techniki scenicznej po interaktywne atrakcje."
+        />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta
+          property="og:image"
+          content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
+        />
+        <meta property="og:site_name" content="MAVINCI Event & ART" />
+        <meta property="og:locale" content="pl_PL" />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Usługi Eventowe – MAVINCI Event & ART" />
+        <meta
+          name="twitter:description"
+          content="Przegląd głównych usług eventowych MAVINCI dla konferencji, gal i wydarzeń firmowych."
+        />
+        <meta
+          name="twitter:image"
+          content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
+        />
+
+        <link rel="canonical" href={canonicalUrl} />
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(combinedJsonLd)
+          }}
+        />
+      </Head>
+
+      <Navbar />
+
       <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pt-28 pb-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* ✅ Breadcrumb pod nawigacją */}
           <div className="mb-6">
             <CategoryBreadcrumb />
           </div>
@@ -116,48 +179,21 @@ export default function UslugiPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-            {services.map((service, index) => {
-              const Icon = service.icon;
-              return (
-                <Link
-                  key={service.href}
-                  href={service.href}
-                  className="group relative bg-[#1c1f33]/50 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-8 hover:border-[#d3bb73]/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl hover:shadow-[#d3bb73]/10"
-                  style={{
-                    animationDelay: `${index * 0.1}s`,
-                    animation: 'fadeInUp 0.6s ease-out forwards',
-                    opacity: 0
-                  }}
-                >
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-br ${service.color} opacity-0 group-hover:opacity-100 rounded-2xl transition-opacity duration-500`}
-                  />
-
-                  <div className="relative z-10">
-                    <div
-                      className={`inline-flex p-4 rounded-xl bg-gradient-to-br ${service.color} border ${service.borderColor} mb-6 group-hover:scale-110 transition-transform duration-500`}
-                    >
-                      <Icon className="w-8 h-8 text-[#e5e4e2]" />
-                    </div>
-
-                    <h3 className="text-2xl font-light text-[#e5e4e2] mb-3 group-hover:text-[#d3bb73] transition-colors duration-300">
-                      {service.title}
-                    </h3>
-
-                    <p className="text-[#e5e4e2]/70 text-sm mb-6 leading-relaxed">
-                      {service.description}
-                    </p>
-
-                    <div className="flex items-center gap-2 text-[#d3bb73] text-sm font-medium">
-                      <span>Zobacz szczegóły</span>
-                      <ArrowRight className="w-4 h-4 group-hover:translate-x-2 transition-transform duration-300" />
-                    </div>
-                  </div>
-
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#d3bb73]/5 rounded-full blur-3xl group-hover:bg-[#d3bb73]/10 transition-all duration-500" />
-                </Link>
-              );
-            })}
+            {services.map((service, index) => (
+              <ServiceCard
+                key={service.id}
+                slug={service.slug}
+                title={service.title}
+                description={service.description}
+                iconName={service.icon_name}
+                colorFrom={service.color_from}
+                colorTo={service.color_to}
+                borderColor={service.border_color}
+                heroImageUrl={service.hero_image_url || undefined}
+                heroOpacity={service.hero_opacity}
+                index={index}
+              />
+            ))}
           </div>
 
           <div className="mt-16 text-center">
@@ -184,6 +220,8 @@ export default function UslugiPage() {
           }
         `}</style>
       </main>
-    </PageLayout>
+
+      <Footer />
+    </>
   );
 }
