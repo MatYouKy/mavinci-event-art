@@ -166,7 +166,7 @@ export function PageHeroImage({
             }}
           />
         </div>
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/90 to-[#0f1119]/90"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1c1f33]/70 to-[#0f1119]/70"></div>
       </div>
 
       {isEditMode && (
@@ -265,7 +265,7 @@ export function PageHeroImage({
             <SliderOpacity
               value={editState.opacity}
               min={0}
-              max={1}
+              max={2}
               step={0.01}
               onChange={(_, v) => setEditState(s => ({ ...s, opacity: v as number }))}
               style={{ bottom: 70, top: 'auto' }}
