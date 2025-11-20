@@ -452,151 +452,19 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
 
     if (editMode && editingImage?.id === image.id) {
       return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setEditingImage(null)} />
-
-          <div className="relative bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-light text-[#e5e4e2]">Edytuj obraz</h3>
-              <button
-                onClick={() => setEditingImage(null)}
-                className="p-2 hover:bg-[#252842] rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-[#e5e4e2]" />
-              </button>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Podgląd:</label>
-                <div className="relative bg-[#0f1119] border-2 border-[#d3bb73]/20 rounded-lg overflow-hidden aspect-video">
-                  <img
-                    src={image.image_url}
-                    alt={image.alt_text}
-                    className="w-full h-full"
-                    style={{
-                      objectFit: image.object_fit as any,
-                      objectPosition: `${image.position_x}% ${image.position_y}%`
-                    }}
-                  />
-                </div>
-
-                <div className="mt-4 p-3 bg-[#252842] rounded-lg">
-                  <p className="text-xs text-[#e5e4e2]/60 mb-2">Aktualne wartości:</p>
-                  <div className="text-xs text-[#e5e4e2] space-y-1">
-                    <div>X: <span className="text-[#d3bb73]">{image.position_x}%</span></div>
-                    <div>Y: <span className="text-[#d3bb73]">{image.position_y}%</span></div>
-                    <div>Dopasowanie: <span className="text-[#d3bb73]">{image.object_fit}</span></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">URL obrazu:</label>
-                  <input
-                    type="text"
-                    value={image.image_url}
-                    onChange={(e) => setEditingImage({ ...image, image_url: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Alt text:</label>
-                  <input
-                    type="text"
-                    value={image.alt_text}
-                    onChange={(e) => setEditingImage({ ...image, alt_text: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Pozycja X: {image.position_x}%
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={image.position_x}
-                    onChange={(e) => setEditingImage({ ...image, position_x: parseFloat(e.target.value) })}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Pozycja Y: {image.position_y}%
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={image.position_y}
-                    onChange={(e) => setEditingImage({ ...image, position_y: parseFloat(e.target.value) })}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Dopasowanie:</label>
-                  <select
-                    value={image.object_fit}
-                    onChange={(e) => setEditingImage({ ...image, object_fit: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
-                  >
-                    <option value="cover">Wypełnij (Cover)</option>
-                    <option value="contain">Zmieść (Contain)</option>
-                    <option value="fill">Rozciągnij (Fill)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lub wgraj nowy obraz:</label>
-                  <label className="cursor-pointer flex items-center justify-center gap-2 w-full px-4 py-3 bg-[#252842] border-2 border-dashed border-[#d3bb73]/30 rounded-lg hover:bg-[#2a2f4a] transition-colors">
-                    <Upload className="w-5 h-5 text-[#d3bb73]" />
-                    <span className="text-[#e5e4e2]">Wybierz plik</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-
-                        setUploadingImage(true);
-                        try {
-                          const imageUrl = await uploadImage(file, 'technical-brochure');
-                          setEditingImage({ ...image, image_url: imageUrl });
-                          showSnackbar('Wgrano nowy obraz', 'success');
-                        } catch (error) {
-                          showSnackbar('Błąd podczas uploadu', 'error');
-                        } finally {
-                          setUploadingImage(false);
-                        }
-                      }}
-                      disabled={uploadingImage}
-                    />
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 justify-end mt-6 pt-6 border-t border-[#d3bb73]/10">
-              <button
-                onClick={() => setEditingImage(null)}
-                className="px-6 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={() => updateImage(editingImage)}
-                className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
-              >
-                Zapisz zmiany
-              </button>
+        <div className={`${className} relative`}>
+          <img
+            src={editingImage.image_url}
+            alt={editingImage.alt_text}
+            className={className}
+            style={{
+              objectFit: editingImage.object_fit as any,
+              objectPosition: `${editingImage.position_x}% ${editingImage.position_y}%`
+            }}
+          />
+          <div className="absolute inset-0 border-4 border-blue-500 pointer-events-none">
+            <div className="absolute top-0 left-0 right-0 bg-blue-500 text-white text-xs py-1 px-2">
+              Edycja obrazu - zmień pozycję w panelu po prawej →
             </div>
           </div>
         </div>
@@ -627,142 +495,50 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
   };
 
   return (
-    <div className="bg-[#0f1119]">
-      {/* Floating Controls */}
-      {showControls && (
-        <div className="no-print fixed top-8 right-8 z-50 flex items-center gap-3">
-          <button
-            onClick={() => setEditMode(!editMode)}
-            className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105 ${
-              editMode
-                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
-            }`}
-          >
-            {editMode ? <X className="w-5 h-5" /> : <Edit2 className="w-5 h-5" />}
-            <span className="font-semibold">{editMode ? 'Zakończ edycję' : 'Tryb edycji'}</span>
-          </button>
-
-          {editMode && (
+    <div className="flex bg-[#1c1f33] min-h-screen">
+      {/* Main Content Area */}
+      <div className={`flex-1 bg-[#0f1119] transition-all duration-300 ${showImageManager && editMode ? 'mr-96' : ''}`}>
+        {/* Floating Controls */}
+        {showControls && (
+          <div className="no-print fixed top-4 right-4 z-50 flex items-center gap-3">
             <button
-              onClick={() => setShowImageManager(!showImageManager)}
-              className="flex items-center gap-2 px-4 py-3 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105"
+              onClick={() => setEditMode(!editMode)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg shadow-xl transition-all ${
+                editMode
+                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                  : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
+              }`}
             >
-              <ImageIcon className="w-5 h-5" />
-              <span className="font-semibold">Zarządzaj obrazami</span>
+              {editMode ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+              <span className="text-sm font-semibold">{editMode ? 'Zakończ' : 'Edycja'}</span>
             </button>
-          )}
 
-          <button
-            onClick={handleDownloadPDF}
-            className="group flex items-center gap-3 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-bold px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105 hover:shadow-[#d3bb73]/50"
-          >
-            <Download className="w-6 h-6 group-hover:animate-bounce" />
-            <span>Pobierz PDF</span>
-          </button>
-        </div>
-      )}
-
-      {/* Image Manager Modal */}
-      {showImageManager && editMode && (
-        <div className="no-print fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowImageManager(false)} />
-
-          <div className="relative bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-light text-[#e5e4e2]">Zarządzanie obrazami broszury</h3>
+            {editMode && (
               <button
-                onClick={() => setShowImageManager(false)}
-                className="p-2 hover:bg-[#252842] rounded-lg transition-colors"
+                onClick={() => setShowImageManager(!showImageManager)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg shadow-xl transition-all ${
+                  showImageManager
+                    ? 'bg-blue-500/30 text-blue-300'
+                    : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                }`}
               >
-                <X className="w-5 h-5 text-[#e5e4e2]" />
+                <ImageIcon className="w-4 h-4" />
+                <span className="text-sm font-semibold">Obrazy</span>
               </button>
-            </div>
+            )}
 
-            <div className="space-y-8">
-              {['hero', 'portfolio', 'contact'].map((section) => {
-                const sectionImages = images.filter(img => img.section === section);
-                const sectionNames: Record<string, string> = {
-                  hero: 'Hero (strona 2)',
-                  portfolio: 'Portfolio (strony 5-6)',
-                  contact: 'Kontakt (strona 8)'
-                };
-
-                return (
-                  <div key={section} className="border border-[#d3bb73]/20 rounded-lg p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-xl font-semibold text-[#e5e4e2]">{sectionNames[section]}</h4>
-                      <label className="cursor-pointer px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium">
-                        <Plus className="w-4 h-4 inline mr-2" />
-                        Dodaj obraz
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleImageUpload(e, section)}
-                          disabled={uploadingImage}
-                        />
-                      </label>
-                    </div>
-
-                    {sectionImages.length === 0 ? (
-                      <p className="text-[#e5e4e2]/40 text-center py-8">Brak obrazów w tej sekcji</p>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-4">
-                        {sectionImages.map((img) => (
-                          <div key={img.id} className="relative group bg-[#252842] rounded-lg overflow-hidden">
-                            <img
-                              src={img.image_url}
-                              alt={img.alt_text}
-                              className="w-full h-48 object-cover"
-                              style={{
-                                objectPosition: `${img.position_x}% ${img.position_y}%`
-                              }}
-                            />
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingImage(img);
-                                  setShowImageManager(false);
-                                }}
-                                className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => deleteImage(img.id)}
-                                className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                            <div className="p-2 bg-[#1c1f33]/90">
-                              <p className="text-xs text-[#e5e4e2]/60 truncate">{img.alt_text}</p>
-                              <p className="text-xs text-[#d3bb73]">Kolejność: {img.order_index}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex justify-end mt-6 pt-6 border-t border-[#d3bb73]/10">
-              <button
-                onClick={() => setShowImageManager(false)}
-                className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
-              >
-                Zamknij
-              </button>
-            </div>
+            <button
+              onClick={handleDownloadPDF}
+              className="group flex items-center gap-2 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-bold px-4 py-2 rounded-lg shadow-xl transition-all"
+            >
+              <Download className="w-4 h-4" />
+              <span className="text-sm">PDF</span>
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Brochure Content */}
-      <div id="brochure-content" className="min-h-screen">
+        {/* Brochure Content */}
+        <div id="brochure-content" className="min-h-screen">
         {/* Page 1: Cover */}
         <div className="brochure-page page-break">
           <div className="decorative-shape shape-1"></div>
@@ -1099,7 +875,244 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
             </div>
           </div>
         </div>
+        </div>
       </div>
+
+      {/* Right Sidebar - Image Manager */}
+      {showImageManager && editMode && (
+        <div className="no-print fixed right-0 top-0 w-96 h-screen bg-[#1c1f33] border-l border-[#d3bb73]/20 shadow-2xl overflow-y-auto z-40">
+          <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-4 z-10">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-[#e5e4e2]">
+                {editingImage ? 'Edycja obrazu' : 'Zarządzanie obrazami'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowImageManager(false);
+                  setEditingImage(null);
+                }}
+                className="p-2 hover:bg-[#252842] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-[#e5e4e2]" />
+              </button>
+            </div>
+            {!editingImage && (
+              <p className="text-xs text-[#e5e4e2]/60">
+                Kliknij obraz aby edytować jego pozycję lub dodaj nowe obrazy do sekcji
+              </p>
+            )}
+          </div>
+
+          <div className="p-4 space-y-6">
+            {editingImage ? (
+              <div className="space-y-4">
+                <div className="bg-[#252842] rounded-lg p-4 border border-blue-500/50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                    <span className="text-sm font-semibold text-blue-400">Tryb edycji</span>
+                  </div>
+                  <img
+                    src={editingImage.image_url}
+                    alt={editingImage.alt_text}
+                    className="w-full h-40 object-cover rounded-lg mb-3"
+                    style={{
+                      objectFit: editingImage.object_fit as any,
+                      objectPosition: `${editingImage.position_x}% ${editingImage.position_y}%`
+                    }}
+                  />
+                  <p className="text-xs text-[#e5e4e2]/60">Podgląd z aktualnymi ustawieniami</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2] mb-2">
+                      Pozycja X: <span className="text-[#d3bb73] font-mono">{editingImage.position_x}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={editingImage.position_x}
+                      onChange={(e) => setEditingImage({ ...editingImage, position_x: parseFloat(e.target.value) })}
+                      className="w-full h-2 bg-[#252842] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer"
+                    />
+                    <div className="flex justify-between text-xs text-[#e5e4e2]/40 mt-1">
+                      <span>Lewo</span>
+                      <span>Prawo</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2] mb-2">
+                      Pozycja Y: <span className="text-[#d3bb73] font-mono">{editingImage.position_y}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={editingImage.position_y}
+                      onChange={(e) => setEditingImage({ ...editingImage, position_y: parseFloat(e.target.value) })}
+                      className="w-full h-2 bg-[#252842] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d3bb73] [&::-webkit-slider-thumb]:cursor-pointer"
+                    />
+                    <div className="flex justify-between text-xs text-[#e5e4e2]/40 mt-1">
+                      <span>Góra</span>
+                      <span>Dół</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2] mb-2">Dopasowanie:</label>
+                    <select
+                      value={editingImage.object_fit}
+                      onChange={(e) => setEditingImage({ ...editingImage, object_fit: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2] text-sm"
+                    >
+                      <option value="cover">Wypełnij (Cover)</option>
+                      <option value="contain">Zmieść (Contain)</option>
+                      <option value="fill">Rozciągnij (Fill)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2] mb-2">Alt text:</label>
+                    <input
+                      type="text"
+                      value={editingImage.alt_text}
+                      onChange={(e) => setEditingImage({ ...editingImage, alt_text: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2] text-sm"
+                      placeholder="Opis obrazu"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2] mb-2">Lub wgraj nowy obraz:</label>
+                    <label className="cursor-pointer flex items-center justify-center gap-2 w-full px-4 py-3 bg-[#252842] border-2 border-dashed border-[#d3bb73]/30 rounded-lg hover:bg-[#2a2f4a] transition-colors">
+                      <Upload className="w-4 h-4 text-[#d3bb73]" />
+                      <span className="text-[#e5e4e2] text-sm">Wybierz plik</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+
+                          setUploadingImage(true);
+                          try {
+                            const imageUrl = await uploadImage(file, 'technical-brochure');
+                            setEditingImage({ ...editingImage, image_url: imageUrl });
+                            showSnackbar('Wgrano nowy obraz', 'success');
+                          } catch (error) {
+                            showSnackbar('Błąd podczas uploadu', 'error');
+                          } finally {
+                            setUploadingImage(false);
+                          }
+                        }}
+                        disabled={uploadingImage}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-4 border-t border-[#d3bb73]/10">
+                  <button
+                    onClick={() => setEditingImage(null)}
+                    className="flex-1 px-4 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors text-sm"
+                  >
+                    Anuluj
+                  </button>
+                  <button
+                    onClick={() => updateImage(editingImage)}
+                    className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium text-sm"
+                  >
+                    Zapisz
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+            {['hero', 'portfolio', 'contact'].map((section) => {
+              const sectionImages = images.filter(img => img.section === section);
+              const sectionNames: Record<string, string> = {
+                hero: 'Hero (strona 2)',
+                portfolio: 'Portfolio (strony 5-6)',
+                contact: 'Kontakt (strona 8)'
+              };
+
+              return (
+                <div key={section} className="border border-[#d3bb73]/20 rounded-lg p-4 bg-[#252842]">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-[#e5e4e2]">{sectionNames[section]}</h4>
+                    <label className="cursor-pointer px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-xs font-medium">
+                      <Plus className="w-3 h-3 inline mr-1" />
+                      Dodaj
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e, section)}
+                        disabled={uploadingImage}
+                      />
+                    </label>
+                  </div>
+
+                  {sectionImages.length === 0 ? (
+                    <p className="text-[#e5e4e2]/40 text-xs text-center py-4">Brak obrazów</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {sectionImages.map((img) => (
+                        <div key={img.id} className="relative group bg-[#1c1f33] rounded-lg overflow-hidden border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-colors">
+                          <img
+                            src={img.image_url}
+                            alt={img.alt_text}
+                            className="w-full h-32 object-cover"
+                            style={{
+                              objectFit: img.object_fit as any,
+                              objectPosition: `${img.position_x}% ${img.position_y}%`
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => setEditingImage(img)}
+                              className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                              title="Edytuj"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteImage(img.id)}
+                              className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                              title="Usuń"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="p-2">
+                            <p className="text-xs text-[#e5e4e2]/80 truncate">{img.alt_text}</p>
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-xs text-[#d3bb73]">#{img.order_index}</span>
+                              <span className="text-xs text-[#e5e4e2]/60">{img.object_fit}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {uploadingImage && (
+              <div className="flex items-center justify-center gap-2 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent"></div>
+                <span className="text-sm text-blue-400">Wgrywanie obrazu...</span>
+              </div>
+            )}
+            </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
