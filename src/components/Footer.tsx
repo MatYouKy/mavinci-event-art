@@ -60,12 +60,12 @@ export default function Footer() {
             <h4 className="text-[#e5e4e2] font-light text-lg mb-6">Usługi</h4>
             <ul className="space-y-3">
               {[
-                { name: 'Wszystkie usługi', href: '/uslugi' },
-                { name: 'Konferencje', href: '/uslugi/konferencje' },
-                { name: 'Integracje firmowe', href: '/uslugi/integracje' },
-                { name: 'Wieczory tematyczne', href: '/uslugi/wieczory-tematyczne' },
-                { name: 'Technika sceniczna', href: '/uslugi/technika-sceniczna' },
-                { name: 'Streaming', href: '/uslugi/streaming' }
+                { name: 'Wszystkie Oferty', href: '/oferta' },
+                { name: 'Konferencje', href: '/oferta/konferencje' },
+                { name: 'Integracje firmowe', href: '/oferta/integracje' },
+                { name: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
+                { name: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
+                { name: 'Streaming', href: '/oferta/streaming' }
               ].map((service) => (
                 <li key={service.name}>
                   <Link href={service.href} className="text-[#e5e4e2]/60 hover:text-[#d3bb73] transition-colors duration-300 text-sm font-light">

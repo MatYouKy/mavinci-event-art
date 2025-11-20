@@ -17,6 +17,7 @@ import {
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import PageLayout from '@/components/Layout/PageLayout';
 
 const services = [
   {
@@ -94,107 +95,9 @@ const services = [
 ];
 
 export default function UslugiPage() {
-  // 🔗 Kanoniczny URL tej strony
-  const canonicalUrl = 'https://mavinci.pl/oferta';
-
-  // 📦 JSON-LD: lista głównych usług jako ItemList
-  const itemListJsonLd = {
-    '@type': 'ItemList',
-    name: 'Główne kategorie usług MAVINCI',
-    description: 'Przegląd kluczowych usług eventowych MAVINCI',
-    numberOfItems: services.length,
-    itemListElement: services.map((service, index) => ({
-      '@type': 'ListItem',
-      position: index + 1,
-      item: {
-        '@type': 'Service',
-        name: service.title,
-        description: service.description,
-        url: `https://mavinci.pl${service.href}`,
-        provider: {
-          '@type': 'Organization',
-          name: 'MAVINCI Event & ART'
-        }
-      }
-    }))
-  };
-
-  // 🧭 JSON-LD: BreadcrumbList dla strony /oferta
-  const breadcrumbJsonLd = {
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Strona główna',
-            item: 'https://mavinci.pl/'
-          },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'Oferta',
-        item: canonicalUrl
-      }
-    ]
-  };
-
-  // 🔗 Jeden wspólny JSON-LD z @graph
-  const combinedJsonLd = {
-    '@context': 'https://schema.org',
-    '@graph': [itemListJsonLd, breadcrumbJsonLd]
-  };
-
   return (
-    <>
-      <Head>
-        <title>Usługi Eventowe – MAVINCI Event & ART</title>
-        <meta
-          name="description"
-          content="Przegląd kluczowych usług MAVINCI: nagłośnienie, konferencje, streaming, symulatory VR, quizy i teleturnieje, integracje, kasyno, wieczory tematyczne oraz technika sceniczna."
-        />
-        <meta
-          name="keywords"
-          content="usługi eventowe, nagłośnienie, konferencje, streaming, symulatory VR, quizy, teleturnieje, integracje, kasyno eventowe, technika sceniczna, wieczory tematyczne"
-        />
-
-        <meta property="og:type" content="website" />
-        <meta property="og:title" content="Usługi Eventowe – MAVINCI Event & ART" />
-        <meta
-          property="og:description"
-          content="Poznaj najważniejsze usługi eventowe MAVINCI – od techniki scenicznej po interaktywne atrakcje."
-        />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta
-          property="og:image"
-          content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
-        />
-        <meta property="og:site_name" content="MAVINCI Event & ART" />
-        <meta property="og:locale" content="pl_PL" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Usługi Eventowe – MAVINCI Event & ART" />
-        <meta
-          name="twitter:description"
-          content="Przegląd głównych usług eventowych MAVINCI dla konferencji, gal i wydarzeń firmowych."
-        />
-        <meta
-          name="twitter:image"
-          content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
-        />
-
-        <link rel="canonical" href={canonicalUrl} />
-
-        {/* ✅ Jeden script z ItemList + BreadcrumbList */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify(combinedJsonLd)
-          }}
-        />
-      </Head>
-
-      <Navbar />
-
+    <PageLayout pageSlug="oferta">      
+       
       <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pt-28 pb-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* ✅ Breadcrumb pod nawigacją */}
@@ -281,8 +184,6 @@ export default function UslugiPage() {
           }
         `}</style>
       </main>
-
-      <Footer />
-    </>
+    </PageLayout>
   );
 }
