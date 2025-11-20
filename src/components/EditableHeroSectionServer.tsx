@@ -24,15 +24,30 @@ async function getHeroImageServer(section: string) {
 
   const pageTableName = serviceMapping[cleanSection] || `${cleanSection}_page_images`;
 
-  const { data: pageImage } = await supabaseServer
+  const { data: pageImage, error } = await supabaseServer
     .from(pageTableName)
     .select('*')
     .eq('section', 'hero')
     .eq('is_active', true)
     .maybeSingle();
 
+  if (error) {
+    console.error(`Błąd podczas pobierania hero dla ${section}:`, error);
+  }
+
   if (!pageImage) {
-    throw new Error(`Brak danych hero dla sekcji: ${section}`);
+    console.log(`Brak danych hero w ${pageTableName} dla sekcji: ${section}`);
+    return {
+      imageUrl: '',
+      opacity: 0.2,
+      position: { posX: 0, posY: 0, scale: 1 },
+      title: 'Tytuł domyślny',
+      description: 'Opis domyślny',
+      labelText: 'Etykieta',
+      labelIcon: '',
+      buttonText: 'Zobacz inne oferty',
+      whiteWordsCount: 2,
+    };
   }
 
   return {
