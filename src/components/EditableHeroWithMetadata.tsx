@@ -10,6 +10,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useMobile } from '@/hooks/useMobile';
 import { useHeroImage } from './PageImage/hooks/useHeroImage';
 import { supabase } from '@/lib/supabase';
+import { IconGridSelector } from './IconGridSelector';
 
 interface EditableHeroWithMetadataProps {
   section: string;
@@ -27,12 +28,6 @@ interface EditableHeroWithMetadataProps {
   };
   initialTitle?: string;
   initialDescription?: string;
-}
-
-interface CustomIcon {
-  id: string;
-  name: string;
-  svg_code: string;
 }
 
 export default function EditableHeroWithMetadata({
@@ -60,7 +55,6 @@ export default function EditableHeroWithMetadata({
   const [labelIcon, setLabelIcon] = useState(initialLabelIcon);
   const [buttonText, setButtonText] = useState(initialButtonText);
   const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
-  const [availableIcons, setAvailableIcons] = useState<CustomIcon[]>([]);
 
   const {
     imageUrl,
@@ -82,23 +76,6 @@ export default function EditableHeroWithMetadata({
     const parent = '/' + segments.slice(0, -1).join('/');
     return parent || '/';
   }, [pathname]);
-
-  useEffect(() => {
-    const fetchIcons = async () => {
-      const { data } = await supabase
-        .from('custom_icons')
-        .select('id, name, svg_code')
-        .order('name');
-
-      if (data) {
-        setAvailableIcons(data);
-      }
-    };
-
-    if (isEditMode) {
-      fetchIcons();
-    }
-  }, [isEditMode]);
 
   const updateMetadataOgImage = async (newImageUrl: string) => {
     try {
@@ -190,7 +167,25 @@ export default function EditableHeroWithMetadata({
   const beforeTitle = words.slice(0, whiteWordsCount).join(' ');
   const afterTitle = words.slice(whiteWordsCount).join(' ');
 
-  const currentIconObj = availableIcons.find(icon => icon.id === labelIcon || icon.name.toLowerCase() === labelIcon.toLowerCase());
+  const [currentIcon, setCurrentIcon] = useState<{ svg_code: string } | null>(null);
+
+  useEffect(() => {
+    const fetchCurrentIcon = async () => {
+      if (!labelIcon) return;
+
+      const { data } = await supabase
+        .from('custom_icons')
+        .select('svg_code')
+        .eq('id', labelIcon)
+        .maybeSingle();
+
+      if (data) {
+        setCurrentIcon(data);
+      }
+    };
+
+    fetchCurrentIcon();
+  }, [labelIcon]);
 
   return (
     <div className="relative">
@@ -276,20 +271,11 @@ export default function EditableHeroWithMetadata({
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm text-[#e5e4e2]/70">Ikona etykiety</label>
-                      <select
-                        value={labelIcon}
-                        onChange={(e) => setLabelIcon(e.target.value)}
-                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                      >
-                        {availableIcons.map((icon) => (
-                          <option key={icon.id} value={icon.id}>
-                            {icon.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <IconGridSelector
+                      value={labelIcon}
+                      onChange={setLabelIcon}
+                      label="Ikona etykiety"
+                    />
                     <div>
                       <label className="mb-2 block text-sm text-[#e5e4e2]/70">Tekst przycisku</label>
                       <input
@@ -316,10 +302,10 @@ export default function EditableHeroWithMetadata({
                 ) : (
                   <>
                     <div className={`mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2 ${isMobile ? 'text-xs' : ''}`}>
-                      {currentIconObj ? (
+                      {currentIcon ? (
                         <div
                           className="w-5 h-5 text-[#d3bb73]"
-                          dangerouslySetInnerHTML={{ __html: currentIconObj.svg_code }}
+                          dangerouslySetInnerHTML={{ __html: currentIcon.svg_code }}
                         />
                       ) : (
                         <div className="w-5 h-5 rounded-full bg-[#d3bb73]/30" />
