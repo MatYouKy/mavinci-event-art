@@ -141,6 +141,39 @@ export default function EditableHeroWithMetadata({
     return serviceMapping[cleanSection] || `${cleanSection}_page_images`;
   };
 
+  const loadCurrentData = async () => {
+    try {
+      const tableName = getTableName();
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('title, description, label_text, label_icon, button_text, white_words_count')
+        .eq('section', 'hero')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error loading data:', error);
+        return;
+      }
+
+      if (data) {
+        console.log('Loaded data from DB:', data);
+        setTitle(data.title || '');
+        setDescription(data.description || '');
+        setLabelText(data.label_text || '');
+        setLabelIcon(data.label_icon || '');
+        setButtonText(data.button_text || 'Zobacz inne oferty');
+        setWhiteWordsCount(data.white_words_count || 2);
+      }
+    } catch (error) {
+      console.error('Error loading current data:', error);
+    }
+  };
+
+  const handleEditClick = async () => {
+    await loadCurrentData();
+    setIsEditing(true);
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -249,7 +282,7 @@ export default function EditableHeroWithMetadata({
                     </>
                   ) : (
                     <button
-                      onClick={() => setIsEditing(true)}
+                      onClick={handleEditClick}
                       className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                     >
                       <Edit className="h-4 w-4" />
