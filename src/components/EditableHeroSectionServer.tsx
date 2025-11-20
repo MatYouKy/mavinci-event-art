@@ -33,12 +33,21 @@ async function getHeroImageServer(section: string) {
 
   if (error) {
     console.error(`Błąd podczas pobierania hero dla ${section}:`, error);
-    throw error;
   }
 
   if (!pageImage) {
-    console.log(`Brak danych hero w ${pageTableName} dla sekcji: ${section}`);
-    throw new Error(`Brak danych hero dla sekcji: ${section}. Upewnij się, że istnieje rekord w tabeli ${pageTableName} z section='hero' i is_active=true`);
+    console.log(`Brak danych hero w ${pageTableName} dla sekcji: ${section} - używam domyślnych wartości`);
+    return {
+      imageUrl: '',
+      opacity: 0.2,
+      position: { posX: 0, posY: 0, scale: 1 },
+      title: '',
+      description: '',
+      labelText: '',
+      labelIcon: '',
+      buttonText: 'Zobacz inne oferty',
+      whiteWordsCount: 2,
+    };
   }
 
   return {
