@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Edit2, Save, X, Eye, Download, Phone, Mail, MapPin, Music, Lightbulb, Tv, Sparkles, Radio, Gauge, Users, Award } from 'lucide-react';
+import { Edit2, Save, X, Eye, Download, Phone, Mail, MapPin, Music, Lightbulb, Tv, Sparkles, Radio, Gauge, Users, Award, Upload, Plus, Trash2, Image as ImageIcon } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { uploadImage } from '@/lib/storage';
 
 interface BrochureContent {
   id: string;
@@ -41,6 +41,9 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
   const [images, setImages] = useState<BrochureImage[]>([]);
   const [editingContent, setEditingContent] = useState<string | null>(null);
   const [editingImage, setEditingImage] = useState<BrochureImage | null>(null);
+  const [showImageManager, setShowImageManager] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { showSnackbar } = useSnackbar();
   const { employee } = useCurrentEmployee();
 
@@ -279,6 +282,62 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
     }
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, section: string) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      const imageUrl = await uploadImage(file, 'technical-brochure');
+
+      const maxOrder = images
+        .filter(img => img.section === section)
+        .reduce((max, img) => Math.max(max, img.order_index), 0);
+
+      const { error } = await supabase
+        .from('technical_brochure_images')
+        .insert({
+          section,
+          image_url: imageUrl,
+          alt_text: file.name,
+          position_x: 50,
+          position_y: 50,
+          object_fit: 'cover',
+          order_index: maxOrder + 1,
+          is_visible: true
+        });
+
+      if (error) throw error;
+
+      showSnackbar('Dodano obraz', 'success');
+      fetchImages();
+    } catch (error) {
+      console.error('Upload error:', error);
+      showSnackbar('Błąd podczas uploadu obrazu', 'error');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const deleteImage = async (imageId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć ten obraz?')) return;
+
+    const { error } = await supabase
+      .from('technical_brochure_images')
+      .delete()
+      .eq('id', imageId);
+
+    if (error) {
+      showSnackbar('Błąd usuwania obrazu', 'error');
+    } else {
+      showSnackbar('Usunięto obraz', 'success');
+      fetchImages();
+    }
+  };
+
   const handleDownloadPDF = () => {
     const printContent = document.getElementById('brochure-content');
     const originalContent = document.body.innerHTML;
@@ -365,22 +424,182 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
 
   const renderEditableImage = (section: string, index: number = 0, className: string, alt: string) => {
     const image = getImageBySection(section, index);
+
     if (!image) {
-      return <div className={`${className} bg-[#1c1f33]/50 flex items-center justify-center text-[#e5e4e2]/40`}>Brak obrazu</div>;
+      if (!editMode) {
+        return <div className={`${className} bg-[#1c1f33]/50 flex items-center justify-center text-[#e5e4e2]/40`}>Brak obrazu</div>;
+      }
+
+      return (
+        <div className={`${className} bg-[#1c1f33]/50 flex flex-col items-center justify-center text-[#e5e4e2]/40 gap-3 border-2 border-dashed border-[#d3bb73]/30`}>
+          <ImageIcon className="w-12 h-12 text-[#d3bb73]/40" />
+          <p className="text-sm">Brak obrazu</p>
+          <label className="cursor-pointer px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium">
+            <Upload className="w-4 h-4 inline mr-2" />
+            Dodaj obraz
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => handleImageUpload(e, section)}
+              disabled={uploadingImage}
+            />
+          </label>
+        </div>
+      );
     }
 
     if (editMode && editingImage?.id === image.id) {
       return (
-        <ImagePositionEditor
-          imageUrl={image.image_url}
-          positionX={image.position_x}
-          positionY={image.position_y}
-          objectFit={image.object_fit as 'cover' | 'contain' | 'fill'}
-          onSave={(newUrl, posX, posY, fit) => {
-            updateImage({ ...image, image_url: newUrl, position_x: posX, position_y: posY, object_fit: fit });
-          }}
-          onCancel={() => setEditingImage(null)}
-        />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setEditingImage(null)} />
+
+          <div className="relative bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-light text-[#e5e4e2]">Edytuj obraz</h3>
+              <button
+                onClick={() => setEditingImage(null)}
+                className="p-2 hover:bg-[#252842] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-[#e5e4e2]" />
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Podgląd:</label>
+                <div className="relative bg-[#0f1119] border-2 border-[#d3bb73]/20 rounded-lg overflow-hidden aspect-video">
+                  <img
+                    src={image.image_url}
+                    alt={image.alt_text}
+                    className="w-full h-full"
+                    style={{
+                      objectFit: image.object_fit as any,
+                      objectPosition: `${image.position_x}% ${image.position_y}%`
+                    }}
+                  />
+                </div>
+
+                <div className="mt-4 p-3 bg-[#252842] rounded-lg">
+                  <p className="text-xs text-[#e5e4e2]/60 mb-2">Aktualne wartości:</p>
+                  <div className="text-xs text-[#e5e4e2] space-y-1">
+                    <div>X: <span className="text-[#d3bb73]">{image.position_x}%</span></div>
+                    <div>Y: <span className="text-[#d3bb73]">{image.position_y}%</span></div>
+                    <div>Dopasowanie: <span className="text-[#d3bb73]">{image.object_fit}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">URL obrazu:</label>
+                  <input
+                    type="text"
+                    value={image.image_url}
+                    onChange={(e) => setEditingImage({ ...image, image_url: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Alt text:</label>
+                  <input
+                    type="text"
+                    value={image.alt_text}
+                    onChange={(e) => setEditingImage({ ...image, alt_text: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Pozycja X: {image.position_x}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={image.position_x}
+                    onChange={(e) => setEditingImage({ ...image, position_x: parseFloat(e.target.value) })}
+                    className="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Pozycja Y: {image.position_y}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={image.position_y}
+                    onChange={(e) => setEditingImage({ ...image, position_y: parseFloat(e.target.value) })}
+                    className="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Dopasowanie:</label>
+                  <select
+                    value={image.object_fit}
+                    onChange={(e) => setEditingImage({ ...image, object_fit: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+                  >
+                    <option value="cover">Wypełnij (Cover)</option>
+                    <option value="contain">Zmieść (Contain)</option>
+                    <option value="fill">Rozciągnij (Fill)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lub wgraj nowy obraz:</label>
+                  <label className="cursor-pointer flex items-center justify-center gap-2 w-full px-4 py-3 bg-[#252842] border-2 border-dashed border-[#d3bb73]/30 rounded-lg hover:bg-[#2a2f4a] transition-colors">
+                    <Upload className="w-5 h-5 text-[#d3bb73]" />
+                    <span className="text-[#e5e4e2]">Wybierz plik</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        setUploadingImage(true);
+                        try {
+                          const imageUrl = await uploadImage(file, 'technical-brochure');
+                          setEditingImage({ ...image, image_url: imageUrl });
+                          showSnackbar('Wgrano nowy obraz', 'success');
+                        } catch (error) {
+                          showSnackbar('Błąd podczas uploadu', 'error');
+                        } finally {
+                          setUploadingImage(false);
+                        }
+                      }}
+                      disabled={uploadingImage}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6 pt-6 border-t border-[#d3bb73]/10">
+              <button
+                onClick={() => setEditingImage(null)}
+                className="px-6 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={() => updateImage(editingImage)}
+                className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+              >
+                Zapisz zmiany
+              </button>
+            </div>
+          </div>
+        </div>
       );
     }
 
@@ -424,6 +643,16 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
             <span className="font-semibold">{editMode ? 'Zakończ edycję' : 'Tryb edycji'}</span>
           </button>
 
+          {editMode && (
+            <button
+              onClick={() => setShowImageManager(!showImageManager)}
+              className="flex items-center gap-2 px-4 py-3 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105"
+            >
+              <ImageIcon className="w-5 h-5" />
+              <span className="font-semibold">Zarządzaj obrazami</span>
+            </button>
+          )}
+
           <button
             onClick={handleDownloadPDF}
             className="group flex items-center gap-3 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-bold px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 hover:scale-105 hover:shadow-[#d3bb73]/50"
@@ -431,6 +660,104 @@ const TechnicalOfferBrochure = ({ editMode: externalEditMode = false, showContro
             <Download className="w-6 h-6 group-hover:animate-bounce" />
             <span>Pobierz PDF</span>
           </button>
+        </div>
+      )}
+
+      {/* Image Manager Modal */}
+      {showImageManager && editMode && (
+        <div className="no-print fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowImageManager(false)} />
+
+          <div className="relative bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-light text-[#e5e4e2]">Zarządzanie obrazami broszury</h3>
+              <button
+                onClick={() => setShowImageManager(false)}
+                className="p-2 hover:bg-[#252842] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-[#e5e4e2]" />
+              </button>
+            </div>
+
+            <div className="space-y-8">
+              {['hero', 'portfolio', 'contact'].map((section) => {
+                const sectionImages = images.filter(img => img.section === section);
+                const sectionNames: Record<string, string> = {
+                  hero: 'Hero (strona 2)',
+                  portfolio: 'Portfolio (strony 5-6)',
+                  contact: 'Kontakt (strona 8)'
+                };
+
+                return (
+                  <div key={section} className="border border-[#d3bb73]/20 rounded-lg p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-xl font-semibold text-[#e5e4e2]">{sectionNames[section]}</h4>
+                      <label className="cursor-pointer px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium">
+                        <Plus className="w-4 h-4 inline mr-2" />
+                        Dodaj obraz
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageUpload(e, section)}
+                          disabled={uploadingImage}
+                        />
+                      </label>
+                    </div>
+
+                    {sectionImages.length === 0 ? (
+                      <p className="text-[#e5e4e2]/40 text-center py-8">Brak obrazów w tej sekcji</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-4">
+                        {sectionImages.map((img) => (
+                          <div key={img.id} className="relative group bg-[#252842] rounded-lg overflow-hidden">
+                            <img
+                              src={img.image_url}
+                              alt={img.alt_text}
+                              className="w-full h-48 object-cover"
+                              style={{
+                                objectPosition: `${img.position_x}% ${img.position_y}%`
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingImage(img);
+                                  setShowImageManager(false);
+                                }}
+                                className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => deleteImage(img.id)}
+                                className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <div className="p-2 bg-[#1c1f33]/90">
+                              <p className="text-xs text-[#e5e4e2]/60 truncate">{img.alt_text}</p>
+                              <p className="text-xs text-[#d3bb73]">Kolejność: {img.order_index}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end mt-6 pt-6 border-t border-[#d3bb73]/10">
+              <button
+                onClick={() => setShowImageManager(false)}
+                className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+              >
+                Zamknij
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
