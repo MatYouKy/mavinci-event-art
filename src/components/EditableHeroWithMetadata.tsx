@@ -2,7 +2,7 @@
 
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { ArrowLeft, Edit, Save, X } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Presentation, Video, Mic, Zap, Gamepad2, Theater, PartyPopper, Plug } from 'lucide-react';
 import Link from 'next/link';
 import React, { useMemo, useState } from 'react';
 import { PageHeroImage } from './PageHeroImage';
@@ -14,21 +14,35 @@ import { supabase } from '@/lib/supabase';
 interface EditableHeroWithMetadataProps {
   section: string;
   pageSlug: string;
-  whiteWordsCount?: number;
-  labelTag?: { title: string; icon: React.ReactNode };
-  buttonText?: string;
+  whiteWordsCount: number;
+  labelText: string;
+  labelIcon: string;
+  buttonText: string;
   initialImageUrl: string;
   initialOpacity: number;
   initialTitle?: string;
   initialDescription?: string;
 }
 
+const iconComponents: Record<string, React.ReactNode> = {
+  presentation: <Presentation className="w-5 h-5 text-[#d3bb73]" />,
+  video: <Video className="w-5 h-5 text-[#d3bb73]" />,
+  mic: <Mic className="w-5 h-5 text-[#d3bb73]" />,
+  casino: <Zap className="w-5 h-5 text-[#d3bb73]" />,
+  plug: <Plug className="w-5 h-5 text-[#d3bb73]" />,
+  vr: <Zap className="w-5 h-5 text-[#d3bb73]" />,
+  gamepad: <Gamepad2 className="w-5 h-5 text-[#d3bb73]" />,
+  theater: <Theater className="w-5 h-5 text-[#d3bb73]" />,
+  party: <PartyPopper className="w-5 h-5 text-[#d3bb73]" />,
+};
+
 export default function EditableHeroWithMetadata({
   section,
   pageSlug,
-  whiteWordsCount = 1,
-  labelTag,
-  buttonText,
+  whiteWordsCount: initialWhiteWordsCount,
+  labelText: initialLabelText,
+  labelIcon: initialLabelIcon,
+  buttonText: initialButtonText,
   initialImageUrl,
   initialOpacity,
   initialTitle = '',
@@ -41,6 +55,10 @@ export default function EditableHeroWithMetadata({
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
+  const [labelText, setLabelText] = useState(initialLabelText);
+  const [labelIcon, setLabelIcon] = useState(initialLabelIcon);
+  const [buttonText, setButtonText] = useState(initialButtonText);
+  const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
 
   const {
     imageUrl,
@@ -57,22 +75,15 @@ export default function EditableHeroWithMetadata({
 
   const backHref = useMemo(() => {
     if (!pathname) return '/';
-
     const segments = pathname.split('/').filter(Boolean);
-
-    if (segments.length <= 1) {
-      return '/';
-    }
-
+    if (segments.length <= 1) return '/';
     const parent = '/' + segments.slice(0, -1).join('/');
-
     return parent || '/';
   }, [pathname]);
 
   const updateMetadataOgImage = async (newImageUrl: string) => {
     try {
       const normalizedSlug = pageSlug.replace(/^\/+/, '').replace(/\/+$/, '');
-
       const { data: existing } = await supabase
         .from('schema_org_page_metadata')
         .select('id')
@@ -80,17 +91,15 @@ export default function EditableHeroWithMetadata({
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase
+        await supabase
           .from('schema_org_page_metadata')
           .update({
             og_image: newImageUrl,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id);
-
-        if (error) throw error;
       } else {
-        const { error } = await supabase
+        await supabase
           .from('schema_org_page_metadata')
           .insert({
             page_slug: normalizedSlug,
@@ -99,27 +108,52 @@ export default function EditableHeroWithMetadata({
             description: description || '',
             keywords: [],
           });
-
-        if (error) throw error;
       }
-
-      showSnackbar('Metadane Open Graph zaktualizowane', 'success');
     } catch (error) {
       console.error('Error updating metadata:', error);
-      showSnackbar('Błąd aktualizacji metadanych', 'error');
     }
   };
 
-  // Po zaktualizowaniu obrazu w useHeroImage, aktualizujemy metadane
   React.useEffect(() => {
     if (imageUrl && imageUrl !== initialImageUrl) {
       updateMetadataOgImage(imageUrl);
     }
   }, [imageUrl]);
 
+  const getTableName = () => {
+    const cleanSection = section.replace('-hero', '');
+    const serviceMapping: Record<string, string> = {
+      konferencje: 'konferencje_page_images',
+      streaming: 'streaming_page_images',
+      integracje: 'integracje_page_images',
+      kasyno: 'kasyno_page_images',
+      'symulatory-vr': 'symulatory-vr_page_images',
+      naglosnienie: 'naglosnienie_page_images',
+      'quizy-teleturnieje': 'quizy-teleturnieje_page_images',
+      'technika-sceniczna': 'technika-sceniczna_page_images',
+      'wieczory-tematyczne': 'wieczory-tematyczne_page_images',
+    };
+    return serviceMapping[cleanSection] || `${cleanSection}_page_images`;
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
+      const tableName = getTableName();
+
+      await supabase
+        .from(tableName)
+        .update({
+          title,
+          description,
+          label_text: labelText,
+          label_icon: labelIcon,
+          button_text: buttonText,
+          white_words_count: whiteWordsCount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('section', 'hero');
+
       setIsEditing(false);
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
     } catch (error) {
@@ -131,10 +165,11 @@ export default function EditableHeroWithMetadata({
   };
 
   const safeTitle = title && title.trim().length > 0 ? title : 'Techniczna obsługa konferencji';
-
   const words = safeTitle.split(' ').filter(Boolean);
   const beforeTitle = words.slice(0, whiteWordsCount).join(' ');
   const afterTitle = words.slice(whiteWordsCount).join(' ');
+
+  const currentIcon = iconComponents[labelIcon] || iconComponents['presentation'];
 
   return (
     <div className="relative">
@@ -211,12 +246,61 @@ export default function EditableHeroWithMetadata({
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/70">Tekst etykiety</label>
+                      <input
+                        type="text"
+                        value={labelText}
+                        onChange={(e) => setLabelText(e.target.value)}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/70">Ikona etykiety</label>
+                      <select
+                        value={labelIcon}
+                        onChange={(e) => setLabelIcon(e.target.value)}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      >
+                        <option value="presentation">Prezentacja</option>
+                        <option value="video">Wideo</option>
+                        <option value="mic">Mikrofon</option>
+                        <option value="casino">Kasyno</option>
+                        <option value="plug">Wtyczka</option>
+                        <option value="vr">VR</option>
+                        <option value="gamepad">Gamepad</option>
+                        <option value="theater">Teatr</option>
+                        <option value="party">Impreza</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/70">Tekst przycisku</label>
+                      <input
+                        type="text"
+                        value={buttonText}
+                        onChange={(e) => setButtonText(e.target.value)}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                        Ilość białych słów w tytule: {whiteWordsCount}
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max={words.length}
+                        value={whiteWordsCount}
+                        onChange={(e) => setWhiteWordsCount(parseInt(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <>
                     <div className={`mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2 ${isMobile ? 'text-xs' : ''}`}>
-                      {labelTag?.icon}
-                      <span className={`text-sm font-medium text-[#d3bb73] ${isMobile ? 'text-xs' : ''}`}>{labelTag?.title}</span>
+                      {currentIcon}
+                      <span className={`text-sm font-medium text-[#d3bb73] ${isMobile ? 'text-xs' : ''}`}>{labelText}</span>
                     </div>
                     <h1 className={`mb-6 text-4xl font-light text-[#e5e4e2] md:text-6xl ${isMobile ? 'text-2xl' : ''}`}>
                       {beforeTitle}

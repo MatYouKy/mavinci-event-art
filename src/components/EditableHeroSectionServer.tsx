@@ -4,9 +4,6 @@ import EditableHeroWithMetadata from './EditableHeroWithMetadata';
 interface EditableHeroSectionServerProps {
   section: string;
   pageSlug: string;
-  whiteWordsCount?: number;
-  labelTag?: { title: string; icon: React.ReactNode };
-  buttonText?: string;
 }
 
 const DEFAULT_IMAGE = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg';
@@ -48,6 +45,10 @@ async function getHeroImageServer(section: string) {
         },
         title: pageImage.title || '',
         description: pageImage.description || '',
+        labelText: pageImage.label_text || '',
+        labelIcon: pageImage.label_icon || 'presentation',
+        buttonText: pageImage.button_text || 'Zobacz inne oferty',
+        whiteWordsCount: pageImage.white_words_count || 2,
       };
     }
   } catch (err) {
@@ -85,15 +86,16 @@ async function getHeroImageServer(section: string) {
     position: { posX: 0, posY: 0, scale: 1 },
     title: '',
     description: '',
+    labelText: '',
+    labelIcon: 'presentation',
+    buttonText: 'Zobacz inne oferty',
+    whiteWordsCount: 2,
   };
 }
 
 export default async function EditableHeroSectionServer({
   section,
   pageSlug,
-  whiteWordsCount = 1,
-  labelTag,
-  buttonText,
 }: EditableHeroSectionServerProps) {
   const heroData = await getHeroImageServer(section);
 
@@ -101,9 +103,10 @@ export default async function EditableHeroSectionServer({
     <EditableHeroWithMetadata
       section={section}
       pageSlug={pageSlug}
-      whiteWordsCount={whiteWordsCount}
-      labelTag={labelTag}
-      buttonText={buttonText}
+      whiteWordsCount={heroData.whiteWordsCount}
+      labelText={heroData.labelText}
+      labelIcon={heroData.labelIcon}
+      buttonText={heroData.buttonText}
       initialImageUrl={heroData.imageUrl}
       initialOpacity={heroData.opacity}
       initialTitle={heroData.title}

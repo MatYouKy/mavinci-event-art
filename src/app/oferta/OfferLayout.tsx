@@ -1,26 +1,18 @@
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import EditableHeroSectionServer from '@/components/EditableHeroSectionServer';
 import PageLayout from '@/components/Layout/PageLayout';
-import { PageHeroImageProps } from '@/components/PageHeroImage';
 import React from 'react';
 
-interface OfferLayoutProps extends PageHeroImageProps {
+interface OfferLayoutProps {
   children: React.ReactNode;
   pageSlug: string;
-  heroImageBucket?: string;
-  defaultHeroImage?: string;
   section: string;
-  whiteWordsCount?: number;
-  etykieta: { title: string; icon: React.ReactNode };
-  descriptionSection?: { title: string; description: string; icon: React.ReactNode };
 }
 
 export default function OfferLayout({
   children,
   pageSlug,
   section = 'konferencje-hero',
-  whiteWordsCount = 2,
-  etykieta,
 }: OfferLayoutProps) {
   return (
     <PageLayout pageSlug={pageSlug}>
@@ -28,9 +20,6 @@ export default function OfferLayout({
         <EditableHeroSectionServer
           section={section}
           pageSlug={pageSlug}
-          labelTag={etykieta}
-          whiteWordsCount={whiteWordsCount}
-          buttonText="Zobacz inne oferty"
         />
         <section className="px-6 pt-6">
           <div className="mx-auto max-w-7xl">
