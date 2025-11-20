@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from 'next/cache';
 import { supabaseServer } from '@/lib/supabaseServer';
 import EditableHeroWithMetadata from './EditableHeroWithMetadata';
 
@@ -7,6 +8,8 @@ interface EditableHeroSectionServerProps {
 }
 
 async function getHeroImageServer(section: string) {
+  noStore();
+
   const cleanSection = section.replace('-hero', '');
 
   const serviceMapping: Record<string, string> = {
