@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import type { SiteImage } from '@/lib/siteImages';
@@ -55,6 +55,18 @@ export function PageHeroImage({
     opacity: defaultOpacity,
   });
 
+  // Sync editState with hook values when they change
+  useEffect(() => {
+    if (!isEditingOpacity && !isEditingPosition) {
+      setEditState({
+        posX: position.posX,
+        posY: position.posY,
+        scale: position.scale,
+        opacity: opacity || defaultOpacity,
+      });
+    }
+  }, [position, opacity, defaultOpacity, isEditingOpacity, isEditingPosition]);
+
 
   const handleCancelPosition = () => {
     setIsEditingPosition(false);
@@ -65,7 +77,43 @@ export function PageHeroImage({
   const handleCancelOpacity = () => {
     setIsEditingOpacity(false);
     setOpacitySubMenu(false);
-    setOpacity(defaultOpacity);
+    setEditState(s => ({ ...s, opacity: opacity || defaultOpacity }));
+  };
+
+  const handleStartEditingOpacity = () => {
+    setIsEditingOpacity(true);
+    setOpacitySubMenu(true);
+    setEditState(s => ({ ...s, opacity: opacity || defaultOpacity }));
+  };
+
+  const handleStartEditingPosition = () => {
+    setIsEditingPosition(true);
+    setPositionSubMenu(true);
+    setEditState(s => ({ ...s, posX: position.posX, posY: position.posY, scale: position.scale }));
+  };
+
+  const handleSaveOpacity = () => {
+    setOpacity(editState.opacity);
+    // saveOpacity will be called after setOpacity updates the hook state
+    setTimeout(async () => {
+      await saveOpacity();
+      setIsEditingOpacity(false);
+      setOpacitySubMenu(false);
+    }, 0);
+  };
+
+  const handleSavePosition = () => {
+    setPosition({
+      posX: editState.posX,
+      posY: editState.posY,
+      scale: editState.scale,
+    });
+    // savePosition will be called after setPosition updates the hook state
+    setTimeout(async () => {
+      await savePosition();
+      setIsEditingPosition(false);
+      setPositionSubMenu(false);
+    }, 0);
   };
 
   const menuItems = [
@@ -77,17 +125,11 @@ export function PageHeroImage({
     },
     {
       children: 'Ustaw Pozycję',
-      onClick: () => {
-        setIsEditingPosition(true);
-        setPositionSubMenu(true);
-      },
+      onClick: handleStartEditingPosition,
     },
     {
       children: 'Ustaw Przezroczystość',
-      onClick: () => {
-        setIsEditingOpacity(true);
-        setOpacitySubMenu(true);
-      },
+      onClick: handleStartEditingOpacity,
     },
     {
       children: 'Resetuj Pozycję',
@@ -146,7 +188,7 @@ export function PageHeroImage({
             menuActionContent={
               <div className="flex gap-2 p-2">
                 <button
-                  onClick={positionSubMenu ? savePosition : saveOpacity}
+                  onClick={positionSubMenu ? handleSavePosition : handleSaveOpacity}
                   disabled={loading}
                   className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
