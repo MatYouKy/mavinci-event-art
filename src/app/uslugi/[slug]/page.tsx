@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import Head from 'next/head';
-import ServiceLayout from '@/app/uslugi/ServiceLayout';
+import { Metadata } from 'next';
+import PageLayout from '@/components/Layout/PageLayout';
 import ServiceDetailClient from './ServiceDetailClient';
 
 // Create supabase client for server-side
@@ -59,6 +59,47 @@ async function loadServiceData(slug: string) {
   };
 }
 
+// Generate metadata for SEO
+export async function generateMetadata({
+  params,
+}: {
+  params: { slug: string };
+}): Promise<Metadata> {
+  const data = await loadServiceData(params.slug);
+
+  if (!data) {
+    return {
+      title: 'Usługa nie znaleziona - MAVINCI Event & ART',
+    };
+  }
+
+  const { service } = data;
+  const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
+
+  return {
+    title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
+    description: service.seo_description || service.description,
+    keywords: service.seo_keywords,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      type: 'website',
+      url: canonicalUrl,
+      title: service.seo_title || service.name,
+      description: service.seo_description || service.description,
+      images: service.thumbnail_url ? [{ url: service.thumbnail_url }] : [],
+      siteName: 'MAVINCI Event & ART',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: service.seo_title || service.name,
+      description: service.seo_description || service.description,
+      images: service.thumbnail_url ? [service.thumbnail_url] : [],
+    },
+  };
+}
+
 export default async function ServiceDetailPage({
   params,
 }: {
@@ -72,89 +113,16 @@ export default async function ServiceDetailPage({
 
   const { service, category, relatedServices } = data;
 
-  const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
-
-  const serviceJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Service',
-    name: service.name,
-    description: service.description,
-    provider: {
-      '@type': 'Organization',
-      name: 'MAVINCI Event & ART',
-    },
-    url: canonicalUrl,
-    ...(service.thumbnail_url && { image: service.thumbnail_url }),
-  };
-
-  const breadcrumbJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Strona główna',
-        item: 'https://mavinci.pl/',
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'Usługi',
-        item: 'https://mavinci.pl/uslugi',
-      },
-      {
-        '@type': 'ListItem',
-        position: 3,
-        name: service.name,
-        item: canonicalUrl,
-      },
-    ],
-  };
+  // PageLayout handles SEO metadata and breadcrumbs automatically
 
   return (
-    <>
-      <Head>
-        <title>{service.seo_title || `${service.name} - MAVINCI Event & ART`}</title>
-        <meta name="description" content={service.seo_description || service.description} />
-        {service.seo_keywords && <meta name="keywords" content={service.seo_keywords} />}
-
-        <meta property="og:type" content="product" />
-        <meta property="og:title" content={service.seo_title || service.name} />
-        <meta property="og:description" content={service.seo_description || service.description} />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:image" content={service.thumbnail_url} />
-        <meta property="og:site_name" content="MAVINCI Event & ART" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={service.seo_title || service.name} />
-        <meta name="twitter:description" content={service.seo_description || service.description} />
-        <meta name="twitter:image" content={service.thumbnail_url} />
-
-        <link rel="canonical" href={canonicalUrl} />
-
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@graph': [serviceJsonLd, breadcrumbJsonLd],
-            }),
-          }}
-        />
-      </Head>
-
-      <ServiceLayout
-        pageSlug={`uslugi/${service.slug}`}
-        section={`${service.slug}-hero`}
-      >
-        <ServiceDetailClient
-          service={service}
-          category={category}
-          relatedServices={relatedServices}
-        />
-      </ServiceLayout>
-    </>
+    <PageLayout pageSlug={`uslugi/${service.slug}`}>
+      <ServiceDetailClient
+        service={service}
+        category={category}
+        relatedServices={relatedServices}
+      />
+    </PageLayout>
   );
 }
 
