@@ -204,17 +204,24 @@ export function useHeroImage(
     setSaving(true);
     const pageTableName = getTableName(section);
 
+    console.log('[savePosition] Saving position:', {
+      desktop: desktopPosition,
+      mobile: mobilePosition,
+      screenMode
+    });
+
     try {
       // próba: nowy system
       try {
         const { data: existing } = await supabase
           .from(pageTableName)
-          .select('id')
+          .select('id, image_metadata')
           .eq('section', 'hero')
           .maybeSingle();
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           if (!existing) {
+            console.log('[savePosition] Creating new record');
             const { error } = await supabase.from(pageTableName).insert({
               section: 'hero',
               name: `Hero ${section}`,
@@ -224,42 +231,51 @@ export function useHeroImage(
               opacity,
               image_metadata: {
                 desktop: {
-                  position,
+                  position: desktopPosition,
                   objectFit: 'cover',
                 },
                 mobile: {
-                  position,
+                  position: mobilePosition,
                   objectFit: 'cover',
                 },
               },
             });
             if (error) throw error;
           } else {
+            console.log('[savePosition] Updating existing record');
+            const currentMetadata = existing.image_metadata || {};
+
             const { error } = await supabase
               .from(pageTableName)
               .update({
                 image_metadata: {
                   desktop: {
+                    ...(currentMetadata.desktop || {}),
                     position: desktopPosition,
-                    objectFit: 'cover',
+                    objectFit: currentMetadata.desktop?.objectFit || 'cover',
                   },
                   mobile: {
+                    ...(currentMetadata.mobile || {}),
                     position: mobilePosition,
-                    objectFit: 'cover',
+                    objectFit: currentMetadata.mobile?.objectFit || 'cover',
                   },
                 },
                 updated_at: new Date().toISOString(),
               })
               .eq('section', 'hero');
-            if (error) throw error;
+            if (error) {
+              console.error('[savePosition] Update error:', error);
+              throw error;
+            }
+            console.log('[savePosition] Update successful');
           }
 
           await loadImage();
           showSnackbar('Pozycja zapisana pomyślnie', 'success');
           return;
         }
-      } catch {
-        console.log('Używam starych tabel (savePosition)');
+      } catch (err) {
+        console.log('Używam starych tabel (savePosition):', err);
       }
 
       // stary system
