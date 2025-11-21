@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Save } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface ServiceSEOModalProps {
   isOpen: boolean;
   onClose: () => void;
   serviceId: string;
+  slug: string;
   initialData: {
     name: string;
     description: string;
@@ -23,6 +23,7 @@ export default function ServiceSEOModal({
   isOpen,
   onClose,
   serviceId,
+  slug,
   initialData,
 }: ServiceSEOModalProps) {
   const router = useRouter();
@@ -47,23 +48,30 @@ export default function ServiceSEOModal({
     try {
       setSaving(true);
 
-      const { error } = await supabase
-        .from('conferences_service_items')
-        .update({
-          name,
-          description,
-          seo_title: seoTitle || null,
-          seo_description: seoDescription || null,
-          seo_keywords: seoKeywords || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', serviceId);
+      // Import server action dynamically
+      const { updateServiceSEO } = await import('@/app/uslugi/[slug]/actions');
 
-      if (error) throw error;
+      const result = await updateServiceSEO(serviceId, slug, {
+        name,
+        description,
+        seo_title: seoTitle || null,
+        seo_description: seoDescription || null,
+        seo_keywords: seoKeywords || null,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update');
+      }
 
       showSnackbar('Metadata zapisane pomyślnie', 'success');
-      router.refresh();
+
+      // Close modal first
       onClose();
+
+      // Then refresh - this ensures server action revalidatePath has completed
+      setTimeout(() => {
+        router.refresh();
+      }, 100);
     } catch (error) {
       console.error('Error saving metadata:', error);
       showSnackbar('Błąd podczas zapisywania metadata', 'error');

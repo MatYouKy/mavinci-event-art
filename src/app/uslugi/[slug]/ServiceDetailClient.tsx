@@ -339,18 +339,22 @@ export default function ServiceDetailClient({
       )}
 
       {/* SEO Metadata Modal */}
-      <ServiceSEOModal
-        isOpen={isSEOModalOpen}
-        onClose={() => setIsSEOModalOpen(false)}
-        serviceId={service.id}
-        initialData={{
-          name: service.name,
-          description: service.description,
-          seo_title: service.seo_title,
-          seo_description: service.seo_description,
-          seo_keywords: service.seo_keywords,
-        }}
-      />
+      {isSEOModalOpen && (
+        <ServiceSEOModal
+          key={`seo-modal-${service.id}-${service.updated_at || Date.now()}`}
+          isOpen={isSEOModalOpen}
+          onClose={() => setIsSEOModalOpen(false)}
+          serviceId={service.id}
+          slug={service.slug}
+          initialData={{
+            name: service.name,
+            description: service.description,
+            seo_title: service.seo_title,
+            seo_description: service.seo_description,
+            seo_keywords: service.seo_keywords,
+          }}
+        />
+      )}
 
       {/* Edit Modal */}
       {isEditing && (

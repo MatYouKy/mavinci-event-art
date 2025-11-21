@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { unstable_noStore as noStore } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 import { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
@@ -18,6 +19,7 @@ const getSupabaseClient = () => {
 };
 
 async function loadServiceData(slug: string) {
+  noStore(); // Prevent caching for dynamic data
   const supabase = getSupabaseClient();
 
   const { data: serviceData, error: serviceError } = await supabase
