@@ -24,9 +24,10 @@ import { BreadcrumbJsonLd } from './Layout/BreadcrumbJsonLd';
 interface CategoryBreadcrumbProps {
   productName?: string;
   pageSlug?: string; // np. "oferta/konferencje"
+  hideMetadataButton?: boolean;
 }
 
-export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumbProps) {
+export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }: CategoryBreadcrumbProps) {
   const pathname = usePathname();
   const { isEditMode } = useEditMode();
   const [dynamicTree, setDynamicTree] = useState<CategoryNode[] | null>(null);
@@ -183,7 +184,7 @@ export function CategoryBreadcrumb({ productName, pageSlug }: CategoryBreadcrumb
               </BreadcrumbList>
             </Breadcrumb>
 
-            {isEditMode && currentPageSlug && (
+            {isEditMode && currentPageSlug && !hideMetadataButton && (
               <button
                 onClick={() => setIsMetadataModalOpen(true)}
                 className="px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors flex items-center gap-2 text-sm"

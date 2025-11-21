@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Check, Star, Mail, ChevronLeft, ChevronRight, Edit2
+  ArrowLeft, Check, Star, Mail, ChevronLeft, ChevronRight, Edit2, FileText
 } from 'lucide-react';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
+import ServiceSEOModal from '@/components/ServiceSEOModal';
 import { useEditMode } from '@/contexts/EditModeContext';
 interface ServiceDetailClientProps {
   service: any;
@@ -24,6 +25,7 @@ export default function ServiceDetailClient({
   const { isEditMode } = useEditMode();
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [itemsPerView, setItemsPerView] = useState(3);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -92,13 +94,22 @@ export default function ServiceDetailClient({
           </Link>
 
           {isEditMode && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-              Edytuj usługę
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsSEOModalOpen(true)}
+                className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                Metadane
+              </button>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="inline-flex items-center gap-2 border border-[#d3bb73] text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+              >
+                <Edit2 className="w-4 h-4" />
+                Edytuj usługę
+              </button>
+            </div>
           )}
         </div>
       </section>
@@ -326,6 +337,20 @@ export default function ServiceDetailClient({
           sourcePage={`/uslugi/${service.slug}`}
         />
       )}
+
+      {/* SEO Metadata Modal */}
+      <ServiceSEOModal
+        isOpen={isSEOModalOpen}
+        onClose={() => setIsSEOModalOpen(false)}
+        serviceId={service.id}
+        initialData={{
+          name: service.name,
+          description: service.description,
+          seo_title: service.seo_title,
+          seo_description: service.seo_description,
+          seo_keywords: service.seo_keywords,
+        }}
+      />
 
       {/* Edit Modal */}
       {isEditing && (
