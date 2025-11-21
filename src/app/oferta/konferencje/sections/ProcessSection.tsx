@@ -3,18 +3,27 @@ import { iconMap } from '../ConferencesPage';
 import { Settings } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useMobile } from '@/hooks/useMobile';
 
 interface ProcessSectionProps {
   isEditMode: boolean;
   process: any[];
   isEditingProcess: boolean;
-  loadData: () => Promise<void>
+  loadData: () => Promise<void>;
   setIsEditingProcess: (isEditing: boolean) => void;
 }
 
-export const ProcessSection:FC<ProcessSectionProps> = ({ isEditMode, process, setIsEditingProcess, isEditingProcess, loadData }) => {
+export const ProcessSection: FC<ProcessSectionProps> = ({
+  isEditMode,
+  process,
+  setIsEditingProcess,
+  isEditingProcess,
+  loadData,
+}) => {
   const { showSnackbar } = useSnackbar();
+  const isMobile = useMobile();
   const [editingProcessStep, setEditingProcessStep] = useState<any>(null);
+
   const getIcon = (iconName: string) => {
     const Icon = iconMap[iconName] || Settings;
     return Icon;
@@ -42,117 +51,208 @@ export const ProcessSection:FC<ProcessSectionProps> = ({ isEditMode, process, se
       showSnackbar('Błąd podczas zapisywania', 'error');
     }
   };
+
   return (
-    <section className="py-20 px-6">
-          <div className="max-w-5xl mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-4xl font-light text-[#e5e4e2] text-center flex-1">
-                Proces współpracy
-              </h2>
-              {isEditMode && !isEditingProcess && (
-                <button
-                  onClick={() => setIsEditingProcess(true)}
-                  className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
-                >
-                  Edytuj proces
-                </button>
-              )}
-              {isEditMode && isEditingProcess && (
-                <button
-                  onClick={() => {
-                    setIsEditingProcess(false);
-                    setEditingProcessStep(null);
-                  }}
-                  className="px-4 py-2 bg-[#800020] text-[#e5e4e2] rounded-lg hover:bg-[#800020]/90 transition-colors text-sm"
-                >
-                  Zamknij edycję
-                </button>
-              )}
-            </div>
-            <p className="text-[#e5e4e2]/60 text-center mb-16">
-              Krok po kroku do profesjonalnej realizacji
-            </p>
+    <section className="px-6 md:px-12 lg:px-16 py-12">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex-1 text-center text-4xl font-light text-[#e5e4e2]">
+            Proces współpracy
+          </h2>
+          {isEditMode && !isEditingProcess && (
+            <button
+              onClick={() => setIsEditingProcess(true)}
+              className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+            >
+              Edytuj proces
+            </button>
+          )}
+          {isEditMode && isEditingProcess && (
+            <button
+              onClick={() => {
+                setIsEditingProcess(false);
+                setEditingProcessStep(null);
+              }}
+              className="rounded-lg bg-[#800020] px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#800020]/90"
+            >
+              Zamknij edycję
+            </button>
+          )}
+        </div>
+        <p className="mb-16 text-center text-[#e5e4e2]/60">
+          Krok po kroku do profesjonalnej realizacji
+        </p>
 
-            <div className="space-y-6">
-              {process.map((step) => {
-                const Icon = getIcon(step.icon_name);
-                const isEditing = editingProcessStep?.id === step.id;
+        <div className="space-y-6">
+          {process.map((step) => {
+            const Icon = getIcon(step.icon_name);
+            const isEditing = editingProcessStep?.id === step.id;
 
-                return (
-                  <div key={step.id} className="flex gap-6 items-start">
-                    <div className="w-16 h-16 bg-[#d3bb73] rounded-full flex items-center justify-center flex-shrink-0">
-                      <Icon className="w-8 h-8 text-[#1c1f33]" />
-                    </div>
-                    <div className="flex-1">
-                      {isEditing ? (
-                        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 space-y-3">
-                          <input
-                            type="text"
-                            value={editingProcessStep.step_title}
-                            onChange={(e) => setEditingProcessStep({ ...editingProcessStep, step_title: e.target.value })}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
-                            placeholder="Tytuł kroku"
-                          />
-                          <textarea
-                            value={editingProcessStep.step_description}
-                            onChange={(e) => setEditingProcessStep({ ...editingProcessStep, step_description: e.target.value })}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73] resize-none"
-                            rows={3}
-                            placeholder="Opis kroku"
-                          />
-                          <input
-                            type="text"
-                            value={editingProcessStep.duration_info || ''}
-                            onChange={(e) => setEditingProcessStep({ ...editingProcessStep, duration_info: e.target.value })}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73]"
-                            placeholder="Czas trwania (np. 1-2 dni)"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleSaveProcessStep(editingProcessStep)}
-                              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors text-sm"
-                            >
-                              Zapisz
-                            </button>
-                            <button
-                              onClick={() => setEditingProcessStep(null)}
-                              className="px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded hover:bg-[#800020]/30 transition-colors text-sm"
-                            >
-                              Anuluj
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-2xl font-medium text-[#e5e4e2]">
-                              {step.step_title}
-                            </h3>
-                            {step.duration_info && (
-                              <span className="text-xs text-[#d3bb73] px-3 py-1 bg-[#d3bb73]/10 rounded-full">
-                                {step.duration_info}
-                              </span>
-                            )}
-                            {isEditMode && isEditingProcess && (
-                              <button
-                                onClick={() => setEditingProcessStep(step)}
-                                className="ml-auto px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors text-xs"
-                              >
-                                Edytuj
-                              </button>
-                            )}
-                          </div>
-                          <p className="text-[#e5e4e2]/70">
-                            {step.step_description}
-                          </p>
-                        </>
-                      )}
-                    </div>
+            return (
+              <div key={step.id} className="flex items-start gap-6">
+                {/* Ikona po lewej w trybie edycji (w widoku nie-edytorskim jest wewnątrz itemów) */}
+                {!isEditing && (
+                  <div className="hidden md:flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-[#d3bb73]">
+                    <Icon className="h-8 w-8 text-[#1c1f33]" />
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-  )
-}
+                )}
+
+                <div className="flex-1">
+                  {isEditing ? (
+                    <div className="space-y-3 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-2 md:p-4">
+                      <input
+                        type="text"
+                        value={editingProcessStep.step_title}
+                        onChange={(e) =>
+                          setEditingProcessStep({
+                            ...editingProcessStep,
+                            step_title: e.target.value,
+                          })
+                        }
+                        className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73] md:px-3"
+                        placeholder="Tytuł kroku"
+                      />
+                      <textarea
+                        value={editingProcessStep.step_description}
+                        onChange={(e) =>
+                          setEditingProcessStep({
+                            ...editingProcessStep,
+                            step_description: e.target.value,
+                          })
+                        }
+                        className="w-full resize-none rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                        rows={3}
+                        placeholder="Opis kroku"
+                      />
+                      <input
+                        type="text"
+                        value={editingProcessStep.duration_info || ''}
+                        onChange={(e) =>
+                          setEditingProcessStep({
+                            ...editingProcessStep,
+                            duration_info: e.target.value,
+                          })
+                        }
+                        className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73] md:px-3"
+                        placeholder="Czas trwania (np. 1-2 dni)"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSaveProcessStep(editingProcessStep)}
+                          className="rounded bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                        >
+                          Zapisz
+                        </button>
+                        <button
+                          onClick={() => setEditingProcessStep(null)}
+                          className="rounded bg-[#800020]/20 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {isMobile ? (
+                        <AdvantageMobileItem
+                          title={step.step_title}
+                          description={step.step_description}
+                          Icon={Icon}
+                          duration_info={step.duration_info}
+                          showEditButton={isEditMode && isEditingProcess}
+                          onEditClick={() => setEditingProcessStep(step)}
+                        />
+                      ) : (
+                        <ProcessDesktopItem
+                          title={step.step_title}
+                          description={step.step_description}
+                          Icon={Icon}
+                          durationInfo={step.duration_info}
+                          showEditButton={isEditMode && isEditingProcess}
+                          onEditClick={() => setEditingProcessStep(step)}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const ProcessDesktopItem: FC<{
+  title: string;
+  description: string;
+  Icon: React.ElementType;
+  durationInfo?: string;
+  showEditButton?: boolean;
+  onEditClick?: () => void;
+}> = ({ title, description, Icon, durationInfo, showEditButton, onEditClick }) => {
+  return (
+    <div className="flex gap-4">
+      <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-[#d3bb73] md:hidden">
+        {/* Ikona mobilna w desktopowym layoucie (dla mniejszych szerokości) */}
+        <Icon className="h-8 w-8 text-[#1c1f33]" />
+      </div>
+      <div className="flex-1">
+        <div className="mb-2 flex items-center gap-3">
+          <h3 className="text-xl font-medium text-[#e5e4e2] md:text-2xl">{title}</h3>
+          {durationInfo && (
+            <span className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73] md:text-sm">
+              {durationInfo}
+            </span>
+          )}
+          {showEditButton && (
+            <button
+              onClick={onEditClick}
+              className="ml-auto rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 md:px-3 md:text-sm"
+            >
+              Edytuj
+            </button>
+          )}
+        </div>
+        <p className="text-sm text-[#e5e4e2]/70 md:text-base">{description}</p>
+      </div>
+    </div>
+  );
+};
+
+const AdvantageMobileItem: FC<{
+  title: string;
+  description: string;
+  Icon: React.ElementType;
+  duration_info?: string;
+  showEditButton?: boolean;
+  onEditClick?: () => void;
+}> = ({ title, description, Icon, duration_info, showEditButton, onEditClick }) => {
+  return (
+    <div className="space-y-2 md:hidden mb-5">
+      <div className="flex flex-col md:flex-row items-center gap-2">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#d3bb73]">
+          <Icon className="h-4 w-4 text-[#1c1f33]" />
+        </div>
+        <h3 className="text-base font-medium text-[#e5e4e2]">{title}</h3>
+        {showEditButton && (
+          <button
+            onClick={onEditClick}
+            className="ml-auto rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
+          >
+            Edytuj
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-[#e5e4e2]/70 text-justify">{description}</p>
+      {duration_info && (
+        <div className="flex items-center justify-center mt-2">
+          <span className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
+            {duration_info}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};

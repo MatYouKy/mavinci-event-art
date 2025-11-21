@@ -27,7 +27,7 @@ const navLinks = [
   { label: 'Portfolio', href: '/portfolio' },
   { label: 'Zespół', href: '/zespol' },
   { label: 'Usługi', href: '/uslugi' },
-  { label: 'Kontakt', href: '/#kontakt' },
+  // { label: 'Kontakt', href: '/#kontakt' },
 ];
 
 const servicesLinks = [
@@ -258,7 +258,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
         }}
       >
         <div className="mx-auto max-w-7xl rounded-full border border-[#d3bb73]/20 bg-[#1c1f33]/95 px-4 shadow-lg backdrop-blur-md md:px-8">
-        <div className="flex items-center justify-between h-14 md:h-16 gap-0 md:gap-4">
+          <div className="flex h-14 items-center justify-between gap-0 md:h-16 md:gap-4">
             <Link href="/" className="flex flex-shrink-0 items-center">
               <img
                 src="/logo mavinci.svg"
@@ -328,6 +328,12 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                   </div>
                 )}
               </div>
+              <Link
+                href="/#kontakt"
+                className="text-sm font-light text-[#e5e4e2]/90 transition-colors duration-200 hover:text-[#d3bb73]"
+              >
+                Kontakt
+              </Link>
             </div>
 
             <div className="hidden items-center gap-3 md:flex">
@@ -577,6 +583,15 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                   </div>
                 )}
               </div>
+              <Link
+                    href="/#kontakt"
+                    onClick={() => setIsMenuOpen(false)}
+                    className={`block py-2 text-sm font-light text-white/90 hover:text-white ${
+                      'text-[#e5e4e2]/90 hover:text-[#d3bb73]' // normalny
+                    }`}
+                  >
+                    Kontakt
+                  </Link>
               {isAuthenticated ? (
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2">

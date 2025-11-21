@@ -18,6 +18,7 @@ import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import { useMobile } from '@/hooks/useMobile';
 
 interface CasinoTable {
   id: string;
@@ -84,6 +85,8 @@ interface PageSettings {
 export default function KasynoPage() {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
+  const isMobile = useMobile();
+  const screenMode = isMobile ? 'mobile' : 'desktop';
 
   const [showContent, setShowContent] = useState(true);
   const [legalContent, setLegalContent] = useState('');
@@ -402,8 +405,6 @@ export default function KasynoPage() {
       default: return 'grid-cols-1';
     }
   };
-  const canonicalUrl = 'https://mavinci.pl/uslugi/kasyno';
-  const serviceName = pageSettings.hero_title.split(' ')[0];
 
   return (
     <>
@@ -436,119 +437,6 @@ export default function KasynoPage() {
                 </div>
               </div>
             )}
-
-            <PageHeroImage
-              section={pageSettings.hero_image_section}
-              defaultImage="https://images.pexels.com/photos/262508/pexels-photo-262508.jpeg?auto=compress&cs=tinysrgb&w=1920"
-              defaultOpacity={pageSettings.hero_image_opacity}
-              className="py-24 md:py-32 overflow-hidden"
-            >
-              <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                {!isEditing && (
-                  <Link href="/#uslugi" className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8">
-                    <ArrowLeft className="w-4 h-4" />
-                    Powrót do usług
-                  </Link>
-                )}
-
-                <div className="grid lg:grid-cols-2 gap-12 items-center">
-                  <div>
-                    <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
-                      <Dices className="w-5 h-5 text-[#d3bb73]" />
-                      <span className="text-[#d3bb73] text-sm font-medium">Wieczory w Kasynie</span>
-                    </div>
-
-                    {isEditing ? (
-                      <div className="space-y-4 mb-8">
-                        <div>
-                          <label className="block text-[#e5e4e2]/70 text-sm mb-2">Tytuł</label>
-                          <input
-                            type="text"
-                            value={editHeroTitle}
-                            onChange={(e) => setEditHeroTitle(e.target.value)}
-                            className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] text-3xl font-light focus:border-[#d3bb73] focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[#e5e4e2]/70 text-sm mb-2">Podtytuł</label>
-                          <textarea
-                            value={editHeroSubtitle}
-                            onChange={(e) => setEditHeroSubtitle(e.target.value)}
-                            rows={3}
-                            className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[#e5e4e2]/70 text-sm mb-2">Opis</label>
-                          <textarea
-                            value={editHeroDescription}
-                            onChange={(e) => setEditHeroDescription(e.target.value)}
-                            rows={2}
-                            className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] text-sm focus:border-[#d3bb73] focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[#e5e4e2]/70 text-sm mb-2">
-                            Przeźroczystość tła: {Math.round(editHeroOpacity * 100)}%
-                          </label>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={editHeroOpacity * 100}
-                            onChange={(e) => setEditHeroOpacity(parseInt(e.target.value) / 100)}
-                            className="w-full h-2 bg-[#1c1f33] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
-                          {pageSettings.hero_title.split(' ')[0]} <span className="text-[#d3bb73]">{pageSettings.hero_title.split(' ').slice(1).join(' ')}</span>
-                        </h1>
-
-                        <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed mb-4">
-                          {pageSettings.hero_subtitle}
-                        </p>
-
-                        <p className="text-[#e5e4e2]/50 text-sm font-light leading-relaxed mb-8">
-                          {pageSettings.hero_description}
-                        </p>
-                      </>
-                    )}
-
-                    {!isEditing && (
-                      <div className="flex flex-wrap gap-4">
-                        <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
-                          Zapytaj o wycenę
-                        </a>
-                        <Link href="/#uslugi" className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/20 transition-colors">
-                          Zobacz inne usługi
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="relative">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
-                      <div className="relative bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-3xl p-8">
-                        <Spade className="w-24 h-24 text-[#d3bb73] mb-6" />
-                        <h3 className="text-2xl font-light text-[#e5e4e2] mb-4">Elegancja i Rozrywka</h3>
-                        <p className="text-[#e5e4e2]/70 font-light">
-                          Klimat prawdziwego kasyna, profesjonalni krupierzy i niezapomniana atmosfera gier w bezpiecznym środowisku eventowym bez hazardu.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </PageHeroImage>
-            <section className="pt-6 px-6 border-t border-b border-[#d3bb73]/20">
-        <div className="max-w-7xl mx-auto">
-        <CategoryBreadcrumb />
-        </div>
-        </section>
 
             {features.length > 0 && (
               <section className="py-24 bg-[#0f1119]">
@@ -666,15 +554,15 @@ export default function KasynoPage() {
                   <div className="grid lg:grid-cols-3 gap-8">
                     {gameRules.map((rule) => {
                       const ruleLinks: { [key: string]: string } = {
-                        'poker-texas-holdem': '/uslugi/kasyno/zasady/poker',
-                        'ruletka': '/uslugi/kasyno/zasady/ruletka',
-                        'blackjack': '/uslugi/kasyno/zasady/blackjack',
+                        'poker-texas-holdem': '/oferta/kasyno/zasady/poker',
+                        'ruletka': '/oferta/kasyno/zasady/ruletka',
+                        'blackjack': '/oferta/kasyno/zasady/blackjack',
                       };
 
                       return (
                         <Link
                           key={rule.id}
-                          href={isEditing ? '#' : (ruleLinks[rule.slug] || '/uslugi/kasyno')}
+                          href={isEditing ? '#' : (ruleLinks[rule.slug] || '/oferta/kasyno')}
                           onClick={(e) => isEditing && e.preventDefault()}
                           className="group bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 hover:border-[#d3bb73]/30 transition-all"
                         >

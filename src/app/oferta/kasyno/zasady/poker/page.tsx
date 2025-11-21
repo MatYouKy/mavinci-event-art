@@ -44,7 +44,7 @@ export default function PokerRulesPage() {
       <main className="min-h-screen bg-[#0f1119]">
         <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <Link
-            href="/uslugi/kasyno"
+            href="/oferta/kasyno"
             className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors mb-8"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -132,7 +132,7 @@ export default function PokerRulesPage() {
                 Zapytaj o wycenę
               </a>
               <Link
-                href="/uslugi/kasyno"
+                href="/oferta/kasyno"
                 className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/20 transition-colors"
               >
                 Wróć do Kasyna

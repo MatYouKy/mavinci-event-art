@@ -21,7 +21,7 @@ import { PricingSection } from './sections/PricingSection';
 import { PortfolioProjects } from './sections/PortfolioProjects';
 import { CaseStudiesSection } from './sections/CaseStudiesSection';
 import { ProcessSection } from './sections/ProcessSection';
-import { FAQSection } from './sections/FAQSection';
+import { FAQSection } from './sections/FAQ/FAQSection';
 import { ContactCTA } from './sections/ContactCTA';
 import { RelatedServicesSection } from './sections/RelatedServicesSection';
 import { AdvantagesSection } from './sections/AdvantagesSection';
@@ -239,11 +239,13 @@ export default function ConferencesPage() {
         )}
         <ProcessSection isEditMode={isEditMode} process={process} setIsEditingProcess={setIsEditingProcess} isEditingProcess={isEditingProcess} loadData={loadData} />
         
-        <PricingSection isEditMode={isEditMode} pricing={pricing} loadData={loadData} setIsContactFormOpen={setIsContactFormOpen} />
+        {/* <PricingSection isEditMode={isEditMode} pricing={pricing} loadData={loadData} setIsContactFormOpen={setIsContactFormOpen} /> */}
      
 
         {/* FAQ */}
-        <CaseStudiesSection caseStudies={caseStudies} />
+        {faq.length > 0 && (
+          <CaseStudiesSection caseStudies={caseStudies} />
+        )}
         <FAQSection faq={faq} setExpandedFaq={setExpandedFaq} expandedFaq={expandedFaq} />
 
         {/* Related Services Section */}
