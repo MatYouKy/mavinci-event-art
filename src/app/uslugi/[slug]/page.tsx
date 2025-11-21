@@ -152,9 +152,6 @@ export default async function ServiceDetailPage({
           service={service}
           category={category}
           relatedServices={relatedServices}
-          onServiceUpdate={() => {
-            // Refresh handled by client navigation
-          }}
         />
       </ServiceLayout>
     </>

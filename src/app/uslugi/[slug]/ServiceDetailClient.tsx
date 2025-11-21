@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Check, Star, Mail, ChevronLeft, ChevronRight, Edit2
@@ -13,15 +14,14 @@ interface ServiceDetailClientProps {
   service: any;
   category: any;
   relatedServices: any[];
-  onServiceUpdate: () => void;
 }
 
 export default function ServiceDetailClient({
   service,
   category,
   relatedServices,
-  onServiceUpdate,
 }: ServiceDetailClientProps) {
+  const router = useRouter();
   const { isEditMode } = useEditMode();
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -333,7 +333,10 @@ export default function ServiceDetailClient({
         <AdminServiceEditor
           serviceId={service.id}
           onClose={() => setIsEditing(false)}
-          onSaved={onServiceUpdate}
+          onSaved={() => {
+            setIsEditing(false);
+            router.refresh();
+          }}
         />
       )}
     </>
