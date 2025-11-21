@@ -78,6 +78,7 @@ export default function EditableHeroWithMetadata({
     saveOpacity,
     uploading,
   } = useHeroImage(section, {
+    pageSlug,
     defaultImage: initialImageUrl,
     defaultOpacity: initialOpacity,
   });

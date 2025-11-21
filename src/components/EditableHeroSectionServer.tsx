@@ -7,32 +7,37 @@ interface EditableHeroSectionServerProps {
   pageSlug: string;
 }
 
-async function getHeroImageServer(section: string) {
+async function getHeroImageServer(section: string, pageSlug: string) {
   noStore();
 
   const cleanSection = section.replace('-hero', '');
 
-  const serviceMapping: Record<string, string> = {
+  // Mapowanie dla stron z dedykowanymi tabelami
+  const dedicatedTables: Record<string, string> = {
     konferencje: 'konferencje_page_images',
-    streaming: 'streaming_page_images',
-    integracje: 'integracje_page_images',
     kasyno: 'kasyno_page_images',
-    'symulatory-vr': 'symulatory-vr_page_images',
     naglosnienie: 'naglosnienie_page_images',
-    'quizy-teleturnieje': 'quizy-teleturnieje_page_images',
-    'technika-sceniczna': 'technika-sceniczna_page_images',
-    'wieczory-tematyczne': 'wieczory-tematyczne_page_images',
     zespol: 'team_page_images',
+    about: 'about_page_images',
+    portfolio: 'portfolio_page_images',
   };
 
-  const pageTableName = serviceMapping[cleanSection] || `${cleanSection}_page_images`;
+  const pageTableName = dedicatedTables[cleanSection] || 'service_hero_images';
+  const isUniversalTable = pageTableName === 'service_hero_images';
 
-  const { data: pageImage, error } = await supabaseServer
+  let query = supabaseServer
     .from(pageTableName)
     .select('*')
-    .eq('section', 'hero')
-    .eq('is_active', true)
-    .maybeSingle();
+    .eq('is_active', true);
+
+  // Dla uniwersalnej tabeli używamy page_slug, dla dedykowanych section='hero'
+  if (isUniversalTable) {
+    query = query.eq('page_slug', pageSlug);
+  } else {
+    query = query.eq('section', 'hero');
+  }
+
+  const { data: pageImage, error } = await query.maybeSingle();
 
   if (error) {
     console.error(`[SERVER] Błąd podczas pobierania hero dla ${section}:`, error);
@@ -108,7 +113,7 @@ export default async function EditableHeroSectionServer({
   section,
   pageSlug,
 }: EditableHeroSectionServerProps) {
-  const heroData = await getHeroImageServer(section);
+  const heroData = await getHeroImageServer(section, pageSlug);
 
   return (
     <EditableHeroWithMetadata

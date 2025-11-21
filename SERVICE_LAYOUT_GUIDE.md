@@ -267,26 +267,73 @@ export default function CustomServicePage() {
 
 ### Z bazy danych:
 
-```sql
--- Sprawdź istniejące hero images
-SELECT section, name, image_url
-FROM site_images
-WHERE section LIKE '%hero%';
+**UWAGA:** Od teraz wszystkie nowe usługi używają uniwersalnej tabeli `service_hero_images`!
 
--- Dodaj nowy hero image dla usługi
-INSERT INTO site_images (
+```sql
+-- ✅ Sprawdź istniejące hero images (nowy system)
+SELECT page_slug, section, name, image_url
+FROM service_hero_images
+WHERE is_active = true;
+
+-- ✅ Dodaj nowy hero image dla usługi (AUTOMATYCZNE)
+-- Nie musisz ręcznie dodawać rekordów!
+-- Rekord zostanie utworzony automatycznie gdy:
+-- 1. Użyjesz ServiceLayout z pageSlug
+-- 2. Pierwszy raz zapiszesz pozycję/opacity w Website Edit Mode
+
+-- Jeśli chcesz ręcznie dodać rekord:
+INSERT INTO service_hero_images (
+  page_slug,
   section,
   name,
-  desktop_url,
+  description,
+  image_url,
   alt_text,
-  opacity
+  opacity,
+  is_active
 ) VALUES (
-  'streaming-hero',
-  'Streaming Hero',
+  'uslugi/custom-service',        -- WAŻNE: pełny slug
+  'custom-service-hero',           -- sekcja
+  'Custom Service Hero',
+  'Hero image for custom service',
   'https://...',
-  'Profesjonalny streaming',
-  0.2
+  'Custom Service',
+  0.2,
+  true
 );
+```
+
+### Które tabele są używane?
+
+**Dedykowane tabele** (stare strony):
+- `konferencje_page_images` - Konferencje
+- `kasyno_page_images` - Kasyno
+- `naglosnienie_page_images` - Nagłośnienie
+- `team_page_images` - Zespół
+- `about_page_images` - O nas
+- `portfolio_page_images` - Portfolio
+
+**Uniwersalna tabela** (WSZYSTKIE nowe usługi):
+- `service_hero_images` - Streaming, Integracje, Quizy, VR, Technika Sceniczna, Wieczory Tematyczne, i WSZYSTKIE przyszłe usługi
+
+### Automatyczne tworzenie rekordów
+
+**Nie musisz tworzyć rekordów ręcznie!**
+
+Kiedy używasz `ServiceLayout` z nowym slugiem np. `uslugi/my-new-service`:
+
+1. Strona się załaduje (może pokazać domyślny obraz)
+2. Włącz Website Edit Mode
+3. Kliknij ⋮ → Ustaw Pozycję/Przezroczystość
+4. Kliknij Zapisz
+5. **Rekord zostanie automatycznie utworzony w `service_hero_images`!**
+
+```tsx
+// Ten kod automatycznie utworzy rekord przy pierwszym zapisie
+<ServiceLayout
+  pageSlug="uslugi/my-new-service"  // ✅ Automatycznie obsłużone
+  section="my-new-service-hero"
+>
 ```
 
 ## Customizacja

@@ -16,6 +16,7 @@ export interface HeroPosition {
 export interface UseHeroImageOptions {
   defaultImage?: string;
   defaultOpacity?: number;
+  pageSlug?: string;
 }
 
 interface UseHeroImageReturn {
@@ -51,6 +52,7 @@ export function useHeroImage(
   {
     defaultImage = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg',
     defaultOpacity = 0.2,
+    pageSlug,
   }: UseHeroImageOptions = {}
 ): UseHeroImageReturn {
   const { showSnackbar } = useSnackbar();
@@ -104,15 +106,23 @@ export function useHeroImage(
   const loadImage = useCallback(async () => {
     setLoading(true);
     const pageTableName = getTableName(section);
+    const isUniversalTable = pageTableName === 'service_hero_images';
 
     try {
-      // nowy system: *_page_images
-      const { data: pageImage, error: pageError } = await supabase
+      // nowy system: *_page_images lub service_hero_images
+      let query = supabase
         .from(pageTableName)
         .select('*')
-        .eq('section', 'hero')
-        .eq('is_active', true)
-        .maybeSingle();
+        .eq('is_active', true);
+
+      // Dla uniwersalnej tabeli używamy page_slug, dla dedykowanych section='hero'
+      if (isUniversalTable && pageSlug) {
+        query = query.eq('page_slug', pageSlug);
+      } else {
+        query = query.eq('section', 'hero');
+      }
+
+      const { data: pageImage, error: pageError } = await query.maybeSingle();
 
       if (!pageError && pageImage) {
         const converted: SiteImage = {
@@ -203,6 +213,7 @@ export function useHeroImage(
   const savePosition = useCallback(async (positionToSave?: HeroPosition) => {
     setSaving(true);
     const pageTableName = getTableName(section);
+    const isUniversalTable = pageTableName === 'service_hero_images';
 
     const currentPosition = positionToSave || (screenMode === 'desktop' ? desktopPosition : mobilePosition);
 
@@ -212,49 +223,69 @@ export function useHeroImage(
       currentPosition,
       desktop: desktopPosition,
       mobile: mobilePosition,
+      pageTableName,
+      isUniversalTable,
+      pageSlug,
     });
 
     try {
       // próba: nowy system
       try {
-        const { data: existing, error: selectError } = await supabase
+        // Build query depending on table type
+        let query = supabase
           .from(pageTableName)
-          .select('id, image_metadata')
-          .eq('section', 'hero')
-          .maybeSingle();
+          .select('id, image_metadata');
+
+        if (isUniversalTable && pageSlug) {
+          query = query.eq('page_slug', pageSlug);
+        } else {
+          query = query.eq('section', 'hero');
+        }
+
+        const { data: existing, error: selectError } = await query.maybeSingle();
 
         if (selectError) {
           console.error('[savePosition] Select error:', selectError);
           throw selectError;
         }
 
-        if (existing || section.includes('zespol') || section.includes('team')) {
-          if (!existing) {
-            console.log('[savePosition] Creating new record');
-            const { error } = await supabase.from(pageTableName).insert({
-              section: 'hero',
-              name: `Hero ${section}`,
-              description: `Hero image for ${section} page`,
-              image_url: siteImage?.desktop_url || defaultImage,
-              alt_text: section,
-              opacity,
-              image_metadata: {
-                desktop: {
-                  position: screenMode === 'desktop' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
-                  objectFit: 'cover',
-                },
-                mobile: {
-                  position: screenMode === 'mobile' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
-                  objectFit: 'cover',
-                },
+        // Zawsze próbuj utworzyć rekord jeśli nie istnieje
+        if (!existing) {
+          console.log('[savePosition] Creating new record');
+
+          const insertData: any = {
+            name: `Hero ${section}`,
+            description: `Hero image for ${section} page`,
+            image_url: siteImage?.desktop_url || defaultImage,
+            alt_text: section,
+            opacity,
+            image_metadata: {
+              desktop: {
+                position: screenMode === 'desktop' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
+                objectFit: 'cover',
               },
-            });
-            if (error) {
-              console.error('[savePosition] Insert error:', error);
-              throw error;
-            }
-            console.log('[savePosition] Insert successful');
+              mobile: {
+                position: screenMode === 'mobile' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
+                objectFit: 'cover',
+              },
+            },
+          };
+
+          // Dla uniwersalnej tabeli dodaj page_slug, dla dedykowanych section='hero'
+          if (isUniversalTable && pageSlug) {
+            insertData.page_slug = pageSlug;
+            insertData.section = section;
           } else {
+            insertData.section = 'hero';
+          }
+
+          const { error } = await supabase.from(pageTableName).insert(insertData);
+          if (error) {
+            console.error('[savePosition] Insert error:', error);
+            throw error;
+          }
+          console.log('[savePosition] Insert successful');
+        } else {
             console.log('[savePosition] Updating existing record, ID:', existing.id);
             const currentMetadata = existing.image_metadata || {};
 
@@ -295,7 +326,6 @@ export function useHeroImage(
           await loadImage();
           showSnackbar('Pozycja zapisana pomyślnie', 'success');
           return;
-        }
       } catch (err) {
         console.error('[savePosition] Error in new system:', err);
         throw err;
@@ -363,7 +393,7 @@ export function useHeroImage(
     } finally {
       setSaving(false);
     }
-  }, [section, siteImage, desktopPosition, mobilePosition, opacity, defaultImage, getTableName, loadImage, showSnackbar, screenMode]);
+  }, [section, siteImage, desktopPosition, mobilePosition, opacity, defaultImage, getTableName, loadImage, showSnackbar, screenMode, pageSlug, position]);
 
   const saveOpacity = useCallback(async (opacityValue?: number) => {
     const valueToSave = opacityValue ?? opacity;
