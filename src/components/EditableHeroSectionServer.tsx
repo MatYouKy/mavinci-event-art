@@ -1,6 +1,25 @@
 import { unstable_noStore as noStore } from 'next/cache';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { createClient } from '@supabase/supabase-js';
 import EditableHeroWithMetadata from './EditableHeroWithMetadata';
+
+// Create server-side supabase client inline to avoid env issues
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables');
+  }
+
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false },
+    global: {
+      fetch: (url, options = {}) => {
+        return fetch(url, { ...options, cache: 'no-store' });
+      },
+    },
+  });
+};
 
 interface EditableHeroSectionServerProps {
   section: string;
@@ -25,7 +44,9 @@ async function getHeroImageServer(section: string, pageSlug: string) {
   const pageTableName = dedicatedTables[cleanSection] || 'service_hero_images';
   const isUniversalTable = pageTableName === 'service_hero_images';
 
-  let query = supabaseServer
+  const supabase = getSupabaseClient();
+
+  let query = supabase
     .from(pageTableName)
     .select('*')
     .eq('is_active', true);
