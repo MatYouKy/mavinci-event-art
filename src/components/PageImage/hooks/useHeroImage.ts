@@ -39,7 +39,7 @@ interface UseHeroImageReturn {
 
   // operacje na bazie
   reload: () => Promise<void>;
-  savePosition: () => Promise<void>;
+  savePosition: (positionToSave?: HeroPosition) => Promise<void>;
   saveOpacity: (opacityValue?: number) => Promise<void>;
   uploadHeroImage: (file: File) => Promise<void>;
   resetPosition: () => Promise<void>;
@@ -200,15 +200,16 @@ export function useHeroImage(
     }
   }, [screenMode]);
 
-  const savePosition = useCallback(async () => {
+  const savePosition = useCallback(async (positionToSave?: HeroPosition) => {
     setSaving(true);
     const pageTableName = getTableName(section);
 
-    const currentPosition = screenMode === 'desktop' ? desktopPosition : mobilePosition;
+    const currentPosition = positionToSave || (screenMode === 'desktop' ? desktopPosition : mobilePosition);
 
     console.log('[savePosition] Saving position:', {
       screenMode,
-      position: currentPosition,
+      positionToSave,
+      currentPosition,
       desktop: desktopPosition,
       mobile: mobilePosition,
     });
@@ -362,7 +363,7 @@ export function useHeroImage(
     } finally {
       setSaving(false);
     }
-  }, [section, siteImage, desktopPosition, mobilePosition, opacity, defaultImage, getTableName, loadImage, showSnackbar]);
+  }, [section, siteImage, desktopPosition, mobilePosition, opacity, defaultImage, getTableName, loadImage, showSnackbar, screenMode]);
 
   const saveOpacity = useCallback(async (opacityValue?: number) => {
     const valueToSave = opacityValue ?? opacity;

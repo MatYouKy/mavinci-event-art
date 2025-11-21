@@ -100,18 +100,19 @@ export function PageHeroImage({
     setOpacitySubMenu(false);
   };
 
-  const handleSavePosition = () => {
-    setPosition({
+  const handleSavePosition = async () => {
+    const newPosition = {
       posX: editState.posX,
       posY: editState.posY,
       scale: editState.scale,
-    });
-    // savePosition will be called after setPosition updates the hook state
-    setTimeout(async () => {
-      await savePosition();
-      setIsEditingPosition(false);
-      setPositionSubMenu(false);
-    }, 0);
+    };
+
+    console.log('[PageHeroImage] handleSavePosition - saving position:', newPosition);
+
+    setPosition(newPosition);
+    await savePosition(newPosition);
+    setIsEditingPosition(false);
+    setPositionSubMenu(false);
   };
 
   const menuItems = [
