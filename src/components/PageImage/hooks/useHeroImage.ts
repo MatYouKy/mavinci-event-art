@@ -204,20 +204,28 @@ export function useHeroImage(
     setSaving(true);
     const pageTableName = getTableName(section);
 
+    const currentPosition = screenMode === 'desktop' ? desktopPosition : mobilePosition;
+
     console.log('[savePosition] Saving position:', {
+      screenMode,
+      position: currentPosition,
       desktop: desktopPosition,
       mobile: mobilePosition,
-      screenMode
     });
 
     try {
       // próba: nowy system
       try {
-        const { data: existing } = await supabase
+        const { data: existing, error: selectError } = await supabase
           .from(pageTableName)
           .select('id, image_metadata')
           .eq('section', 'hero')
           .maybeSingle();
+
+        if (selectError) {
+          console.error('[savePosition] Select error:', selectError);
+          throw selectError;
+        }
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           if (!existing) {
@@ -231,38 +239,51 @@ export function useHeroImage(
               opacity,
               image_metadata: {
                 desktop: {
-                  position: desktopPosition,
+                  position: screenMode === 'desktop' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
                   objectFit: 'cover',
                 },
                 mobile: {
-                  position: mobilePosition,
+                  position: screenMode === 'mobile' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
                   objectFit: 'cover',
                 },
               },
             });
-            if (error) throw error;
+            if (error) {
+              console.error('[savePosition] Insert error:', error);
+              throw error;
+            }
+            console.log('[savePosition] Insert successful');
           } else {
-            console.log('[savePosition] Updating existing record');
+            console.log('[savePosition] Updating existing record, ID:', existing.id);
             const currentMetadata = existing.image_metadata || {};
+
+            const updatedMetadata = {
+              desktop: currentMetadata.desktop || { position: { posX: 0, posY: 0, scale: 1 }, objectFit: 'cover' },
+              mobile: currentMetadata.mobile || { position: { posX: 0, posY: 0, scale: 1 }, objectFit: 'cover' },
+            };
+
+            if (screenMode === 'desktop') {
+              updatedMetadata.desktop = {
+                ...updatedMetadata.desktop,
+                position: currentPosition,
+              };
+            } else {
+              updatedMetadata.mobile = {
+                ...updatedMetadata.mobile,
+                position: currentPosition,
+              };
+            }
+
+            console.log('[savePosition] Updated metadata:', JSON.stringify(updatedMetadata, null, 2));
 
             const { error } = await supabase
               .from(pageTableName)
               .update({
-                image_metadata: {
-                  desktop: {
-                    ...(currentMetadata.desktop || {}),
-                    position: desktopPosition,
-                    objectFit: currentMetadata.desktop?.objectFit || 'cover',
-                  },
-                  mobile: {
-                    ...(currentMetadata.mobile || {}),
-                    position: mobilePosition,
-                    objectFit: currentMetadata.mobile?.objectFit || 'cover',
-                  },
-                },
+                image_metadata: updatedMetadata,
                 updated_at: new Date().toISOString(),
               })
-              .eq('section', 'hero');
+              .eq('id', existing.id);
+
             if (error) {
               console.error('[savePosition] Update error:', error);
               throw error;
@@ -275,7 +296,8 @@ export function useHeroImage(
           return;
         }
       } catch (err) {
-        console.log('Używam starych tabel (savePosition):', err);
+        console.error('[savePosition] Error in new system:', err);
+        throw err;
       }
 
       // stary system
