@@ -9,17 +9,13 @@ import {
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
 import { useEditMode } from '@/contexts/EditModeContext';
-import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
-
 interface ServiceDetailClientProps {
-  pageSlug: string;
   service: any;
   category: any;
   relatedServices: any[];
 }
 
 export default function ServiceDetailClient({
-  pageSlug,
   service,
   category,
   relatedServices,
@@ -136,11 +132,6 @@ export default function ServiceDetailClient({
           </p>
         </div>
       </section>
-      <section className="px-6 pt-6">
-          <div className="mx-auto max-w-7xl">
-            <CategoryBreadcrumb pageSlug={pageSlug} productName={service.name} />
-          </div>
-        </section>
 
       {/* Main Content */}
       <section className="px-6 py-12">

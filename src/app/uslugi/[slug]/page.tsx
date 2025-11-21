@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
+import EditableHeroSectionServer from '@/components/EditableHeroSectionServer';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import ServiceDetailClient from './ServiceDetailClient';
 
 // Create supabase client for server-side
@@ -113,16 +115,24 @@ export default async function ServiceDetailPage({
 
   const { service, category, relatedServices } = data;
 
-  // PageLayout handles SEO metadata and breadcrumbs automatically
-
   return (
     <PageLayout pageSlug={`uslugi/${service.slug}`}>
-      <ServiceDetailClient
-        pageSlug={`uslugi/${service.slug}`}
-        service={service}
-        category={category}
-        relatedServices={relatedServices}
-      />
+      <div className="min-h-screen bg-[#0f1119]">
+        <EditableHeroSectionServer
+          section={`${service.slug}-hero`}
+          pageSlug={`uslugi/${service.slug}`}
+        />
+        <section className="px-6 pt-6">
+          <div className="mx-auto max-w-7xl">
+            <CategoryBreadcrumb pageSlug={`uslugi/${service.slug}`} />
+          </div>
+        </section>
+        <ServiceDetailClient
+          service={service}
+          category={category}
+          relatedServices={relatedServices}
+        />
+      </div>
     </PageLayout>
   );
 }
