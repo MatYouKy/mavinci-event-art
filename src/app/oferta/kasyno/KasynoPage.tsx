@@ -1,12 +1,18 @@
 'use client';
 
-import Head from 'next/head';
 import { useState, useEffect } from 'react';
-import { Dices, Spade, CheckCircle2, ArrowLeft, ChevronLeft, ChevronRight, XCircle, Edit, Save, X, Image as ImageIcon } from 'lucide-react';
+import {
+  CheckCircle2,
+  ArrowLeft,
+  Edit,
+  Save,
+  X,
+  Dices,
+  XCircle,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
-import { PageHeroImage } from '@/components/PageHeroImage';
 import CasinoLegalPopup from '@/components/CasinoLegalPopup';
 import CasinoTablesEditor from '@/components/CasinoTablesEditor';
 import CasinoGalleryEditor from '@/components/CasinoGalleryEditor';
@@ -14,10 +20,8 @@ import CasinoContentBlocksEditor from '@/components/CasinoContentBlocksEditor';
 import { supabase } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
-import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import { useMobile } from '@/hooks/useMobile';
 
 interface CasinoTable {
@@ -115,12 +119,16 @@ export default function KasynoPage() {
   const [editHeroOpacity, setEditHeroOpacity] = useState(0.2);
   const [editImageData, setEditImageData] = useState<IUploadImage | null>(null);
   const [editPreviewImage, setEditPreviewImage] = useState('');
-  
+
   const [editTables, setEditTables] = useState<CasinoTable[]>([]);
   const [editGallery, setEditGallery] = useState<GalleryImage[]>([]);
   const [editBlocks, setEditBlocks] = useState<ContentBlock[]>([]);
-  const [tablePendingUploads, setTablePendingUploads] = useState<Map<string, IUploadImage>>(new Map());
-  const [galleryPendingUploads, setGalleryPendingUploads] = useState<Map<string, IUploadImage>>(new Map());
+  const [tablePendingUploads, setTablePendingUploads] = useState<Map<string, IUploadImage>>(
+    new Map(),
+  );
+  const [galleryPendingUploads, setGalleryPendingUploads] = useState<Map<string, IUploadImage>>(
+    new Map(),
+  );
 
   useEffect(() => {
     fetchData();
@@ -198,7 +206,7 @@ export default function KasynoPage() {
   };
 
   const handleTableImageUpload = (tableId: string, imageData: IUploadImage) => {
-    setTablePendingUploads(prev => {
+    setTablePendingUploads((prev) => {
       const newMap = new Map(prev);
       newMap.set(tableId, imageData);
       return newMap;
@@ -206,7 +214,7 @@ export default function KasynoPage() {
   };
 
   const handleGalleryImageUpload = (imageId: string, imageData: IUploadImage) => {
-    setGalleryPendingUploads(prev => {
+    setGalleryPendingUploads((prev) => {
       const newMap = new Map(prev);
       newMap.set(imageId, imageData);
       return newMap;
@@ -220,10 +228,7 @@ export default function KasynoPage() {
       let settingsId = pageSettings.id;
 
       if (!settingsId) {
-        const { data } = await supabase
-          .from('casino_page_settings')
-          .select('id')
-          .maybeSingle();
+        const { data } = await supabase.from('casino_page_settings').select('id').maybeSingle();
         settingsId = data?.id;
       }
 
@@ -244,7 +249,7 @@ export default function KasynoPage() {
 
       const processedTables: CasinoTable[] = [];
       for (const table of editTables) {
-        const tableData = {...table};
+        const tableData = { ...table };
         const pendingUpload = tablePendingUploads.get(table.id);
 
         if (pendingUpload?.file) {
@@ -252,8 +257,14 @@ export default function KasynoPage() {
             const imageUrl = await uploadImage(pendingUpload.file, 'casino-tables');
             tableData.image = imageUrl;
             tableData.image_metadata = {
-              desktop: pendingUpload.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
-              mobile: pendingUpload.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+              desktop: pendingUpload.desktop || {
+                src: imageUrl,
+                position: { posX: 0, posY: 0, scale: 1 },
+              },
+              mobile: pendingUpload.mobile || {
+                src: imageUrl,
+                position: { posX: 0, posY: 0, scale: 1 },
+              },
             };
             if (tableData.image_metadata.desktop) tableData.image_metadata.desktop.src = imageUrl;
             if (tableData.image_metadata.mobile) tableData.image_metadata.mobile.src = imageUrl;
@@ -266,9 +277,12 @@ export default function KasynoPage() {
         processedTables.push(tableData);
       }
 
-      await supabase.from('casino_tables').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase
+        .from('casino_tables')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
       for (const table of processedTables) {
-        const tableData = {...table};
+        const tableData = { ...table };
         delete tableData.is_visible;
         const { error } = await supabase.from('casino_tables').insert({
           ...tableData,
@@ -281,7 +295,7 @@ export default function KasynoPage() {
 
       const processedGallery: GalleryImage[] = [];
       for (let i = 0; i < editGallery.length; i++) {
-        const image = {...editGallery[i]};
+        const image = { ...editGallery[i] };
         const pendingUpload = galleryPendingUploads.get(image.id);
 
         if (pendingUpload?.file) {
@@ -289,8 +303,14 @@ export default function KasynoPage() {
             const imageUrl = await uploadImage(pendingUpload.file, 'casino-gallery');
             image.image = imageUrl;
             image.image_metadata = {
-              desktop: pendingUpload.desktop || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
-              mobile: pendingUpload.mobile || { src: imageUrl, position: { posX: 0, posY: 0, scale: 1 } },
+              desktop: pendingUpload.desktop || {
+                src: imageUrl,
+                position: { posX: 0, posY: 0, scale: 1 },
+              },
+              mobile: pendingUpload.mobile || {
+                src: imageUrl,
+                position: { posX: 0, posY: 0, scale: 1 },
+              },
             };
             if (image.image_metadata.desktop) image.image_metadata.desktop.src = imageUrl;
             if (image.image_metadata.mobile) image.image_metadata.mobile.src = imageUrl;
@@ -303,9 +323,12 @@ export default function KasynoPage() {
         processedGallery.push(image);
       }
 
-      await supabase.from('casino_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase
+        .from('casino_gallery')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
       for (let i = 0; i < processedGallery.length; i++) {
-        const image = {...processedGallery[i]};
+        const image = { ...processedGallery[i] };
         delete image.is_visible;
         delete image.order_index;
         const { error } = await supabase.from('casino_gallery').insert({
@@ -318,9 +341,12 @@ export default function KasynoPage() {
         if (error) console.error('Error saving gallery image:', error);
       }
 
-      await supabase.from('casino_content_blocks').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase
+        .from('casino_content_blocks')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
       for (const block of editBlocks) {
-        const blockData = {...block};
+        const blockData = { ...block };
         delete blockData.is_visible;
         const { error } = await supabase.from('casino_content_blocks').insert({
           ...blockData,
@@ -398,293 +424,311 @@ export default function KasynoPage() {
 
   const getGridClass = (layout: string) => {
     switch (layout) {
-      case 'grid-4': return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4';
-      case 'grid-3': return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
-      case 'grid-2': return 'grid-cols-1 md:grid-cols-2';
-      case 'grid-1': return 'grid-cols-1';
-      default: return 'grid-cols-1';
+      case 'grid-4':
+        return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4';
+      case 'grid-3':
+        return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
+      case 'grid-2':
+        return 'grid-cols-1 md:grid-cols-2';
+      case 'grid-1':
+        return 'grid-cols-1';
+      default:
+        return 'grid-cols-1';
     }
   };
 
   return (
     <>
-          <main className="min-h-screen bg-[#0f1119]">
-            {isEditing && (
-              <div className="sticky top-0 z-50 bg-[#1c1f33] border-b border-[#d3bb73]/30 px-4 py-3">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Edit className="w-5 h-5 text-[#d3bb73]" />
-                    <span className="text-[#e5e4e2] font-medium">Tryb edycji - Kasyno</span>
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleCancel}
-                      disabled={saving}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50"
-                    >
-                      <X className="w-4 h-4" />
-                      Anuluj
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
-                    >
-                      <Save className="w-4 h-4" />
-                      {saving ? 'Zapisywanie...' : 'Zapisz wszystko'}
-                    </button>
-                  </div>
-                </div>
+      <main className="min-h-screen bg-[#0f1119]">
+        {isEditing && (
+          <div className="sticky top-0 z-50 border-b border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-3">
+            <div className="mx-auto flex max-w-7xl items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Edit className="h-5 w-5 text-[#d3bb73]" />
+                <span className="font-medium text-[#e5e4e2]">Tryb edycji - Kasyno</span>
               </div>
-            )}
-
-            {features.length > 0 && (
-              <section className="py-24 bg-[#0f1119]">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                  <div className="text-center mb-16">
-                    <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">Co Oferujemy</h2>
-                    <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {features.map((feature) => (
-                      <div key={feature.id} className="flex items-start gap-3 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all duration-300">
-                        <CheckCircle2 className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                        <span className="text-[#e5e4e2]/90 font-light">{feature.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            )}
-
-            <section className="py-24 bg-gradient-to-br from-[#1c1f33] to-[#0f1119]">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-16">
-                  <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">Nasze Stoły</h2>
-                  <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-                </div>
-
-                {isEditing ? (
-                  <CasinoTablesEditor
-                    tables={editTables}
-                    onChange={setEditTables}
-                    onImageUpload={handleTableImageUpload}
-                  />
-                ) : (
-                  <div className="space-y-16">
-                    {tables.map((table, index) => (
-                      <div key={table.id} className={`grid lg:grid-cols-2 gap-12 items-center ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
-                        <div className={index % 2 === 1 ? 'lg:order-2' : ''}>
-                          <div className="relative group">
-                            <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-transparent rounded-2xl blur-xl group-hover:blur-2xl transition-all"></div>
-                            <img
-                              src={table.image_metadata?.desktop?.src || table.image}
-                              alt={table.alt || table.name}
-                              className="relative w-full h-[400px] object-cover rounded-2xl border border-[#d3bb73]/20"
-                            />
-                          </div>
-                        </div>
-                        <div className={index % 2 === 1 ? 'lg:order-1' : ''}>
-                          <h3 className="text-3xl font-light text-[#e5e4e2] mb-4">{table.name}</h3>
-                          <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
-                            {table.description}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCancel}
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+                  Anuluj
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? 'Zapisywanie...' : 'Zapisz wszystko'}
+                </button>
               </div>
-            </section>
+            </div>
+          </div>
+        )}
 
-            <section className="py-24 bg-[#0f1119]">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-16">
-                  <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">Galeria</h2>
-                  <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-                </div>
+        {features.length > 0 && (
+          <section className="bg-[#0f1119] py-24">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="mb-16 text-center">
+                <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
+                  Co Oferujemy
+                </h2>
+                <div className="mx-auto h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
+              </div>
 
-                {isEditing ? (
-                  <CasinoGalleryEditor
-                    gallery={editGallery}
-                    onChange={setEditGallery}
-                    onImageUpload={handleGalleryImageUpload}
-                  />
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {gallery.map((image, index) => (
-                      <div
-                        key={image.id}
-                        onClick={() => openLightbox(index)}
-                        className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300 cursor-pointer"
-                      >
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {features.map((feature) => (
+                  <div
+                    key={feature.id}
+                    className="flex items-start gap-3 rounded-xl border border-[#d3bb73]/10 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-6 backdrop-blur-sm transition-all duration-300 hover:border-[#d3bb73]/30"
+                  >
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
+                    <span className="font-light text-[#e5e4e2]/90">{feature.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="bg-gradient-to-br from-[#1c1f33] to-[#0f1119] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-16 text-center">
+              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">Nasze Stoły</h2>
+              <div className="mx-auto h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
+            </div>
+
+            {isEditing ? (
+              <CasinoTablesEditor
+                tables={editTables}
+                onChange={setEditTables}
+                onImageUpload={handleTableImageUpload}
+              />
+            ) : (
+              <div className="space-y-16">
+                {tables.map((table, index) => (
+                  <div
+                    key={table.id}
+                    className={`grid items-center gap-12 lg:grid-cols-2 ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}
+                  >
+                    <div className={index % 2 === 1 ? 'lg:order-2' : ''}>
+                      <div className="group relative">
+                        <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[#d3bb73]/20 to-transparent blur-xl transition-all group-hover:blur-2xl"></div>
                         <img
-                          src={image.image_metadata?.desktop?.src || image.image}
-                          alt={image.alt || `Zdjęcie z kasyna ${index + 1}`}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                          src={table.image_metadata?.desktop?.src || table.image}
+                          alt={table.alt || table.name}
+                          className="relative h-[400px] w-full rounded-2xl border border-[#d3bb73]/20 object-cover"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          <div className="absolute bottom-4 left-4 right-4">
-                            <p className="text-[#e5e4e2] text-sm font-light">
-                              {image.alt || `Zdjęcie ${index + 1}`}
-                            </p>
-                            {image.caption && (
-                              <p className="text-[#e5e4e2]/60 text-xs font-light mt-1">
-                                {image.caption}
-                              </p>
-                            )}
-                          </div>
-                        </div>
                       </div>
-                    ))}
+                    </div>
+                    <div className={index % 2 === 1 ? 'lg:order-1' : ''}>
+                      <h3 className="mb-4 text-3xl font-light text-[#e5e4e2]">{table.name}</h3>
+                      <p className="font-light leading-relaxed text-[#e5e4e2]/70">
+                        {table.description}
+                      </p>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
-            </section>
-
-            {gameRules.length > 0 && (
-              <section className="py-24 bg-gradient-to-br from-[#1c1f33] to-[#0f1119]">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                  <div className="text-center mb-16">
-                    <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">Zasady Gier</h2>
-                    <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-                  </div>
-
-                  <div className="grid lg:grid-cols-3 gap-8">
-                    {gameRules.map((rule) => {
-                      const ruleLinks: { [key: string]: string } = {
-                        'poker-texas-holdem': '/oferta/kasyno/zasady/poker',
-                        'ruletka': '/oferta/kasyno/zasady/ruletka',
-                        'blackjack': '/oferta/kasyno/zasady/blackjack',
-                      };
-
-                      return (
-                        <Link
-                          key={rule.id}
-                          href={isEditing ? '#' : (ruleLinks[rule.slug] || '/oferta/kasyno')}
-                          onClick={(e) => isEditing && e.preventDefault()}
-                          className="group bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 hover:border-[#d3bb73]/30 transition-all"
-                        >
-                          <h3 className="text-2xl font-light text-[#e5e4e2] mb-3 group-hover:text-[#d3bb73] transition-colors">
-                            {rule.game_name}
-                          </h3>
-                          <p className="text-[#e5e4e2]/60 text-sm font-light mb-6">
-                            {rule.short_description}
-                          </p>
-                          {!isEditing && (
-                            <div className="text-[#d3bb73] text-sm font-medium flex items-center gap-2 group-hover:gap-3 transition-all">
-                              Czytaj więcej
-                              <ArrowLeft className="w-4 h-4 rotate-180" />
-                            </div>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              </section>
             )}
+          </div>
+        </section>
 
-            <section className="py-24 bg-[#0f1119]">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                {isEditing ? (
-                  <CasinoContentBlocksEditor blocks={editBlocks} onChange={setEditBlocks} />
-                ) : (
-                  contentBlocks.length > 0 && (
-                    <div className="space-y-16">
-                      {contentBlocks.map((block) => (
-                        <div key={block.id}>
-                          <h2 className="text-3xl font-light text-[#e5e4e2] mb-8 text-center">{block.title}</h2>
-                          <div className={`grid ${getGridClass(block.layout_type)} gap-6`}>
-                            <div className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8">
-                              <div className="prose prose-invert max-w-none">
-                                <div className="text-[#e5e4e2]/80 font-light leading-relaxed whitespace-pre-line">
-                                  {block.content}
-                                </div>
+        <section className="bg-[#0f1119] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-16 text-center">
+              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">Galeria</h2>
+              <div className="mx-auto h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
+            </div>
+
+            {isEditing ? (
+              <CasinoGalleryEditor
+                gallery={editGallery}
+                onChange={setEditGallery}
+                onImageUpload={handleGalleryImageUpload}
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {gallery.map((image, index) => (
+                  <div
+                    key={image.id}
+                    onClick={() => openLightbox(index)}
+                    className="group relative aspect-[4/3] cursor-pointer overflow-hidden rounded-xl border border-[#d3bb73]/10 transition-all duration-300 hover:border-[#d3bb73]/30"
+                  >
+                    <img
+                      src={image.image_metadata?.desktop?.src || image.image}
+                      alt={image.alt || `Zdjęcie z kasyna ${index + 1}`}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <p className="text-sm font-light text-[#e5e4e2]">
+                          {image.alt || `Zdjęcie ${index + 1}`}
+                        </p>
+                        {image.caption && (
+                          <p className="mt-1 text-xs font-light text-[#e5e4e2]/60">
+                            {image.caption}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {gameRules.length > 0 && (
+          <section className="bg-gradient-to-br from-[#1c1f33] to-[#0f1119] py-24">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="mb-16 text-center">
+                <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">Zasady Gier</h2>
+                <div className="mx-auto h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
+              </div>
+
+              <div className="grid gap-8 lg:grid-cols-3">
+                {gameRules.map((rule) => {
+                  const ruleLinks: { [key: string]: string } = {
+                    'poker-texas-holdem': '/oferta/kasyno/zasady/poker',
+                    ruletka: '/oferta/kasyno/zasady/ruletka',
+                    blackjack: '/oferta/kasyno/zasady/blackjack',
+                  };
+
+                  return (
+                    <Link
+                      key={rule.id}
+                      href={isEditing ? '#' : ruleLinks[rule.slug] || '/oferta/kasyno'}
+                      onClick={(e) => isEditing && e.preventDefault()}
+                      className="group rounded-2xl border border-[#d3bb73]/10 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-8 backdrop-blur-sm transition-all hover:border-[#d3bb73]/30"
+                    >
+                      <h3 className="mb-3 text-2xl font-light text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                        {rule.game_name}
+                      </h3>
+                      <p className="mb-6 text-sm font-light text-[#e5e4e2]/60">
+                        {rule.short_description}
+                      </p>
+                      {!isEditing && (
+                        <div className="flex items-center gap-2 text-sm font-medium text-[#d3bb73] transition-all group-hover:gap-3">
+                          Czytaj więcej
+                          <ArrowLeft className="h-4 w-4 rotate-180" />
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {isEditMode && contentBlocks.length > 0 && (
+          <section className="bg-[#0f1119] py-24">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              {isEditing ? (
+                <CasinoContentBlocksEditor blocks={editBlocks} onChange={setEditBlocks} />
+              ) : (
+                contentBlocks.length > 0 && (
+                  <div className="space-y-16">
+                    {contentBlocks.map((block) => (
+                      <div key={block.id}>
+                        <h2 className="mb-8 text-center text-3xl font-light text-[#e5e4e2]">
+                          {block.title}
+                        </h2>
+                        <div className={`grid ${getGridClass(block.layout_type)} gap-6`}>
+                          <div className="rounded-2xl border border-[#d3bb73]/10 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-8 backdrop-blur-sm">
+                            <div className="prose prose-invert max-w-none">
+                              <div className="whitespace-pre-line font-light leading-relaxed text-[#e5e4e2]/80">
+                                {block.content}
                               </div>
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )
-                )}
-              </div>
-            </section>
-
-            {!isEditing && (
-              <section className="py-24 bg-gradient-to-br from-[#0f1119] to-[#1c1f33]">
-                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                  <Dices className="w-16 h-16 text-[#d3bb73] mx-auto mb-6" />
-                  <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6">
-                    Zorganizujmy Wieczór w Kasynie!
-                  </h2>
-                  <p className="text-[#e5e4e2]/70 text-lg font-light mb-8 max-w-2xl mx-auto">
-                    Skontaktuj się z nami, aby przygotować niezapomniane kasyno eventowe.
-                  </p>
-                  <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
-                    Skontaktuj się z nami
-                  </a>
-                </div>
-              </section>
-            )}
-          </main>
-
-          {lightboxOpen && gallery.length > 0 && !isEditing && (
-            <div className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center">
-              <button
-                onClick={closeLightbox}
-                className="absolute top-4 right-4 text-white hover:text-[#d3bb73] transition-colors z-10"
-              >
-                <XCircle className="w-10 h-10" />
-              </button>
-
-              {gallery.length > 1 && (
-                <>
-                  <button
-                    onClick={prevImage}
-                    className="absolute left-4 text-white hover:text-[#d3bb73] transition-colors z-10"
-                  >
-                    <ChevronLeft className="w-12 h-12" />
-                  </button>
-                  <button
-                    onClick={nextImage}
-                    className="absolute right-4 text-white hover:text-[#d3bb73] transition-colors z-10"
-                  >
-                    <ChevronRight className="w-12 h-12" />
-                  </button>
-                </>
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
-
-              <div className="relative max-w-7xl max-h-[90vh] mx-4">
-                <img
-                  src={gallery[currentGalleryIndex].image_metadata?.desktop?.src || gallery[currentGalleryIndex].image}
-                  alt={gallery[currentGalleryIndex].alt}
-                  className="max-w-full max-h-[90vh] object-contain"
-                />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-                  <p className="text-white text-center">
-                    {gallery[currentGalleryIndex].alt}
-                  </p>
-                  {gallery[currentGalleryIndex].caption && (
-                    <p className="text-white/80 text-sm text-center mt-1">
-                      {gallery[currentGalleryIndex].caption}
-                    </p>
-                  )}
-                  <p className="text-white/60 text-sm text-center mt-2">
-                    {currentGalleryIndex + 1} / {gallery.length}
-                  </p>
-                </div>
-              </div>
             </div>
+          </section>
+        )}
+
+        {!isEditing && (
+          <section className="bg-gradient-to-br from-[#0f1119] to-[#1c1f33] py-24">
+            <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+              <Dices className="mx-auto mb-6 h-16 w-16 text-[#d3bb73]" />
+              <h2 className="mb-6 text-3xl font-light text-[#e5e4e2] md:text-4xl">
+                Zorganizujmy Wieczór w Kasynie!
+              </h2>
+              <p className="mx-auto mb-8 max-w-2xl text-lg font-light text-[#e5e4e2]/70">
+                Skontaktuj się z nami, aby przygotować niezapomniane kasyno eventowe.
+              </p>
+              <a
+                href="/#kontakt"
+                className="inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+              >
+                Skontaktuj się z nami
+              </a>
+            </div>
+          </section>
+        )}
+      </main>
+
+      {lightboxOpen && gallery.length > 0 && !isEditing && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95">
+          <button
+            onClick={closeLightbox}
+            className="absolute right-4 top-4 z-10 text-white transition-colors hover:text-[#d3bb73]"
+          >
+            <XCircle className="h-10 w-10" />
+          </button>
+
+          {gallery.length > 1 && (
+            <>
+              <button
+                onClick={prevImage}
+                className="absolute left-4 z-10 text-white transition-colors hover:text-[#d3bb73]"
+              >
+                <ChevronLeft className="h-12 w-12" />
+              </button>
+              <button
+                onClick={nextImage}
+                className="absolute right-4 z-10 text-white transition-colors hover:text-[#d3bb73]"
+              >
+                <ChevronRight className="h-12 w-12" />
+              </button>
+            </>
           )}
 
+          <div className="relative mx-4 max-h-[90vh] max-w-7xl">
+            <img
+              src={
+                gallery[currentGalleryIndex].image_metadata?.desktop?.src ||
+                gallery[currentGalleryIndex].image
+              }
+              alt={gallery[currentGalleryIndex].alt}
+              className="max-h-[90vh] max-w-full object-contain"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+              <p className="text-center text-white">{gallery[currentGalleryIndex].alt}</p>
+              {gallery[currentGalleryIndex].caption && (
+                <p className="mt-1 text-center text-sm text-white/80">
+                  {gallery[currentGalleryIndex].caption}
+                </p>
+              )}
+              <p className="mt-2 text-center text-sm text-white/60">
+                {currentGalleryIndex + 1} / {gallery.length}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {legalContent && !isEditing && (
-        <CasinoLegalPopup
-          content={legalContent}
-          onAccept={() => setShowContent(true)}
-        />
+        <CasinoLegalPopup content={legalContent} onAccept={() => setShowContent(true)} />
       )}
     </>
   );
