@@ -16,6 +16,7 @@ interface ServiceSEOModalProps {
     seo_title?: string;
     seo_description?: string;
     seo_keywords?: string;
+    og_image?: string;
   };
 }
 
@@ -36,12 +37,14 @@ export default function ServiceSEOModal({
   const [seoDescription, setSeoDescription] = useState(initialData.seo_description || '');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [newKeyword, setNewKeyword] = useState('');
+  const [ogImage, setOgImage] = useState(initialData.og_image || '');
 
   useEffect(() => {
     setName(initialData.name);
     setDescription(initialData.description);
     setSeoTitle(initialData.seo_title || '');
     setSeoDescription(initialData.seo_description || '');
+    setOgImage(initialData.og_image || '');
 
     // Parse keywords from comma-separated string to array
     const keywordsArray = initialData.seo_keywords
@@ -243,6 +246,26 @@ export default function ServiceSEOModal({
               Dodaj słowa kluczowe klikając przycisk "Dodaj" lub wciskając Enter
             </p>
           </div>
+
+          {/* OG Image Preview */}
+          {ogImage && (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Open Graph Image (podgląd)
+              </label>
+              <div className="relative overflow-hidden rounded-lg border border-[#d3bb73]/20">
+                <img
+                  src={ogImage}
+                  alt="OG Image Preview"
+                  className="h-48 w-full object-cover"
+                />
+              </div>
+              <p className="mt-2 text-xs text-[#e5e4e2]/50">
+                Ten obrazek jest używany w podglądach na social media (Facebook, Twitter, LinkedIn).
+                {' '}Obrazek pochodzi z Hero Image strony i można go edytować osobno.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Buttons */}

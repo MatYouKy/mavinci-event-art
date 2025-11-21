@@ -55,10 +55,19 @@ async function loadServiceData(slug: string) {
     }
   }
 
+  // Load hero image for OG image
+  const { data: heroImage } = await supabase
+    .from('service_hero_images')
+    .select('image_url, alt_text')
+    .eq('page_slug', `uslugi/${slug}`)
+    .eq('is_active', true)
+    .maybeSingle();
+
   return {
     service: serviceData,
     category: categoryData,
     relatedServices,
+    heroImage,
   };
 }
 
@@ -76,8 +85,11 @@ export async function generateMetadata({
     };
   }
 
-  const { service } = data;
+  const { service, heroImage } = data;
   const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
+
+  // Use hero image for OG, fallback to thumbnail, then default
+  const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
   return {
     title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
@@ -91,14 +103,17 @@ export async function generateMetadata({
       url: canonicalUrl,
       title: service.seo_title || service.name,
       description: service.seo_description || service.description,
-      images: service.thumbnail_url ? [{ url: service.thumbnail_url }] : [],
+      images: [{
+        url: ogImageUrl,
+        alt: heroImage?.alt_text || service.name,
+      }],
       siteName: 'MAVINCI Event & ART',
     },
     twitter: {
       card: 'summary_large_image',
       title: service.seo_title || service.name,
       description: service.seo_description || service.description,
-      images: service.thumbnail_url ? [service.thumbnail_url] : [],
+      images: [ogImageUrl],
     },
   };
 }
@@ -114,7 +129,10 @@ export default async function ServiceDetailPage({
     notFound();
   }
 
-  const { service, category, relatedServices } = data;
+  const { service, category, relatedServices, heroImage } = data;
+
+  // Calculate OG image URL
+  const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
   return (
     <PageLayout pageSlug={`uslugi/${service.slug}`}>
@@ -132,6 +150,7 @@ export default async function ServiceDetailPage({
           service={service}
           category={category}
           relatedServices={relatedServices}
+          ogImage={ogImageUrl}
         />
       </div>
     </PageLayout>

@@ -14,12 +14,14 @@ interface ServiceDetailClientProps {
   service: any;
   category: any;
   relatedServices: any[];
+  ogImage?: string;
 }
 
 export default function ServiceDetailClient({
   service,
   category,
   relatedServices,
+  ogImage,
 }: ServiceDetailClientProps) {
   const router = useRouter();
   const { isEditMode } = useEditMode();
@@ -352,6 +354,7 @@ export default function ServiceDetailClient({
             seo_title: service.seo_title,
             seo_description: service.seo_description,
             seo_keywords: service.seo_keywords,
+            og_image: ogImage,
           }}
         />
       )}
