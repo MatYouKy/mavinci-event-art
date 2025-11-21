@@ -16,6 +16,8 @@ interface SchemaLayoutProps {
   defaultDescription?: string;
   breadcrumb?: BreadcrumbItem[];
   customSchemaData?: Record<string, any>;
+  cityPageType?: string;
+  citySlug?: string;
 }
 
 interface PageMetadata {
@@ -52,46 +54,75 @@ export default function SchemaLayout({
   defaultDescription,
   breadcrumb = [],
   customSchemaData = {},
+  cityPageType,
+  citySlug,
 }: SchemaLayoutProps) {
   const [globalConfig, setGlobalConfig] = useState<GlobalConfig | null>(null);
   const [pageMetadata, setPageMetadata] = useState<PageMetadata | null>(null);
+  const [cityPageSEO, setCityPageSEO] = useState<any>(null);
   const [places, setPlaces] = useState<any[]>([]);
   const [offers, setOffers] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
-  }, [pageSlug]);
+  }, [pageSlug, cityPageType, citySlug]);
 
   const loadData = async () => {
-    const [globalRes, metadataRes, placesRes, offersRes] = await Promise.all([
+    const promises: any[] = [
       supabase.from('schema_org_global').select('*').single(),
       supabase.from('schema_org_page_metadata').select('*').eq('page_slug', pageSlug).eq('is_active', true).maybeSingle(),
       supabase.from('schema_org_places').select('*').eq('is_global', true).eq('is_active', true).order('display_order'),
       supabase.from('schema_org_page_offers').select('*').eq('page_slug', pageSlug).eq('is_active', true).order('display_order'),
-    ]);
+    ];
+
+    // Load city page SEO if applicable
+    if (cityPageType && citySlug) {
+      promises.push(
+        supabase
+          .from('city_pages_seo')
+          .select('*')
+          .eq('page_type', cityPageType)
+          .eq('city_slug', citySlug)
+          .eq('is_active', true)
+          .maybeSingle()
+      );
+    }
+
+    const results = await Promise.all(promises);
+    const [globalRes, metadataRes, placesRes, offersRes, cityPageSEORes] = results;
 
     if (globalRes.data) setGlobalConfig(globalRes.data);
     if (metadataRes.data) setPageMetadata(metadataRes.data);
     if (placesRes.data) setPlaces(placesRes.data);
     if (offersRes.data) setOffers(offersRes.data);
+    if (cityPageSEORes?.data) setCityPageSEO(cityPageSEORes.data);
   };
 
   if (!globalConfig) {
     return <>{children}</>;
   }
 
+  // Priority: cityPageSEO > pageMetadata > default
   const cleanedPageTitle = pageMetadata?.title?.trim();
+  const cleanedCityTitle = cityPageSEO?.seo_title?.trim();
   const cleanedDefault = defaultTitle?.trim();
-  
-  const title = cleanedPageTitle
+
+  const title = cleanedCityTitle
+    ? cleanedCityTitle
+    : cleanedPageTitle
     ? cleanedPageTitle
     : cleanedDefault
     ? cleanedDefault
     : globalConfig.organization_name;
-    
-  const description = pageMetadata?.description || defaultDescription || '';
+
+  const description = cityPageSEO?.seo_description || pageMetadata?.description || defaultDescription || '';
   const ogImage = pageMetadata?.og_image || globalConfig.organization_logo || '/og-default.jpg';
-  const keywords = pageMetadata?.keywords || [];
+
+  // Keywords: city page SEO keywords or regular page keywords
+  const keywordsArray = cityPageSEO?.seo_keywords
+    ? cityPageSEO.seo_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
+    : pageMetadata?.keywords || [];
+  const keywords = keywordsArray;
 
   const sameAs = [
     globalConfig.facebook_url,

@@ -5,17 +5,21 @@ import { useParams, useRouter, notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { MapPin, ArrowRight, Clock } from 'lucide-react';
+import { MapPin, ArrowRight, Clock, Settings } from 'lucide-react';
 import SchemaLayout from '@/components/SchemaLayout';
 import { ProblemAndSolution } from '../sections/ProblemAndSolution';
+import { useEditMode } from '@/contexts/EditModeContext';
+import CityPageSEOModal from '@/components/CityPageSEOModal';
 
 export default function CityConferencePage() {
   const params = useParams();
   const router = useRouter();
+  const { isEditMode } = useEditMode();
   const [city, setCity] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(3);
   const [problems, setProblems] = useState<any[]>([]);
+  const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -94,12 +98,39 @@ export default function CityConferencePage() {
 
   const canonicalUrl = `https://mavinci.pl/oferta/konferencje/${city.locality}`;
   const cityName = city.name;
+  const defaultTitle = `Obsługa Konferencji ${cityName} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
+  const defaultDescription = `Profesjonalna obsługa konferencji w ${cityName}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych w ${cityName} i okolicach.`;
 
   return (
-    <SchemaLayout
+    <>
+      {/* SEO Metadata Button */}
+      {isEditMode && (
+        <button
+          onClick={() => setIsSEOModalOpen(true)}
+          className="fixed bottom-24 right-6 z-40 flex items-center gap-2 rounded-full bg-[#d3bb73] px-4 py-3 text-sm font-medium text-[#1c1f33] shadow-lg transition-all hover:bg-[#d3bb73]/90 hover:scale-105"
+        >
+          <Settings className="h-4 w-4" />
+          Metadane SEO
+        </button>
+      )}
+
+      {/* SEO Modal */}
+      <CityPageSEOModal
+        isOpen={isSEOModalOpen}
+        onClose={() => setIsSEOModalOpen(false)}
+        pageType="konferencje"
+        citySlug={city.locality}
+        cityName={cityName}
+        defaultTitle={defaultTitle}
+        defaultDescription={defaultDescription}
+      />
+
+      <SchemaLayout
       pageSlug={`konferencje-${city.locality}`}
-      defaultTitle={`Obsługa Konferencji ${cityName} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`}
-      defaultDescription={`Profesjonalna obsługa konferencji w ${cityName}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych w ${cityName} i okolicach.`}
+      defaultTitle={defaultTitle}
+      defaultDescription={defaultDescription}
+      cityPageType="konferencje"
+      citySlug={city.locality}
       breadcrumb={[
         { name: 'Start', url: 'https://mavinci.pl/' },
         { name: 'Oferta', url: 'https://mavinci.pl/oferta' },
@@ -271,5 +302,6 @@ export default function CityConferencePage() {
 
       <Footer />
     </SchemaLayout>
+    </>
   );
 }
