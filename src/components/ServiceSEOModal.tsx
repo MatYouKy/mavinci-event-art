@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Save } from 'lucide-react';
+import { X, Save, Plus, Trash2 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface ServiceSEOModalProps {
@@ -34,15 +34,33 @@ export default function ServiceSEOModal({
   const [description, setDescription] = useState(initialData.description);
   const [seoTitle, setSeoTitle] = useState(initialData.seo_title || '');
   const [seoDescription, setSeoDescription] = useState(initialData.seo_description || '');
-  const [seoKeywords, setSeoKeywords] = useState(initialData.seo_keywords || '');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [newKeyword, setNewKeyword] = useState('');
 
   useEffect(() => {
     setName(initialData.name);
     setDescription(initialData.description);
     setSeoTitle(initialData.seo_title || '');
     setSeoDescription(initialData.seo_description || '');
-    setSeoKeywords(initialData.seo_keywords || '');
+
+    // Parse keywords from comma-separated string to array
+    const keywordsArray = initialData.seo_keywords
+      ? initialData.seo_keywords.split(',').map(k => k.trim()).filter(Boolean)
+      : [];
+    setKeywords(keywordsArray);
   }, [initialData]);
+
+  const handleAddKeyword = () => {
+    const trimmed = newKeyword.trim();
+    if (trimmed && !keywords.includes(trimmed)) {
+      setKeywords((prev) => [...prev, trimmed]);
+      setNewKeyword('');
+    }
+  };
+
+  const handleRemoveKeyword = (keyword: string) => {
+    setKeywords((prev) => prev.filter((k) => k !== keyword));
+  };
 
   const handleSave = async () => {
     try {
@@ -51,12 +69,15 @@ export default function ServiceSEOModal({
       // Import server action dynamically
       const { updateServiceSEO } = await import('@/app/uslugi/[slug]/actions');
 
+      // Convert keywords array to comma-separated string
+      const keywordsString = keywords.length > 0 ? keywords.join(', ') : null;
+
       const result = await updateServiceSEO(serviceId, slug, {
         name,
         description,
         seo_title: seoTitle || null,
         seo_description: seoDescription || null,
-        seo_keywords: seoKeywords || null,
+        seo_keywords: keywordsString,
       });
 
       if (!result.success) {
@@ -169,17 +190,57 @@ export default function ServiceSEOModal({
           {/* SEO Keywords */}
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-              SEO Keywords <span className="text-[#e5e4e2]/50">(opcjonalne)</span>
+              Słowa kluczowe (keywords) <span className="text-[#e5e4e2]/50">(opcjonalne)</span>
             </label>
-            <input
-              type="text"
-              value={seoKeywords}
-              onChange={(e) => setSeoKeywords(e.target.value)}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              placeholder="streaming, konferencje, eventy, transmisje"
-            />
-            <p className="mt-1 text-xs text-[#e5e4e2]/50">
-              Słowa kluczowe oddzielone przecinkami
+
+            <div className="mb-3 flex gap-2">
+              <input
+                type="text"
+                value={newKeyword}
+                onChange={(e) => setNewKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddKeyword();
+                  }
+                }}
+                placeholder="Wpisz słowo kluczowe..."
+                className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleAddKeyword}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+              >
+                <Plus className="h-4 w-4" />
+                Dodaj
+              </button>
+            </div>
+
+            {keywords.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {keywords.map((keyword, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 rounded-full border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5"
+                  >
+                    <span className="text-sm text-[#e5e4e2]">{keyword}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveKeyword(keyword)}
+                      className="text-[#800020] hover:text-[#800020]/80"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[#e5e4e2]/40">Brak słów kluczowych</p>
+            )}
+
+            <p className="mt-2 text-xs text-[#e5e4e2]/50">
+              Dodaj słowa kluczowe klikając przycisk "Dodaj" lub wciskając Enter
             </p>
           </div>
         </div>
