@@ -60,45 +60,45 @@ async function loadServiceData(slug: string) {
 }
 
 // Generate metadata for SEO
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Promise<Metadata> {
-  const data = await loadServiceData(params.slug);
+// export async function generateMetadata({
+//   params,
+// }: {
+//   params: { slug: string };
+// }): Promise<Metadata> {
+//   const data = await loadServiceData(params.slug);
 
-  if (!data) {
-    return {
-      title: 'Usługa nie znaleziona - MAVINCI Event & ART',
-    };
-  }
+//   if (!data) {
+//     return {
+//       title: 'Usługa nie znaleziona - MAVINCI Event & ART',
+//     };
+//   }
 
-  const { service } = data;
-  const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
+//   const { service } = data;
+//   const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
 
-  return {
-    title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
-    description: service.seo_description || service.description,
-    keywords: service.seo_keywords,
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    openGraph: {
-      type: 'website',
-      url: canonicalUrl,
-      title: service.seo_title || service.name,
-      description: service.seo_description || service.description,
-      images: service.thumbnail_url ? [{ url: service.thumbnail_url }] : [],
-      siteName: 'MAVINCI Event & ART',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: service.seo_title || service.name,
-      description: service.seo_description || service.description,
-      images: service.thumbnail_url ? [service.thumbnail_url] : [],
-    },
-  };
-}
+//   return {
+//     title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
+//     description: service.seo_description || service.description,
+//     keywords: service.seo_keywords,
+//     alternates: {
+//       canonical: canonicalUrl,
+//     },
+//     openGraph: {
+//       type: 'website',
+//       url: canonicalUrl,
+//       title: service.seo_title || service.name,
+//       description: service.seo_description || service.description,
+//       images: service.thumbnail_url ? [{ url: service.thumbnail_url }] : [],
+//       siteName: 'MAVINCI Event & ART',
+//     },
+//     twitter: {
+//       card: 'summary_large_image',
+//       title: service.seo_title || service.name,
+//       description: service.seo_description || service.description,
+//       images: service.thumbnail_url ? [service.thumbnail_url] : [],
+//     },
+//   };
+// }
 
 export default async function ServiceDetailPage({
   params,
@@ -118,6 +118,7 @@ export default async function ServiceDetailPage({
   return (
     <PageLayout pageSlug={`uslugi/${service.slug}`}>
       <ServiceDetailClient
+        pageSlug={`uslugi/${service.slug}`}
         service={service}
         category={category}
         relatedServices={relatedServices}
