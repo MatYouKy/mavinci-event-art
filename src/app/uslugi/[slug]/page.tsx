@@ -5,6 +5,7 @@ import { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import ServiceDetailClient from './ServiceDetailClient';
+import { getSeoForPage } from '@/lib/seo';
 
 // Create supabase client for server-side
 const getSupabaseClient = () => {
@@ -136,6 +137,9 @@ export default async function ServiceDetailPage({
     notFound();
   }
 
+  const seo = await getSeoForPage(`uslugi/${params.slug}`);
+  if (!seo) return null;
+
   const { service, category, relatedServices, heroImage, globalConfig } = data;
 
   // Calculate OG image URL
@@ -145,6 +149,20 @@ export default async function ServiceDetailPage({
   const pageUrl = `https://mavinci.pl/uslugi/${service.slug}`;
   const serviceName = service.seo_title || service.name;
   const description = service.seo_description || service.description;
+  const areaServed = seo.places.map((place) => ({
+    '@type': 'Place',
+    name: place.name,
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: place.locality,
+      postalCode: place.postal_code,
+      addressRegion: place.region,
+      addressCountry: {
+        '@type': 'Country',
+        name: place.country,
+      },
+    },
+  }));
 
   const customSchema = globalConfig ? {
     '@context': 'http://schema.org',
@@ -176,6 +194,7 @@ export default async function ServiceDetailPage({
         globalConfig.twitter_url,
       ].filter(Boolean),
     },
+    areaServed: areaServed,
     ...(category && {
       category: category.name,
       serviceType: category.name,
