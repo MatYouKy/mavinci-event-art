@@ -5,6 +5,7 @@ import { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import ServiceDetailClient from './ServiceDetailClient';
+import EditableHeroSectionServer from '@/components/EditableHeroSectionServer';
 
 // Create supabase client for server-side
 const getSupabaseClient = () => {
@@ -69,12 +70,21 @@ async function loadServiceData(slug: string) {
     .select('*')
     .single();
 
+  // Load areaServed (places where service is available)
+  const { data: places } = await supabase
+    .from('schema_org_places')
+    .select('*')
+    .eq('is_global', true)
+    .eq('is_active', true)
+    .order('display_order');
+
   return {
     service: serviceData,
     category: categoryData,
     relatedServices,
     heroImage,
     globalConfig,
+    places: places || [],
   };
 }
 
@@ -136,7 +146,7 @@ export default async function ServiceDetailPage({
     notFound();
   }
 
-  const { service, category, relatedServices, heroImage, globalConfig } = data;
+  const { service, category, relatedServices, heroImage, globalConfig, places } = data;
 
   // Calculate OG image URL
   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
@@ -145,6 +155,19 @@ export default async function ServiceDetailPage({
   const pageUrl = `https://mavinci.pl/uslugi/${service.slug}`;
   const serviceName = service.seo_title || service.name;
   const description = service.seo_description || service.description;
+
+  // Build areaServed from places
+  const areaServed = places && places.length > 0 ? places.map((place: any) => ({
+    '@type': 'Place',
+    name: place.name,
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: place.locality,
+      postalCode: place.postal_code || '',
+      addressRegion: place.region || '',
+      addressCountry: place.country || 'PL',
+    },
+  })) : [];
 
   const customSchema = globalConfig ? {
     '@context': 'http://schema.org',
@@ -176,6 +199,7 @@ export default async function ServiceDetailPage({
         globalConfig.twitter_url,
       ].filter(Boolean),
     },
+    ...(areaServed.length > 0 && { areaServed }),
     ...(category && {
       category: category.name,
       serviceType: category.name,
@@ -185,7 +209,13 @@ export default async function ServiceDetailPage({
   return (
     <PageLayout pageSlug={`uslugi/${service.slug}`} customSchema={customSchema}>
       <div className="min-h-screen bg-[#0f1119]">
-        <section className="px-6 pt-24">
+        {/* Hero Section with Responsive Image */}
+        <EditableHeroSectionServer
+          section={`uslugi-${service.slug}-hero`}
+          pageSlug={`uslugi/${service.slug}`}
+        />
+
+        <section className="px-6 pt-6">
           <div className="mx-auto max-w-7xl">
             <CategoryBreadcrumb
               pageSlug={`uslugi/${service.slug}`}
