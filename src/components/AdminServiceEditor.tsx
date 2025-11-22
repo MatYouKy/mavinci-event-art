@@ -9,6 +9,7 @@ import { SimpleImageUploader } from './SimpleImageUploader';
 import { uploadOptimizedImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { slugify } from '@/lib/slugify';
+import { IconGridSelector } from './IconGridSelector';
 
 interface AdminServiceEditorProps {
   serviceId: string;
@@ -29,6 +30,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const [heroImageUrl, setHeroImageUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [isPremium, setIsPremium] = useState(false);
+  const [iconId, setIconId] = useState('');
   const [features, setFeatures] = useState<string[]>([]);
   const [technicalSpecs, setTechnicalSpecs] = useState<Record<string, string>>({});
   const [seoTitle, setSeoTitle] = useState('');
@@ -62,6 +64,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       setHeroImageUrl(data.hero_image_url || '');
       setThumbnailUrl(data.thumbnail_url || '');
       setIsPremium(data.is_premium || false);
+      setIconId(data.icon_id || '');
       setFeatures(Array.isArray(data.features) ? data.features : []);
       setTechnicalSpecs(data.technical_specs || {});
       setSeoTitle(data.seo_title || '');
@@ -90,6 +93,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
           hero_image_url: heroImageUrl,
           thumbnail_url: thumbnailUrl,
           is_premium: isPremium,
+          icon_id: iconId || null,
           features,
           technical_specs: technicalSpecs,
           seo_title: seoTitle,
@@ -259,6 +263,16 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   Usługa Premium
                 </label>
               </div>
+            </div>
+
+            {/* Icon Selector */}
+            <div className="space-y-4">
+              <h3 className="text-xl font-medium text-[#e5e4e2]">Ikona usługi</h3>
+              <IconGridSelector
+                value={iconId}
+                onChange={setIconId}
+                label="Wybierz ikonę"
+              />
             </div>
 
             {/* Images */}
