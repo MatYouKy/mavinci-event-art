@@ -157,18 +157,6 @@ export default function CityConferencePage() {
 
       <div className="min-h-screen bg-[#0f1119] flex items-center justify-center px-6 py-20">
         <div className="max-w-4xl w-full">
-          {/* Location Badge */}
-          <div className="flex justify-center mb-8">
-            <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-3">
-              <MapPin className="w-5 h-5 text-[#d3bb73]" />
-              <div className="text-center">
-                <div className="text-[#d3bb73] font-medium">{cityName}</div>
-                <div className="text-[#e5e4e2]/60 text-xs">{city.region}</div>
-              </div>
-            </div>
-          </div>   
-          <ProblemAndSolution problems={problems} />
-
 
           {/* Main Content */}
           <div className="text-center mb-12">
