@@ -154,10 +154,10 @@ export default function ServiceDetailClient({
             {/* Main Info */}
             <div className="space-y-12 lg:col-span-2">
               {/* Thumbnail */}
-              {service.thumbnail_url && (
+              {service.hero_image_url && (
                 <div className="overflow-hidden rounded-2xl">
                   <img
-                    src={service.thumbnail_url}
+                    src={service.hero_image_url}
                     alt={service.name}
                     className="h-auto w-full object-cover"
                   />
