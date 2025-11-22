@@ -63,60 +63,67 @@ async function loadServiceData(slug: string) {
     .eq('is_active', true)
     .maybeSingle();
 
+  // Load global config for schema.org
+  const { data: globalConfig } = await supabase
+    .from('schema_org_global')
+    .select('*')
+    .single();
+
   return {
     service: serviceData,
     category: categoryData,
     relatedServices,
     heroImage,
+    globalConfig,
   };
 }
 
-// Generate metadata for SEO
-// export async function generateMetadata({
-//   params,
-// }: {
-//   params: { slug: string };
-// }): Promise<Metadata> {
-//   const data = await loadServiceData(params.slug);
+// Generate metadata for SEO (SERVER SIDE)
+export async function generateMetadata({
+  params,
+}: {
+  params: { slug: string };
+}): Promise<Metadata> {
+  const data = await loadServiceData(params.slug);
 
-//   if (!data) {
-//     return {
-//       title: 'Usługa nie znaleziona - MAVINCI Event & ART',
-//     };
-//   }
+  if (!data) {
+    return {
+      title: 'Usługa nie znaleziona - MAVINCI Event & ART',
+    };
+  }
 
-//   const { service, heroImage } = data;
-//   const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
+  const { service, heroImage } = data;
+  const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
 
-//   // Use hero image for OG, fallback to thumbnail, then default
-//   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
+  // Use hero image for OG, fallback to thumbnail, then default
+  const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
-//   return {
-//     title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
-//     description: service.seo_description || service.description,
-//     keywords: service.seo_keywords,
-//     alternates: {
-//       canonical: canonicalUrl,
-//     },
-//     openGraph: {
-//       type: 'website',
-//       url: canonicalUrl,
-//       title: service.seo_title || service.name,
-//       description: service.seo_description || service.description,
-//       images: [{
-//         url: ogImageUrl,
-//         alt: heroImage?.alt_text || service.name,
-//       }],
-//       siteName: 'MAVINCI Event & ART',
-//     },
-//     twitter: {
-//       card: 'summary_large_image',
-//       title: service.seo_title || service.name,
-//       description: service.seo_description || service.description,
-//       images: [ogImageUrl],
-//     },
-//   };
-// }
+  return {
+    title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
+    description: service.seo_description || service.description,
+    keywords: service.seo_keywords,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      type: 'website',
+      url: canonicalUrl,
+      title: service.seo_title || service.name,
+      description: service.seo_description || service.description,
+      images: [{
+        url: ogImageUrl,
+        alt: heroImage?.alt_text || service.name,
+      }],
+      siteName: 'MAVINCI Event & ART',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: service.seo_title || service.name,
+      description: service.seo_description || service.description,
+      images: [ogImageUrl],
+    },
+  };
+}
 
 export default async function ServiceDetailPage({
   params,
@@ -129,15 +136,54 @@ export default async function ServiceDetailPage({
     notFound();
   }
 
-  console.log('data', data);
-
-  const { service, category, relatedServices, heroImage } = data;
+  const { service, category, relatedServices, heroImage, globalConfig } = data;
 
   // Calculate OG image URL
   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
+  // Build Schema.org using SERVICE data (server-side)
+  const pageUrl = `https://mavinci.pl/uslugi/${service.slug}`;
+  const serviceName = service.seo_title || service.name;
+  const description = service.seo_description || service.description;
+
+  const customSchema = globalConfig ? {
+    '@context': 'http://schema.org',
+    '@type': 'Service',
+    name: serviceName,
+    description: description,
+    url: pageUrl,
+    image: ogImageUrl,
+    provider: {
+      '@type': 'LocalBusiness',
+      name: globalConfig.organization_name,
+      telephone: globalConfig.telephone,
+      email: globalConfig.email,
+      url: globalConfig.organization_url,
+      logo: globalConfig.organization_logo,
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: globalConfig.street_address,
+        addressLocality: globalConfig.locality,
+        postalCode: globalConfig.postal_code,
+        addressRegion: globalConfig.region,
+        addressCountry: globalConfig.country,
+      },
+      sameAs: [
+        globalConfig.facebook_url,
+        globalConfig.instagram_url,
+        globalConfig.linkedin_url,
+        globalConfig.youtube_url,
+        globalConfig.twitter_url,
+      ].filter(Boolean),
+    },
+    ...(category && {
+      category: category.name,
+      serviceType: category.name,
+    }),
+  } : undefined;
+
   return (
-    <PageLayout pageSlug={`uslugi/${service.slug}`}>
+    <PageLayout pageSlug={`uslugi/${service.slug}`} customSchema={customSchema}>
       <div className="min-h-screen bg-[#0f1119]">
         <section className="px-6 pt-24">
           <div className="mx-auto max-w-7xl">
