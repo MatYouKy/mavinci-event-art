@@ -13,11 +13,14 @@ import {
   Edit2,
   FileText,
   Tag,
+  Package,
 } from 'lucide-react';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
 import ServiceSEOModal from '@/components/ServiceSEOModal';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { ResponsiveCarousel } from '@/components/ResponsiveCarousel';
+import { iconMap } from '@/app/oferta/konferencje/ConferencesPage';
 interface ServiceDetailClientProps {
   service: any;
   category: any;
@@ -38,7 +41,8 @@ export default function ServiceDetailClient({
   const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const itemsPerView = 1;
+  const itemsPerView = 3;
+  const delay = 4000;
 
   const extendedServices =
     relatedServices.length > 0 ? [...relatedServices, ...relatedServices, ...relatedServices] : [];
@@ -55,7 +59,7 @@ export default function ServiceDetailClient({
     const interval = setInterval(() => {
       setIsTransitioning(true);
       setCarouselIndex((prev) => prev + 1);
-    }, 5000);
+    }, delay);
 
     return () => clearInterval(interval);
   }, [relatedServices.length]);
@@ -153,7 +157,7 @@ export default function ServiceDetailClient({
                   <img
                     src={service.hero_image_url}
                     alt={service.name}
-                    className="h-auto w-full object-cover"
+                    className="center h-auto max-h-[500px] w-full object-cover"
                   />
                 </div>
               )}
@@ -232,78 +236,64 @@ export default function ServiceDetailClient({
         </div>
       </section>
 
-      {/* Related Services */}
       {relatedServices.length > 0 && (
         <section className="bg-[#1c1f33] px-6 py-20">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-12 text-center">
+          <div className="mx-auto max-w-7xl p-4">
+            <div className="mb-12 p-4 text-center">
               <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
                 Podobne usługi
               </h2>
               <p className="text-[#e5e4e2]/60">Zobacz inne usługi z kategorii {category?.name}</p>
             </div>
 
-            <div className="relative">
-              {/* Carousel Navigation */}
-              {relatedServices.length > 1 && (
-                <>
-                  <button
-                    onClick={handlePrev}
-                    className="absolute left-0 top-1/2 z-10 -translate-x-4 -translate-y-1/2 rounded-full bg-[#d3bb73] p-3 text-[#1c1f33] shadow-lg transition-all hover:bg-[#d3bb73]/90"
+            <ResponsiveCarousel
+              items={relatedServices}
+              responsive={{
+                desktop: 3,
+                tablet: 2,
+                mobile: 1,
+              }}
+              autoPlay={!isEditMode}
+              autoPlayDelay={4000}
+              showArrows
+              renderItem={(item, idx) => {
+                const Icon = iconMap[item.icon] || Package;
+                return (
+                  <Link
+                    key={`${item.id}-${idx}`}
+                    href={`/uslugi/${item.slug}`}
+                    className="group relative w-full flex-shrink-0 overflow-hidden rounded-xl transition-all hover:-translate-y-1 hover:border-[#d3bb73]/40 sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
                   >
-                    <ChevronLeft className="h-6 w-6" />
-                  </button>
-                  <button
-                    onClick={handleNext}
-                    className="absolute right-0 top-1/2 z-10 -translate-y-1/2 translate-x-4 rounded-full bg-[#d3bb73] p-3 text-[#1c1f33] shadow-lg transition-all hover:bg-[#d3bb73]/90"
-                  >
-                    <ChevronRight className="h-6 w-6" />
-                  </button>
-                </>
-              )}
+                    <div className="relative aspect-video overflow-hidden rounded-lg bg-[#0f1119]">
+                      {/* Obrazek */}
+                      <img
+                        src={item.thumbnail_url}
+                        alt={item.name}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      />
 
-              {/* Carousel */}
-              <div className="overflow-hidden">
-                <div
-                  className={`flex ${isTransitioning ? 'transition-transform duration-700 ease-in-out' : ''}`}
-                  style={{
-                    transform: `translateX(-${carouselIndex * 100}%)`,
-                  }}
-                  onTransitionEnd={handleTransitionEnd}
-                >
-                  {extendedServices.map((item: any, idx: number) => (
-                    <div
-                      key={`${item.id}-${idx}`}
-                      className="w-full flex-shrink-0 px-4"
-                    >
-                      <Link
-                        href={`/uslugi/${item.slug}`}
-                        className="block overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] transition-all hover:scale-105 hover:border-[#d3bb73]/40"
-                      >
-                        {item.thumbnail_url && (
-                          <div className="aspect-video overflow-hidden bg-[#1c1f33]">
-                            <img
-                              src={item.thumbnail_url}
-                              alt={item.name}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          </div>
-                        )}
-                        <div className="p-6">
-                          <h3 className="mb-2 text-xl font-medium text-[#e5e4e2]">{item.name}</h3>
+                      {/* 🌙 Gradient — ZAWSZE WIDOCZNY, nie tylko w hover */}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                      <div className="absolute bottom-2 left-6 mb-4 flex flex-col gap-2">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                          <Icon className="h-6 w-6 text-[#d3bb73]" />
+                        </div>
+                        <div className="relative z-10">
+                          <h3 className="mb-2 text-lg font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                            {item.name}
+                          </h3>
                           {item.description && (
-                            <p className="line-clamp-3 text-[#e5e4e2]/60">
+                            <p className="line-clamp-2 text-sm text-[#e5e4e2]/60">
                               {item.description}
                             </p>
                           )}
                         </div>
-                      </Link>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+                  </Link>
+                );
+              }}
+            />
           </div>
         </section>
       )}
