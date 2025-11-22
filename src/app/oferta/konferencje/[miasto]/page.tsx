@@ -5,7 +5,7 @@ import { useParams, useRouter, notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { MapPin, ArrowRight, Clock, Settings } from 'lucide-react';
+import { MapPin, ArrowRight, Settings } from 'lucide-react';
 import SchemaLayout from '@/components/SchemaLayout';
 import { ProblemAndSolution } from '../sections/ProblemAndSolution';
 import { useEditMode } from '@/contexts/EditModeContext';
@@ -17,7 +17,6 @@ export default function CityConferencePage() {
   const { isEditMode } = useEditMode();
   const [city, setCity] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState(3);
   const [problems, setProblems] = useState<any[]>([]);
   const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
 
@@ -25,18 +24,6 @@ export default function CityConferencePage() {
     loadData();
   }, [params.miasto]);
 
-  useEffect(() => {
-    if (!loading && city && countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(countdown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-
-    if (!loading && city && countdown === 0) {
-      router.push('/oferta/konferencje');
-    }
-  }, [loading, city, countdown, router]);
 
   const loadData = async () => {
     try {
@@ -263,23 +250,64 @@ export default function CityConferencePage() {
             </div>
           </div>
 
-          {/* Redirect Notice */}
-          <div className="bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg p-8 text-center">
-            <Clock className="w-12 h-12 text-[#d3bb73] mx-auto mb-4" />
-            <p className="text-[#e5e4e2] mb-2">
-              Za chwilę zostaniesz przekierowany na stronę główną konferencji
+          {/* CTA Section */}
+          <div className="bg-gradient-to-br from-[#d3bb73]/10 via-[#d3bb73]/5 to-transparent border border-[#d3bb73]/30 rounded-2xl p-12 text-center relative overflow-hidden">
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[#d3bb73]/5 rounded-full blur-3xl -z-10" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-[#d3bb73]/5 rounded-full blur-3xl -z-10" />
+
+            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+              Gotowy na profesjonalną obsługę?
+            </h2>
+            <p className="text-lg text-[#e5e4e2]/70 max-w-2xl mx-auto mb-8">
+              Zobacz pełną ofertę obsługi konferencji, pakiety usług i nasze realizacje
             </p>
-            <div className="flex items-center justify-center gap-2 text-[#d3bb73] font-medium text-2xl mb-4">
-              <span>{countdown}</span>
-              <span className="text-sm">sekund</span>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={() => router.push('/oferta/konferencje')}
+                className="group inline-flex items-center gap-3 px-8 py-4 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-all font-medium text-lg shadow-lg hover:shadow-xl hover:scale-105"
+              >
+                Zobacz pełną ofertę
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </button>
+
+              <button
+                onClick={() => {
+                  const contactSection = document.getElementById('contact');
+                  if (contactSection) {
+                    contactSection.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    router.push('/oferta/konferencje#contact');
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-8 py-4 bg-transparent border-2 border-[#d3bb73] text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 transition-all font-medium text-lg"
+              >
+                Skontaktuj się
+              </button>
             </div>
-            <button
-              onClick={() => router.push('/oferta/konferencje')}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors font-medium"
-            >
-              Przejdź teraz
-              <ArrowRight className="w-4 h-4" />
-            </button>
+
+            {/* Trust indicators */}
+            <div className="mt-12 pt-8 border-t border-[#d3bb73]/20">
+              <div className="flex flex-wrap items-center justify-center gap-8 text-[#e5e4e2]/60 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-[#d3bb73] rounded-full" />
+                  Bezpłatna wycena
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-[#d3bb73] rounded-full" />
+                  Profesjonalny sprzęt
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-[#d3bb73] rounded-full" />
+                  Doświadczony zespół
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-[#d3bb73] rounded-full" />
+                  Realizacje w całej Polsce
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* SEO Content (hidden, for crawlers) */}
