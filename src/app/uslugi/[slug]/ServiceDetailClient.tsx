@@ -37,25 +37,8 @@ export default function ServiceDetailClient({
   const [isEditing, setIsEditing] = useState(false);
   const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
-  const [itemsPerView, setItemsPerView] = useState(3);
   const [isTransitioning, setIsTransitioning] = useState(false);
-
-  useEffect(() => {
-    const updateItemsPerView = () => {
-      if (window.innerWidth < 768) {
-        setItemsPerView(1);
-      } else if (window.innerWidth < 1024) {
-        setItemsPerView(2);
-      } else {
-        setItemsPerView(3);
-      }
-    };
-
-    updateItemsPerView();
-    window.addEventListener('resize', updateItemsPerView);
-    return () => window.removeEventListener('resize', updateItemsPerView);
-  }, []);
-
+  const itemsPerView = 1;
 
   const extendedServices =
     relatedServices.length > 0 ? [...relatedServices, ...relatedServices, ...relatedServices] : [];
@@ -64,6 +47,17 @@ export default function ServiceDetailClient({
     if (relatedServices.length > 0) {
       setCarouselIndex(relatedServices.length);
     }
+  }, [relatedServices.length]);
+
+  useEffect(() => {
+    if (relatedServices.length === 0) return;
+
+    const interval = setInterval(() => {
+      setIsTransitioning(true);
+      setCarouselIndex((prev) => prev + 1);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [relatedServices.length]);
 
   const handlePrev = () => {
@@ -251,7 +245,7 @@ export default function ServiceDetailClient({
 
             <div className="relative">
               {/* Carousel Navigation */}
-              {relatedServices.length > itemsPerView && (
+              {relatedServices.length > 1 && (
                 <>
                   <button
                     onClick={handlePrev}
@@ -271,40 +265,41 @@ export default function ServiceDetailClient({
               {/* Carousel */}
               <div className="overflow-hidden">
                 <div
-                  className={`flex gap-6 ${isTransitioning ? 'transition-transform duration-500 ease-out' : ''}`}
+                  className={`flex ${isTransitioning ? 'transition-transform duration-700 ease-in-out' : ''}`}
                   style={{
-                    transform: `translateX(-${(carouselIndex * 100) / itemsPerView}%)`,
+                    transform: `translateX(-${carouselIndex * 100}%)`,
                   }}
                   onTransitionEnd={handleTransitionEnd}
                 >
                   {extendedServices.map((item: any, idx: number) => (
-                    <Link
+                    <div
                       key={`${item.id}-${idx}`}
-                      href={`/uslugi/${item.slug}`}
-                      className="flex-shrink-0 overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] transition-all hover:scale-105 hover:border-[#d3bb73]/40"
-                      style={{
-                        width: `calc(${100 / itemsPerView}% - ${((itemsPerView - 1) * 24) / itemsPerView}px)`,
-                      }}
+                      className="w-full flex-shrink-0 px-4"
                     >
-                      {item.thumbnail_url && (
-                        <div className="aspect-video overflow-hidden bg-[#1c1f33]">
-                          <img
-                            src={item.thumbnail_url}
-                            alt={item.name}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        </div>
-                      )}
-                      <div className="p-4">
-                        <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">{item.name}</h3>
-                        {item.description && (
-                          <p className="line-clamp-2 text-sm text-[#e5e4e2]/60">
-                            {item.description}
-                          </p>
+                      <Link
+                        href={`/uslugi/${item.slug}`}
+                        className="block overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] transition-all hover:scale-105 hover:border-[#d3bb73]/40"
+                      >
+                        {item.thumbnail_url && (
+                          <div className="aspect-video overflow-hidden bg-[#1c1f33]">
+                            <img
+                              src={item.thumbnail_url}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
                         )}
-                      </div>
-                    </Link>
+                        <div className="p-6">
+                          <h3 className="mb-2 text-xl font-medium text-[#e5e4e2]">{item.name}</h3>
+                          {item.description && (
+                            <p className="line-clamp-3 text-[#e5e4e2]/60">
+                              {item.description}
+                            </p>
+                          )}
+                        </div>
+                      </Link>
+                    </div>
                   ))}
                 </div>
               </div>
