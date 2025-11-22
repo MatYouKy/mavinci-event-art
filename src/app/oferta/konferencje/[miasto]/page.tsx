@@ -154,7 +154,6 @@ export default function CityConferencePage() {
         keywords: `obsługa konferencji ${cityName}, nagłośnienie konferencyjne ${cityName}, technika av ${cityName}, streaming konferencji ${cityName}, realizacja live ${cityName}, multimedia konferencje ${cityName}, wynajem sprzętu eventowego ${cityName}, profesjonalna obsługa eventów ${cityName}, konferencje biznesowe ${cityName}, eventy firmowe ${cityName}`,
       }}
     >
-      <Navbar />
 
       <div className="min-h-screen bg-[#0f1119] flex items-center justify-center px-6 py-20">
         <div className="max-w-4xl w-full">
@@ -328,7 +327,6 @@ export default function CityConferencePage() {
         </div>
       </div>
 
-      <Footer />
     </SchemaLayout>
     </>
   );
