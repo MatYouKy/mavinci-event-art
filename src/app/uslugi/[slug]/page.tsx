@@ -26,7 +26,7 @@ async function loadServiceData(slug: string) {
     .from('conferences_service_items')
     .select('*')
     .eq('slug', slug)
-    .eq('is_active', true)
+    // .eq('is_active', true)
     .maybeSingle();
 
   if (!serviceData || serviceError) {
@@ -72,51 +72,51 @@ async function loadServiceData(slug: string) {
 }
 
 // Generate metadata for SEO
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Promise<Metadata> {
-  const data = await loadServiceData(params.slug);
+// export async function generateMetadata({
+//   params,
+// }: {
+//   params: { slug: string };
+// }): Promise<Metadata> {
+//   const data = await loadServiceData(params.slug);
 
-  if (!data) {
-    return {
-      title: 'Usługa nie znaleziona - MAVINCI Event & ART',
-    };
-  }
+//   if (!data) {
+//     return {
+//       title: 'Usługa nie znaleziona - MAVINCI Event & ART',
+//     };
+//   }
 
-  const { service, heroImage } = data;
-  const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
+//   const { service, heroImage } = data;
+//   const canonicalUrl = `https://mavinci.pl/uslugi/${service.slug}`;
 
-  // Use hero image for OG, fallback to thumbnail, then default
-  const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
+//   // Use hero image for OG, fallback to thumbnail, then default
+//   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
-  return {
-    title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
-    description: service.seo_description || service.description,
-    keywords: service.seo_keywords,
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    openGraph: {
-      type: 'website',
-      url: canonicalUrl,
-      title: service.seo_title || service.name,
-      description: service.seo_description || service.description,
-      images: [{
-        url: ogImageUrl,
-        alt: heroImage?.alt_text || service.name,
-      }],
-      siteName: 'MAVINCI Event & ART',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: service.seo_title || service.name,
-      description: service.seo_description || service.description,
-      images: [ogImageUrl],
-    },
-  };
-}
+//   return {
+//     title: service.seo_title || `${service.name} - MAVINCI Event & ART`,
+//     description: service.seo_description || service.description,
+//     keywords: service.seo_keywords,
+//     alternates: {
+//       canonical: canonicalUrl,
+//     },
+//     openGraph: {
+//       type: 'website',
+//       url: canonicalUrl,
+//       title: service.seo_title || service.name,
+//       description: service.seo_description || service.description,
+//       images: [{
+//         url: ogImageUrl,
+//         alt: heroImage?.alt_text || service.name,
+//       }],
+//       siteName: 'MAVINCI Event & ART',
+//     },
+//     twitter: {
+//       card: 'summary_large_image',
+//       title: service.seo_title || service.name,
+//       description: service.seo_description || service.description,
+//       images: [ogImageUrl],
+//     },
+//   };
+// }
 
 export default async function ServiceDetailPage({
   params,
@@ -128,6 +128,8 @@ export default async function ServiceDetailPage({
   if (!data) {
     notFound();
   }
+
+  console.log('data', data);
 
   const { service, category, relatedServices, heroImage } = data;
 

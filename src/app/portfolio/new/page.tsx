@@ -100,7 +100,6 @@ export default function NewPortfolioPage() {
 
   return (
     <>
-      <Navbar />
       <main className="min-h-screen bg-gradient-to-b from-[#0a0c15] via-[#0f1119] to-[#1c1f33]">
         {/* Hero Section z edytowalnym tłem */}
         <section className="relative py-24 md:py-32 overflow-hidden">
@@ -316,7 +315,6 @@ export default function NewPortfolioPage() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   );
 }

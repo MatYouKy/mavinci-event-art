@@ -4,7 +4,15 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Check, Star, Mail, ChevronLeft, ChevronRight, Edit2, FileText
+  ArrowLeft,
+  Check,
+  Star,
+  Mail,
+  ChevronLeft,
+  ChevronRight,
+  Edit2,
+  FileText,
+  Tag,
 } from 'lucide-react';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
@@ -48,9 +56,9 @@ export default function ServiceDetailClient({
     return () => window.removeEventListener('resize', updateItemsPerView);
   }, []);
 
-  const extendedServices = relatedServices.length > 0
-    ? [...relatedServices, ...relatedServices, ...relatedServices]
-    : [];
+
+  const extendedServices =
+    relatedServices.length > 0 ? [...relatedServices, ...relatedServices, ...relatedServices] : [];
 
   useEffect(() => {
     if (relatedServices.length > 0) {
@@ -79,86 +87,79 @@ export default function ServiceDetailClient({
     }
   };
 
-  const features = service.features ? (Array.isArray(service.features) ? service.features : []) : [];
+  const features = service.features
+    ? Array.isArray(service.features)
+      ? service.features
+      : []
+    : [];
   const technicalSpecs = service.technical_specs || {};
 
   return (
     <>
       {/* Back Link + Edit Button */}
-      <section className="px-6 pt-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link
-            href="/uslugi"
-            className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Powrót do katalogu
-          </Link>
-
-          {isEditMode && (
+      {isEditMode && (
+        <section className="px-6 pt-6">
+          <div className="mx-auto flex max-w-7xl items-center justify-between">
             <div className="flex gap-2">
               <button
                 onClick={() => setIsSEOModalOpen(true)}
-                className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <FileText className="w-4 h-4" />
+                <FileText className="h-4 w-4" />
                 Metadane
               </button>
               <button
                 onClick={() => setIsEditing(true)}
-                className="inline-flex items-center gap-2 border border-[#d3bb73] text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73] px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
               >
-                <Edit2 className="w-4 h-4" />
+                <Edit2 className="h-4 w-4" />
                 Edytuj usługę
               </button>
             </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       {/* Service Header */}
-      <section className="px-6 py-12">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-4 flex items-center gap-3">
-            {category && (
-              <Link
-                href="/uslugi"
-                className="inline-block text-[#d3bb73] text-sm font-medium hover:underline"
-              >
-                {category.name}
-              </Link>
-            )}
+      <section className="px-6 py-4">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-2 flex items-center gap-3">
+            <div className="mb-2 flex items-center gap-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-1">
+                <Tag className="h-4 w-4 text-[#d3bb73]" />
+                <span className="text-sm font-medium text-[#d3bb73]">{category?.name}</span>
+              </div>
+            </div>
+
             {service.is_premium && (
-              <div className="inline-flex items-center gap-2 bg-[#d3bb73]/20 border border-[#d3bb73] rounded-full px-4 py-1">
-                <Star className="w-4 h-4 text-[#d3bb73] fill-[#d3bb73]" />
-                <span className="text-[#d3bb73] text-sm font-medium">Premium</span>
+              <div className="mb-2 flex items-center gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73] bg-[#d3bb73]/20 px-4 py-1">
+                  <Star className="h-4 w-4 fill-[#d3bb73] text-[#d3bb73]" />
+                  <span className="text-sm font-medium text-[#d3bb73]">Premium</span>
+                </div>
               </div>
             )}
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-light text-[#e5e4e2] mb-6">
-            {service.name}
-          </h1>
+          <h1 className="mb-6 text-4xl font-light text-[#e5e4e2] md:text-5xl">{service.name}</h1>
 
-          <p className="text-[#e5e4e2]/80 text-xl font-light max-w-3xl">
-            {service.description}
-          </p>
+          <p className="max-w-3xl text-xl font-light text-[#e5e4e2]/80">{service.description}</p>
         </div>
       </section>
 
       {/* Main Content */}
-      <section className="px-6 py-12">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-3 gap-12">
+      <section className="px-6 pb-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-12 lg:grid-cols-3">
             {/* Main Info */}
-            <div className="lg:col-span-2 space-y-12">
+            <div className="space-y-12 lg:col-span-2">
               {/* Thumbnail */}
               {service.thumbnail_url && (
-                <div className="rounded-2xl overflow-hidden">
+                <div className="overflow-hidden rounded-2xl">
                   <img
                     src={service.thumbnail_url}
                     alt={service.name}
-                    className="w-full h-auto object-cover"
+                    className="h-auto w-full object-cover"
                   />
                 </div>
               )}
@@ -166,10 +167,8 @@ export default function ServiceDetailClient({
               {/* Description */}
               {service.long_description && (
                 <div>
-                  <h2 className="text-3xl font-light text-[#e5e4e2] mb-6">
-                    Szczegóły usługi
-                  </h2>
-                  <p className="text-[#e5e4e2]/70 text-lg leading-relaxed whitespace-pre-line">
+                  <h2 className="mb-6 text-3xl font-light text-[#e5e4e2]">Szczegóły usługi</h2>
+                  <p className="whitespace-pre-line text-lg leading-relaxed text-[#e5e4e2]/70">
                     {service.long_description}
                   </p>
                 </div>
@@ -178,16 +177,14 @@ export default function ServiceDetailClient({
               {/* Features */}
               {features.length > 0 && (
                 <div>
-                  <h2 className="text-3xl font-light text-[#e5e4e2] mb-6">
-                    Co oferujemy
-                  </h2>
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <h2 className="mb-6 text-3xl font-light text-[#e5e4e2]">Co oferujemy</h2>
+                  <div className="grid gap-4 md:grid-cols-2">
                     {features.map((feature: string, idx: number) => (
                       <div
                         key={idx}
-                        className="flex items-start gap-3 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-4"
+                        className="flex items-start gap-3 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-4"
                       >
-                        <Check className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+                        <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
                         <span className="text-[#e5e4e2]/80">{feature}</span>
                       </div>
                     ))}
@@ -198,13 +195,16 @@ export default function ServiceDetailClient({
               {/* Technical Specs */}
               {Object.keys(technicalSpecs).length > 0 && (
                 <div>
-                  <h2 className="text-3xl font-light text-[#e5e4e2] mb-6">
+                  <h2 className="mb-6 text-3xl font-light text-[#e5e4e2]">
                     Specyfikacja techniczna
                   </h2>
-                  <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 space-y-4">
+                  <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
                     {Object.entries(technicalSpecs).map(([key, value]: [string, any]) => (
-                      <div key={key} className="flex justify-between border-b border-[#d3bb73]/10 pb-4 last:border-0 last:pb-0">
-                        <span className="text-[#e5e4e2]/60 font-medium">{key}</span>
+                      <div
+                        key={key}
+                        className="flex justify-between border-b border-[#d3bb73]/10 pb-4 last:border-0 last:pb-0"
+                      >
+                        <span className="font-medium text-[#e5e4e2]/60">{key}</span>
                         <span className="text-[#e5e4e2]">{value}</span>
                       </div>
                     ))}
@@ -216,39 +216,23 @@ export default function ServiceDetailClient({
             {/* Sidebar */}
             <div className="space-y-6">
               {/* CTA Card */}
-              <div className="bg-gradient-to-br from-[#d3bb73]/10 to-[#d3bb73]/5 border border-[#d3bb73]/30 rounded-2xl p-6 sticky top-6">
-                <h3 className="text-xl font-medium text-[#e5e4e2] mb-4">
-                  Zainteresowany?
-                </h3>
-                <p className="text-[#e5e4e2]/70 mb-6">
-                  Skontaktuj się z nami, aby uzyskać szczegółową wycenę i omówić szczegóły realizacji.
+              <div className="sticky top-6 rounded-2xl border border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73]/10 to-[#d3bb73]/5 p-6">
+                <h3 className="mb-4 text-xl font-medium text-[#e5e4e2]">Zainteresowany?</h3>
+                <p className="mb-6 text-[#e5e4e2]/70">
+                  Skontaktuj się z nami, aby uzyskać szczegółową wycenę i omówić szczegóły
+                  realizacji.
                 </p>
                 <button
                   onClick={() => setIsContactFormOpen(true)}
-                  className="w-full bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors flex items-center justify-center gap-2"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Mail className="w-4 h-4" />
+                  <Mail className="h-4 w-4" />
                   Zapytaj o wycenę
                 </button>
-                <p className="mt-4 text-xs text-[#e5e4e2]/40 text-center">
+                <p className="mt-4 text-center text-xs text-[#e5e4e2]/40">
                   Odpowiedź w 24h • Bezpłatna konsultacja
                 </p>
               </div>
-
-              {/* Category Info */}
-              {category && (
-                <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-2xl p-6">
-                  <h3 className="text-sm font-medium text-[#e5e4e2]/60 mb-2">
-                    Kategoria
-                  </h3>
-                  <Link
-                    href="/uslugi"
-                    className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
-                  >
-                    {category.name}
-                  </Link>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -256,15 +240,13 @@ export default function ServiceDetailClient({
 
       {/* Related Services */}
       {relatedServices.length > 0 && (
-        <section className="px-6 py-20 bg-[#1c1f33]">
-          <div className="max-w-7xl mx-auto">
+        <section className="bg-[#1c1f33] px-6 py-20">
+          <div className="mx-auto max-w-7xl">
             <div className="mb-12 text-center">
-              <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
                 Podobne usługi
               </h2>
-              <p className="text-[#e5e4e2]/60">
-                Zobacz inne usługi z kategorii {category?.name}
-              </p>
+              <p className="text-[#e5e4e2]/60">Zobacz inne usługi z kategorii {category?.name}</p>
             </div>
 
             <div className="relative">
@@ -273,15 +255,15 @@ export default function ServiceDetailClient({
                 <>
                   <button
                     onClick={handlePrev}
-                    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 bg-[#d3bb73] text-[#1c1f33] p-3 rounded-full hover:bg-[#d3bb73]/90 transition-all shadow-lg"
+                    className="absolute left-0 top-1/2 z-10 -translate-x-4 -translate-y-1/2 rounded-full bg-[#d3bb73] p-3 text-[#1c1f33] shadow-lg transition-all hover:bg-[#d3bb73]/90"
                   >
-                    <ChevronLeft className="w-6 h-6" />
+                    <ChevronLeft className="h-6 w-6" />
                   </button>
                   <button
                     onClick={handleNext}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 bg-[#d3bb73] text-[#1c1f33] p-3 rounded-full hover:bg-[#d3bb73]/90 transition-all shadow-lg"
+                    className="absolute right-0 top-1/2 z-10 -translate-y-1/2 translate-x-4 rounded-full bg-[#d3bb73] p-3 text-[#1c1f33] shadow-lg transition-all hover:bg-[#d3bb73]/90"
                   >
-                    <ChevronRight className="w-6 h-6" />
+                    <ChevronRight className="h-6 w-6" />
                   </button>
                 </>
               )}
@@ -299,25 +281,25 @@ export default function ServiceDetailClient({
                     <Link
                       key={`${item.id}-${idx}`}
                       href={`/uslugi/${item.slug}`}
-                      className="flex-shrink-0 rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] overflow-hidden transition-all hover:scale-105 hover:border-[#d3bb73]/40"
-                      style={{ width: `calc(${100 / itemsPerView}% - ${(itemsPerView - 1) * 24 / itemsPerView}px)` }}
+                      className="flex-shrink-0 overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] transition-all hover:scale-105 hover:border-[#d3bb73]/40"
+                      style={{
+                        width: `calc(${100 / itemsPerView}% - ${((itemsPerView - 1) * 24) / itemsPerView}px)`,
+                      }}
                     >
                       {item.thumbnail_url && (
                         <div className="aspect-video overflow-hidden bg-[#1c1f33]">
                           <img
                             src={item.thumbnail_url}
                             alt={item.name}
-                            className="w-full h-full object-cover"
+                            className="h-full w-full object-cover"
                             loading="lazy"
                           />
                         </div>
                       )}
                       <div className="p-4">
-                        <h3 className="text-lg font-medium text-[#e5e4e2] mb-2">
-                          {item.name}
-                        </h3>
+                        <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">{item.name}</h3>
                         {item.description && (
-                          <p className="text-sm text-[#e5e4e2]/60 line-clamp-2">
+                          <p className="line-clamp-2 text-sm text-[#e5e4e2]/60">
                             {item.description}
                           </p>
                         )}

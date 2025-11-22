@@ -143,7 +143,6 @@ export default function UslugiPage() {
   if (loading) {
     return (
       <>
-        <Navbar />
         <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pt-28 pb-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
@@ -151,7 +150,6 @@ export default function UslugiPage() {
             </div>
           </div>
         </main>
-        <Footer />
       </>
     );
   }
@@ -214,7 +212,7 @@ export default function UslugiPage() {
 
           <div className="text-center mb-16">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-light text-[#e5e4e2] mb-6">
-              Nasze <span className="text-[#d3bb73] font-normal">Usługi</span>
+              Nasza <span className="text-[#d3bb73] font-normal">Oferta</span>
             </h1>
             <p className="text-lg text-[#e5e4e2]/70 max-w-3xl mx-auto">
               Oferujemy kompleksową obsługę techniczną i organizację eventów.

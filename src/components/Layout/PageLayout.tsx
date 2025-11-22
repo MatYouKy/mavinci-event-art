@@ -8,8 +8,10 @@ export default function PageLayout({ children, pageSlug }: { children: React.Rea
     const schemaData = await buildSchemaJsonLdForSlug(pageSlug);
     return schemaData;
   };
+  console.log('pageSlug', pageSlug);
 
   const [schemaData, setSchemaData] = useState<any>(null);
+  console.log('schemaData', schemaData);
 
   useEffect(() => {
     loadSchemaData().then(setSchemaData);
