@@ -23,6 +23,8 @@ export function PageHeroImage({
   pageSlug,
   defaultImage = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg',
   defaultOpacity = 0.2,
+  initialImage,
+  initialOpacity,
   className = '',
   children,
 }: PageHeroImageProps) {
