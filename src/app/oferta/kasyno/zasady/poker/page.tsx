@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Dices, CircleDot, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
 import { supabase } from '@/lib/supabase';
 
 export default function PokerRulesPage() {
@@ -29,18 +27,15 @@ export default function PokerRulesPage() {
   if (loading) {
     return (
       <>
-        <Navbar />
         <main className="min-h-screen bg-[#0f1119] flex items-center justify-center">
           <div className="text-[#d3bb73] text-lg">Ładowanie...</div>
         </main>
-        <Footer />
       </>
     );
   }
 
   return (
     <>
-      <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
         <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <Link
@@ -141,7 +136,6 @@ export default function PokerRulesPage() {
           </div>
         </article>
       </main>
-      <Footer />
     </>
   );
 }

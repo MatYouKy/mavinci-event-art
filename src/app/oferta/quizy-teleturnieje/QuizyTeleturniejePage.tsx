@@ -59,7 +59,6 @@ export default function QuizyTeleturniejePage() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   );
 }

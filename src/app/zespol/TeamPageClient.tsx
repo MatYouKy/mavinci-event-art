@@ -129,7 +129,6 @@ export default function TeamPageClient() {
           className="py-24 md:py-32 overflow-hidden"
         >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <CategoryBreadcrumb pageSlug="zespol" />
             <div className="text-center">
               <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                 <Users className="w-5 h-5 text-[#d3bb73]" />
@@ -146,6 +145,11 @@ export default function TeamPageClient() {
             </div>
           </div>
         </PageHeroImage>
+        <section className="px-6 pt-6 min-h-[50px]">  
+          <div className="mx-auto min-h-[50px] max-w-screen-lg">
+            <CategoryBreadcrumb pageSlug="zespol" />
+          </div>
+        </section>
 
         <section className="py-24 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

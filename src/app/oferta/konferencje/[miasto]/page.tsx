@@ -59,7 +59,6 @@ export default function CityConferencePage() {
   if (loading) {
     return (
       <>
-        <Navbar />
         <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
           <div className="text-lg text-[#d3bb73]">Ładowanie...</div>
         </div>
@@ -153,7 +152,7 @@ export default function CityConferencePage() {
                 <span className="text-[#d3bb73]">{cityName}</span>
               </h1>
 
-              <p className="mx-auto mb-8 max-w-2xl text-sm md:text-base leading-relaxed text-[#e5e4e2]/70">
+              <p className="mx-auto mb-8 max-w-2xl text-sm leading-relaxed text-[#e5e4e2]/70 md:text-base">
                 Profesjonalna obsługa techniczna konferencji w {cityName}. Nagłośnienie, multimedia,
                 streaming live i realizacja wideo.
               </p>
@@ -174,15 +173,15 @@ export default function CityConferencePage() {
               </div>
             </div>
 
-            <section className="px-6 pb-6">
-          <div className="mx-auto max-w-8xl">
-            <CategoryBreadcrumb
-              pageSlug={`oferta/konferencje/${city.locality}`}
-              productName={`Obsługa Konferencji ${cityName}`}
-              hideMetadataButton={true}
-            />
-          </div>
-        </section>
+            <section className="min-h-[50px] px-6 pt-6">
+              <div className="mx-auto min-h-[50px] max-w-7xl">
+                <CategoryBreadcrumb
+                  pageSlug={`oferta/konferencje/${city.locality}`}
+                  productName={`Obsługa Konferencji ${cityName}`}
+                  hideMetadataButton={true}
+                />
+              </div>
+            </section>
 
             {/* Services Grid */}
             <div className="mb-12 grid gap-4 md:grid-cols-2">
@@ -230,7 +229,7 @@ export default function CityConferencePage() {
             </div>
 
             {/* CTA Section */}
-            <div className="relative overflow-hidden rounded-2xl border border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73]/10 via-[#d3bb73]/5 to-transparent p-2 md:p-8 lg:p-12 text-center">
+            <div className="relative overflow-hidden rounded-2xl border border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73]/10 via-[#d3bb73]/5 to-transparent p-2 text-center md:p-8 lg:p-12">
               {/* Decorative elements */}
               <div className="absolute right-0 top-0 -z-10 h-64 w-64 rounded-full bg-[#d3bb73]/5 blur-3xl" />
               <div className="absolute bottom-0 left-0 -z-10 h-48 w-48 rounded-full bg-[#d3bb73]/5 blur-3xl" />
@@ -269,7 +268,7 @@ export default function CityConferencePage() {
               </div>
 
               {/* Trust indicators */}
-              <div className="mt-12 border-t border-[#d3bb73]/20 pt-8 pb-4">
+              <div className="mt-12 border-t border-[#d3bb73]/20 pb-4 pt-8">
                 <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-[#e5e4e2]/60">
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />

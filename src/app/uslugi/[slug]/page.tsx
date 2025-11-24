@@ -194,8 +194,8 @@ export default async function ServiceDetailPage({
   return (
     <PageLayout pageSlug={`uslugi/${service.slug}`} customSchema={customSchema}>
       <div className="min-h-screen bg-[#0f1119]">
-        <section className="px-6 pt-24">
-          <div className="mx-auto max-w-7xl">
+        <section className="px-6 pt-24 min-h-[50px]">
+          <div className="mx-auto min-h-[50px] max-w-screen-lg">
             <CategoryBreadcrumb
               pageSlug={`uslugi/${service.slug}`}
               productName={service.name}

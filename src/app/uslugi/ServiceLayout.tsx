@@ -21,8 +21,8 @@ export default function ServiceLayout({
           section={section}
           pageSlug={pageSlug}
         />
-        <section className="px-6 pt-6">
-          <div className="mx-auto max-w-7xl">
+        <section className="px-6 pt-6 min-h-[50px]">
+          <div className="mx-auto min-h-[50px] max-w-screen-lg">
             <CategoryBreadcrumb pageSlug={pageSlug} />
           </div>
         </section>

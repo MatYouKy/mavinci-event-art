@@ -84,7 +84,11 @@ export default function KonferencjeLokalizacjePage() {
         {/* Hero Section */}
         <section className="py-16 px-6 border-b border-[#d3bb73]/20">
           <div className="max-w-7xl mx-auto">
-            <CategoryBreadcrumb pageSlug="konferencje-lokalizacje" />
+            <section className="min-h-[50px] px-6 pt-6">
+              <div className="mx-auto min-h-[50px] max-w-7xl">
+                <CategoryBreadcrumb pageSlug="konferencje-lokalizacje" />
+              </div>
+            </section>
 
             <div className="text-center mt-12">
               <h1 className="text-4xl md:text-5xl font-light text-[#e5e4e2] mb-6">
@@ -144,11 +148,11 @@ export default function KonferencjeLokalizacjePage() {
                 {Object.entries(groupedByRegion).map(([region, regionCities]) => (
                   <div key={region}>
                     <h2 className="text-2xl font-light text-[#e5e4e2] mb-6 pb-3 border-b border-[#d3bb73]/20">
-                      {region} <span className="text-[#d3bb73] text-lg">({regionCities.length})</span>
+                      {region} <span className="text-[#d3bb73] text-lg">({(regionCities as any[]).length})</span>
                     </h2>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {regionCities.map((city) => (
+                      {(regionCities as Array<{ id: string; locality: string; name: string; postal_code: string }>).map((city: { id: string; locality: string; name: string; postal_code: string }) => (
                         <Link
                           key={city.id}
                           href={`/oferta/konferencje/${city.locality}`}

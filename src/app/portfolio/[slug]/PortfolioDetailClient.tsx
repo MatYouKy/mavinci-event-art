@@ -27,7 +27,8 @@ const MOCK_PROJECTS: PortfolioProject[] = [
     event_date: '2024-05-15',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    tags: []
+    tags: [],
+    slug: ''
   },
 ];
 
@@ -263,9 +264,6 @@ export default function PortfolioDetailClient() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#0a0c15]/50 via-[#0f1119]/30 to-[#1c1f33]" />
 
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            {/* Breadcrumb with Metadata */}
-            <CategoryBreadcrumb productName={title} pageSlug={`portfolio/${slug}`} />
-
             {/* Edit Button */}
             {isEditMode && (
               <div className="flex gap-2 w-full sm:w-auto justify-end mb-8">
@@ -584,6 +582,11 @@ export default function PortfolioDetailClient() {
                 )}
               </div>
             </div>
+          </div>
+        </section>
+        <section className="px-6 pt-6 min-h-[50px] ">
+          <div className="mx-auto min-h-[50px] max-w-screen-lg">
+            <CategoryBreadcrumb pageSlug="portfolio" productName={title} />
           </div>
         </section>
 

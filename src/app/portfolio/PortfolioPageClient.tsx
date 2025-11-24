@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2, Save } from 'lucide-react';
+import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2, Save, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
 import { PortfolioProject, GalleryImage } from '@/lib/supabase';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { useEditMode } from '@/contexts/EditModeContext';
@@ -17,98 +15,6 @@ import { IUploadImage } from '@/types/image';
 import { supabase } from '@/lib/supabase';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
-const MOCK_PROJECTS: PortfolioProject[] = [
-  {
-    id: 'mock-1',
-    title: 'Targi Branżowe Olsztyn 2024',
-    category: 'Targi i Wystawy',
-    image: 'https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Kompleksowa organizacja targów branżowych w Olsztynie - obsługa 200 wystawców, catering, multimedia',
-    order_index: 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-2',
-    title: 'Integracja Firmowa - Mazury',
-    category: 'Integracja Pracownicza',
-    image: 'https://images.pexels.com/photos/2788488/pexels-photo-2788488.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Dwudniowa integracja dla 150 pracowników z team buildingiem nad Jeziorakami w województwie warmińsko-mazurskim',
-    order_index: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-3',
-    title: 'Konferencja Biznesowa Gdańsk',
-    category: 'Konferencje',
-    image: 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Międzynarodowa konferencja biznesowa w Gdańsku - 500 uczestników, tłumaczenia symultaniczne, strefy networkingowe',
-    order_index: 3,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-4',
-    title: 'Gala Biznesowa Warszawa',
-    category: 'Eventy Korporacyjne',
-    image: 'https://images.pexels.com/photos/1112080/pexels-photo-1112080.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Ekskluzywna gala biznesowa w Warszawie dla 300 gości - profesjonalna scenografia i catering premium',
-    order_index: 4,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-5',
-    title: 'Event Marketingowy Toruń',
-    category: 'Event Marketing',
-    image: 'https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Kampania eventowa w Toruniu - road show, degustacje produktu, aktywacja marki, obsługa influencerów',
-    order_index: 5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-6',
-    title: 'Festiwal Muzyczny',
-    category: 'Festival',
-    image: 'https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Wielki festiwal muzyczny z profesjonalną sceną i kompleksową obsługą eventową',
-    order_index: 6,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-7',
-    title: 'Konferencja Medyczna',
-    category: 'Konferencje',
-    image: 'https://images.pexels.com/photos/3182750/pexels-photo-3182750.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Konferencja medyczna z symultanicznym tłumaczeniem',
-    order_index: 7,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-8',
-    title: 'Wieczór Tematyczny - Gatsby',
-    category: 'Eventy Korporacyjne',
-    image: 'https://images.pexels.com/photos/1679618/pexels-photo-1679618.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Stylizowany wieczór w klimacie lat 20.',
-    order_index: 8,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'mock-9',
-    title: 'Targi Tech Expo',
-    category: 'Targi i Wystawy',
-    image: 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=800',
-    description: 'Targi technologiczne z demonstracjami na żywo',
-    order_index: 9,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
 
 export default function PortfolioPageClient() {
   const router = useRouter();
@@ -135,11 +41,11 @@ export default function PortfolioPageClient() {
       if (!error && data && data.length > 0) {
         setProjects(data);
       } else {
-        setProjects(MOCK_PROJECTS);
+        setProjects([]);
       }
     } catch (error) {
       console.error('Error fetching projects:', error);
-      setProjects(MOCK_PROJECTS);
+      setProjects([]);
     }
     setLoading(false);
   };
@@ -218,7 +124,6 @@ export default function PortfolioPageClient() {
 
   return (
     <>
-      <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
         <PageHeroImage
           section="portfolio"
@@ -227,7 +132,7 @@ export default function PortfolioPageClient() {
           className="py-24 md:py-32 overflow-hidden"
         >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <CategoryBreadcrumb pageSlug="portfolio" />
+
             <div className="text-center">
               <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                 <Eye className="w-5 h-5 text-[#d3bb73]" />
@@ -244,6 +149,11 @@ export default function PortfolioPageClient() {
             </div>
           </div>
         </PageHeroImage>
+        <section className="px-6 pt-6 min-h-[50px]">
+          <div className="mx-auto max-w-7xl min-h-[50px]">
+            <CategoryBreadcrumb pageSlug="portfolio" />
+          </div>
+        </section>
 
         <section className="py-16 bg-[#0f1119]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -468,7 +378,6 @@ export default function PortfolioPageClient() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   );
 }

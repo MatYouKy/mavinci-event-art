@@ -220,8 +220,7 @@ export function UslugiPageClient() {
 
   if (loading) {
     return (
-      <>
-        <Navbar />
+      <>    
         <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
           <div className="text-lg text-[#d3bb73]">Ładowanie usług...</div>
         </div>
@@ -231,51 +230,6 @@ export function UslugiPageClient() {
 
   return (
     <>
-      {/* <Head>
-        <title>Pełna Lista Usług Eventowych - MAVINCI Event & ART</title>
-        <meta
-          name="description"
-          content="Kompletny katalog usług eventowych MAVINCI: nagłośnienie, oświetlenie, ekrany LED, kamery 4K, streaming, quizy, foto atrakcje. 67+ usług dla Twojego wydarzenia."
-        />
-        <meta
-          name="keywords"
-          content="usługi eventowe, katalog usług, nagłośnienie event, ekrany LED, streaming konferencji, quizy interaktywne, fotolustro, realizacja wideo 4K, oświetlenie DMX, technika eventowa"
-        />
-
-        <meta property="og:type" content="website" />
-        <meta property="og:title" content="Pełna Lista Usług Eventowych - MAVINCI" />
-        <meta
-          property="og:description"
-          content="Katalog 67+ usług eventowych: audio, video, streaming, interakcje, foto atrakcje i więcej."
-        />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta
-          property="og:image"
-          content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
-        />
-        <meta property="og:site_name" content="MAVINCI Event & ART" />
-        <meta property="og:locale" content="pl_PL" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Pełna Lista Usług Eventowych - MAVINCI" />
-        <meta
-          name="twitter:description"
-          content="Katalog 67+ usług eventowych dla konferencji, gal i wydarzeń firmowych."
-        />
-        <meta
-          name="twitter:image"
-          content="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop"
-        />
-
-        <link rel="canonical" href={canonicalUrl} />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify(combinedJsonLd),
-          }}
-        />
-      </Head> */}
-
       <div className="min-h-screen bg-[#0f1119]">
         {/* Hero Section */}
         <section className="bg-gradient-to-b from-[#1c1f33] to-[#0f1119] px-6 py-20">
@@ -373,8 +327,8 @@ export function UslugiPageClient() {
         </section>
 
         {/* ✅ Breadcrumb pod hero */}
-        <section className="border-b border-[#d3bb73]/20 px-6 pt-4">
-          <div className="mx-auto max-w-7xl">
+        <section className="px-6 pt-4 min-h-[50px]">
+          <div className="mx-auto min-h-[50px] max-w-screen-lg">
             <CategoryBreadcrumb />
           </div>
         </section>

@@ -29,18 +29,16 @@ export default function RouletteRulesPage() {
   if (loading) {
     return (
       <>
-        <Navbar />
         <main className="min-h-screen bg-[#0f1119] flex items-center justify-center">
           <div className="text-[#d3bb73] text-lg">Ładowanie...</div>
         </main>
-        <Footer />
       </>
     );
   }
 
   return (
     <>
-      <Navbar />
+
       <main className="min-h-screen bg-[#0f1119]">
         <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <Link

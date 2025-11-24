@@ -45,7 +45,6 @@ export default function AboutPageClient() {
           className="overflow-hidden py-24 md:py-32"
         >
           <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <CategoryBreadcrumb pageSlug="o-nas" />
             <div className="mb-16 text-center">
               <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2">
                 <Sparkles className="h-5 w-5 text-[#d3bb73]" />
@@ -67,7 +66,7 @@ export default function AboutPageClient() {
               {stats.map((stat, index) => (
                 <div
                   key={index}
-                  className="rounded-2xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-6 text-center backdrop-blur-sm"
+                  className="rounded-2xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#1c1f33] to-[#800020]/10 p-8 text-center backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:border-[#d3bb73]/50 hover:shadow-2xl hover:shadow-[#d3bb73]/20"
                 >
                   <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-[#d3bb73]/20">
                     <stat.icon className="h-8 w-8 text-[#d3bb73] transition-transform duration-300 group-hover:rotate-12" />
@@ -79,6 +78,11 @@ export default function AboutPageClient() {
             </div>
           </div>
         </PageHeroImage>
+        <section className="px-6 pt-6 min-h-[50px]">
+          <div className="mx-auto max-w-7xl min-h-[50px]">
+            <CategoryBreadcrumb pageSlug="o-nas" />
+          </div>
+        </section>
 
         <section className="bg-[#0f1119] py-24">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

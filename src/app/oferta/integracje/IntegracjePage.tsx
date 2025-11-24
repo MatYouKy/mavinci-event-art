@@ -1,11 +1,7 @@
 'use client';
 
-import Head from 'next/head';
-import { PartyPopper, Heart, CheckCircle2, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
-import { PageHeroImage } from '@/components/PageHeroImage';
-import { EditableContent } from '@/components/EditableContent';
-import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import { PartyPopper, CheckCircle2 } from 'lucide-react';
+
 
 export default function IntegracjePage() {
 

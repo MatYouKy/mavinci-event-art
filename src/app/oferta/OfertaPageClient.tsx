@@ -5,8 +5,6 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import { ServiceCard } from '@/components/ServiceCard';
 import { supabase } from '@/lib/supabase';
@@ -110,8 +108,6 @@ export default function OfertaPageClient() {
 
   return (
     <>
-      <Navbar />
-
       <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pt-28 pb-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-6">
@@ -171,8 +167,6 @@ export default function OfertaPageClient() {
           }
         `}</style>
       </main>
-
-      <Footer />
     </>
   );
 }

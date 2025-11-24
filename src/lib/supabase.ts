@@ -96,6 +96,7 @@ export interface PortfolioProjectFeature {
 }
 
 export interface PortfolioProject {
+  slug: string;
   tags: any[];
   _id?: string;
   id?: string;
