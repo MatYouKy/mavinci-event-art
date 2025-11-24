@@ -143,8 +143,8 @@ export function PageHeroImage({
   const displayPosition = isEditingPosition ? editState : (position || { posX: 0, posY: 0, scale: 1 });
 
   // Use initial values from SSR if available, otherwise fall back to hook values
-  const finalImageUrl = initialImage || imageUrl;
-  const finalOpacity = initialOpacity ?? displayOpacity;
+  const finalImageUrl = (initialImage && initialImage.length > 0) ? initialImage : imageUrl;
+  const finalOpacity = (initialOpacity !== undefined && initialOpacity !== null) ? initialOpacity : displayOpacity;
 
   return (
     <div className={`relative ${className}`}>
