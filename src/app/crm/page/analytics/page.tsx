@@ -9,8 +9,15 @@ import { supabase } from '@/lib/supabase';
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState(30);
   const [onlineUsers, setOnlineUsers] = useState(0);
+  const [customDateMode, setCustomDateMode] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
-  const { data: stats, isLoading, error } = useGetAnalyticsStatsQuery({ dateRange });
+  const { data: stats, isLoading, error } = useGetAnalyticsStatsQuery({
+    dateRange,
+    startDate: customDateMode ? customStartDate : undefined,
+    endDate: customDateMode ? customEndDate : undefined
+  });
   const { data: initialOnlineUsers } = useGetOnlineUsersQuery();
 
   useEffect(() => {
@@ -90,11 +97,21 @@ export default function AnalyticsPage() {
             <p className="text-[#e5e4e2]/60 mt-1">Statystyki odwiedzin strony</p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => setDateRange(7)}
+              onClick={() => { setCustomDateMode(false); setDateRange(1); }}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                dateRange === 7
+                !customDateMode && dateRange === 1
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              Dzisiaj
+            </button>
+            <button
+              onClick={() => { setCustomDateMode(false); setDateRange(7); }}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                !customDateMode && dateRange === 7
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
               }`}
@@ -102,9 +119,9 @@ export default function AnalyticsPage() {
               7 dni
             </button>
             <button
-              onClick={() => setDateRange(30)}
+              onClick={() => { setCustomDateMode(false); setDateRange(30); }}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                dateRange === 30
+                !customDateMode && dateRange === 30
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
               }`}
@@ -112,17 +129,61 @@ export default function AnalyticsPage() {
               30 dni
             </button>
             <button
-              onClick={() => setDateRange(90)}
+              onClick={() => { setCustomDateMode(false); setDateRange(90); }}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                dateRange === 90
+                !customDateMode && dateRange === 90
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
               }`}
             >
               90 dni
             </button>
+            <button
+              onClick={() => setCustomDateMode(!customDateMode)}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                customDateMode
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              Zakres dat
+            </button>
           </div>
         </div>
+
+        {customDateMode && (
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 flex gap-4 items-end">
+            <div className="flex-1">
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data od</label>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data do</label>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+            <button
+              onClick={() => {
+                if (customStartDate && customEndDate) {
+                  setDateRange(0);
+                }
+              }}
+              disabled={!customStartDate || !customEndDate}
+              className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:bg-[#d3bb73]/50 disabled:cursor-not-allowed transition-colors"
+            >
+              Zastosuj
+            </button>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="text-center py-12 text-[#e5e4e2]/50">Ładowanie danych...</div>

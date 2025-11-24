@@ -100,23 +100,34 @@ export const analyticsApi = createApi({
       providesTags: ['OnlineUsers'],
     }),
 
-    getAnalyticsStats: builder.query<AnalyticsStats, { dateRange: number }>({
-      async queryFn({ dateRange }) {
+    getAnalyticsStats: builder.query<AnalyticsStats, { dateRange: number; startDate?: string; endDate?: string }>({
+      async queryFn({ dateRange, startDate: customStart, endDate: customEnd }) {
         try {
-          const startDate = new Date();
-          startDate.setDate(startDate.getDate() - dateRange);
+          let startDate: Date;
+          let endDate: Date = new Date();
+
+          if (customStart && customEnd) {
+            startDate = new Date(customStart);
+            endDate = new Date(customEnd);
+            endDate.setHours(23, 59, 59, 999);
+          } else {
+            startDate = new Date();
+            startDate.setDate(startDate.getDate() - dateRange);
+          }
 
           const { data: analytics, error: analyticsError } = await supabase
             .from('page_analytics')
             .select('*')
-            .gte('created_at', startDate.toISOString());
+            .gte('created_at', startDate.toISOString())
+            .lte('created_at', endDate.toISOString());
 
           if (analyticsError) throw analyticsError;
 
           const { data: forms, error: formsError } = await supabase
             .from('contact_form_submissions')
             .select('*')
-            .gte('created_at', startDate.toISOString());
+            .gte('created_at', startDate.toISOString())
+            .lte('created_at', endDate.toISOString());
 
           if (formsError) throw formsError;
 

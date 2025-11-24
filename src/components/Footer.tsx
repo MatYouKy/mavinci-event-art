@@ -1,14 +1,21 @@
 'use client';
 
 import { useEditMode } from '@/contexts/EditModeContext';
+import { usePathname } from 'next/navigation';
 import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin, ArrowUp } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Footer() {
   const { isEditMode } = useEditMode();
+  const pathname = usePathname();
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Ukryj footer w CRM
+  if (pathname.startsWith('/crm')) {
+    return null;
+  }
 
   return (
     <footer className="relative border-t border-[#d3bb73]/10 bg-[#0f1120]">
@@ -158,18 +165,18 @@ export default function Footer() {
             © 2024 Mavinci Events. Wszystkie prawa zastrzeżone.
           </p>
           <div className="flex flex-wrap justify-center gap-3 sm:justify-end sm:gap-6">
-            <a
-              href="#"
+            <Link
+              href="/polityka-prywatnosci"
               className="text-xs font-light text-[#e5e4e2]/40 transition-colors duration-300 hover:text-[#d3bb73] sm:text-sm"
             >
               Polityka Prywatności
-            </a>
-            <a
-              href="#"
+            </Link>
+            <Link
+              href="/regulamin"
               className="text-xs font-light text-[#e5e4e2]/40 transition-colors duration-300 hover:text-[#d3bb73] sm:text-sm"
             >
               Regulamin
-            </a>
+            </Link>
           </div>
         </div>
       </div>
