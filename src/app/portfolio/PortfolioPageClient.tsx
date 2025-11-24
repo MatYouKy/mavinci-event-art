@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2, Save, FileText } from 'lucide-react';
+import { Eye, ArrowUpRight, Filter, Edit, Plus, Trash2, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -15,7 +15,7 @@ import { FormInput } from '@/components/formik/FormInput';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { supabase } from '@/lib/supabase';
-import { PageMetadataModal } from '@/components/PageMetadataModal';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
   {
@@ -119,7 +119,6 @@ export default function PortfolioPageClient() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isAdding, setIsAdding] = useState(false);
-  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -228,6 +227,7 @@ export default function PortfolioPageClient() {
           className="py-24 md:py-32 overflow-hidden"
         >
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <CategoryBreadcrumb pageSlug="portfolio" />
             <div className="text-center">
               <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
                 <Eye className="w-5 h-5 text-[#d3bb73]" />
@@ -257,22 +257,13 @@ export default function PortfolioPageClient() {
                   {filteredProjects.length} {filteredProjects.length === 1 ? 'projekt' : 'projektów'}
                 </p>
                 {isEditMode && (
-                  <>
-                    <button
-                      onClick={() => setIsMetadataModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73] text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
-                    >
-                      <FileText className="w-5 h-5" />
-                      Metadane
-                    </button>
-                    <button
-                      onClick={() => router.push('/portfolio/new')}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-                    >
-                      <Plus className="w-5 h-5" />
-                      Dodaj wydarzenie
-                    </button>
-                  </>
+                  <button
+                    onClick={() => router.push('/portfolio/new')}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Dodaj wydarzenie
+                  </button>
                 )}
               </div>
             </div>
@@ -478,14 +469,6 @@ export default function PortfolioPageClient() {
         </section>
       </main>
       <Footer />
-
-      {isMetadataModalOpen && (
-        <PageMetadataModal
-          isOpen={isMetadataModalOpen}
-          onClose={() => setIsMetadataModalOpen(false)}
-          pageSlug="portfolio"
-        />
-      )}
     </>
   );
 }

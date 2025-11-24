@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle, FileSearch, FileText } from 'lucide-react';
+import { Calendar, Tag, MapPin, Edit, Save, X, Image as ImageIcon, ChevronLeft, ChevronRight, XCircle, FileSearch } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import Link from 'next/link';
 import { PortfolioProject, GalleryImage, PortfolioProjectFeature, supabase } from '@/lib/supabase';
@@ -13,7 +13,7 @@ import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
 import PortfolioFeaturesEditor from '@/components/PortfolioFeaturesEditor';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
-import { PageMetadataModal } from '@/components/PageMetadataModal';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
   {
@@ -41,7 +41,6 @@ export default function PortfolioDetailClient() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
@@ -264,60 +263,44 @@ export default function PortfolioDetailClient() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#0a0c15]/50 via-[#0f1119]/30 to-[#1c1f33]" />
 
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            {/* Top Navigation */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-              <Link
-                href="/portfolio"
-                className="inline-flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Wróć do portfolio
-              </Link>
+            {/* Breadcrumb with Metadata */}
+            <CategoryBreadcrumb productName={title} pageSlug={`portfolio/${slug}`} />
 
-              {isEditMode && (
-                <div className="flex gap-2 w-full sm:w-auto">
-                  {isEditing ? (
-                    <>
-                      <button
-                        onClick={handleSave}
-                        disabled={saving || !title}
-                        className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none justify-center"
-                      >
-                        <Save className="w-4 h-4" />
-                        {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsEditing(false);
-                          loadProjectData(project);
-                        }}
-                        className="flex items-center gap-2 px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                        Anuluj
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => setIsMetadataModalOpen(true)}
-                        className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73]/10 border border-[#d3bb73] text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
-                      >
-                        <FileText className="w-4 h-4" />
-                        Metadane
-                      </button>
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors w-full sm:w-auto justify-center"
-                      >
-                        <Edit className="w-4 h-4" />
-                        Edytuj wydarzenie
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Edit Button */}
+            {isEditMode && (
+              <div className="flex gap-2 w-full sm:w-auto justify-end mb-8">
+                {isEditing ? (
+                  <>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !title}
+                      className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none justify-center"
+                    >
+                      <Save className="w-4 h-4" />
+                      {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditing(false);
+                        loadProjectData(project);
+                      }}
+                      className="flex items-center gap-2 px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      Anuluj
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors w-full sm:w-auto justify-center"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Edytuj wydarzenie
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               {/* Left Column - Content (Editable or View) */}
@@ -824,14 +807,6 @@ export default function PortfolioDetailClient() {
               <p>Użyj strzałek ← → aby nawigować | ESC aby zamknąć</p>
             </div>
           </div>
-        )}
-
-        {isMetadataModalOpen && (
-          <PageMetadataModal
-            isOpen={isMetadataModalOpen}
-            onClose={() => setIsMetadataModalOpen(false)}
-            pageSlug={`portfolio/${slug}`}
-          />
         )}
       </main>
     </>
