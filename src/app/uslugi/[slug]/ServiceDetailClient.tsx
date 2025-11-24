@@ -3,24 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  ArrowLeft,
-  Check,
-  Star,
-  Mail,
-  ChevronLeft,
-  ChevronRight,
-  Edit2,
-  FileText,
-  Tag,
-  Package,
-} from 'lucide-react';
+import { Check, Star, Mail, Edit2, FileText, Tag, Package } from 'lucide-react';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
 import ServiceSEOModal from '@/components/ServiceSEOModal';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { ResponsiveCarousel } from '@/components/ResponsiveCarousel';
 import { iconMap } from '@/app/oferta/konferencje/ConferencesPage';
+import { useAppSelector } from '@/store/hooks';
+import { selectCustomIcons } from '@/store/slices/customIconSlice';
+import { CustomIcon } from '@/components/UI/CustomIcon/CustomIcon';
 interface ServiceDetailClientProps {
   service: any;
   category: any;
@@ -36,54 +28,14 @@ export default function ServiceDetailClient({
 }: ServiceDetailClientProps) {
   const router = useRouter();
   const { isEditMode } = useEditMode();
+  const icons = useAppSelector(selectCustomIcons);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
-  const [carouselIndex, setCarouselIndex] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const itemsPerView = 3;
-  const delay = 4000;
 
-  const extendedServices =
-    relatedServices.length > 0 ? [...relatedServices, ...relatedServices, ...relatedServices] : [];
 
-  useEffect(() => {
-    if (relatedServices.length > 0) {
-      setCarouselIndex(relatedServices.length);
-    }
-  }, [relatedServices.length]);
+  console.log(icons);
 
-  useEffect(() => {
-    if (relatedServices.length === 0) return;
-
-    const interval = setInterval(() => {
-      setIsTransitioning(true);
-      setCarouselIndex((prev) => prev + 1);
-    }, delay);
-
-    return () => clearInterval(interval);
-  }, [relatedServices.length]);
-
-  const handlePrev = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setCarouselIndex((prev) => prev - 1);
-  };
-
-  const handleNext = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setCarouselIndex((prev) => prev + 1);
-  };
-
-  const handleTransitionEnd = () => {
-    setIsTransitioning(false);
-    if (carouselIndex <= 0) {
-      setCarouselIndex(relatedServices.length);
-    } else if (carouselIndex >= relatedServices.length * 2) {
-      setCarouselIndex(relatedServices.length);
-    }
-  };
 
   const features = service.features
     ? Array.isArray(service.features)
@@ -124,7 +76,13 @@ export default function ServiceDetailClient({
           <div className="mb-2 flex items-center gap-3">
             <div className="mb-2 flex items-center gap-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-1">
-                <Tag className="h-4 w-4 text-[#d3bb73]" />
+                <CustomIcon
+                  iconId={service.icon_id} // string z bazy
+                  className="h-7 w-7 text-[#1c1f33]" // rozmiar + kolor
+                  fallback={<span className="text-xs text-[#1c1f33]">?</span>}
+                />
+
+                {/* <Icon className="h-4 w-4 text-[#d3bb73]" /> */}
                 <span className="text-sm font-medium text-[#d3bb73]">{category?.name}</span>
               </div>
             </div>

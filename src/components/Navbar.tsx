@@ -21,6 +21,7 @@ import { useAppSelector } from '../store/hooks';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from './crm/NotificationCenter';
 import { canEditWebsite, isAdmin } from '@/lib/permissions';
+import { useMobile } from '@/hooks/useMobile';
 
 const navLinks = [
   { label: 'O Nas', href: '/o-nas' },
@@ -85,6 +86,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const navRef = useRef<HTMLElement>(null);
   const lastScrollY = useRef(0);
   const { signOut, user } = useAuth();
+  const isMobile = useMobile();
   const { isEditMode, toggleEditMode } = useEditMode();
   const router = useRouter();
   const pathname = usePathname();
@@ -267,7 +269,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 style={{ minWidth: '120px' }}
               />
             </Link>
-            <div className="flex-1" />
+            {isMobile && <div className="flex-1" />}
 
             <div className="hidden items-center gap-8 md:flex">
               {navLinks.map((link) => {

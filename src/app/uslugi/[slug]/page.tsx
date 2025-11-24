@@ -6,18 +6,8 @@ import PageLayout from '@/components/Layout/PageLayout';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import ServiceDetailClient from './ServiceDetailClient';
 import { getSeoForPage } from '@/lib/seo';
+import { getSupabaseClient } from '@/lib/supabase';
 
-// Create supabase client for server-side
-const getSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Missing Supabase environment variables');
-  }
-
-  return createClient(supabaseUrl, supabaseKey);
-};
 
 async function loadServiceData(slug: string) {
   noStore(); // Prevent caching for dynamic data
@@ -55,6 +45,7 @@ async function loadServiceData(slug: string) {
       relatedServices = related;
     }
   }
+
 
   // Load hero image for OG image
   const { data: heroImage } = await supabase
@@ -140,8 +131,7 @@ export default async function ServiceDetailPage({
   const seo = await getSeoForPage(`uslugi/${params.slug}`);
   if (!seo) return null;
 
-  const { service, category, relatedServices, heroImage, globalConfig } = data;
-
+  const { service, category, relatedServices, heroImage, globalConfig,  } = data;
   // Calculate OG image URL
   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 

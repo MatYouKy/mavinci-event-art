@@ -17,7 +17,6 @@ import { DetailedServices } from './sections/DetailedServices';
 import { GallerySection } from './sections/GallerySection';
 import { MultiCitySection } from './sections/MultiCitySection';
 import { TechnicalServices } from './sections/TechnicalServices';
-import { PricingSection } from './sections/PricingSection';
 import { PortfolioProjects } from './sections/PortfolioProjects';
 import { CaseStudiesSection } from './sections/CaseStudiesSection';
 import { ProcessSection } from './sections/ProcessSection';
