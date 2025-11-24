@@ -64,7 +64,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       setHeroImageUrl(data.hero_image_url || '');
       setThumbnailUrl(data.thumbnail_url || '');
       setIsPremium(data.is_premium || false);
-      setIconId(data.icon || '');
+      setIconId(data.icon_id || '');
       setFeatures(Array.isArray(data.features) ? data.features : []);
       setTechnicalSpecs(data.technical_specs || {});
       setSeoTitle(data.seo_title || '');
@@ -93,7 +93,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
           hero_image_url: heroImageUrl,
           thumbnail_url: thumbnailUrl,
           is_premium: isPremium,
-          icon: iconId || null,
+          icon_id: iconId || null,
           features,
           technical_specs: technicalSpecs,
           seo_title: seoTitle,
