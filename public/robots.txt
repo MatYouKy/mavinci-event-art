@@ -4,7 +4,7 @@
 User-agent: *
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 Allow: /o-nas
 Allow: /zespol
 Disallow: /admin/
@@ -21,7 +21,7 @@ Sitemap: https://mavinci.pl/sitemap.xml
 User-agent: Googlebot
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 Disallow: /admin/
 Disallow: /crm/
 Disallow: /api/
@@ -30,7 +30,7 @@ Crawl-delay: 0
 User-agent: Google-Extended
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 Allow: /o-nas
 Allow: /zespol
 
@@ -38,7 +38,7 @@ Allow: /zespol
 User-agent: Bingbot
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 Disallow: /admin/
 Disallow: /crm/
 Disallow: /api/
@@ -48,7 +48,7 @@ Crawl-delay: 0
 User-agent: GPTBot
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 Allow: /o-nas
 Allow: /zespol
 
@@ -56,14 +56,14 @@ Allow: /zespol
 User-agent: anthropic-ai
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 Allow: /o-nas
 Allow: /zespol
 
 User-agent: Claude-Web
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 Allow: /o-nas
 Allow: /zespol
 
@@ -71,13 +71,13 @@ Allow: /zespol
 User-agent: CCBot
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 
 # Perplexity AI
 User-agent: PerplexityBot
 Allow: /
 Allow: /portfolio/
-Allow: /uslugi/
+Allow: /oferta/
 
 # Inne AI crawlers
 User-agent: FacebookBot
