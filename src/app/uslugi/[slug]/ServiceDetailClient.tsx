@@ -18,6 +18,7 @@ interface ServiceDetailClientProps {
   category: any;
   relatedServices: any[];
   ogImage?: string;
+  gallery?: any[];
 }
 
 export default function ServiceDetailClient({
@@ -25,6 +26,7 @@ export default function ServiceDetailClient({
   category,
   relatedServices,
   ogImage,
+  gallery = [],
 }: ServiceDetailClientProps) {
   const router = useRouter();
   const { isEditMode } = useEditMode();
@@ -46,26 +48,17 @@ export default function ServiceDetailClient({
 
   return (
     <>
-      {/* Back Link + Edit Button */}
+      {/* Edit Button */}
       {isEditMode && (
         <section className="px-6 pt-6">
           <div className="mx-auto flex max-w-7xl items-center justify-between">
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsSEOModalOpen(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-              >
-                <FileText className="h-4 w-4" />
-                Metadane
-              </button>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73] px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
-              >
-                <Edit2 className="h-4 w-4" />
-                Edytuj usługę
-              </button>
-            </div>
+            <button
+              onClick={() => setIsEditing(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73] px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <Edit2 className="h-4 w-4" />
+              Edytuj usługę
+            </button>
           </div>
         </section>
       )}
@@ -194,6 +187,50 @@ export default function ServiceDetailClient({
         </div>
       </section>
 
+      {/* Gallery Section */}
+      {(gallery.length > 0 || isEditMode) && (
+        <section className="bg-[#0f1119] px-6 py-20">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-12 text-center">
+              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
+                Galeria
+              </h2>
+              <p className="text-[#e5e4e2]/60">Zobacz więcej zdjęć naszej usługi</p>
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {gallery.map((image: any) => (
+                <div
+                  key={image.id}
+                  className="group relative aspect-video overflow-hidden rounded-xl bg-[#1c1f33]"
+                >
+                  <img
+                    src={image.image_url}
+                    alt={image.alt_text || service.name}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                  {image.caption && (
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+                      <p className="text-sm text-white">{image.caption}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {isEditMode && gallery.length === 0 && (
+                <div className="col-span-full flex items-center justify-center rounded-xl border-2 border-dashed border-[#d3bb73]/30 p-12 text-center">
+                  <div>
+                    <p className="mb-2 text-[#e5e4e2]/70">Brak zdjęć w galerii</p>
+                    <p className="text-sm text-[#e5e4e2]/40">
+                      Dodaj zdjęcia przez panel CRM
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {relatedServices.length > 0 && (
         <section className="bg-[#1c1f33] px-6 py-20">
           <div className="mx-auto max-w-7xl p-4">
@@ -215,7 +252,6 @@ export default function ServiceDetailClient({
               autoPlayDelay={4000}
               showArrows
               renderItem={(item, idx) => {
-                const Icon = iconMap[item.icon] || Package;
                 return (
                   <Link
                     key={`${item.id}-${idx}`}
@@ -234,7 +270,11 @@ export default function ServiceDetailClient({
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
                       <div className="absolute bottom-2 left-6 mb-4 flex flex-col gap-2">
                         <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
-                          <Icon className="h-6 w-6 text-[#d3bb73]" />
+                          <CustomIcon
+                            iconId={item.icon_id}
+                            className="h-6 w-6 text-[#d3bb73]"
+                            fallback={<Package className="h-6 w-6 text-[#d3bb73]" />}
+                          />
                         </div>
                         <div className="relative z-10">
                           <h3 className="mb-2 text-lg font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">

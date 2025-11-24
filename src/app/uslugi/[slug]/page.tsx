@@ -61,12 +61,21 @@ async function loadServiceData(slug: string) {
     .select('*')
     .single();
 
+  // Load service gallery
+  const { data: gallery } = await supabase
+    .from('conferences_service_gallery')
+    .select('*')
+    .eq('service_id', serviceData.id)
+    .eq('is_active', true)
+    .order('display_order');
+
   return {
     service: serviceData,
     category: categoryData,
     relatedServices,
     heroImage,
     globalConfig,
+    gallery: gallery || [],
   };
 }
 
@@ -131,7 +140,7 @@ export default async function ServiceDetailPage({
   const seo = await getSeoForPage(`uslugi/${params.slug}`);
   if (!seo) return null;
 
-  const { service, category, relatedServices, heroImage, globalConfig,  } = data;
+  const { service, category, relatedServices, heroImage, globalConfig, gallery  } = data;
   // Calculate OG image URL
   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
@@ -199,7 +208,7 @@ export default async function ServiceDetailPage({
             <CategoryBreadcrumb
               pageSlug={`uslugi/${service.slug}`}
               productName={service.name}
-              hideMetadataButton={true}
+              hideMetadataButton={false}
             />
           </div>
         </section>
@@ -208,6 +217,7 @@ export default async function ServiceDetailPage({
           category={category}
           relatedServices={relatedServices}
           ogImage={ogImageUrl}
+          gallery={gallery}
         />
       </div>
     </PageLayout>
