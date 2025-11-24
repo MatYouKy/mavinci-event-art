@@ -142,6 +142,10 @@ export function PageHeroImage({
   const displayOpacity = isEditingOpacity ? editState.opacity : (opacity || defaultOpacity);
   const displayPosition = isEditingPosition ? editState : (position || { posX: 0, posY: 0, scale: 1 });
 
+  // Use initial values from SSR if available, otherwise fall back to hook values
+  const finalImageUrl = initialImage || imageUrl;
+  const finalOpacity = initialOpacity ?? displayOpacity;
+
   return (
     <div className={`relative ${className}`}>
       <div className="absolute inset-0 overflow-hidden">
@@ -149,11 +153,11 @@ export function PageHeroImage({
           className="w-full h-full"
           style={{
             position: 'relative',
-            opacity: displayOpacity,
+            opacity: isEditingOpacity ? displayOpacity : finalOpacity,
           }}
         >
           <img
-            src={imageUrl}
+            src={loading ? defaultImage : finalImageUrl}
             alt={section}
             className="absolute"
             style={{
