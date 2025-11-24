@@ -10,8 +10,8 @@ import ServiceSEOModal from '@/components/ServiceSEOModal';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { ResponsiveCarousel } from '@/components/ResponsiveCarousel';
 import { iconMap } from '@/app/oferta/konferencje/ConferencesPage';
-import { useAppSelector } from '@/store/hooks';
-import { selectCustomIcons } from '@/store/slices/customIconSlice';
+import { useAppSelector, useAppDispatch } from '@/store/hooks';
+import { selectCustomIcons, fetchCustomIcons } from '@/store/slices/customIconSlice';
 import { CustomIcon } from '@/components/UI/CustomIcon/CustomIcon';
 interface ServiceDetailClientProps {
   service: any;
@@ -30,11 +30,15 @@ export default function ServiceDetailClient({
 }: ServiceDetailClientProps) {
   const router = useRouter();
   const { isEditMode } = useEditMode();
+  const dispatch = useAppDispatch();
   const icons = useAppSelector(selectCustomIcons);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
 
+  useEffect(() => {
+    dispatch(fetchCustomIcons());
+  }, [dispatch]);
 
   console.log(icons);
 
