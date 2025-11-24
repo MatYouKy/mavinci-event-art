@@ -29,11 +29,27 @@ export const CustomIcon: React.FC<CustomIconProps> = ({
     return fallback ? <>{fallback}</> : null;
   }
 
+  // Dodaj class do SVG dla lepszej kontroli
+  let svgCode = icon.svg_code;
+
+  // Jeśli SVG nie ma class, dodaj
+  if (!svgCode.includes('class=')) {
+    svgCode = svgCode.replace('<svg', '<svg class="w-full h-full"');
+  }
+
+  // Upewnij się że SVG ma currentColor
+  if (!svgCode.includes('currentColor')) {
+    svgCode = svgCode.replace(
+      '<svg',
+      '<svg stroke="currentColor" fill="none"'
+    );
+  }
+
   return (
     <span
-      className={cn('inline-block', className)}
-      // svg_code to całe <svg ...>...</svg>
-      dangerouslySetInnerHTML={{ __html: icon.svg_code }}
+      className={cn('inline-flex items-center justify-center', className)}
+      style={{ color: 'inherit', width: '1em', height: '1em', fontSize: 'inherit' }}
+      dangerouslySetInnerHTML={{ __html: svgCode }}
     />
   );
 };
