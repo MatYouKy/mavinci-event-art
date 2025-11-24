@@ -14,8 +14,9 @@ Disallow: /seller/
 Disallow: /*.json$
 Disallow: /*?*
 
-# Sitemap
+# Sitemaps
 Sitemap: https://mavinci.pl/sitemap.xml
+Sitemap: https://mavinci.pl/image-sitemap.xml
 
 # Google (Googlebot, Google-Extended dla AI)
 User-agent: Googlebot
