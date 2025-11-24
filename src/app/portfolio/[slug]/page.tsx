@@ -5,6 +5,9 @@ import PageLayout from '@/components/Layout/PageLayout';
 import PortfolioDetailClient from './PortfolioDetailClient';
 import { getSeoForPage } from '@/lib/seo';
 
+export const revalidate = 0;
+export const dynamic = 'force-dynamic';
+
 const getSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';

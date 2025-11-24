@@ -92,7 +92,7 @@ export function PageMetadataModal({
 
   const handleSave = async () => {
     setIsSaving(true);
-  
+
     const payload = {
       page_slug: pageSlug,
       title: title || null,
@@ -102,9 +102,9 @@ export function PageMetadataModal({
       is_active: true,
       updated_at: new Date().toISOString(),
     };
-  
+
     let error;
-  
+
     if (metadata) {
       const result = await supabase
         .from('schema_org_page_metadata')
@@ -115,36 +115,38 @@ export function PageMetadataModal({
       const result = await supabase.from('schema_org_page_metadata').insert(payload);
       error = result.error;
     }
-    if (!error) {
-      showSnackbar(
-        isEdit ? 'Zaktualizowano metadane strony' : 'Dodano metadane strony',
-        'success'
-      );
-    
-      onClose();
-    
-      // daj Reactowi się odmalować, a dopiero potem przeładuj
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
-    }
-  
+
     setIsSaving(false);
-  
+
     if (error) {
       console.error('Error saving metadata', error);
       showSnackbar('Błąd podczas zapisywania', 'error');
       return;
     }
-  
+
     showSnackbar(
       isEdit
-        ? 'Zaktualizowano metadane strony. Odśwież stronę, aby zobaczyć zmiany w meta tagach.'
-        : 'Dodano metadane strony. Odśwież stronę, aby zobaczyć zmiany w meta tagach.',
+        ? 'Zaktualizowano metadane strony. Odświeżanie...'
+        : 'Dodano metadane strony. Odświeżanie...',
       'success'
     );
-  
+
     onClose();
+
+    try {
+      const pathToRevalidate = `/${pageSlug}`;
+      await fetch('/api/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: pathToRevalidate }),
+      });
+    } catch (err) {
+      console.error('Revalidation failed:', err);
+    }
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
   };
 
   
