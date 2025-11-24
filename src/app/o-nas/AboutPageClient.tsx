@@ -1,114 +1,120 @@
 'use client';
 
 import { Award, Users, Heart, Target, Sparkles, TrendingUp, ArrowRight } from 'lucide-react';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
 import { PageHeroImage } from '@/components/PageHeroImage';
 import { EditableImage } from '@/components/EditableImage';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import { stats } from '@/components/Stats';
+import { AnimatedCounter } from '@/components/UI/AnimatedCounter';
 
 export default function AboutPageClient() {
   const values = [
     {
       icon: Award,
       title: 'Profesjonalizm',
-      description: 'Każdy event realizujemy z najwyższą starannością i zaangażowaniem, dbając o każdy szczegół.',
+      description:
+        'Każdy event realizujemy z najwyższą starannością i zaangażowaniem, dbając o każdy szczegół.',
     },
     {
       icon: Heart,
       title: 'Pasja',
-      description: 'Kochamy to, co robimy. Nasza pasja do eventów przekłada się na wyjątkowe doświadczenia dla klientów.',
+      description:
+        'Kochamy to, co robimy. Nasza pasja do eventów przekłada się na wyjątkowe doświadczenia dla klientów.',
     },
     {
       icon: Users,
       title: 'Zespół',
-      description: 'Nasz doświadczony zespół to ludzie, którzy tworzą magie eventową z zaangażowaniem i kreatywnością.',
+      description:
+        'Nasz doświadczony zespół to ludzie, którzy tworzą magie eventową z zaangażowaniem i kreatywnością.',
     },
     {
       icon: Target,
       title: 'Precyzja',
-      description: 'Dokładne planowanie i perfekcyjne wykonanie - to klucz do sukcesu każdego wydarzenia.',
+      description:
+        'Dokładne planowanie i perfekcyjne wykonanie - to klucz do sukcesu każdego wydarzenia.',
     },
-  ];
-
-  const stats = [
-    { value: '15+', label: 'Lat doświadczenia' },
-    { value: '500+', label: 'Zrealizowanych eventów' },
-    { value: '100%', label: 'Zaangażowania' },
   ];
 
   return (
     <>
-      <Navbar />
       <main className="min-h-screen bg-[#0f1119]">
         <PageHeroImage
           section="about"
           defaultImage="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920"
           defaultOpacity={0.2}
-          className="py-24 md:py-32 overflow-hidden"
+          className="overflow-hidden py-24 md:py-32"
         >
-          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <CategoryBreadcrumb pageSlug="o-nas" />
-            <div className="text-center mb-16">
-              <div className="inline-flex items-center gap-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-full px-6 py-2 mb-6">
-                <Sparkles className="w-5 h-5 text-[#d3bb73]" />
-                <span className="text-[#d3bb73] text-sm font-medium">Poznaj Nas</span>
+            <div className="mb-16 text-center">
+              <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2">
+                <Sparkles className="h-5 w-5 text-[#d3bb73]" />
+                <span className="text-sm font-medium text-[#d3bb73]">Poznaj Nas</span>
               </div>
 
-              <h1 className="text-4xl md:text-6xl font-light text-[#e5e4e2] mb-6">
+              <h1 className="mb-6 text-4xl font-light text-[#e5e4e2] md:text-6xl">
                 Kim <span className="text-[#d3bb73]">Jesteśmy</span>
               </h1>
 
-              <p className="text-[#e5e4e2]/70 text-lg font-light leading-relaxed max-w-3xl mx-auto">
-                Mavinci to agencja eventowa z pasją do tworzenia niezapomnianych wydarzeń. Od ponad 15 lat realizujemy eventy, które inspirują, integrują i pozostają w pamięci na długo.
+              <p className="mx-auto max-w-3xl text-lg font-light leading-relaxed text-[#e5e4e2]/70">
+                Mavinci to agencja eventowa z pasją do tworzenia niezapomnianych wydarzeń. Od ponad
+                15 lat realizujemy eventy, które inspirują, integrują i pozostają w pamięci na
+                długo.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-4 gap-6 mt-12">
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
               {stats.map((stat, index) => (
                 <div
                   key={index}
-                  className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/20 rounded-2xl p-6 text-center"
+                  className="rounded-2xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-6 text-center backdrop-blur-sm"
                 >
-                  <div className="text-4xl md:text-5xl font-light text-[#d3bb73] mb-2">
-                    {stat.value}
+                  <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-[#d3bb73]/20">
+                    <stat.icon className="h-8 w-8 text-[#d3bb73] transition-transform duration-300 group-hover:rotate-12" />
                   </div>
-                  <div className="text-[#e5e4e2]/70 text-sm font-light">{stat.label}</div>
+                  <AnimatedCounter end={stat.value} suffix={stat.suffix} />
+                  <div className="text-sm font-light text-[#e5e4e2]/70">{stat.label}</div>
                 </div>
               ))}
             </div>
           </div>
         </PageHeroImage>
 
-        <section className="py-24 bg-[#0f1119]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <section className="bg-[#0f1119] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="grid items-center gap-12 lg:grid-cols-2">
               <div>
-                <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6">
+                <h2 className="mb-6 text-3xl font-light text-[#e5e4e2] md:text-4xl">
                   Nasza <span className="text-[#d3bb73]">Historia</span>
                 </h2>
-                <div className="h-1 w-24 bg-gradient-to-r from-[#d3bb73] to-transparent mb-8"></div>
+                <div className="mb-8 h-1 w-24 bg-gradient-to-r from-[#d3bb73] to-transparent"></div>
 
-                <div className="space-y-6 text-[#e5e4e2]/70 font-light leading-relaxed">
+                <div className="space-y-6 font-light leading-relaxed text-[#e5e4e2]/70">
                   <p>
-                    Mavinci powstało z pasji do tworzenia wyjątkowych doświadczeń. Rozpoczęliśmy od małych eventów lokalnych, a dziś jesteśmy jedną z wiodących agencji eventowych w Polsce.
+                    Mavinci powstało z pasji do tworzenia wyjątkowych doświadczeń. Rozpoczęliśmy od
+                    małych eventów lokalnych, a dziś jesteśmy jedną z wiodących agencji eventowych w
+                    Polsce.
                   </p>
                   <p>
-                    Przez lata zdobyliśmy doświadczenie w organizacji najróżniejszych wydarzeń - od kameralnych integracji firmowych, przez wielkie konferencje biznesowe, po festiwale muzyczne dla tysięcy uczestników.
+                    Przez lata zdobyliśmy doświadczenie w organizacji najróżniejszych wydarzeń - od
+                    kameralnych integracji firmowych, przez wielkie konferencje biznesowe, po
+                    festiwale muzyczne dla tysięcy uczestników.
                   </p>
                   <p>
-                    Nasz zespół to grupa pasjonatów, którzy każdy projekt traktują jak wyzwanie do stworzenia czegoś wyjątkowego. Łączymy kreatywność z precyzją wykonania, co przekłada się na satysfakcję naszych klientów.
+                    Nasz zespół to grupa pasjonatów, którzy każdy projekt traktują jak wyzwanie do
+                    stworzenia czegoś wyjątkowego. Łączymy kreatywność z precyzją wykonania, co
+                    przekłada się na satysfakcję naszych klientów.
                   </p>
                 </div>
               </div>
 
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl"></div>
                 <EditableImage
                   section="about-historia"
                   defaultImage="https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1200"
                   alt="Nasz zespół"
-                  className="relative rounded-3xl overflow-hidden border border-[#d3bb73]/20 aspect-square"
+                  className="relative aspect-square overflow-hidden rounded-3xl border border-[#d3bb73]/20"
                   imageClassName="w-full h-full object-cover"
                 />
               </div>
@@ -116,24 +122,24 @@ export default function AboutPageClient() {
           </div>
         </section>
 
-        <section className="py-24 bg-gradient-to-br from-[#0f1119] to-[#1c1f33]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">
+        <section className="bg-gradient-to-br from-[#0f1119] to-[#1c1f33] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-16 text-center">
+              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
                 Nasze <span className="text-[#d3bb73]">Wartości</span>
               </h2>
-              <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
+              <div className="mx-auto h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
               {values.map((value, index) => (
                 <div
                   key={index}
-                  className="bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-2xl p-8 hover:border-[#d3bb73]/30 transition-all duration-300"
+                  className="rounded-2xl border border-[#d3bb73]/10 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 p-8 backdrop-blur-sm transition-all duration-300 hover:border-[#d3bb73]/30"
                 >
-                  <value.icon className="w-12 h-12 text-[#d3bb73] mb-6" />
-                  <h3 className="text-xl font-light text-[#e5e4e2] mb-3">{value.title}</h3>
-                  <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
+                  <value.icon className="mb-6 h-12 w-12 text-[#d3bb73]" />
+                  <h3 className="mb-3 text-xl font-light text-[#e5e4e2]">{value.title}</h3>
+                  <p className="font-light leading-relaxed text-[#e5e4e2]/70">
                     {value.description}
                   </p>
                 </div>
@@ -142,65 +148,66 @@ export default function AboutPageClient() {
           </div>
         </section>
 
-        <section className="py-24 bg-[#0f1119]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <section className="bg-[#0f1119] py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="grid items-center gap-12 lg:grid-cols-2">
               <div className="relative order-2 lg:order-1">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl"></div>
                 <EditableImage
                   section="about-mavinci"
                   defaultImage="https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1200"
                   alt="Nasze projekty"
-                  className="relative rounded-3xl overflow-hidden border border-[#d3bb73]/20 aspect-square"
+                  className="relative aspect-square overflow-hidden rounded-3xl border border-[#d3bb73]/20"
                   imageClassName="w-full h-full object-cover"
                 />
               </div>
 
               <div className="order-1 lg:order-2">
-                <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6">
+                <h2 className="mb-6 text-3xl font-light text-[#e5e4e2] md:text-4xl">
                   Dlaczego <span className="text-[#d3bb73]">Mavinci</span>?
                 </h2>
-                <div className="h-1 w-24 bg-gradient-to-r from-[#d3bb73] to-transparent mb-8"></div>
+                <div className="mb-8 h-1 w-24 bg-gradient-to-r from-[#d3bb73] to-transparent"></div>
 
                 <div className="space-y-6">
                   <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#d3bb73]/20 border border-[#d3bb73]/30 flex items-center justify-center">
-                      <TrendingUp className="w-5 h-5 text-[#d3bb73]" />
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/20">
+                      <TrendingUp className="h-5 w-5 text-[#d3bb73]" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-light text-[#e5e4e2] mb-2">
+                      <h3 className="mb-2 text-lg font-light text-[#e5e4e2]">
                         Kompleksowa obsługa
                       </h3>
-                      <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
-                        Od pomysłu po realizację - zajmiemy się wszystkim, abyś mógł cieszyć się swoim eventem.
+                      <p className="font-light leading-relaxed text-[#e5e4e2]/70">
+                        Od pomysłu po realizację - zajmiemy się wszystkim, abyś mógł cieszyć się
+                        swoim eventem.
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#d3bb73]/20 border border-[#d3bb73]/30 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-[#d3bb73]" />
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/20">
+                      <Sparkles className="h-5 w-5 text-[#d3bb73]" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-light text-[#e5e4e2] mb-2">
+                      <h3 className="mb-2 text-lg font-light text-[#e5e4e2]">
                         Kreatywne rozwiązania
                       </h3>
-                      <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
-                        Każdy event to dla nas wyzwanie do stworzenia czegoś wyjątkowego i niepowtarzalnego.
+                      <p className="font-light leading-relaxed text-[#e5e4e2]/70">
+                        Każdy event to dla nas wyzwanie do stworzenia czegoś wyjątkowego i
+                        niepowtarzalnego.
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#d3bb73]/20 border border-[#d3bb73]/30 flex items-center justify-center">
-                      <Award className="w-5 h-5 text-[#d3bb73]" />
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/20">
+                      <Award className="h-5 w-5 text-[#d3bb73]" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-light text-[#e5e4e2] mb-2">
-                        Doświadczenie
-                      </h3>
-                      <p className="text-[#e5e4e2]/70 font-light leading-relaxed">
-                        15 lat na rynku i setki zrealizowanych projektów to gwarancja profesjonalizmu.
+                      <h3 className="mb-2 text-lg font-light text-[#e5e4e2]">Doświadczenie</h3>
+                      <p className="font-light leading-relaxed text-[#e5e4e2]/70">
+                        15 lat na rynku i setki zrealizowanych projektów to gwarancja
+                        profesjonalizmu.
                       </p>
                     </div>
                   </div>
@@ -210,26 +217,27 @@ export default function AboutPageClient() {
           </div>
         </section>
 
-        <section className="py-24 bg-gradient-to-br from-[#1c1f33] to-[#0f1119]">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <Target className="w-16 h-16 text-[#d3bb73] mx-auto mb-6" />
-            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6">
+        <section className="bg-gradient-to-br from-[#1c1f33] to-[#0f1119] py-24">
+          <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+            <Target className="mx-auto mb-6 h-16 w-16 text-[#d3bb73]" />
+            <h2 className="mb-6 text-3xl font-light text-[#e5e4e2] md:text-4xl">
               Stwórzmy Coś Razem!
             </h2>
-            <p className="text-[#e5e4e2]/70 text-lg font-light mb-8 max-w-2xl mx-auto">
-              Masz pomysł na event? Skontaktuj się z nami, a pomożemy Ci go zrealizować. Od planowania po wykonanie - zadbamy o wszystko.
+            <p className="mx-auto mb-8 max-w-2xl text-lg font-light text-[#e5e4e2]/70">
+              Masz pomysł na event? Skontaktuj się z nami, a pomożemy Ci go zrealizować. Od
+              planowania po wykonanie - zadbamy o wszystko.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <a
                 href="/#kontakt"
-                className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
                 Skontaktuj się z nami
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="h-4 w-4" />
               </a>
               <a
                 href="/portfolio"
-                className="inline-flex items-center gap-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 text-[#d3bb73] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/20 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-8 py-3 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
               >
                 Zobacz portfolio
               </a>
@@ -237,7 +245,6 @@ export default function AboutPageClient() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   );
 }

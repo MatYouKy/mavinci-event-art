@@ -17,6 +17,7 @@ import Footer from '@/components/Footer';
 import WebsiteEditPanel from '@/components/WebsiteEditPanel';
 import PageLayout from '@/components/Layout/PageLayout';
 import { getSeoForPage } from '@/lib/seo';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -42,10 +43,7 @@ async function loadPageMetadata() {
     .eq('is_active', true)
     .maybeSingle();
 
-  const { data: globalConfig } = await supabase
-    .from('schema_org_global')
-    .select('*')
-    .single();
+  const { data: globalConfig } = await supabase.from('schema_org_global').select('*').single();
 
   return { metadata, globalConfig };
 }
@@ -70,10 +68,12 @@ export async function generateMetadata(): Promise<Metadata> {
       url: 'https://mavinci.pl',
       title,
       description,
-      images: [{
-        url: ogImage,
-        alt: title,
-      }],
+      images: [
+        {
+          url: ogImage,
+          alt: title,
+        },
+      ],
       siteName: 'MAVINCI Event & ART',
     },
     twitter: {
@@ -89,47 +89,50 @@ export default async function HomePage() {
   const { metadata, globalConfig } = await loadPageMetadata();
   const seo = await getSeoForPage('home');
 
-  const areaServed = seo?.places.map((place) => ({
-    '@type': 'Place',
-    name: place.name,
-    address: {
-      '@type': 'PostalAddress',
-      addressLocality: place.locality,
-      postalCode: place.postal_code,
-      addressRegion: place.region,
-      addressCountry: {
-        '@type': 'Country',
-        name: place.country,
+  const areaServed =
+    seo?.places.map((place) => ({
+      '@type': 'Place',
+      name: place.name,
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: place.locality,
+        postalCode: place.postal_code,
+        addressRegion: place.region,
+        addressCountry: {
+          '@type': 'Country',
+          name: place.country,
+        },
       },
-    },
-  })) || [];
+    })) || [];
 
-  const customSchema = globalConfig ? {
-    '@context': 'http://schema.org',
-    '@type': metadata?.schema_type || 'Organization',
-    name: globalConfig.organization_name,
-    description: metadata?.description,
-    url: globalConfig.organization_url,
-    logo: globalConfig.organization_logo,
-    telephone: globalConfig.telephone,
-    email: globalConfig.email,
-    address: {
-      '@type': 'PostalAddress',
-      streetAddress: globalConfig.street_address,
-      addressLocality: globalConfig.locality,
-      postalCode: globalConfig.postal_code,
-      addressRegion: globalConfig.region,
-      addressCountry: globalConfig.country,
-    },
-    sameAs: [
-      globalConfig.facebook_url,
-      globalConfig.instagram_url,
-      globalConfig.linkedin_url,
-      globalConfig.youtube_url,
-      globalConfig.twitter_url,
-    ].filter(Boolean),
-    areaServed,
-  } : undefined;
+  const customSchema = globalConfig
+    ? {
+        '@context': 'http://schema.org',
+        '@type': metadata?.schema_type || 'Organization',
+        name: globalConfig.organization_name,
+        description: metadata?.description,
+        url: globalConfig.organization_url,
+        logo: globalConfig.organization_logo,
+        telephone: globalConfig.telephone,
+        email: globalConfig.email,
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: globalConfig.street_address,
+          addressLocality: globalConfig.locality,
+          postalCode: globalConfig.postal_code,
+          addressRegion: globalConfig.region,
+          addressCountry: globalConfig.country,
+        },
+        sameAs: [
+          globalConfig.facebook_url,
+          globalConfig.instagram_url,
+          globalConfig.linkedin_url,
+          globalConfig.youtube_url,
+          globalConfig.twitter_url,
+        ].filter(Boolean),
+        areaServed,
+      }
+    : undefined;
 
   return (
     <PageLayout pageSlug="home" customSchema={customSchema}>
