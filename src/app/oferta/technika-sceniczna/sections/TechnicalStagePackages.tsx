@@ -1,0 +1,1 @@
+export default function TechnicalStagePackages() { return <section className="py-24"><div className="max-w-7xl mx-auto px-6 text-center text-white">TechnicalStagePackages - Coming Soon</div></section>; }

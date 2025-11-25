@@ -1,0 +1,1 @@
+export default function TechnicalStageGallery() { return <section className="py-24"><div className="max-w-7xl mx-auto px-6 text-center text-white">TechnicalStageGallery - Coming Soon</div></section>; }

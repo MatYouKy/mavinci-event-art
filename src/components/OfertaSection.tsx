@@ -5,10 +5,10 @@ import Link from 'next/link';
 
 const ofertaItems = [
   {
-    title: 'Nagłośnienie',
-    description: 'Profesjonalne systemy audio i nagłośnienie eventów',
-    href: '/oferta/naglosnienie',
-    icon: Mic,
+    title: 'Technika Sceniczna',
+    description: 'Profesjonalne oświetlenie, nagłośnienie i sceny',
+    href: '/oferta/technika-sceniczna',
+    icon: Monitor,
     gradient: 'from-blue-500/20 to-blue-600/10'
   },
   {
@@ -59,13 +59,6 @@ const ofertaItems = [
     href: '/oferta/wieczory-tematyczne',
     icon: Lamp,
     gradient: 'from-cyan-500/20 to-cyan-600/10'
-  },
-  {
-    title: 'Technika Sceniczna',
-    description: 'Oświetlenie, sceny i efekty specjalne',
-    href: '/oferta/technika-sceniczna',
-    icon: Monitor,
-    gradient: 'from-indigo-500/20 to-indigo-600/10'
   }
 ];
 

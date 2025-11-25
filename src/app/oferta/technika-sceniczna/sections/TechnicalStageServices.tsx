@@ -1,0 +1,1 @@
+export default function TechnicalStageServices() { return <section className="py-24"><div className="max-w-7xl mx-auto px-6 text-center text-white">TechnicalStageServices - Coming Soon</div></section>; }
