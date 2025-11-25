@@ -7,11 +7,11 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useWebsiteEdit } from '@/hooks/useWebsiteEdit';
 
-interface QuizGalleryImage {
+interface ConferenceGalleryImage {
   id: string;
   image_url: string;
   title: string | null;
-  description: string | null;
+  caption: string | null;
   is_primary: boolean;
   order_index: number;
   created_at: string;
@@ -24,13 +24,13 @@ interface UploadingFile {
   progress: number;
 }
 
-export default function QuizShowsGallery() {
+export default function ConferencesGalleryEditor() {
   const { showSnackbar } = useSnackbar();
   const { canEdit } = useWebsiteEdit();
-  const [images, setImages] = useState<QuizGalleryImage[]>([]);
+  const [images, setImages] = useState<ConferenceGalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
-  const [selectedImage, setSelectedImage] = useState<QuizGalleryImage | null>(null);
+  const [selectedImage, setSelectedImage] = useState<ConferenceGalleryImage | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
 
@@ -38,8 +38,8 @@ export default function QuizShowsGallery() {
     fetchImages();
 
     const channel = supabase
-      .channel('quiz_gallery_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_show_gallery' }, () => {
+      .channel('conferences_gallery_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conferences_gallery' }, () => {
         fetchImages();
       })
       .subscribe();
@@ -53,7 +53,7 @@ export default function QuizShowsGallery() {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('quiz_show_gallery')
+        .from('conferences_gallery')
         .select('*')
         .eq('is_visible', true)
         .order('order_index', { ascending: true });
@@ -96,7 +96,7 @@ export default function QuizShowsGallery() {
 
       try {
         const fileExt = file.name.split('.').pop();
-        const fileName = `quiz-gallery/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const fileName = `conferences-gallery/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
         setUploadingFiles((prev) =>
           prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 30 } : item))
@@ -116,7 +116,7 @@ export default function QuizShowsGallery() {
           .from('site-images')
           .getPublicUrl(fileName);
 
-        const { error: dbError } = await supabase.from('quiz_show_gallery').insert({
+        const { error: dbError } = await supabase.from('conferences_gallery').insert({
           image_url: publicUrl,
           title: file.name,
           is_primary: images.length === 0 && i === 0,
@@ -194,11 +194,11 @@ export default function QuizShowsGallery() {
   const handleSetPrimary = async (imageId: string) => {
     try {
       await supabase
-        .from('quiz_show_gallery')
+        .from('conferences_gallery')
         .update({ is_primary: false });
 
       const { error } = await supabase
-        .from('quiz_show_gallery')
+        .from('conferences_gallery')
         .update({ is_primary: true })
         .eq('id', imageId);
 
@@ -212,7 +212,7 @@ export default function QuizShowsGallery() {
     }
   };
 
-  const handleDelete = async (image: QuizGalleryImage) => {
+  const handleDelete = async (image: ConferenceGalleryImage) => {
     if (!confirm('Czy na pewno chcesz usunąć to zdjęcie?')) return;
 
     try {
@@ -222,7 +222,7 @@ export default function QuizShowsGallery() {
         await supabase.storage.from('site-images').remove([filePath]);
       }
 
-      const { error } = await supabase.from('quiz_show_gallery').delete().eq('id', image.id);
+      const { error } = await supabase.from('conferences_gallery').delete().eq('id', image.id);
 
       if (error) throw error;
 
@@ -257,8 +257,8 @@ export default function QuizShowsGallery() {
   }
 
   return (
-    <section className="bg-[#0f1119] px-6 py-24">
-      <div className="mx-auto max-w-7xl">
+    <section className="py-20 px-6">
+      <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -267,12 +267,12 @@ export default function QuizShowsGallery() {
         >
           <div className="flex items-center justify-between mb-8">
             <div className="text-center flex-1">
-              <h2 className="mb-4 text-4xl font-light text-[#e5e4e2]">
-                Galeria teleturniejów
+              <h2 className="text-4xl font-light text-[#e5e4e2] mb-4">
+                Nasze realizacje w obiektywie
               </h2>
               <div className="mx-auto mb-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
-              <p className="mx-auto max-w-2xl text-lg font-light text-[#e5e4e2]/70">
-                Zobacz nasze realizacje
+              <p className="text-[#e5e4e2]/60 mb-8">
+                Galeria zdjęć z obsłużonych konferencji
               </p>
             </div>
             {canEdit && (
@@ -353,7 +353,7 @@ export default function QuizShowsGallery() {
                   <div className="aspect-square relative">
                     <img
                       src={image.image_url}
-                      alt={image.title || `Zdjęcie ${index + 1}`}
+                      alt={image.title || 'Konferencja'}
                       className="w-full h-full object-cover"
                     />
                     {image.is_primary && (
@@ -389,6 +389,18 @@ export default function QuizShowsGallery() {
                       </div>
                     )}
                   </div>
+                  {(image.title || image.caption) && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-0 left-0 right-0 p-3">
+                        {image.title && (
+                          <h3 className="text-white font-medium text-sm mb-1">{image.title}</h3>
+                        )}
+                        {image.caption && (
+                          <p className="text-white/80 text-xs">{image.caption}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               ))}
 
@@ -456,7 +468,7 @@ export default function QuizShowsGallery() {
             <div className="relative max-w-full max-h-[80vh]">
               <img
                 src={selectedImage.image_url}
-                alt={selectedImage.title || 'Quiz Show'}
+                alt={selectedImage.title || 'Konferencja'}
                 className="max-w-full max-h-[80vh] object-contain rounded-lg"
               />
             </div>
