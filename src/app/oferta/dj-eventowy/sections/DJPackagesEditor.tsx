@@ -233,15 +233,6 @@ export default function DJPackagesEditor() {
                     <h3 className="mb-2 text-2xl font-light text-[#e5e4e2]">
                       {pkg.name}
                     </h3>
-                    <div className="mb-4 flex items-baseline gap-2">
-                      <span className="text-4xl font-light text-[#d3bb73]">
-                        {pkg.price_from?.toLocaleString('pl-PL')}
-                      </span>
-                      <span className="text-sm text-[#e5e4e2]/60">PLN</span>
-                    </div>
-                    <p className="mb-4 text-sm font-light text-[#e5e4e2]/70">
-                      {pkg.duration}
-                    </p>
                   </div>
 
                   <p className="mb-6 font-light leading-relaxed text-[#e5e4e2]/80">

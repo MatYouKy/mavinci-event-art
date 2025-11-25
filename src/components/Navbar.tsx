@@ -40,7 +40,7 @@ const servicesLinks = [
   { label: 'Kasyno', href: '/oferta/kasyno' },
   { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
   { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
-  { label: 'DJ na imprezę', href: '/oferta/dj-na-impreze' },
+  { label: 'DJ Eventowy', href: '/oferta/dj-eventowy' },
   { label: 'Streaming', href: '/oferta/streaming' },
 ];
 
@@ -52,7 +52,7 @@ const servicesCategories = [
   { label: 'Kasyno', href: '/oferta/kasyno' },
   { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
   { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
-  { label: 'DJ na imprezę', href: '/oferta/dj-na-impreze' },
+  { label: 'DJ Eventowy', href: '/oferta/dj-eventowy' },
   { label: 'Streaming', href: '/oferta/streaming' },
 ];
 
