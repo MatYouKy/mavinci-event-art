@@ -29,7 +29,7 @@ async function loadServiceData(slug: string) {
 
   // Jeśli usługa nieaktywna i użytkownik nie ma uprawnień - przekieruj
   if (!serviceData.is_active && !hasWebsiteEdit) {
-    redirect('/uslugi');
+    redirect('/uslugi/inactive');
   }
 
   const { data: categoryData } = await supabase
