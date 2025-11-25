@@ -1,55 +1,28 @@
 'use client';
 
-import { Camera, CheckCircle2 } from 'lucide-react';
+import StreamingHero from './sections/StreamingHero';
+import StreamingBenefits from './sections/StreamingBenefits';
+import StreamingTech from './sections/StreamingTech';
+import StreamingGallery from './sections/StreamingGallery';
+import StreamingCTA from './sections/StreamingCTA';
 
 export default function StreamingPage() {
-  const features = [
-    'Transmisje Full HD i 4K',
-    'Streaming na platformy: YouTube, Facebook, LinkedIn',
-    'Wielokamerowe rejestracje',
-    'Grafika i niższe trzecie na żywo',
-    'Profesjonalna realizacja obrazu',
-    'Backup i archiwizacja materiału',
-    'Interaktywne Q&A podczas streamu',
-    'Statystyki widzów i analityka',
-  ];
-
   return (
-    <>
-      <main className="min-h-screen bg-[#0f1119]">
-        <section className="py-24 bg-[#0f1119]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-4">Co Oferujemy</h2>
-              <div className="h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent mx-auto"></div>
-            </div>
+    <main className="min-h-screen bg-[#0f1119]">
+      {/* Hero Section */}
+      <StreamingHero />
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {features.map((feature, index) => (
-                <div key={index} className="flex items-start gap-3 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all duration-300">
-                  <CheckCircle2 className="w-5 h-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                  <span className="text-[#e5e4e2]/90 font-light">{feature}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+      {/* Benefits Section */}
+      <StreamingBenefits />
 
-        <section className="py-24 bg-gradient-to-br from-[#0f1119] to-[#1c1f33]">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <Camera className="w-16 h-16 text-[#d3bb73] mx-auto mb-6" />
-            <h2 className="text-3xl md:text-4xl font-light text-[#e5e4e2] mb-6">
-              Potrzebujesz Profesjonalnego Streamingu?
-            </h2>
-            <p className="text-[#e5e4e2]/70 text-lg font-light mb-8 max-w-2xl mx-auto">
-              Skontaktuj się z nami, aby omówić szczegóły transmisji. Zapewnimy profesjonalną realizację i stabilny streaming Twojego wydarzenia.
-            </p>
-            <a href="/#kontakt" className="inline-flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors">
-              Skontaktuj się z nami
-            </a>
-          </div>
-        </section>
-      </main>
-    </>
+      {/* Tech Section */}
+      <StreamingTech />
+
+      {/* Gallery Section */}
+      <StreamingGallery />
+
+      {/* CTA Section */}
+      <StreamingCTA />
+    </main>
   );
 }
