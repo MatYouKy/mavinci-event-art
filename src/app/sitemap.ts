@@ -55,7 +55,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const servicePages: MetadataRoute.Sitemap = [];
   const serviceSlugs = [
-    'dj-na-impreze',
+    'dj-eventowy',
     'konferencje',
     'streaming',
     'symulatory-vr',

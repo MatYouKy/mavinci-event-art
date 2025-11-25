@@ -5,7 +5,7 @@ import { buildMetadataForSlug } from '@/lib/seo-helpers';
 import OfferLayout from '../OfferLayout';
 import DJPage from './DJPage';
 
-const pageSlug = 'oferta/dj-na-impreze';
+const pageSlug = 'oferta/dj-eventowy';
 
 export async function generateMetadata() {
   return buildMetadataForSlug(pageSlug);
