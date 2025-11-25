@@ -418,21 +418,25 @@ export function UslugiPageClient() {
                           }`}
                         >
                           {item.thumbnail_url && (
-                            <div className="aspect-video overflow-hidden bg-[#0f1119]">
-                              <img
-                                src={item.thumbnail_url}
-                                alt={item.name}
-                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                style={{
-                                  objectPosition: item.image_metadata?.desktop?.position
-                                    ? `${item.image_metadata.desktop.position.posX}% ${item.image_metadata.desktop.position.posY}%`
-                                    : 'center',
-                                  transform: item.image_metadata?.desktop?.position?.scale
-                                    ? `scale(${item.image_metadata.desktop.position.scale})`
-                                    : undefined,
-                                }}
-                                loading="lazy"
-                              />
+                            <div className="relative aspect-video overflow-hidden bg-[#0f1119]">
+                              <div
+                                className="absolute inset-0 transition-transform duration-300 group-hover:scale-110"
+                                style={
+                                  item.image_metadata?.desktop?.position
+                                    ? {
+                                        transform: `translate(${(item.image_metadata.desktop.position.posX - 50) * 0.5}%, ${(item.image_metadata.desktop.position.posY - 50) * 0.5}%) scale(${item.image_metadata.desktop.position.scale})`,
+                                        transformOrigin: 'center',
+                                      }
+                                    : undefined
+                                }
+                              >
+                                <img
+                                  src={item.thumbnail_url}
+                                  alt={item.name}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </div>
                             </div>
                           )}
 

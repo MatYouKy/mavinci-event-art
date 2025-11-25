@@ -338,25 +338,23 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   <label className="mb-2 block text-sm text-[#e5e4e2]/70">Miniaturka (500px)</label>
                   {thumbnailUrl ? (
                     <div className="space-y-2">
-                      <div
-                        className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20"
-                        style={{
-                          objectFit: 'cover',
-                          objectPosition: `${tempThumbnailPosition.posX}% ${tempThumbnailPosition.posY}%`,
-                        }}
-                      >
-                        <img
-                          src={thumbnailUrl}
-                          alt="Thumbnail"
-                          className="h-full w-full object-cover"
+                      <div className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20">
+                        <div
+                          className="absolute inset-0"
                           style={{
-                            transform: `scale(${tempThumbnailPosition.scale})`,
-                            objectPosition: `${tempThumbnailPosition.posX}% ${tempThumbnailPosition.posY}%`,
+                            transform: `translate(${(tempThumbnailPosition.posX - 50) * 0.5}%, ${(tempThumbnailPosition.posY - 50) * 0.5}%) scale(${tempThumbnailPosition.scale})`,
+                            transformOrigin: 'center',
                           }}
-                        />
+                        >
+                          <img
+                            src={thumbnailUrl}
+                            alt="Thumbnail"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
                         <button
                           onClick={() => setShowImageUploader('thumbnail')}
-                          className="absolute right-2 top-2 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                          className="absolute right-2 top-2 z-10 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
@@ -586,15 +584,19 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
 
             <div className="mb-6">
               <div className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
-                <img
-                  src={thumbnailUrl}
-                  alt="Thumbnail preview"
-                  className="h-full w-full object-cover"
+                <div
+                  className="absolute inset-0"
                   style={{
-                    transform: `scale(${tempThumbnailPosition.scale})`,
-                    objectPosition: `${tempThumbnailPosition.posX}% ${tempThumbnailPosition.posY}%`,
+                    transform: `translate(${(tempThumbnailPosition.posX - 50) * 0.5}%, ${(tempThumbnailPosition.posY - 50) * 0.5}%) scale(${tempThumbnailPosition.scale})`,
+                    transformOrigin: 'center',
                   }}
-                />
+                >
+                  <img
+                    src={thumbnailUrl}
+                    alt="Thumbnail preview"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
               </div>
             </div>
 

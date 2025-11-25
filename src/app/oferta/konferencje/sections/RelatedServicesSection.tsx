@@ -108,20 +108,24 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                   />
 
                   {item.thumbnail_url && (
-                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]">
-                      <img
-                        src={item.thumbnail_url}
-                        alt={item.name}
-                        className="h-full w-full object-cover"
-                        style={{
-                          objectPosition: item.image_metadata?.desktop?.position
-                            ? `${item.image_metadata.desktop.position.posX}% ${item.image_metadata.desktop.position.posY}%`
-                            : 'center',
-                          transform: item.image_metadata?.desktop?.position?.scale
-                            ? `scale(${item.image_metadata.desktop.position.scale})`
-                            : undefined,
-                        }}
-                      />
+                    <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]">
+                      <div
+                        className="absolute inset-0"
+                        style={
+                          item.image_metadata?.desktop?.position
+                            ? {
+                                transform: `translate(${(item.image_metadata.desktop.position.posX - 50) * 0.5}%, ${(item.image_metadata.desktop.position.posY - 50) * 0.5}%) scale(${item.image_metadata.desktop.position.scale})`,
+                                transformOrigin: 'center',
+                              }
+                            : undefined
+                        }
+                      >
+                        <img
+                          src={item.thumbnail_url}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -214,19 +218,23 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
             
                   <div className="relative aspect-video overflow-hidden bg-[#0f1119]  rounded-lg">
                     {/* Obrazek */}
-                    <img
-                      src={item.thumbnail_url}
-                      alt={item.name}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      style={{
-                        objectPosition: item.image_metadata?.desktop?.position
-                          ? `${item.image_metadata.desktop.position.posX}% ${item.image_metadata.desktop.position.posY}%`
-                          : 'center',
-                        transform: item.image_metadata?.desktop?.position?.scale
-                          ? `scale(${item.image_metadata.desktop.position.scale}) scale(1)`
-                          : undefined,
-                      }}
-                    />
+                    <div
+                      className="absolute inset-0 transition-transform duration-500 group-hover:scale-110"
+                      style={
+                        item.image_metadata?.desktop?.position
+                          ? {
+                              transform: `translate(${(item.image_metadata.desktop.position.posX - 50) * 0.5}%, ${(item.image_metadata.desktop.position.posY - 50) * 0.5}%) scale(${item.image_metadata.desktop.position.scale})`,
+                              transformOrigin: 'center',
+                            }
+                          : undefined
+                      }
+                    >
+                      <img
+                        src={item.thumbnail_url}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
 
                     {/* 🌙 Gradient — ZAWSZE WIDOCZNY, nie tylko w hover */}
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
