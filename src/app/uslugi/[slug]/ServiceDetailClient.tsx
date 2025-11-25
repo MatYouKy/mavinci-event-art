@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, Star, Mail, Edit2, FileText, Tag, Package } from 'lucide-react';
+import { Check, Star, Mail, Edit2, FileText, Tag, Package, Trash2, GripVertical, Plus } from 'lucide-react';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
 import ServiceSEOModal from '@/components/ServiceSEOModal';
@@ -13,6 +13,11 @@ import { iconMap } from '@/app/oferta/konferencje/ConferencesPage';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { selectCustomIcons, fetchCustomIcons } from '@/store/slices/customIconSlice';
 import { CustomIcon } from '@/components/UI/CustomIcon/CustomIcon';
+import { supabase } from '@/lib/supabase';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { SimpleImageUploader } from '@/components/SimpleImageUploader';
+import { uploadOptimizedImage } from '@/lib/storage';
+import { IUploadImage } from '@/types/image';
 interface ServiceDetailClientProps {
   service: any;
   category: any;
@@ -34,16 +39,124 @@ export default function ServiceDetailClient({
   const { isEditMode } = useEditMode();
   const dispatch = useAppDispatch();
   const icons = useAppSelector(selectCustomIcons);
+  const { showSnackbar } = useSnackbar();
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
+  const [localGallery, setLocalGallery] = useState(gallery);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [isAddingImage, setIsAddingImage] = useState(false);
+  const [newImageData, setNewImageData] = useState<IUploadImage | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     dispatch(fetchCustomIcons());
   }, [dispatch]);
 
+  useEffect(() => {
+    setLocalGallery(gallery);
+  }, [gallery]);
+
   console.log(icons);
 
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newGallery = [...localGallery];
+    const draggedItem = newGallery[draggedIndex];
+    newGallery.splice(draggedIndex, 1);
+    newGallery.splice(index, 0, draggedItem);
+
+    setLocalGallery(newGallery);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = async () => {
+    if (draggedIndex === null) return;
+
+    try {
+      const updates = localGallery.map((image, index) => ({
+        id: image.id,
+        display_order: index + 1,
+      }));
+
+      for (const update of updates) {
+        await supabase
+          .from('conferences_service_gallery')
+          .update({ display_order: update.display_order })
+          .eq('id', update.id);
+      }
+
+      showSnackbar('Kolejność zaktualizowana', 'success');
+      router.refresh();
+    } catch (error) {
+      console.error('Error updating order:', error);
+      showSnackbar('Błąd podczas aktualizacji kolejności', 'error');
+    } finally {
+      setDraggedIndex(null);
+    }
+  };
+
+  const handleDeleteImage = async (imageId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć to zdjęcie?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('conferences_service_gallery')
+        .delete()
+        .eq('id', imageId);
+
+      if (error) throw error;
+
+      showSnackbar('Zdjęcie usunięte', 'success');
+      setLocalGallery(localGallery.filter(img => img.id !== imageId));
+      router.refresh();
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      showSnackbar('Błąd podczas usuwania zdjęcia', 'error');
+    }
+  };
+
+  const handleAddImage = async () => {
+    if (!newImageData?.file) {
+      showSnackbar('Wybierz zdjęcie', 'error');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await uploadOptimizedImage(newImageData.file, 'services/gallery');
+
+      const maxOrder = localGallery.length > 0 ? Math.max(...localGallery.map(g => g.display_order)) : 0;
+
+      const { error } = await supabase
+        .from('conferences_service_gallery')
+        .insert({
+          service_id: service.id,
+          image_url: result.desktop,
+          alt_text: newImageData.alt || '',
+          display_order: maxOrder + 1,
+          is_active: true,
+        });
+
+      if (error) throw error;
+
+      showSnackbar('Zdjęcie dodane', 'success');
+      setIsAddingImage(false);
+      setNewImageData(null);
+      router.refresh();
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      showSnackbar('Błąd podczas wgrywania zdjęcia', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const features = service.features
     ? Array.isArray(service.features)
@@ -215,27 +328,85 @@ export default function ServiceDetailClient({
       </section>
 
       {/* Gallery Section */}
-      {(gallery.length > 0 || isEditMode) && (
+      {(localGallery.length > 0 || isEditMode) && (
         <section className="bg-[#0f1119] px-6 py-20">
           <div className="mx-auto max-w-7xl">
-            <div className="mb-12 text-center">
-              <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
-                Galeria
-              </h2>
-              <p className="text-[#e5e4e2]/60">Zobacz więcej zdjęć naszej usługi</p>
+            <div className="mb-12 flex items-center justify-between">
+              <div className="text-center flex-1">
+                <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
+                  Galeria
+                </h2>
+                <p className="text-[#e5e4e2]/60">Zobacz więcej zdjęć naszej usługi</p>
+              </div>
+              {isEditMode && (
+                <button
+                  onClick={() => setIsAddingImage(true)}
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj zdjęcie
+                </button>
+              )}
             </div>
 
+            {isAddingImage && (
+              <div className="mb-8 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+                <h5 className="mb-4 text-[#e5e4e2]">Nowe zdjęcie</h5>
+                <SimpleImageUploader
+                  onImageSelect={(imageData) => setNewImageData(imageData)}
+                  showPreview={true}
+                />
+                <div className="mt-4 flex gap-3">
+                  <button
+                    onClick={handleAddImage}
+                    disabled={uploading || !newImageData?.file}
+                    className="rounded-lg bg-[#d3bb73] px-6 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {uploading ? 'Wgrywanie...' : 'Dodaj zdjęcie'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsAddingImage(false);
+                      setNewImageData(null);
+                    }}
+                    className="rounded-lg bg-[#800020]/20 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {gallery.map((image: any) => (
+              {localGallery.map((image: any, index: number) => (
                 <div
                   key={image.id}
-                  className="group relative aspect-video overflow-hidden rounded-xl bg-[#1c1f33]"
+                  draggable={isEditMode}
+                  onDragStart={() => isEditMode && handleDragStart(index)}
+                  onDragOver={(e) => isEditMode && handleDragOver(e, index)}
+                  onDragEnd={() => isEditMode && handleDragEnd()}
+                  className={`group relative aspect-video overflow-hidden rounded-xl bg-[#1c1f33] ${
+                    isEditMode ? 'cursor-move' : ''
+                  }`}
                 >
                   <img
                     src={image.image_url}
                     alt={image.alt_text || service.name}
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
+                  {isEditMode && (
+                    <>
+                      <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+                        <GripVertical className="h-6 w-6 text-white drop-shadow-lg" />
+                      </div>
+                      <button
+                        onClick={() => handleDeleteImage(image.id)}
+                        className="absolute right-2 top-2 rounded-lg bg-[#800020] p-2 text-[#e5e4e2] opacity-0 transition-all hover:bg-[#800020]/90 group-hover:opacity-100"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
                   {image.caption && (
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4">
                       <p className="text-sm text-white">{image.caption}</p>
@@ -243,12 +414,12 @@ export default function ServiceDetailClient({
                   )}
                 </div>
               ))}
-              {isEditMode && gallery.length === 0 && (
+              {isEditMode && localGallery.length === 0 && !isAddingImage && (
                 <div className="col-span-full flex items-center justify-center rounded-xl border-2 border-dashed border-[#d3bb73]/30 p-12 text-center">
                   <div>
                     <p className="mb-2 text-[#e5e4e2]/70">Brak zdjęć w galerii</p>
                     <p className="text-sm text-[#e5e4e2]/40">
-                      Dodaj zdjęcia przez panel CRM
+                      Kliknij "Dodaj zdjęcie" aby rozpocząć
                     </p>
                   </div>
                 </div>
