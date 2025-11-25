@@ -194,9 +194,29 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       if (showImageUploader === 'hero') {
         setHeroImageUrl(result.desktop);
         setThumbnailUrl(result.thumbnail);
+
+        // Reset metadata for new image
+        setImageMetadata({
+          desktop: {
+            src: result.thumbnail,
+            position: { posX: 50, posY: 50, scale: 1 }
+          }
+        });
+        setTempThumbnailPosition({ posX: 50, posY: 50, scale: 1 });
+
         showSnackbar('Zdjęcie hero uploaded', 'success');
       } else if (showImageUploader === 'thumbnail') {
         setThumbnailUrl(result.thumbnail);
+
+        // Reset metadata for new thumbnail
+        setImageMetadata({
+          desktop: {
+            src: result.thumbnail,
+            position: { posX: 50, posY: 50, scale: 1 }
+          }
+        });
+        setTempThumbnailPosition({ posX: 50, posY: 50, scale: 1 });
+
         showSnackbar('Miniatura uploaded', 'success');
       }
 
