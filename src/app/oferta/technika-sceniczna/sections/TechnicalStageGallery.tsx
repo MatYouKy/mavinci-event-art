@@ -166,7 +166,7 @@ export default function TechnicalStageGallery() {
                 </motion.div>
               ))}
             </div>
-          ) : (
+          ) : canEdit ? (
             <>
               <div className="mb-8">
                 <div
@@ -228,7 +228,7 @@ export default function TechnicalStageGallery() {
                 ))}
               </div>
             </>
-          )}
+          ) : null}
         </div>
       </section>
 
