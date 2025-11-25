@@ -54,8 +54,15 @@ export function useQuizShowFormats() {
           schema: 'public',
           table: 'quiz_show_formats',
         },
-        () => {
-          fetchFormats();
+        (payload) => {
+          // Realtime update bez czekania
+          if (payload.eventType === 'INSERT') {
+            setFormats(prev => [...prev, payload.new as QuizShowFormat].sort((a, b) => a.order_index - b.order_index));
+          } else if (payload.eventType === 'UPDATE') {
+            setFormats(prev => prev.map(f => f.id === payload.new.id ? payload.new as QuizShowFormat : f).sort((a, b) => a.order_index - b.order_index));
+          } else if (payload.eventType === 'DELETE') {
+            setFormats(prev => prev.filter(f => f.id !== payload.old.id));
+          }
         }
       )
       .subscribe();
