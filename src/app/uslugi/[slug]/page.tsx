@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { unstable_noStore as noStore } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 import { Metadata } from 'next';
@@ -7,6 +7,7 @@ import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import ServiceDetailClient from './ServiceDetailClient';
 import { getSeoForPage } from '@/lib/seo';
 import { getSupabaseClient } from '@/lib/supabase';
+import { getUserPermissions } from '@/lib/serverAuth';
 
 
 async function loadServiceData(slug: string) {
@@ -17,11 +18,18 @@ async function loadServiceData(slug: string) {
     .from('conferences_service_items')
     .select('*')
     .eq('slug', slug)
-    // .eq('is_active', true)
     .maybeSingle();
 
   if (!serviceData || serviceError) {
     return null;
+  }
+
+  // Sprawdź uprawnienia użytkownika
+  const { hasWebsiteEdit } = await getUserPermissions();
+
+  // Jeśli usługa nieaktywna i użytkownik nie ma uprawnień - przekieruj
+  if (!serviceData.is_active && !hasWebsiteEdit) {
+    redirect('/uslugi');
   }
 
   const { data: categoryData } = await supabase
@@ -76,6 +84,7 @@ async function loadServiceData(slug: string) {
     heroImage,
     globalConfig,
     gallery: gallery || [],
+    hasWebsiteEdit,
   };
 }
 
@@ -140,7 +149,7 @@ export default async function ServiceDetailPage({
   const seo = await getSeoForPage(`uslugi/${params.slug}`);
   if (!seo) return null;
 
-  const { service, category, relatedServices, heroImage, globalConfig, gallery  } = data;
+  const { service, category, relatedServices, heroImage, globalConfig, gallery, hasWebsiteEdit } = data;
   // Calculate OG image URL
   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
@@ -218,6 +227,7 @@ export default async function ServiceDetailPage({
           relatedServices={relatedServices}
           ogImage={ogImageUrl}
           gallery={gallery}
+          isAdmin={hasWebsiteEdit}
         />
       </div>
     </PageLayout>
