@@ -6,7 +6,7 @@ import { supabase } from './supabase';
 export const IMAGE_SIZES = {
   desktop: { width: 2200, quality: 0.85 },
   mobile: { width: 800, quality: 0.85 },
-  thumbnail: { width: 400, quality: 0.8 },
+  thumbnail: { width: 500, quality: 0.85 },
 } as const;
 
 interface ResizeOptions {

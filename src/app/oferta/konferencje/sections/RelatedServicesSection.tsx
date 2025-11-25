@@ -113,6 +113,14 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                         src={item.thumbnail_url}
                         alt={item.name}
                         className="h-full w-full object-cover"
+                        style={{
+                          objectPosition: item.image_metadata?.desktop?.position
+                            ? `${item.image_metadata.desktop.position.posX}% ${item.image_metadata.desktop.position.posY}%`
+                            : 'center',
+                          transform: item.image_metadata?.desktop?.position?.scale
+                            ? `scale(${item.image_metadata.desktop.position.scale})`
+                            : undefined,
+                        }}
                       />
                     </div>
                   )}
@@ -210,6 +218,14 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                       src={item.thumbnail_url}
                       alt={item.name}
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      style={{
+                        objectPosition: item.image_metadata?.desktop?.position
+                          ? `${item.image_metadata.desktop.position.posX}% ${item.image_metadata.desktop.position.posY}%`
+                          : 'center',
+                        transform: item.image_metadata?.desktop?.position?.scale
+                          ? `scale(${item.image_metadata.desktop.position.scale}) scale(1)`
+                          : undefined,
+                      }}
                     />
 
                     {/* 🌙 Gradient — ZAWSZE WIDOCZNY, nie tylko w hover */}

@@ -29,6 +29,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const [longDescription, setLongDescription] = useState('');
   const [heroImageUrl, setHeroImageUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [imageMetadata, setImageMetadata] = useState<any>(null);
   const [isPremium, setIsPremium] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [iconId, setIconId] = useState('');
@@ -42,6 +43,12 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const [newSpecKey, setNewSpecKey] = useState('');
   const [newSpecValue, setNewSpecValue] = useState('');
   const [showImageUploader, setShowImageUploader] = useState<'hero' | 'thumbnail' | null>(null);
+  const [showPositionEditor, setShowPositionEditor] = useState(false);
+  const [tempThumbnailPosition, setTempThumbnailPosition] = useState({
+    posX: 0,
+    posY: 0,
+    scale: 1
+  });
 
   useEffect(() => {
     loadService();
@@ -64,6 +71,12 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       setLongDescription(data.long_description || '');
       setHeroImageUrl(data.hero_image_url || '');
       setThumbnailUrl(data.thumbnail_url || '');
+      setImageMetadata(data.image_metadata || {});
+
+      if (data.image_metadata?.desktop?.position) {
+        setTempThumbnailPosition(data.image_metadata.desktop.position);
+      }
+
       setIsPremium(data.is_premium || false);
       setIsActive(data.is_active !== false);
       setIconId(data.icon_id || '');
@@ -94,6 +107,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
           long_description: longDescription,
           hero_image_url: heroImageUrl,
           thumbnail_url: thumbnailUrl,
+          image_metadata: imageMetadata,
           is_premium: isPremium,
           is_active: isActive,
           icon_id: iconId || null,
@@ -321,19 +335,37 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">Miniaturka (400px)</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">Miniaturka (500px)</label>
                   {thumbnailUrl ? (
-                    <div className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20">
-                      <img
-                        src={thumbnailUrl}
-                        alt="Thumbnail"
-                        className="h-full w-full object-cover"
-                      />
-                      <button
-                        onClick={() => setShowImageUploader('thumbnail')}
-                        className="absolute right-2 top-2 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                    <div className="space-y-2">
+                      <div
+                        className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20"
+                        style={{
+                          objectFit: 'cover',
+                          objectPosition: `${tempThumbnailPosition.posX}% ${tempThumbnailPosition.posY}%`,
+                        }}
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <img
+                          src={thumbnailUrl}
+                          alt="Thumbnail"
+                          className="h-full w-full object-cover"
+                          style={{
+                            transform: `scale(${tempThumbnailPosition.scale})`,
+                            objectPosition: `${tempThumbnailPosition.posX}% ${tempThumbnailPosition.posY}%`,
+                          }}
+                        />
+                        <button
+                          onClick={() => setShowImageUploader('thumbnail')}
+                          className="absolute right-2 top-2 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setShowPositionEditor(true)}
+                        className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20"
+                      >
+                        Ustaw pozycję miniaturki
                       </button>
                     </div>
                   ) : (
@@ -532,6 +564,130 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                 className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40"
               >
                 Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Position Editor Modal */}
+      {showPositionEditor && thumbnailUrl && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-medium text-[#e5e4e2]">Ustaw pozycję miniaturki</h3>
+              <button
+                onClick={() => setShowPositionEditor(false)}
+                className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <div className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+                <img
+                  src={thumbnailUrl}
+                  alt="Thumbnail preview"
+                  className="h-full w-full object-cover"
+                  style={{
+                    transform: `scale(${tempThumbnailPosition.scale})`,
+                    objectPosition: `${tempThumbnailPosition.posX}% ${tempThumbnailPosition.posY}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                  Pozycja X: {tempThumbnailPosition.posX}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={tempThumbnailPosition.posX}
+                  onChange={(e) =>
+                    setTempThumbnailPosition({
+                      ...tempThumbnailPosition,
+                      posX: parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                  Pozycja Y: {tempThumbnailPosition.posY}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={tempThumbnailPosition.posY}
+                  onChange={(e) =>
+                    setTempThumbnailPosition({
+                      ...tempThumbnailPosition,
+                      posY: parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                  Zoom: {tempThumbnailPosition.scale.toFixed(2)}x
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="2"
+                  step="0.01"
+                  value={tempThumbnailPosition.scale}
+                  onChange={(e) =>
+                    setTempThumbnailPosition({
+                      ...tempThumbnailPosition,
+                      scale: parseFloat(e.target.value),
+                    })
+                  }
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setTempThumbnailPosition({
+                    posX: imageMetadata?.desktop?.position?.posX || 0,
+                    posY: imageMetadata?.desktop?.position?.posY || 0,
+                    scale: imageMetadata?.desktop?.position?.scale || 1,
+                  });
+                  setShowPositionEditor(false);
+                }}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={() => {
+                  setImageMetadata({
+                    ...imageMetadata,
+                    desktop: {
+                      ...(imageMetadata?.desktop || {}),
+                      src: thumbnailUrl,
+                      position: tempThumbnailPosition,
+                    },
+                  });
+                  setShowPositionEditor(false);
+                  showSnackbar('Pozycja zapisana. Kliknij "Zapisz" aby zachować zmiany.', 'success');
+                }}
+                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+              >
+                Zastosuj
               </button>
             </div>
           </div>
