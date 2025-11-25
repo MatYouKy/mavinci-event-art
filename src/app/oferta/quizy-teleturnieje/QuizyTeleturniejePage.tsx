@@ -3,6 +3,7 @@ import QuizShowsIntro from './sections/QuizShowsIntro';
 import QuizShowsTypes from './sections/QuizShowsTypes';
 import QuizShowsFeatures from './sections/QuizShowsFeatures';
 import QuizShowsGallery from './sections/QuizShowsGallery';
+import QuizPopularPackages from './sections/QuizPopularPackages';
 import QuizShowsCTA from './sections/QuizShowsCTA';
 
 export const metadata: Metadata = {
@@ -25,6 +26,9 @@ export default function QuizyTeleturniejePage() {
 
       {/* Gallery Section - Realizacje */}
       <QuizShowsGallery />
+
+      {/* Popular Packages Section - Karuzela */}
+      <QuizPopularPackages />
 
       {/* CTA Section - Kontakt */}
       <QuizShowsCTA />

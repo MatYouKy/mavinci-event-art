@@ -145,69 +145,90 @@ export default function QuizShowsGallery() {
             </p>
           </motion.div>
 
-          {canEdit && (
-            <div className="mb-8">
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                onDragEnter={() => setIsDragging(true)}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                className={`relative rounded-2xl border-2 border-dashed p-12 text-center transition-all ${
-                  isDragging
-                    ? 'border-[#d3bb73] bg-[#d3bb73]/10'
-                    : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
-                }`}
-              >
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={(e) => e.target.files && uploadFiles(e.target.files)}
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  disabled={uploading}
-                />
-                {uploading ? (
-                  <Loader2 className="mx-auto h-12 w-12 animate-spin text-[#d3bb73]" />
-                ) : (
-                  <>
-                    <Upload className="mx-auto mb-4 h-12 w-12 text-[#d3bb73]" />
-                    <p className="text-lg font-light text-[#e5e4e2]">
-                      Przeciągnij zdjęcia lub kliknij aby wybrać
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {images.map((image, index) => (
-              <motion.div
-                key={image.id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                className="group relative aspect-[4/3] overflow-hidden rounded-2xl"
-              >
-                <img
-                  src={image.image_url}
-                  alt={image.title || `Zdjęcie ${index + 1}`}
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110 cursor-pointer"
+          {!canEdit ? (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {images.map((image, index) => (
+                <motion.div
+                  key={image.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.1 }}
+                  className="group relative aspect-[4/3] overflow-hidden rounded-2xl cursor-pointer"
                   onClick={() => setSelectedIndex(index)}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-                {canEdit && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(image.id); }}
-                    className="absolute right-4 top-4 rounded-full bg-red-500/80 p-2 opacity-0 backdrop-blur-sm transition-opacity hover:bg-red-500 group-hover:opacity-100"
+                >
+                  <img
+                    src={image.image_url}
+                    alt={image.title || `Zdjęcie ${index + 1}`}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="mb-8">
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragEnter={() => setIsDragging(true)}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  className={`relative rounded-2xl border-2 border-dashed p-12 text-center transition-all ${
+                    isDragging
+                      ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                      : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => e.target.files && uploadFiles(e.target.files)}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                    disabled={uploading}
+                  />
+                  {uploading ? (
+                    <Loader2 className="mx-auto h-12 w-12 animate-spin text-[#d3bb73]" />
+                  ) : (
+                    <>
+                      <Upload className="mx-auto mb-4 h-12 w-12 text-[#d3bb73]" />
+                      <p className="text-lg font-light text-[#e5e4e2]">
+                        Przeciągnij zdjęcia lub kliknij aby wybrać
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {images.map((image, index) => (
+                  <motion.div
+                    key={image.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.1 }}
+                    className="group relative aspect-[4/3] overflow-hidden rounded-2xl"
                   >
-                    <Trash2 className="h-4 w-4 text-white" />
-                  </button>
-                )}
-              </motion.div>
-            ))}
-          </div>
+                    <img
+                      src={image.image_url}
+                      alt={image.title || `Zdjęcie ${index + 1}`}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110 cursor-pointer"
+                      onClick={() => setSelectedIndex(index)}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(image.id); }}
+                      className="absolute right-4 top-4 rounded-full bg-red-500/80 p-2 opacity-0 backdrop-blur-sm transition-opacity hover:bg-red-500 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-4 w-4 text-white" />
+                    </button>
+                  </motion.div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </section>
 
