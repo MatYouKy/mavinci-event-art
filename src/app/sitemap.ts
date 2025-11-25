@@ -68,17 +68,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   for (const slug of serviceSlugs) {
     try {
-      const tableName = `${slug.replace(/-/g, '_')}_page_images`;
-      const { data: heroData } = await supabase
-        .from(tableName)
-        .select('updated_at')
-        .eq('section', 'hero')
-        .eq('is_active', true)
-        .maybeSingle();
+      let lastModified = new Date();
+
+      if (slug === 'dj-eventowy') {
+        const { data: djData } = await supabase
+          .from('dj_intro')
+          .select('updated_at')
+          .maybeSingle();
+        lastModified = djData?.updated_at ? new Date(djData.updated_at) : new Date();
+      } else {
+        const tableName = `${slug.replace(/-/g, '_')}_page_images`;
+        const { data: heroData } = await supabase
+          .from(tableName)
+          .select('updated_at')
+          .eq('section', 'hero')
+          .eq('is_active', true)
+          .maybeSingle();
+        lastModified = heroData?.updated_at ? new Date(heroData.updated_at) : new Date();
+      }
 
       servicePages.push({
         url: `${baseUrl}/oferta/${slug}`,
-        lastModified: heroData?.updated_at ? new Date(heroData.updated_at) : new Date(),
+        lastModified,
         changeFrequency: 'monthly',
         priority: 0.8,
       });
