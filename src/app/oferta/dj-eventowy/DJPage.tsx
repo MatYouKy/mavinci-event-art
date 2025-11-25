@@ -7,6 +7,7 @@ import { Music, Monitor, Award, Settings, Sparkles, Shield } from 'lucide-react'
 import DJPackagesEditor from './sections/DJPackagesEditor';
 import DJGalleryEditor from './sections/DJGalleryEditor';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { RelatedServicesSection } from '../konferencje/sections/RelatedServicesSection';
 
 const iconMap: Record<string, any> = {
   music: Music,
@@ -23,6 +24,9 @@ export default function DJPage() {
   const [features, setFeatures] = useState<any[]>([]);
   const [themes, setThemes] = useState<any[]>([]);
   const [benefits, setBenefits] = useState<any[]>([]);
+  const [relatedServices, setRelatedServices] = useState<any[]>([]);
+  const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchData();
@@ -30,17 +34,40 @@ export default function DJPage() {
 
   const fetchData = async () => {
     try {
-      const [introRes, featuresRes, themesRes, benefitsRes] = await Promise.all([
+      const [
+        introRes,
+        featuresRes,
+        themesRes,
+        benefitsRes,
+        relatedServicesRes,
+        allServiceItemsRes,
+      ] = await Promise.all([
         supabase.from('dj_intro').select('*').single(),
         supabase.from('dj_features').select('*').eq('is_visible', true).order('order_index'),
         supabase.from('dj_themes').select('*').eq('is_visible', true).order('order_index'),
         supabase.from('dj_benefits').select('*').eq('is_visible', true).order('order_index'),
+        supabase
+          .from('dj_related_services')
+          .select(`*, service_item:dj_service_items(*)`)
+          .eq('is_active', true)
+          .order('display_order'),
+        supabase
+          .from('dj_service_items')
+          .select('*')
+          .eq('is_visible', true)
+          .order('order_index'),
       ]);
 
       if (introRes.data) setIntro(introRes.data);
       if (featuresRes.data) setFeatures(featuresRes.data);
       if (themesRes.data) setThemes(themesRes.data);
       if (benefitsRes.data) setBenefits(benefitsRes.data);
+
+      if (relatedServicesRes.data) {
+        setRelatedServices(relatedServicesRes.data.map((r) => r.service_item));
+        setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_item_id)));
+      }
+      if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
     } catch (error) {
       console.error('Error fetching DJ data:', error);
     }
@@ -192,8 +219,9 @@ export default function DJPage() {
         selectedServiceIds={selectedServiceIds}
         setSelectedServiceIds={setSelectedServiceIds}
         allServiceItems={allServiceItems}
-        loadData={loadData}
+        loadData={fetchData}
         relatedServices={relatedServices}
+        tableName="dj_related_services"
       />
 
       <section className="bg-gradient-to-br from-[#1c1f33] to-[#0f1119] px-6 py-24">

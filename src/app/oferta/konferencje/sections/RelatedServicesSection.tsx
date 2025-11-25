@@ -13,6 +13,7 @@ interface RelatedServicesSectionProps {
   setSelectedServiceIds: (ids: Set<string>) => void;
   allServiceItems: any[];
   loadData: () => void;
+  tableName?: string;
 }
 
 export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
@@ -22,6 +23,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
   allServiceItems,
   loadData,
   relatedServices,
+  tableName = 'conferences_related_services',
 }) => {
   const [isSaving, setIsSaving] = useState(false);
 
@@ -74,7 +76,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                           setSelectedServiceIds(newSelected);
 
                           const { error } = await supabase
-                            .from('conferences_related_services')
+                            .from(tableName)
                             .insert({
                               service_item_id: item.id,
                               display_order: newSelected.size,
@@ -90,7 +92,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                           setSelectedServiceIds(newSelected);
 
                           const { error } = await supabase
-                            .from('conferences_related_services')
+                            .from(tableName)
                             .delete()
                             .eq('service_item_id', item.id);
 
