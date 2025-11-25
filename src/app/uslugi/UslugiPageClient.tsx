@@ -86,11 +86,11 @@ export function UslugiPageClient() {
 
   useEffect(() => {
     loadServices();
-  }, []);
+  }, [isEditMode]);
 
   const loadServices = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('conferences_service_categories')
         .select(
           `
@@ -98,8 +98,14 @@ export function UslugiPageClient() {
           items:conferences_service_items(*)
         `,
         )
-        .eq('is_active', true)
         .order('display_order');
+
+      // W trybie zwykłym filtruj tylko aktywne kategorie
+      if (!isEditMode) {
+        query = query.eq('is_active', true);
+      }
+
+      const { data, error } = await query;
 
       if (data) {
         setServiceCategories(data);
@@ -141,7 +147,10 @@ export function UslugiPageClient() {
             item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.description?.toLowerCase().includes(searchQuery.toLowerCase());
 
-          return item.is_active && matchesSearch;
+          // W trybie edycji pokazuj wszystkie, normalnie tylko aktywne
+          const matchesActive = isEditMode ? true : item.is_active;
+
+          return matchesActive && matchesSearch;
         }) || [];
 
       return {
@@ -374,6 +383,11 @@ export function UslugiPageClient() {
                       <div key={item.id} className="group relative">
                         {isEditMode && (
                           <div className="absolute right-2 top-2 z-10 flex items-center gap-2">
+                            {!item.is_active && (
+                              <div className="rounded-lg bg-red-500/90 px-3 py-2 text-xs font-medium text-white shadow-lg">
+                                Nieaktywna
+                              </div>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
@@ -397,7 +411,11 @@ export function UslugiPageClient() {
 
                         <Link
                           href={`/uslugi/${item.slug}`}
-                          className="block overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] transition-all hover:scale-105 hover:transform hover:border-[#d3bb73]/40"
+                          className={`block overflow-hidden rounded-xl border transition-all hover:scale-105 hover:transform ${
+                            !item.is_active && isEditMode
+                              ? 'border-red-500/40 bg-[#1c1f33]/50 opacity-60'
+                              : 'border-[#d3bb73]/20 bg-[#1c1f33] hover:border-[#d3bb73]/40'
+                          }`}
                         >
                           {item.thumbnail_url && (
                             <div className="aspect-video overflow-hidden bg-[#0f1119]">

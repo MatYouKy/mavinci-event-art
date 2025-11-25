@@ -30,6 +30,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const [heroImageUrl, setHeroImageUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [isPremium, setIsPremium] = useState(false);
+  const [isActive, setIsActive] = useState(true);
   const [iconId, setIconId] = useState('');
   const [features, setFeatures] = useState<string[]>([]);
   const [technicalSpecs, setTechnicalSpecs] = useState<Record<string, string>>({});
@@ -64,6 +65,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       setHeroImageUrl(data.hero_image_url || '');
       setThumbnailUrl(data.thumbnail_url || '');
       setIsPremium(data.is_premium || false);
+      setIsActive(data.is_active !== false);
       setIconId(data.icon_id || '');
       setFeatures(Array.isArray(data.features) ? data.features : []);
       setTechnicalSpecs(data.technical_specs || {});
@@ -93,6 +95,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
           hero_image_url: heroImageUrl,
           thumbnail_url: thumbnailUrl,
           is_premium: isPremium,
+          is_active: isActive,
           icon_id: iconId || null,
           features,
           technical_specs: technicalSpecs,
@@ -261,6 +264,19 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                 />
                 <label htmlFor="isPremium" className="text-sm text-[#e5e4e2]/70">
                   Usługa Premium
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="isActive" className="text-sm text-[#e5e4e2]/70">
+                  Widoczna publicznie
                 </label>
               </div>
             </div>
