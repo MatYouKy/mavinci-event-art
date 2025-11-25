@@ -12,6 +12,17 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
   useEffect(() => {
     if (typeof window === 'undefined' || !enabled) return;
 
+    // Nie zbieraj statystyk w developmencie (localhost)
+    const isLocalhost = window.location.hostname === 'localhost' ||
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname.startsWith('192.168.') ||
+                       window.location.hostname === '::1';
+
+    if (isLocalhost) {
+      console.log('[Analytics] Skipped - running on localhost');
+      return;
+    }
+
     if (!sessionId.current) {
       sessionId.current = crypto.randomUUID();
     }

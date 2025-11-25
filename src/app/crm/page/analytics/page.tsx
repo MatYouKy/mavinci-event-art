@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useGetAnalyticsStatsQuery, useGetOnlineUsersQuery } from '@/store/api/analyticsApi';
-import { BarChart3, TrendingUp, Users, Clock, Mail, Globe, MonitorSmartphone, ExternalLink, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Users, Clock, Mail, Globe, MonitorSmartphone, ExternalLink, Activity, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { ResetAnalyticsModal } from '@/components/crm/ResetAnalyticsModal';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState(30);
@@ -12,6 +14,8 @@ export default function AnalyticsPage() {
   const [customDateMode, setCustomDateMode] = useState(false);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const { showSnackbar } = useSnackbar();
 
   const { data: stats, isLoading, error } = useGetAnalyticsStatsQuery({
     dateRange,
@@ -147,6 +151,13 @@ export default function AnalyticsPage() {
               }`}
             >
               Zakres dat
+            </button>
+            <button
+              onClick={() => setIsResetModalOpen(true)}
+              className="px-4 py-2 rounded-lg text-sm transition-colors bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Resetuj statystyki
             </button>
           </div>
         </div>
@@ -381,6 +392,15 @@ export default function AnalyticsPage() {
           </>
         ) : null}
       </div>
+
+      <ResetAnalyticsModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onSuccess={() => {
+          showSnackbar('Statystyki zostały zresetowane pomyślnie', 'success');
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

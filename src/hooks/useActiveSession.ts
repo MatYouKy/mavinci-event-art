@@ -8,6 +8,17 @@ export function useActiveSession(pageUrl: string) {
   useEffect(() => {
     if (typeof window === 'undefined' || !pageUrl) return;
 
+    // Nie rejestruj sesji w developmencie (localhost)
+    const isLocalhost = window.location.hostname === 'localhost' ||
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname.startsWith('192.168.') ||
+                       window.location.hostname === '::1';
+
+    if (isLocalhost) {
+      console.log('[Active Session] Skipped - running on localhost');
+      return;
+    }
+
     let sessionId = sessionStorage.getItem('analytics_session_id');
     if (!sessionId) {
       sessionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
