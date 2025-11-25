@@ -9,6 +9,7 @@ import TechnicalStageServices from './sections/TechnicalStageServices';
 import TechnicalStageGallery from './sections/TechnicalStageGallery';
 import TechnicalStagePackages from './sections/TechnicalStagePackages';
 import TechnicalStageCTA from './sections/TechnicalStageCTA';
+import { RelatedServicesSection } from '../konferencje/sections/RelatedServicesSection';
 
 export default function TechnikaScenicznaPage() {
   return (
@@ -17,6 +18,14 @@ export default function TechnikaScenicznaPage() {
       <TechnicalStageServices />
       <TechnicalStageGallery />
       <TechnicalStagePackages />
+      <RelatedServicesSection
+        isEditMode={isEditMode}
+        selectedServiceIds={selectedServiceIds}
+        setSelectedServiceIds={setSelectedServiceIds}
+        allServiceItems={allServiceItems}
+        loadData={loadData}
+        relatedServices={relatedServices}
+      />
       <TechnicalStageCTA />
     </main>
   );

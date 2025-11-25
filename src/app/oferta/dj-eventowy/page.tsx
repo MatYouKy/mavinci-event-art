@@ -15,7 +15,7 @@ export default async function Page() {
   return (
     <OfferLayout
       pageSlug={pageSlug}
-      section="dj-hero"
+       section="dj-hero"
     >
       <DJPage />
     </OfferLayout>

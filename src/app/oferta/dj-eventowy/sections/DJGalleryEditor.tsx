@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useWebsiteEdit } from '@/hooks/useWebsiteEdit';
+import { useEditMode } from '@/contexts/EditModeContext';
 
 interface DJGalleryImage {
   id: string;
@@ -27,6 +28,7 @@ interface UploadingFile {
 export default function DJGalleryEditor() {
   const { showSnackbar } = useSnackbar();
   const { canEdit } = useWebsiteEdit();
+  const { isEditMode } = useEditMode();
   const [images, setImages] = useState<DJGalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
@@ -272,7 +274,7 @@ export default function DJGalleryEditor() {
               </h2>
               <div className="mx-auto mb-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
             </div>
-            {canEdit && (
+            {canEdit && isEditMode && (
               <label className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors cursor-pointer">
                 <input
                   type="file"
@@ -307,7 +309,7 @@ export default function DJGalleryEditor() {
             isDragging ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119] shadow-[0_0_20px_rgba(211,187,115,0.3)]' : ''
           }`}
         >
-          {isDragging && canEdit && (
+          {isDragging && canEdit && isEditMode && (
             <>
               <div className="absolute inset-0 border-2 border-dashed border-[#d3bb73] rounded-lg pointer-events-none z-10 bg-[#d3bb73]/5" />
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg shadow-xl z-20 pointer-events-none animate-pulse">
@@ -323,7 +325,7 @@ export default function DJGalleryEditor() {
             <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
               <ImageIcon className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
               <p className="text-[#e5e4e2]/60">Brak zdjęć</p>
-              {canEdit && (
+              {canEdit && isEditMode && (
                 <div className="mt-4 space-y-2">
                   <p className="text-sm text-[#e5e4e2]/40">
                     Kliknij "Dodaj zdjęcia" lub przeciągnij pliki tutaj
@@ -353,13 +355,13 @@ export default function DJGalleryEditor() {
                       alt={image.title || 'DJ Gallery'}
                       className="w-full h-full object-cover"
                     />
-                    {image.is_primary && (
+                    {image.is_primary && isEditMode && (
                       <div className="absolute top-2 left-2 bg-[#d3bb73] text-[#1c1f33] px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
                         <Star className="w-3 h-3 fill-current" />
                         Główne
                       </div>
                     )}
-                    {canEdit && (
+                    {canEdit && isEditMode && (
                       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                         {!image.is_primary && (
                           <button
@@ -458,7 +460,7 @@ export default function DJGalleryEditor() {
               />
             </div>
 
-            {canEdit && (
+            {canEdit && isEditMode && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/70 backdrop-blur-sm rounded-full p-2">
                 {!selectedImage.is_primary && (
                   <button

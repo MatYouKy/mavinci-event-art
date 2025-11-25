@@ -6,17 +6,19 @@ import { supabase } from '@/lib/supabase';
 import { Music, Monitor, Award, Settings, Sparkles, Shield } from 'lucide-react';
 import DJPackagesEditor from './sections/DJPackagesEditor';
 import DJGalleryEditor from './sections/DJGalleryEditor';
+import { useEditMode } from '@/contexts/EditModeContext';
 
 const iconMap: Record<string, any> = {
-  'music': Music,
-  'monitor': Monitor,
-  'award': Award,
-  'settings': Settings,
-  'sparkles': Sparkles,
-  'shield': Shield,
+  music: Music,
+  monitor: Monitor,
+  award: Award,
+  settings: Settings,
+  sparkles: Sparkles,
+  shield: Shield,
 };
 
 export default function DJPage() {
+  const { isEditMode } = useEditMode();
   const [intro, setIntro] = useState<any>(null);
   const [features, setFeatures] = useState<any[]>([]);
   const [themes, setThemes] = useState<any[]>([]);
@@ -54,12 +56,8 @@ export default function DJPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <h1 className="mb-4 text-4xl font-light text-[#e5e4e2] md:text-5xl">
-                {intro.title}
-              </h1>
-              <p className="mb-6 text-xl font-light text-[#d3bb73]">
-                {intro.subtitle}
-              </p>
+              <h1 className="mb-4 text-4xl font-light text-[#e5e4e2] md:text-5xl">{intro.title}</h1>
+              <p className="mb-6 text-xl font-light text-[#d3bb73]">{intro.subtitle}</p>
               <div className="mx-auto mb-8 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
               <p className="mx-auto max-w-3xl text-lg font-light leading-relaxed text-[#e5e4e2]/80">
                 {intro.description}
@@ -80,9 +78,7 @@ export default function DJPage() {
               viewport={{ once: true }}
               className="mb-16 text-center"
             >
-              <h2 className="mb-4 text-4xl font-light text-[#e5e4e2]">
-                Dlaczego My?
-              </h2>
+              <h2 className="mb-4 text-4xl font-light text-[#e5e4e2]">Dlaczego My?</h2>
               <div className="mx-auto mb-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
             </motion.div>
 
@@ -101,12 +97,8 @@ export default function DJPage() {
                     <div className="mb-4 inline-flex rounded-xl bg-[#d3bb73]/10 p-3 text-[#d3bb73]">
                       <Icon className="h-6 w-6" />
                     </div>
-                    <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">
-                      {feature.title}
-                    </h3>
-                    <p className="font-light text-[#e5e4e2]/60">
-                      {feature.description}
-                    </p>
+                    <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">{feature.title}</h3>
+                    <p className="font-light text-[#e5e4e2]/60">{feature.description}</p>
                   </motion.div>
                 );
               })}
@@ -126,9 +118,7 @@ export default function DJPage() {
               viewport={{ once: true }}
               className="mb-16 text-center"
             >
-              <h2 className="mb-4 text-4xl font-light text-[#e5e4e2]">
-                DJ-e Tematyczni
-              </h2>
+              <h2 className="mb-4 text-4xl font-light text-[#e5e4e2]">DJ-e Tematyczni</h2>
               <div className="mx-auto mb-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
               <p className="mx-auto max-w-2xl text-lg font-light text-[#e5e4e2]/70">
                 Specjalizujemy się w różnych stylach muzycznych
@@ -145,12 +135,8 @@ export default function DJPage() {
                   transition={{ delay: index * 0.1 }}
                   className="rounded-2xl bg-[#1c1f33]/50 p-6 transition-all duration-300 hover:bg-[#1c1f33]"
                 >
-                  <h3 className="mb-3 text-xl font-light text-[#e5e4e2]">
-                    {theme.title}
-                  </h3>
-                  <p className="mb-4 text-sm font-light text-[#e5e4e2]/70">
-                    {theme.description}
-                  </p>
+                  <h3 className="mb-3 text-xl font-light text-[#e5e4e2]">{theme.title}</h3>
+                  <p className="mb-4 text-sm font-light text-[#e5e4e2]/70">{theme.description}</p>
                   {theme.music_styles && theme.music_styles.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {theme.music_styles.map((style: string, i: number) => (
@@ -179,9 +165,7 @@ export default function DJPage() {
               viewport={{ once: true }}
               className="mb-16 text-center"
             >
-              <h2 className="mb-4 text-4xl font-light text-[#e5e4e2]">
-                Jak Pracujemy?
-              </h2>
+              <h2 className="mb-4 text-4xl font-light text-[#e5e4e2]">Jak Pracujemy?</h2>
               <div className="mx-auto mb-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
             </motion.div>
 
@@ -195,18 +179,22 @@ export default function DJPage() {
                   transition={{ delay: index * 0.1 }}
                   className="rounded-2xl border border-[#d3bb73]/10 bg-[#1c1f33]/30 p-6 transition-all duration-300 hover:border-[#d3bb73]/30"
                 >
-                  <h3 className="mb-2 text-lg font-light text-[#e5e4e2]">
-                    {benefit.title}
-                  </h3>
-                  <p className="text-sm font-light text-[#e5e4e2]/60">
-                    {benefit.description}
-                  </p>
+                  <h3 className="mb-2 text-lg font-light text-[#e5e4e2]">{benefit.title}</h3>
+                  <p className="text-sm font-light text-[#e5e4e2]/60">{benefit.description}</p>
                 </motion.div>
               ))}
             </div>
           </div>
         </section>
       )}
+      <RelatedServicesSection
+        isEditMode={isEditMode}
+        selectedServiceIds={selectedServiceIds}
+        setSelectedServiceIds={setSelectedServiceIds}
+        allServiceItems={allServiceItems}
+        loadData={loadData}
+        relatedServices={relatedServices}
+      />
 
       <section className="bg-gradient-to-br from-[#1c1f33] to-[#0f1119] px-6 py-24">
         <div className="mx-auto max-w-4xl text-center">
@@ -220,7 +208,8 @@ export default function DJPage() {
               Potrzebujesz DJ-a na Swoją Imprezę?
             </h2>
             <p className="mx-auto mb-8 max-w-2xl text-lg font-light text-[#e5e4e2]/70">
-              Skontaktuj się z nami, aby omówić szczegóły. Stworzymy ofertę szytą na miarę Twoich potrzeb - repertuar, sprzęt, czas trwania.
+              Skontaktuj się z nami, aby omówić szczegóły. Stworzymy ofertę szytą na miarę Twoich
+              potrzeb - repertuar, sprzęt, czas trwania.
             </p>
             <a
               href="/#kontakt"

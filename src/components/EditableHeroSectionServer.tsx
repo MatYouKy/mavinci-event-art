@@ -39,6 +39,8 @@ async function getHeroImageServer(section: string, pageSlug: string) {
     zespol: 'team_page_images',
     about: 'about_page_images',
     portfolio: 'portfolio_page_images',
+    'dj-eventowy': 'dj_hero_page_images',
+    
   };
 
   const pageTableName = dedicatedTables[cleanSection] || 'service_hero_images';

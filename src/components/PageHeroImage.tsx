@@ -23,8 +23,6 @@ export function PageHeroImage({
   pageSlug,
   defaultImage = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg',
   defaultOpacity = 0.2,
-  initialImage,
-  initialOpacity,
   className = '',
   children,
 }: PageHeroImageProps) {
@@ -145,8 +143,8 @@ export function PageHeroImage({
   const displayPosition = isEditingPosition ? editState : (position || { posX: 0, posY: 0, scale: 1 });
 
   // Use initial values from SSR if available, otherwise fall back to hook values
-  const finalImageUrl = (initialImage && initialImage.length > 0) ? initialImage : imageUrl;
-  const finalOpacity = (initialOpacity !== undefined && initialOpacity !== null) ? initialOpacity : displayOpacity;
+  const finalImageUrl = imageUrl;
+  const finalOpacity = displayOpacity;
 
   return (
     <div className={`relative ${className}`}>

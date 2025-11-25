@@ -140,7 +140,7 @@ export default function EditableHeroWithMetadata({
       integracje: 'integracje_page_images',
       kasyno: 'kasyno_page_images',
       'symulatory-vr': 'symulatory-vr_page_images',
-      naglosnienie: 'naglosnienie_page_images',
+      dj: 'dj_page_images',
       'quizy-teleturnieje': 'quizy-teleturnieje_page_images',
       'technika-sceniczna': 'technika-sceniczna_page_images',
       'wieczory-tematyczne': 'wieczory-tematyczne_page_images',
