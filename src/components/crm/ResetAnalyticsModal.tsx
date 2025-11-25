@@ -47,35 +47,17 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
         return;
       }
 
-      const { error: deletePageAnalyticsError } = await supabase
-        .from('page_analytics')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
+      const { data: result, error: resetError } = await supabase
+        .rpc('reset_analytics_data');
 
-      if (deletePageAnalyticsError) {
-        console.error('Error deleting page_analytics:', deletePageAnalyticsError);
-        setError('Błąd podczas usuwania statystyk odwiedzin');
+      if (resetError) {
+        console.error('Error resetting analytics:', resetError);
+        setError(resetError.message || 'Błąd podczas resetowania statystyk');
         setIsResetting(false);
         return;
       }
 
-      const { error: deleteInteractionsError } = await supabase
-        .from('user_interactions')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-
-      if (deleteInteractionsError) {
-        console.error('Error deleting user_interactions:', deleteInteractionsError);
-      }
-
-      const { error: deleteSessionsError } = await supabase
-        .from('active_sessions')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-
-      if (deleteSessionsError) {
-        console.error('Error deleting active_sessions:', deleteSessionsError);
-      }
+      console.log('Analytics reset result:', result);
 
       setPassword('');
       setStep('confirm');
