@@ -12,6 +12,7 @@ export interface QuizShowFormat {
   layout_direction: 'left' | 'right';
   order_index: number;
   is_visible: boolean;
+  link_url: string | null;
   created_at: string;
   updated_at: string;
 }

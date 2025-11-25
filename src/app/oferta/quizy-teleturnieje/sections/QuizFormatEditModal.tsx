@@ -25,6 +25,7 @@ export default function QuizFormatEditModal({ formatId, onClose }: QuizFormatEdi
   const [iconId, setIconId] = useState<string | null>(null);
   const [layoutDirection, setLayoutDirection] = useState<'left' | 'right'>('left');
   const [isVisible, setIsVisible] = useState(true);
+  const [linkUrl, setLinkUrl] = useState('');
 
   useEffect(() => {
     if (formatId) {
@@ -52,6 +53,7 @@ export default function QuizFormatEditModal({ formatId, onClose }: QuizFormatEdi
       setIconId(data.icon_id);
       setLayoutDirection(data.layout_direction || 'left');
       setIsVisible(data.is_visible ?? true);
+      setLinkUrl(data.link_url || '');
     } catch (error) {
       console.error('Error fetching format:', error);
       showSnackbar('Błąd podczas ładowania formatu', 'error');
@@ -86,6 +88,7 @@ export default function QuizFormatEditModal({ formatId, onClose }: QuizFormatEdi
             icon_id: iconId,
             layout_direction: layoutDirection,
             is_visible: isVisible,
+            link_url: linkUrl || null,
           })
           .eq('id', formatId);
 
@@ -114,6 +117,7 @@ export default function QuizFormatEditModal({ formatId, onClose }: QuizFormatEdi
             icon_id: iconId,
             layout_direction: layoutDirection,
             is_visible: isVisible,
+            link_url: linkUrl || null,
             order_index: nextOrder,
           });
 
@@ -285,6 +289,23 @@ export default function QuizFormatEditModal({ formatId, onClose }: QuizFormatEdi
               selectedIconId={iconId}
               onSelect={setIconId}
             />
+          </div>
+
+          {/* Link URL */}
+          <div>
+            <label className="mb-2 block text-sm font-light text-[#e5e4e2]/80">
+              Link &quot;Dowiedz się więcej&quot;
+            </label>
+            <input
+              type="url"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/40 focus:outline-none"
+              placeholder="/kontakt lub https://example.com"
+            />
+            <p className="mt-1 text-xs text-[#e5e4e2]/40">
+              Opcjonalnie. Jeśli puste, przycisk nie będzie wyświetlany.
+            </p>
           </div>
 
           {/* Layout Direction */}

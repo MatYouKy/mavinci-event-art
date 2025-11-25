@@ -183,18 +183,23 @@ export default function QuizShowsTypes({
                       </div>
 
                       {/* Learn More Link */}
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        whileInView={{ opacity: 1 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.6, delay: 0.8 }}
-                        className="pt-4"
-                      >
-                        <button className="group inline-flex items-center gap-2 text-[#d3bb73] transition-all hover:gap-4">
-                          <span className="text-sm font-light">Dowiedz się więcej</span>
-                          <ArrowRight className="h-4 w-4" />
-                        </button>
-                      </motion.div>
+                      {format.link_url && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          whileInView={{ opacity: 1 }}
+                          viewport={{ once: true }}
+                          transition={{ duration: 0.6, delay: 0.8 }}
+                          className="pt-4"
+                        >
+                          <a
+                            href={format.link_url}
+                            className="group inline-flex items-center gap-2 text-[#d3bb73] transition-all hover:gap-4"
+                          >
+                            <span className="text-sm font-light">Dowiedz się więcej</span>
+                            <ArrowRight className="h-4 w-4" />
+                          </a>
+                        </motion.div>
+                      )}
                     </div>
                   </motion.div>
                 </motion.div>
