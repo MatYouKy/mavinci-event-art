@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { X, Plus, Save, Trash2, Image as ImageIcon, Edit2, Upload } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from './SimpleImageUploader';
+import { ServiceGalleryEditor } from './ServiceGalleryEditor';
 import { uploadOptimizedImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { slugify } from '@/lib/slugify';
@@ -38,6 +39,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const [seoTitle, setSeoTitle] = useState('');
   const [seoDescription, setSeoDescription] = useState('');
   const [seoKeywords, setSeoKeywords] = useState('');
+  const [gallery, setGallery] = useState<any[]>([]);
 
   const [newFeature, setNewFeature] = useState('');
   const [newSpecKey, setNewSpecKey] = useState('');
@@ -85,11 +87,30 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       setSeoTitle(data.seo_title || '');
       setSeoDescription(data.seo_description || '');
       setSeoKeywords(data.seo_keywords || '');
+
+      await loadGallery();
     } catch (error) {
       console.error('Error loading service:', error);
       showSnackbar('Błąd wczytywania usługi', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadGallery = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('conferences_service_gallery')
+        .select('*')
+        .eq('service_id', serviceId)
+        .eq('is_active', true)
+        .order('display_order');
+
+      if (!error && data) {
+        setGallery(data);
+      }
+    } catch (error) {
+      console.error('Error loading gallery:', error);
     }
   };
 
@@ -493,6 +514,15 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   <Plus className="h-5 w-5" />
                 </button>
               </div>
+            </div>
+
+            {/* Gallery */}
+            <div className="space-y-4">
+              <ServiceGalleryEditor
+                serviceId={serviceId}
+                gallery={gallery}
+                onUpdate={loadGallery}
+              />
             </div>
 
             {/* SEO */}
