@@ -39,12 +39,14 @@ async function getHeroImageServer(section: string, pageSlug: string) {
     zespol: 'team_page_images',
     about: 'about_page_images',
     portfolio: 'portfolio_page_images',
-    'dj-eventowy': 'dj_hero_page_images',
-    
+    dj: 'dj_hero_page_images',
+
   };
 
   const pageTableName = dedicatedTables[cleanSection] || 'service_hero_images';
   const isUniversalTable = pageTableName === 'service_hero_images';
+
+  console.log(`[SERVER] Hero fetch for section="${section}", cleanSection="${cleanSection}", table="${pageTableName}", pageSlug="${pageSlug}"`);
 
   const supabase = getSupabaseClient();
 
