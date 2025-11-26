@@ -42,10 +42,6 @@ export async function getSeoForPage(pageSlug: string): Promise<SeoData | null> {
       .eq('page_slug', normalizedPageSlug)
       .eq('is_active', true)
       .order('display_order'),
-    supabase
-      .from('schema_org_page_metadata')
-      .select('id, page_slug')
-      .order('page_slug'),
   ]);
 
   if (!globalRes.data) return null;
