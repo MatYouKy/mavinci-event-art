@@ -51,8 +51,25 @@ export default function DJPage() {
           .select(`*, service_item:conferences_service_items(*)`)
           .eq('is_active', true)
           .order('display_order'),
-        supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
+        supabase.from('conferences_service_items').select('*').eq('is_active', true).order('display_order'),
       ]);
+
+      console.log('DJ Page data loaded:', {
+        intro: introRes.data,
+        introError: introRes.error,
+        featuresCount: featuresRes.data?.length,
+        featuresError: featuresRes.error,
+        themesCount: themesRes.data?.length,
+        benefitsCount: benefitsRes.data?.length,
+        relatedServicesCount: relatedServicesRes.data?.length,
+        allServiceItemsCount: allServiceItemsRes.data?.length,
+      });
+
+      if (introRes.error) console.error('dj_intro error:', introRes.error);
+      if (featuresRes.error) console.error('dj_features error:', featuresRes.error);
+      if (themesRes.error) console.error('dj_themes error:', themesRes.error);
+      if (benefitsRes.error) console.error('dj_benefits error:', benefitsRes.error);
+      if (relatedServicesRes.error) console.error('dj_related_services error:', relatedServicesRes.error);
 
       if (introRes.data) setIntro(introRes.data);
       if (featuresRes.data) setFeatures(featuresRes.data);
