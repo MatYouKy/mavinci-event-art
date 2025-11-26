@@ -75,39 +75,40 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                           newSelected.add(item.id);
                           setSelectedServiceIds(newSelected);
 
-                          const columnName = tableName === 'conferences_related_services'
-                            ? 'service_item_id'
-                            : 'service_catalog_id';
+                          console.log('Inserting into:', tableName, 'with item.id:', item.id);
 
-                          const { error } = await supabase
+                          const { data, error } = await supabase
                             .from(tableName)
                             .insert({
-                              [columnName]: item.id,
+                              service_item_id: item.id,
                               display_order: newSelected.size,
-                            });
+                            })
+                            .select();
 
                           if (error) {
                             console.error('Failed to add service:', error);
                             newSelected.delete(item.id);
                             setSelectedServiceIds(newSelected);
+                          } else {
+                            console.log('Successfully added:', data);
                           }
                         } else {
                           newSelected.delete(item.id);
                           setSelectedServiceIds(newSelected);
 
-                          const columnName = tableName === 'conferences_related_services'
-                            ? 'service_item_id'
-                            : 'service_catalog_id';
+                          console.log('Deleting from:', tableName, 'where service_item_id:', item.id);
 
                           const { error } = await supabase
                             .from(tableName)
                             .delete()
-                            .eq(columnName, item.id);
+                            .eq('service_item_id', item.id);
 
                           if (error) {
                             console.error('Failed to remove service:', error);
                             newSelected.add(item.id);
                             setSelectedServiceIds(newSelected);
+                          } else {
+                            console.log('Successfully removed');
                           }
                         }
                       } finally {
