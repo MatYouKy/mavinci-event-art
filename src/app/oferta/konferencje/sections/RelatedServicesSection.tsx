@@ -75,10 +75,14 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                           newSelected.add(item.id);
                           setSelectedServiceIds(newSelected);
 
+                          const columnName = tableName === 'conferences_related_services'
+                            ? 'service_item_id'
+                            : 'service_catalog_id';
+
                           const { error } = await supabase
                             .from(tableName)
                             .insert({
-                              service_item_id: item.id,
+                              [columnName]: item.id,
                               display_order: newSelected.size,
                             });
 
@@ -91,10 +95,14 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                           newSelected.delete(item.id);
                           setSelectedServiceIds(newSelected);
 
+                          const columnName = tableName === 'conferences_related_services'
+                            ? 'service_item_id'
+                            : 'service_catalog_id';
+
                           const { error } = await supabase
                             .from(tableName)
                             .delete()
-                            .eq('service_item_id', item.id);
+                            .eq(columnName, item.id);
 
                           if (error) {
                             console.error('Failed to remove service:', error);
