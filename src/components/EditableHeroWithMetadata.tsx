@@ -134,28 +134,34 @@ export default function EditableHeroWithMetadata({
 
   const getTableName = () => {
     const cleanSection = section.replace('-hero', '');
-    const serviceMapping: Record<string, string> = {
+    const dedicatedTables: Record<string, string> = {
       konferencje: 'konferencje_page_images',
-      streaming: 'streaming_page_images',
-      integracje: 'integracje_page_images',
       kasyno: 'kasyno_page_images',
-      'symulatory-vr': 'symulatory-vr_page_images',
-      dj: 'dj_page_images',
-      'quizy-teleturnieje': 'quizy-teleturnieje_page_images',
-      'technika-sceniczna': 'technika-sceniczna_page_images',
-      'wieczory-tematyczne': 'wieczory-tematyczne_page_images',
+      naglosnienie: 'naglosnienie_page_images',
+      zespol: 'team_page_images',
+      about: 'about_page_images',
+      portfolio: 'portfolio_page_images',
+      dj: 'dj_hero_page_images',
     };
-    return serviceMapping[cleanSection] || `${cleanSection}_page_images`;
+    return dedicatedTables[cleanSection] || 'service_hero_images';
   };
 
   const loadCurrentData = async () => {
     try {
       const tableName = getTableName();
-      const { data, error } = await supabase
+      const isUniversalTable = tableName === 'service_hero_images';
+
+      let query = supabase
         .from(tableName)
-        .select('title, description, label_text, label_icon, button_text, white_words_count')
-        .eq('section', 'hero')
-        .maybeSingle();
+        .select('title, description, label_text, label_icon, button_text, white_words_count');
+
+      if (isUniversalTable) {
+        query = query.eq('page_slug', pageSlug);
+      } else {
+        query = query.eq('section', 'hero');
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) {
         console.error('Error loading data:', error);
@@ -185,6 +191,7 @@ export default function EditableHeroWithMetadata({
     try {
       setSaving(true);
       const tableName = getTableName();
+      const isUniversalTable = tableName === 'service_hero_images';
 
       const dataToSave = {
         title,
@@ -196,12 +203,17 @@ export default function EditableHeroWithMetadata({
         updated_at: new Date().toISOString(),
       };
 
-      console.log('Saving data:', dataToSave);
+      console.log('Saving data to', tableName, ':', dataToSave);
 
-      const { error } = await supabase
-        .from(tableName)
-        .update(dataToSave)
-        .eq('section', 'hero');
+      let query = supabase.from(tableName).update(dataToSave);
+
+      if (isUniversalTable) {
+        query = query.eq('page_slug', pageSlug);
+      } else {
+        query = query.eq('section', 'hero');
+      }
+
+      const { error } = await query;
 
       if (error) {
         console.error('Supabase error:', error);
