@@ -48,7 +48,7 @@ export default function DJPage() {
         supabase.from('dj_benefits').select('*').eq('is_visible', true).order('order_index'),
         supabase
           .from('dj_related_services')
-          .select(`*, service:services_catalog(*)`)
+          .select(`*, service_item:conferences_service_items(*)`)
           .eq('is_active', true)
           .order('display_order'),
         supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
@@ -60,8 +60,8 @@ export default function DJPage() {
       if (benefitsRes.data) setBenefits(benefitsRes.data);
 
       if (relatedServicesRes.data) {
-        setRelatedServices(relatedServicesRes.data.map((r) => r.service));
-        setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_catalog_id)));
+        setRelatedServices(relatedServicesRes.data.map((r) => r.service_item));
+        setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_item_id)));
       }
       if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
     } catch (error) {

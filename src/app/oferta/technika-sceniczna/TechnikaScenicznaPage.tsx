@@ -26,19 +26,19 @@ export default function TechnikaScenicznaPage() {
       const [relatedServicesRes, allServiceItemsRes] = await Promise.all([
         supabase
           .from('technical_stage_related_services')
-          .select(`*, service:services_catalog(*)`)
+          .select(`*, service_item:conferences_service_items(*)`)
           .eq('is_active', true)
           .order('display_order'),
         supabase
-          .from('services_catalog')
+          .from('conferences_service_items')
           .select('*')
           .eq('is_active', true)
-          .order('order_index'),
+          .order('display_order'),
       ]);
 
       if (relatedServicesRes.data) {
-        setRelatedServices(relatedServicesRes.data.map((r) => r.service));
-        setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_catalog_id)));
+        setRelatedServices(relatedServicesRes.data.map((r) => r.service_item));
+        setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_item_id)));
       }
       if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
     } catch (error) {
