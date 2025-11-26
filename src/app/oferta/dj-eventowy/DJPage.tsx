@@ -51,11 +51,7 @@ export default function DJPage() {
           .select(`*, service:services_catalog(*)`)
           .eq('is_active', true)
           .order('display_order'),
-        supabase
-          .from('services_catalog')
-          .select('*')
-          .eq('is_active', true)
-          .order('order_index'),
+        supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
       ]);
 
       if (introRes.data) setIntro(introRes.data);
