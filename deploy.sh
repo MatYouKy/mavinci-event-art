@@ -2,7 +2,7 @@
 chmod +x deploy.sh
 set -euo pipefail
 
-REMOTE="root@83.150.236.238"
+REMOTE="root@185.235.68.130"
 BASE="/var/www/mavinci/frontend"
 STAND="${BASE}/.next/standalone"
 
