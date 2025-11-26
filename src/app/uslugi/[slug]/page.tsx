@@ -12,6 +12,25 @@ import { getUserPermissions } from '@/lib/serverAuth';
 
 async function loadServiceData(slug: string) {
   noStore(); // Prevent caching for dynamic data
+
+  // Redirect special cases that should be under /oferta instead of /uslugi
+  const ofertaRedirects: Record<string, string> = {
+    'konferencje': '/oferta/konferencje',
+    'kasyno': '/oferta/kasyno',
+    'naglosnienie': '/oferta/naglosnienie',
+    'dj-eventowy': '/oferta/dj-eventowy',
+    'streaming': '/oferta/streaming',
+    'symulatory-vr': '/oferta/symulatory-vr',
+    'quizy-teleturnieje': '/oferta/quizy-teleturnieje',
+    'wieczory-tematyczne': '/oferta/wieczory-tematyczne',
+    'integracje': '/oferta/integracje',
+    'technika-sceniczna': '/oferta/technika-sceniczna',
+  };
+
+  if (ofertaRedirects[slug]) {
+    redirect(ofertaRedirects[slug]);
+  }
+
   const supabase = getSupabaseClient();
 
   const { data: serviceData, error: serviceError } = await supabase
@@ -147,7 +166,9 @@ export default async function ServiceDetailPage({
   }
 
   const seo = await getSeoForPage(`uslugi/${params.slug}`);
-  if (!seo) return null;
+  if (!seo) {
+    notFound();
+  }
 
   const { service, category, relatedServices, heroImage, globalConfig, gallery, hasWebsiteEdit } = data;
   // Calculate OG image URL
