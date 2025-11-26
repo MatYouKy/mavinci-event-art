@@ -140,6 +140,13 @@ export default async function EditableHeroSectionServer({
 }: EditableHeroSectionServerProps) {
   const heroData = await getHeroImageServer(section, pageSlug);
 
+  console.log(`[SERVER] Passing to client for section="${section}":`, {
+    title: heroData.title,
+    description: heroData.description?.substring(0, 50),
+    labelText: heroData.labelText,
+    labelIcon: heroData.labelIcon,
+  });
+
   return (
     <EditableHeroWithMetadata
       section={section}
