@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Cable } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -33,7 +33,7 @@ export default function NewCablePage() {
   });
 
   // Load data
-  useState(() => {
+  useEffect(() => {
     const loadData = async () => {
       const [cats, locs, conns] = await Promise.all([
         supabase.from('warehouse_categories').select('id, name').order('name'),
@@ -46,7 +46,7 @@ export default function NewCablePage() {
       if (conns.data) setConnectorTypes(conns.data);
     };
     loadData();
-  });
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
