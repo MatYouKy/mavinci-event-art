@@ -81,6 +81,28 @@ getEquipmentFeed: builder.query<{
         const from = page * limit;
         const to   = from + limit - 1;
 
+        // Pobierz podkategorie, jeśli categoryId jest kategoria główną
+        let categoryIds: string[] = [];
+        if (categoryId) {
+          const { data: allCategories } = await supabase
+            .from('warehouse_categories')
+            .select('id, parent_id, level');
+
+          if (allCategories) {
+            const selectedCat = allCategories.find(c => c.id === categoryId);
+            if (selectedCat) {
+              // Dodaj wybraną kategorię
+              categoryIds.push(categoryId);
+
+              // Jeśli to kategoria level 1, dodaj wszystkie jej podkategorie
+              if (selectedCat.level === 1) {
+                const subcats = allCategories.filter(c => c.parent_id === categoryId);
+                categoryIds.push(...subcats.map(c => c.id));
+              }
+            }
+          }
+        }
+
         // --- sprzęty ---
         let itemsQ = supabase
           .from('equipment_items')
@@ -92,7 +114,7 @@ getEquipmentFeed: builder.query<{
           .range(from, to);
 
         if (q) itemsQ = itemsQ.or(`name.ilike.%${q}%,brand.ilike.%${q}%`);
-        if (categoryId) itemsQ = itemsQ.eq('warehouse_category_id', categoryId);
+        if (categoryIds.length > 0) itemsQ = itemsQ.in('warehouse_category_id', categoryIds);
 
         // --- kity ---
         let kitsQ = supabase
@@ -104,7 +126,7 @@ getEquipmentFeed: builder.query<{
           .range(from, to);
 
         if (q) kitsQ = kitsQ.ilike('name', `%${q}%`);
-        if (categoryId) kitsQ = kitsQ.eq('warehouse_category_id', categoryId);
+        if (categoryIds.length > 0) kitsQ = kitsQ.in('warehouse_category_id', categoryIds);
 
         const [itemsRes, kitsRes] = await Promise.all([itemsQ, kitsQ]);
 

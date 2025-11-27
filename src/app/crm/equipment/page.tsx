@@ -3,11 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight,
+  Plus, Search, Package, Grid, List, Trash2, ChevronRight,
   FolderTree, Layers, MapPin
 } from 'lucide-react';
-
-import ConnectorsView from '@/components/crm/ConnectorsView';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -58,7 +56,7 @@ export default function EquipmentPage() {
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
 
   // Zakres UI
-  const [activeTab, setActiveTab] = useState<string>('all'); // 'all' | categoryId | 'cables'
+  const [activeTab, setActiveTab] = useState<string>('all'); // 'all' | categoryId
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
@@ -67,8 +65,8 @@ export default function EquipmentPage() {
   const [page, setPage] = useState(0);
   const limit = 24;
 
-  // Kategoria do filtra feedu (z activeTab, ale bez 'all'/'cables')
-  const categoryId = activeTab !== 'all' && activeTab !== 'cables' ? activeTab : null;
+  // Kategoria do filtra feedu (z activeTab, ale bez 'all')
+  const categoryId = activeTab !== 'all' ? activeTab : null;
 
   // Hooki RTKQ
   const { data: categories = [], isLoading: catLoading, isError: catError, refetch: refetchCats } =
@@ -295,25 +293,10 @@ export default function EquipmentPage() {
             {activeTab === cat.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
           </button>
         ))}
-
-        <button
-          onClick={() => setActiveTab('cables')}
-          className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === 'cables' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
-        >
-          <div className="flex items-center gap-2">
-            <Plug className="w-4 h-4" />
-            Przewody
-          </div>
-          {activeTab === 'cables' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
-        </button>
       </div>
 
-      {activeTab === 'cables' ? (
-        <ConnectorsView viewMode={viewMode} />
-      ) : (
-        <>
-          {/* Filtry typu */}
-          <div className="flex gap-2">
+      {/* Filtry typu */}
+      <div className="flex gap-2">
             {(['all', 'equipment', 'kits'] as const).map((k) => (
               <button
                 key={k}
@@ -513,8 +496,6 @@ export default function EquipmentPage() {
           {!hasMore && !isFetching && items.length > 0 && (
             <div className="py-6 text-center text-[#e5e4e2]/40">To już wszystko 🎉</div>
           )}
-        </>
-      )}
     </div>
   );
 }

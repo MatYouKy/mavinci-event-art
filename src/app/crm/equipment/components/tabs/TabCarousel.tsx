@@ -14,7 +14,9 @@ interface Tab {
 }
 
 export function TabCarousel({ activeTab, setActiveTab, equipment, units }: TabCarouselProps) {
-  const tabs: Tab[] = [
+  const isCable = !!equipment?.cable_specs;
+
+  const allTabs: Tab[] = [
     { id: 'details', label: 'Podstawowe' },
     { id: 'technical', label: 'Parametry techniczne' },
     { id: 'purchase', label: 'Informacje zakupowe' },
@@ -23,6 +25,9 @@ export function TabCarousel({ activeTab, setActiveTab, equipment, units }: TabCa
     { id: 'gallery', label: `Galeria (${equipment?.equipment_images?.length || 0})` },
     { id: 'history', label: 'Historia' },
   ];
+
+  const tabs = isCable ? allTabs.filter(tab => tab.id !== 'components') : allTabs;
+
   return (
     <div className="relative border-b border-[#d3bb73]/10">
       <div className="flex items-center overflow-x-auto gap-2 px-2">
