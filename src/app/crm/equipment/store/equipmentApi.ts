@@ -245,6 +245,36 @@ updateCableQuantity: builder.mutation<
       providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
     }),
 
+    // lista kabli
+    getCablesList: builder.query<any[], void>({
+      async queryFn() {
+        const { data, error } = await supabase
+          .from('cables')
+          .select(`
+            id,
+            name,
+            length_meters,
+            connector_in,
+            connector_out,
+            stock_quantity,
+            thumbnail_url,
+            warehouse_category_id,
+            storage_location_id,
+            warehouse_categories:warehouse_categories(id, name),
+            storage_location:storage_locations(id, name),
+            connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
+            connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
+          `)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .order('name');
+
+        if (error) return { error: error as any };
+        return { data: data || [] };
+      },
+      providesTags: ['CablesList'],
+    }),
+
     // szczegóły kabla
     getCableDetails: builder.query<any, string>({
       async queryFn(id) {
@@ -359,6 +389,43 @@ updateCableQuantity: builder.mutation<
           'EquipmentList',
         ];
       },
+    }),
+
+    // tworzenie kabla
+    createCable: builder.mutation<{ id: string }, Record<string, any>>({
+      async queryFn(payload) {
+        const { data, error } = await supabase
+          .from('cables')
+          .insert(payload)
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('createCable mutation - error:', error);
+          return { error: error as any };
+        }
+
+        return { data };
+      },
+      invalidatesTags: ['CablesList'],
+    }),
+
+    // usuwanie kabla
+    deleteCable: builder.mutation<{ success: true }, string>({
+      async queryFn(id) {
+        const { error } = await supabase
+          .from('cables')
+          .update({ deleted_at: new Date().toISOString(), is_active: false })
+          .eq('id', id);
+
+        if (error) {
+          console.error('deleteCable mutation - error:', error);
+          return { error: error as any };
+        }
+
+        return { data: { success: true } };
+      },
+      invalidatesTags: ['CablesList'],
     }),
 
     // dodawanie jednostki kabla

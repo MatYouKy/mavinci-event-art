@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight,
-  FolderTree, Layers, MapPin
+  FolderTree, Layers, MapPin, Cable
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -214,6 +214,13 @@ export default function EquipmentPage() {
                 <MapPin className="w-4 h-4" />
                 Lokalizacje
               </button>
+              <button
+                onClick={() => router.push('/crm/equipment/cables')}
+                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
+              >
+                <Cable className="w-4 h-4" />
+                Przewody
+              </button>
             </>
           )}
           {canCreateInModule('equipment') && (
@@ -260,6 +267,15 @@ export default function EquipmentPage() {
                       </div>
                     ),
                     onClick: () => router.push('/crm/equipment/locations'),
+                  },
+                  {
+                    children: (
+                      <div className="flex items-center gap-2 px-4 py-2">
+                        <Cable className="w-4 h-4" />
+                        <span>Przewody</span>
+                      </div>
+                    ),
+                    onClick: () => router.push('/crm/equipment/cables'),
                   },
                 ]}
               />

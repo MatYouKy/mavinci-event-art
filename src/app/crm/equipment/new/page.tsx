@@ -26,13 +26,6 @@ interface Component {
   is_included: boolean;
 }
 
-interface ConnectorType {
-  id: string;
-  name: string;
-  description: string | null;
-  common_uses: string | null;
-}
-
 export default function NewEquipmentPage() {
   const router = useRouter();
   const { canCreateInModule, loading: employeeLoading } = useCurrentEmployee();
@@ -41,11 +34,8 @@ export default function NewEquipmentPage() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Category[]>([]);
-  const [connectorTypes, setConnectorTypes] = useState<ConnectorType[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
-  const [showAddConnectorModal, setShowAddConnectorModal] = useState(false);
-  const [connectorField, setConnectorField] = useState<'in' | 'out' | null>(null);
 
   useEffect(() => {
     if (!employeeLoading && !canCreate) {
@@ -63,9 +53,6 @@ export default function NewEquipmentPage() {
     thumbnail_url: '',
     user_manual_url: '',
     weight_kg: '',
-    cable_length_meters: '',
-    cable_connector_in: '',
-    cable_connector_out: '',
     dimensions_length: '',
     dimensions_width: '',
     dimensions_height: '',
@@ -85,7 +72,6 @@ export default function NewEquipmentPage() {
 
   useEffect(() => {
     fetchCategories();
-    fetchConnectorTypes();
   }, []);
 
   // Filtruj podkategorie gdy zmienia się kategoria
@@ -112,16 +98,6 @@ export default function NewEquipmentPage() {
       return;
     }
     if (data) setCategories(data);
-  };
-
-  const fetchConnectorTypes = async () => {
-    const { data, error } = await supabase
-      .from('connector_types')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
-
-    if (data) setConnectorTypes(data);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -178,90 +154,45 @@ export default function NewEquipmentPage() {
 
     setSaving(true);
     try {
-      const isCable = formData.cable_length_meters || formData.cable_connector_in || formData.cable_connector_out;
+      const dimensions = formData.dimensions_length || formData.dimensions_width || formData.dimensions_height
+        ? {
+            length: parseFloat(formData.dimensions_length) || null,
+            width: parseFloat(formData.dimensions_width) || null,
+            height: parseFloat(formData.dimensions_height) || null,
+          }
+        : null;
 
-      let equipmentData: any;
+      const { data: equipmentData, error: equipmentError } = await supabase
+        .from('equipment_items')
+        .insert({
+          name: formData.name,
+          warehouse_category_id: formData.subcategory_id || formData.category_id,
+          brand: formData.brand || null,
+          model: formData.model || null,
+          description: formData.description || null,
+          thumbnail_url: formData.thumbnail_url || null,
+          user_manual_url: formData.user_manual_url || null,
+          weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
+          dimensions_cm: dimensions,
+          purchase_date: formData.purchase_date || null,
+          purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
+          current_value: formData.current_value ? parseFloat(formData.current_value) : null,
+          warranty_until: formData.warranty_until || null,
+          serial_number: formData.serial_number || null,
+          barcode: formData.barcode || null,
+          notes: formData.notes || null,
+          is_active: true,
+        })
+        .select()
+        .single();
 
-      if (isCable) {
-        const { data, error: cableError } = await supabase
-          .from('cables')
-          .insert({
-            name: formData.name,
-            warehouse_category_id: formData.subcategory_id || formData.category_id,
-            storage_location_id: null,
-            thumbnail_url: formData.thumbnail_url || null,
-            description: formData.description || null,
-            length_meters: formData.cable_length_meters ? parseFloat(formData.cable_length_meters) : null,
-            connector_in: formData.cable_connector_in || null,
-            connector_out: formData.cable_connector_out || null,
-            stock_quantity: parseInt(formData.initial_quantity) || 0,
-            purchase_date: formData.purchase_date || null,
-            purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
-            current_value: formData.current_value ? parseFloat(formData.current_value) : null,
-            notes: formData.notes || null,
-            is_active: true,
-          })
-          .select()
-          .single();
-
-        if (cableError) throw cableError;
-        equipmentData = data;
-      } else {
-        const dimensions = formData.dimensions_length || formData.dimensions_width || formData.dimensions_height
-          ? {
-              length: parseFloat(formData.dimensions_length) || null,
-              width: parseFloat(formData.dimensions_width) || null,
-              height: parseFloat(formData.dimensions_height) || null,
-            }
-          : null;
-
-        const { data, error: equipmentError } = await supabase
-          .from('equipment_items')
-          .insert({
-            name: formData.name,
-            warehouse_category_id: formData.subcategory_id || formData.category_id,
-            brand: formData.brand || null,
-            model: formData.model || null,
-            description: formData.description || null,
-            thumbnail_url: formData.thumbnail_url || null,
-            user_manual_url: formData.user_manual_url || null,
-            weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
-            dimensions_cm: dimensions,
-            purchase_date: formData.purchase_date || null,
-            purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
-            current_value: formData.current_value ? parseFloat(formData.current_value) : null,
-            warranty_until: formData.warranty_until || null,
-            serial_number: formData.serial_number || null,
-            barcode: formData.barcode || null,
-            notes: formData.notes || null,
-            is_active: true,
-          })
-          .select()
-          .single();
-
-        if (equipmentError) throw equipmentError;
-        equipmentData = data;
-      }
+      if (equipmentError) throw equipmentError;
 
       const initialQty = parseInt(formData.initial_quantity) || 0;
 
       if (initialQty > 0) {
-        if (isCable) {
-          const cableUnitsToCreate = Array.from({ length: initialQty }, (_, index) => ({
-            cable_id: equipmentData.id,
-            serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
-            status: 'available',
-            storage_location_id: null,
-          }));
-
-          const { error: unitsError } = await supabase
-            .from('cable_units')
-            .insert(cableUnitsToCreate);
-
-          if (unitsError) throw unitsError;
-        } else {
-          const { error: stockError } = await supabase
-            .from('equipment_stock')
+        const { error: stockError } = await supabase
+          .from('equipment_stock')
             .update({
               total_quantity: initialQty,
               available_quantity: initialQty,
@@ -297,7 +228,6 @@ export default function NewEquipmentPage() {
             });
 
           if (historyError) throw historyError;
-        }
       }
 
       if (components.length > 0) {
@@ -333,11 +263,7 @@ export default function NewEquipmentPage() {
         if (galleryError) console.error('Error adding thumbnail to gallery:', galleryError);
       }
 
-      if (isCable) {
-        router.push(`/crm/equipment/cables/${equipmentData.id}`);
-      } else {
-        router.push(`/crm/equipment/${equipmentData.id}`);
-      }
+      router.push(`/crm/equipment/${equipmentData.id}`);
     } catch (error) {
       console.error('Error creating equipment:', error);
       alert('Błąd podczas tworzenia sprzętu');
@@ -501,99 +427,22 @@ export default function NewEquipmentPage() {
           <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Parametry techniczne</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {categories.find(c => c.id === formData.category_id)?.name?.toLowerCase().includes('przewod') ? (
-              <>
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Długość (m)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    name="cable_length_meters"
-                    value={formData.cable_length_meters}
-                    onChange={handleInputChange}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                    placeholder="10"
-                  />
-                </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
+              <input
+                type="number"
+                step="0.01"
+                name="weight_kg"
+                value={formData.weight_kg}
+                onChange={handleInputChange}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                placeholder="0.00"
+              />
+            </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyki</label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wejściowy</label>
-                      <div className="flex gap-2">
-                        <select
-                          name="cable_connector_in"
-                          value={formData.cable_connector_in}
-                          onChange={handleInputChange}
-                          className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                        >
-                          <option value="">Wybierz wtyk</option>
-                          {connectorTypes.map((connector) => (
-                            <option key={connector.id} value={connector.name} title={connector.description || undefined}>
-                              {connector.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => { setConnectorField('in'); setShowAddConnectorModal(true); }}
-                          className="px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
-                          title="Dodaj nowy wtyk"
-                        >
-                          <Plus className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wyjściowy</label>
-                      <div className="flex gap-2">
-                        <select
-                          name="cable_connector_out"
-                          value={formData.cable_connector_out}
-                          onChange={handleInputChange}
-                          className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                        >
-                          <option value="">Wybierz wtyk</option>
-                          {connectorTypes.map((connector) => (
-                            <option key={connector.id} value={connector.name} title={connector.description || undefined}>
-                              {connector.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => { setConnectorField('out'); setShowAddConnectorModal(true); }}
-                          className="px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
-                          title="Dodaj nowy wtyk"
-                        >
-                          <Plus className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="weight_kg"
-                  value={formData.weight_kg}
-                  onChange={handleInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  placeholder="0.00"
-                />
-              </div>
-            )}
-
-            {!categories.find(c => c.id === formData.category_id)?.name?.toLowerCase().includes('przewod') && (
-              <div className="md:col-span-1">
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
-                <div className="grid grid-cols-3 gap-2">
+            <div className="md:col-span-1">
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
+              <div className="grid grid-cols-3 gap-2">
                   <input
                     type="number"
                     step="0.1"
@@ -622,8 +471,7 @@ export default function NewEquipmentPage() {
                     placeholder="Wysokość"
                   />
                 </div>
-              </div>
-            )}
+            </div>
 
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Numer seryjny</label>
@@ -847,161 +695,6 @@ export default function NewEquipmentPage() {
         </div>
       </form>
 
-      {showAddConnectorModal && (
-        <AddConnectorModal
-          onClose={() => setShowAddConnectorModal(false)}
-          onAdd={(name) => {
-            if (connectorField === 'in') {
-              setFormData(prev => ({ ...prev, cable_connector_in: name }));
-            } else {
-              setFormData(prev => ({ ...prev, cable_connector_out: name }));
-            }
-            fetchConnectorTypes();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string) => void }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [commonUses, setCommonUses] = useState('');
-  const [thumbnailUrl, setThumbnailUrl] = useState('');
-  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingThumbnail(true);
-    try {
-      const url = await uploadImage(file, 'connector-thumbnails');
-      setThumbnailUrl(url);
-    } catch (error) {
-      console.error('Error uploading thumbnail:', error);
-      alert('Błąd podczas wgrywania zdjęcia');
-    } finally {
-      setUploadingThumbnail(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from('connector_types')
-        .insert({
-          name: name.trim(),
-          description: description.trim() || null,
-          common_uses: commonUses.trim() || null,
-          thumbnail_url: thumbnailUrl || null,
-          is_active: true,
-        });
-
-      if (error) throw error;
-
-      onAdd(name.trim());
-      onClose();
-    } catch (error) {
-      console.error('Error adding connector:', error);
-      alert('Błąd podczas dodawania wtyczki');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-md w-full">
-        <div className="p-6 border-b border-[#d3bb73]/10">
-          <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj nowy wtyk</h3>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa wtyczki *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="np. XLR Male"
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis (opcjonalnie)</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="np. Wtyk XLR męski, 3-pinowy"
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typowe zastosowania (opcjonalnie)</label>
-            <textarea
-              value={commonUses}
-              onChange={(e) => setCommonUses(e.target.value)}
-              placeholder="np. Mikrofony, sygnały audio balanced, DMX"
-              rows={3}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zdjęcie wtyczki (opcjonalnie)</label>
-            <div className="flex gap-4 items-start">
-              {thumbnailUrl && (
-                <div className="w-20 h-20 rounded-lg overflow-hidden bg-[#0f1119] border border-[#d3bb73]/10">
-                  <img src={thumbnailUrl} alt="Miniaturka" className="w-full h-full object-cover" />
-                </div>
-              )}
-              <label className="flex-1 cursor-pointer">
-                <div className="border-2 border-dashed border-[#d3bb73]/20 rounded-lg p-4 text-center hover:border-[#d3bb73]/40 transition-colors">
-                  <Upload className="w-6 h-6 text-[#e5e4e2]/40 mx-auto mb-2" />
-                  <div className="text-sm text-[#e5e4e2]/60">
-                    {uploadingThumbnail ? 'Wgrywanie...' : 'Kliknij aby dodać zdjęcie'}
-                  </div>
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleThumbnailUpload}
-                  className="hidden"
-                  disabled={uploadingThumbnail}
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="flex gap-3 justify-end pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2.5 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
-            >
-              Anuluj
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !name.trim()}
-              className="px-6 py-2.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Dodawanie...' : 'Dodaj wtyk'}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
