@@ -77,19 +77,19 @@ export default function QuizPopularPackages() {
         allServiceItemsRes,
       ] = await Promise.all([
         supabase
-          .from('quiz_packages_change')
+          .from('quiz_related_services')
           .select(`*, service_item:conferences_service_items(*)`)
           .eq('is_active', true)
           .order('display_order'),
         supabase.from('conferences_service_items').select('*').eq('is_active', true).order('display_order'),
       ]);
 
-      console.log('DJ Page data loaded:', {
+      console.log('Quiz Page data loaded:', {
         relatedServicesCount: relatedServicesRes.data?.length,
         allServiceItemsCount: allServiceItemsRes.data?.length,
       });
 
-      if (relatedServicesRes.error) console.error('dj_related_services error:', relatedServicesRes.error);
+      if (relatedServicesRes.error) console.error('quiz_related_services error:', relatedServicesRes.error);
 
 
       if (relatedServicesRes.data) {
@@ -98,13 +98,13 @@ export default function QuizPopularPackages() {
       }
       if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
     } catch (error) {
-      console.error('Error fetching DJ data:', error);
+      console.error('Error fetching Quiz data:', error);
     }
   };
 
-  // useEffect(() => {
-  //   fetchData();
-  // }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
 
 
   return (
@@ -116,7 +116,7 @@ export default function QuizPopularPackages() {
         allServiceItems={allServiceItems}
         loadData={fetchData}
         relatedServices={relatedServices}
-        tableName="dj_related_services"
+        tableName="quiz_related_services"
       />
 
       {(editingId || isAdding) && (
