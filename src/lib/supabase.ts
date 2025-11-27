@@ -96,6 +96,8 @@ export interface PortfolioProjectFeature {
 }
 
 export interface PortfolioProject {
+  slug: string;
+  tags: any[];
   _id?: string;
   id?: string;
   title: string;
@@ -114,3 +116,15 @@ export interface PortfolioProject {
   created_at?: string;
   updated_at?: string;
 }
+
+
+export const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables');
+  }
+
+  return createClient(supabaseUrl, supabaseKey);
+};

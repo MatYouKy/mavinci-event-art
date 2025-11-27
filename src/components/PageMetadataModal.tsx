@@ -1,0 +1,369 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { X, Plus, Trash2, Save } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+
+interface PageMetadataModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  pageSlug: string;
+  pageName: string;
+}
+
+export function PageMetadataModal({
+  isOpen,
+  onClose,
+  pageSlug,
+  pageName,
+}: PageMetadataModalProps) {
+  const [metadata, setMetadata] = useState<any>(null);
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [newKeyword, setNewKeyword] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [ogImage, setOgImage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [availableImages, setAvailableImages] = useState<any[]>([]);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const { showSnackbar } = useSnackbar();
+
+  const isEdit = !!metadata?.id;
+
+  useEffect(() => {
+    if (isOpen) {
+      loadMetadata();
+      loadAvailableImages();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, pageSlug]);
+
+  const loadAvailableImages = async () => {
+    const { data, error } = await supabase
+      .from('site_images')
+      .select('*')
+      .or(`section.ilike.%${pageSlug}%,section.eq.global`)
+      .eq('is_active', true)
+      .order('section');
+
+    if (data && !error) {
+      setAvailableImages(data);
+    }
+  };
+
+  const loadMetadata = async () => {
+    const { data, error } = await supabase
+      .from('schema_org_page_metadata')
+      .select('*')
+      .eq('page_slug', pageSlug)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error loading metadata', error);
+    }
+
+    if (data) {
+      setMetadata(data);
+      setKeywords(data.keywords || []);
+      setTitle(data.title || '');
+      setDescription(data.description || '');
+      setOgImage(data.og_image || '');
+    } else {
+      setMetadata(null);
+      setKeywords([]);
+      setTitle('');
+      setDescription('');
+      setOgImage('');
+    }
+  };
+
+  const handleAddKeyword = () => {
+    const trimmed = newKeyword.trim();
+    if (trimmed && !keywords.includes(trimmed)) {
+      setKeywords((prev) => [...prev, trimmed]);
+      setNewKeyword('');
+    }
+  };
+
+  const handleRemoveKeyword = (keyword: string) => {
+    setKeywords((prev) => prev.filter((k) => k !== keyword));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+
+    const payload = {
+      page_slug: pageSlug,
+      title: title || null,
+      description: description || null,
+      keywords,
+      og_image: ogImage || null,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    let error;
+
+    if (metadata) {
+      const result = await supabase
+        .from('schema_org_page_metadata')
+        .update(payload)
+        .eq('id', metadata.id);
+      error = result.error;
+    } else {
+      const result = await supabase.from('schema_org_page_metadata').insert(payload);
+      error = result.error;
+    }
+
+    setIsSaving(false);
+
+    if (error) {
+      console.error('Error saving metadata', error);
+      showSnackbar('Błąd podczas zapisywania', 'error');
+      return;
+    }
+
+    showSnackbar(
+      isEdit
+        ? 'Zaktualizowano metadane strony. Odświeżanie...'
+        : 'Dodano metadane strony. Odświeżanie...',
+      'success'
+    );
+
+    onClose();
+
+    try {
+      const pathToRevalidate = `/${pageSlug}`;
+      await fetch('/api/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: pathToRevalidate }),
+      });
+    } catch (err) {
+      console.error('Revalidation failed:', err);
+    }
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
+  };
+
+  
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-[#1c1f33] rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-[#d3bb73]/20">
+        {/* HEADER */}
+        <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-light text-[#e5e4e2]">
+              {isEdit ? 'Edytujesz metadane strony' : 'Dodajesz metadane strony'}
+            </h2>
+            <p className="text-[#e5e4e2]/60 text-sm">
+              {pageName}{' '}
+              <span className="text-[#e5e4e2]/40">({pageSlug})</span>
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* BODY */}
+        <div className="p-6 space-y-6">
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              Tytuł strony (opcjonalny)
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Pozostaw puste aby użyć domyślnego"
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              Meta Description (opcjonalny)
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Pozostaw puste aby użyć domyślnego"
+              rows={3}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+            />
+          </div>
+
+          {/* OG Image */}
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              Open Graph Image (opcjonalny)
+            </label>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowImagePicker(!showImagePicker)}
+                className="w-full px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors border border-[#d3bb73]/20"
+              >
+                {ogImage ? 'Zmień obrazek' : 'Wybierz obrazek z galerii'}
+              </button>
+
+              {showImagePicker && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded">
+                  {availableImages.length > 0 ? (
+                    availableImages.map((img) => (
+                      <button
+                        key={img.id}
+                        onClick={() => {
+                          setOgImage(img.desktop_url);
+                          setShowImagePicker(false);
+                        }}
+                        className={`relative aspect-video rounded overflow-hidden border-2 transition-all hover:scale-105 ${
+                          ogImage === img.desktop_url
+                            ? 'border-[#d3bb73]'
+                            : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/50'
+                        }`}
+                      >
+                        <img
+                          src={img.desktop_url}
+                          alt={img.alt_text || img.section}
+                          className="w-full h-full object-cover"
+                        />
+                        {ogImage === img.desktop_url && (
+                          <div className="absolute inset-0 bg-[#d3bb73]/20 flex items-center justify-center">
+                            <div className="bg-[#d3bb73] text-[#1c1f33] rounded-full p-2">
+                              ✓
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="col-span-full text-[#e5e4e2]/40 text-sm text-center py-4">
+                      Brak dostępnych obrazków
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {ogImage && (
+                <div className="relative">
+                  <img
+                    src={ogImage}
+                    alt="Selected OG Image"
+                    className="w-full max-h-40 object-cover rounded border border-[#d3bb73]/20"
+                  />
+                  <button
+                    onClick={() => setOgImage('')}
+                    className="absolute top-2 right-2 bg-[#800020] text-white rounded-full p-2 hover:bg-[#800020]/80"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <input
+                type="url"
+                value={ogImage}
+                onChange={(e) => setOgImage(e.target.value)}
+                placeholder="Lub wklej URL ręcznie"
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73]"
+              />
+            </div>
+          </div>
+
+          {/* Keywords */}
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              Słowa kluczowe (keywords)
+            </label>
+
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={newKeyword}
+                onChange={(e) => setNewKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddKeyword())}
+                placeholder="Wpisz słowo kluczowe..."
+                className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+              />
+              <button
+                onClick={handleAddKeyword}
+                className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Dodaj
+              </button>
+            </div>
+
+            {keywords.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {keywords.map((keyword, index) => (
+                  <div
+                    key={index}
+                    className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-full px-3 py-1.5 flex items-center gap-2"
+                  >
+                    <span className="text-[#e5e4e2] text-sm">{keyword}</span>
+                    <button
+                      onClick={() => handleRemoveKeyword(keyword)}
+                      className="text-[#800020] hover:text-[#800020]/80"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[#e5e4e2]/40 text-sm">Brak słów kluczowych</p>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded p-4">
+            <h3 className="text-[#d3bb73] font-medium mb-2">Informacja</h3>
+            <ul className="text-[#e5e4e2]/60 text-sm space-y-1">
+              <li>• Keywords są używane w meta tags dla SEO</li>
+              <li>• Title i Description nadpisują wartości domyślne jeśli są wypełnione</li>
+              <li>• OG Image jest używany dla podglądów na social media</li>
+              <li>• Wszystkie pola są opcjonalne</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* FOOTER */}
+        <div className="sticky bottom-0 bg-[#1c1f33] border-t border-[#d3bb73]/20 p-6 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded hover:bg-[#800020]/30 transition-colors"
+          >
+            Anuluj
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {isSaving
+              ? 'Zapisywanie...'
+              : isEdit
+              ? 'Zapisz zmiany'
+              : 'Dodaj metadane'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

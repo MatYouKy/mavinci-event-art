@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload } from 'lucide-react';
+import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload, BookOpen } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import TechnicalBrochureEditor from './TechnicalBrochureEditor';
 
-type Tab = 'offers' | 'catalog' | 'templates';
+type Tab = 'offers' | 'catalog' | 'templates' | 'brochure';
 
 interface Offer {
   id: string;
@@ -280,6 +281,13 @@ export default function OffersPage() {
             Zarządzaj ofertami, katalogiem produktów i szablonami
           </p>
         </div>
+        <button
+          onClick={() => router.push('/technical')}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] hover:from-[#c1a85f] hover:to-[#d3bb73] text-[#1c1f33] font-medium rounded-lg transition-all duration-300 hover:scale-105"
+        >
+          <BookOpen className="w-5 h-5" />
+          <span>Broszura techniczna</span>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -343,6 +351,23 @@ export default function OffersPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
+
+        <button
+          onClick={() => handleTabChange('brochure')}
+          className={`px-6 py-3 font-medium transition-colors relative ${
+            activeTab === 'brochure'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <BookOpen className="w-5 h-5" />
+            <span>Technika Estradowa</span>
+          </div>
+          {activeTab === 'brochure' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
       </div>
 
       {/* Content */}
@@ -388,6 +413,14 @@ export default function OffersPage() {
             setShowTemplateModal(true);
           }}
         />
+      )}
+
+      {activeTab === 'brochure' && (
+        <div className="bg-[#1c1f33]/50 rounded-xl border border-[#d3bb73]/20">
+          <div className="p-6">
+            <TechnicalBrochureEditor employee={employee} />
+          </div>
+        </div>
       )}
 
       {/* Template Modal */}

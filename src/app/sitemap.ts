@@ -1,128 +1,142 @@
 import { MetadataRoute } from 'next';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables');
+  }
+
+  return createClient(supabaseUrl, supabaseKey);
+};
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://mavinci.pl';
-  const currentDate = new Date().toISOString();
+  const supabase = getSupabaseClient();
 
-  const staticRoutes: MetadataRoute.Sitemap = [
+  const mainPages: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
-      lastModified: currentDate,
-      changeFrequency: 'weekly',
+      lastModified: new Date(),
+      changeFrequency: 'daily',
       priority: 1.0,
-    },
-    {
-      url: `${baseUrl}/portfolio`,
-      lastModified: currentDate,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/o-nas`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/zespol`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/uslugi`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/uslugi/naglosnienie`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/technika-sceniczna`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/streaming`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/konferencje`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/integracje`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/wieczory-tematyczne`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/kasyno`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/kasyno/zasady/blackjack`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/uslugi/kasyno/zasady/ruletka`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/uslugi/kasyno/zasady/poker`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/uslugi/symulatory-vr`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/uslugi/quizy-teleturnieje`,
-      lastModified: currentDate,
-      changeFrequency: 'monthly',
-      priority: 0.8,
     },
   ];
 
-  let portfolioRoutes: MetadataRoute.Sitemap = [];
+  try {
+    const { data: metadataPages } = await supabase
+      .from('schema_org_page_metadata')
+      .select('page_slug, updated_at, priority, change_frequency')
+      .eq('is_active', true)
+      .order('priority', { ascending: false });
 
+    if (metadataPages && metadataPages.length > 0) {
+      const dynamicPages = metadataPages.map((page) => ({
+        url: `${baseUrl}/${page.page_slug === 'home' ? '' : page.page_slug}`,
+        lastModified: page.updated_at ? new Date(page.updated_at) : new Date(),
+        changeFrequency: (page.change_frequency || 'weekly') as
+          | 'always'
+          | 'hourly'
+          | 'daily'
+          | 'weekly'
+          | 'monthly'
+          | 'yearly'
+          | 'never',
+        priority: page.priority || 0.8,
+      }));
+
+      mainPages.push(...dynamicPages.filter(p => p.url !== baseUrl));
+    }
+  } catch (error) {
+    console.error('Error fetching metadata pages for sitemap:', error);
+  }
+
+  const servicePages: MetadataRoute.Sitemap = [];
+  const serviceSlugs = [
+    'dj-eventowy',
+    'konferencje',
+    'streaming',
+    'symulatory-vr',
+    'quizy-teleturnieje',
+    'integracje',
+    'kasyno',
+    'wieczory-tematyczne',
+    'technika-sceniczna',
+  ];
+
+  for (const slug of serviceSlugs) {
+    try {
+      let lastModified = new Date();
+
+      if (slug === 'dj-eventowy') {
+        const { data: djData } = await supabase
+          .from('dj_intro')
+          .select('updated_at')
+          .maybeSingle();
+        lastModified = djData?.updated_at ? new Date(djData.updated_at) : new Date();
+      } else {
+        const tableName = `${slug.replace(/-/g, '_')}_page_images`;
+        const { data: heroData } = await supabase
+          .from(tableName)
+          .select('updated_at')
+          .eq('section', 'hero')
+          .eq('is_active', true)
+          .maybeSingle();
+        lastModified = heroData?.updated_at ? new Date(heroData.updated_at) : new Date();
+      }
+
+      servicePages.push({
+        url: `${baseUrl}/oferta/${slug}`,
+        lastModified,
+        changeFrequency: 'monthly',
+        priority: 0.8,
+      });
+    } catch (error) {
+      console.error(`Error fetching service page ${slug}:`, error);
+      servicePages.push({
+        url: `${baseUrl}/oferta/${slug}`,
+        lastModified: new Date(),
+        changeFrequency: 'monthly',
+        priority: 0.8,
+      });
+    }
+  }
+
+  const casinoSubpages: MetadataRoute.Sitemap = [
+    {
+      url: `${baseUrl}/oferta/kasyno/zasady/blackjack`,
+      lastModified: new Date(),
+      changeFrequency: 'yearly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/oferta/kasyno/zasady/ruletka`,
+      lastModified: new Date(),
+      changeFrequency: 'yearly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/oferta/kasyno/zasady/poker`,
+      lastModified: new Date(),
+      changeFrequency: 'yearly',
+      priority: 0.5,
+    },
+  ];
+
+  let portfolioPages: MetadataRoute.Sitemap = [];
   try {
     const { data: projects } = await supabase
       .from('portfolio_projects')
       .select('slug, updated_at')
       .order('order_index');
 
-    if (projects) {
-      portfolioRoutes = projects.map((project) => ({
+    if (projects && projects.length > 0) {
+      portfolioPages = projects.map((project) => ({
         url: `${baseUrl}/portfolio/${project.slug}`,
-        lastModified: project.updated_at || currentDate,
-        changeFrequency: 'weekly' as const,
+        lastModified: project.updated_at ? new Date(project.updated_at) : new Date(),
+        changeFrequency: 'monthly' as const,
         priority: 0.7,
       }));
     }
@@ -130,5 +144,37 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error('Error fetching portfolio projects for sitemap:', error);
   }
 
-  return [...staticRoutes, ...portfolioRoutes];
+  let cityPages: MetadataRoute.Sitemap = [];
+  try {
+    const { data: cities } = await supabase
+      .from('conferences_cities')
+      .select('slug, updated_at')
+      .eq('is_active', true)
+      .order('name');
+
+    if (cities && cities.length > 0) {
+      cityPages = cities.map((city) => ({
+        url: `${baseUrl}/oferta/konferencje/${city.slug}`,
+        lastModified: city.updated_at ? new Date(city.updated_at) : new Date(),
+        changeFrequency: 'monthly' as const,
+        priority: 0.6,
+      }));
+    }
+  } catch (error) {
+    console.error('Error fetching city pages for sitemap:', error);
+  }
+
+  const allPages = [
+    ...mainPages,
+    ...servicePages,
+    ...casinoSubpages,
+    ...portfolioPages,
+    ...cityPages,
+  ];
+
+  const uniquePages = allPages.filter(
+    (page, index, self) => index === self.findIndex((p) => p.url === page.url)
+  );
+
+  return uniquePages;
 }

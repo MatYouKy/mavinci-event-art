@@ -603,7 +603,7 @@ export default function MessagesPage() {
                   <span className="hidden sm:inline">Pobierz z serwera</span>
                 </button>
                 <button
-                  onClick={fetchMessages}
+                  onClick={() => fetchMessages()}
                   disabled={loading}
                   className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
                 >
@@ -672,7 +672,7 @@ export default function MessagesPage() {
                                 isStarred={message.isStarred}
                                 onReply={() => handleReply(message)}
                                 onForward={message.type === 'received' ? () => handleForward(message) : undefined}
-                                onAssign={() => handleAssign(message.id, message.type, message.assigned_to || null)}
+                                onAssign={() => handleAssign(message.id, message.type as 'contact_form' | 'received', message.assigned_to || null)}
                                 onDelete={() => handleDelete(message.id, message.type)}
                                 onMove={() => handleMove(message.id)}
                                 onStar={message.type === 'received' ? () => handleStar(message) : undefined}
@@ -729,7 +729,7 @@ export default function MessagesPage() {
                     </div>
                   </div>
 
-                  <div className="prose prose-invert max-w-none">
+                  <div className="prose prose-invert max-w-none text-white">
                     {selectedMessage.bodyHtml ? (
                       <div dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }} />
                     ) : (

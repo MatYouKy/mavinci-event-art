@@ -152,6 +152,7 @@ export default function Hero() {
       )}
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
+       
         <div className="max-w-3xl">
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-light text-white mb-6 md:mb-8 leading-tight">
             Kompleksowa Obsługa

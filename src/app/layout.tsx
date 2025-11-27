@@ -2,19 +2,15 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { EditModeProvider } from '@/contexts/EditModeContext';
+import { SessionTracker } from '@/components/SessionTracker';
 import { Providers } from './providers';
 import '@/index.css';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://mavinci.pl'),
-  title: {
-    default: 'MAVINCI Event & ART - Profesjonalna obsługa eventów | DJ, Nagłośnienie, Oświetlenie',
-    template: '%s | MAVINCI Event & ART'
-  },
-  description: 'MAVINCI Event & ART - kompleksowa obsługa wydarzeń firmowych i prywatnych. DJ, nagłośnienie, oświetlenie sceniczne, streaming, atrakcje eventowe. Działamy w całej Polsce.',
-  keywords: ['event', 'eventy firmowe', 'obsługa eventów', 'DJ na event', 'nagłośnienie', 'oświetlenie sceniczne', 'streaming eventów', 'atrakcje eventowe', 'technika sceniczna', 'mavinci', 'organizacja eventów', 'imprezy firmowe', 'konferencje', 'wesela'],
   authors: [{ name: 'MAVINCI Event & ART' }],
-  creator: 'MAVINCI Event & ART',
   publisher: 'MAVINCI Event & ART',
   robots: {
     index: true,
@@ -49,11 +45,8 @@ export const metadata: Metadata = {
     description: 'Kompleksowa obsługa wydarzeń firmowych i prywatnych. DJ, nagłośnienie, oświetlenie, streaming.',
     images: ['/logo-mavinci-crm.png'],
   },
-  alternates: {
-    canonical: 'https://mavinci.pl',
-  },
   verification: {
-    google: 'qIraUGTmchH_bL3HeOYo_16-6U7R1os1yMel7',
+    google: 'google-site-verification=qIraUGTmchH_bL3HeOYo_16-6U7R1os1yMel7',
   },
   icons: {
     icon: [
@@ -105,12 +98,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pl">
       <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#d3bb73" />
-        <link rel="icon" type="image/svg+xml" href="/shape-mavinci.svg" />
-        <link rel="canonical" href="https://mavinci.pl" />
-
         {/* Google Tag */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-BHPZ5NSLQM"
@@ -128,16 +115,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           `}
         </Script>
 
-        <script
+        {/* <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
+        /> */}
       </head>
       <body>
         <Providers>
           <AuthProvider>
             <EditModeProvider>
+              <SessionTracker />
+              <Navbar />
               {children}
+              <Footer />
             </EditModeProvider>
           </AuthProvider>
         </Providers>

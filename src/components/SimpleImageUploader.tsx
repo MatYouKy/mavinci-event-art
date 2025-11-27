@@ -40,13 +40,11 @@ export function SimpleImageUploader({
     onImageSelect({
       file: selectedFile,
       alt,
-      image_metadata: {
+      image_metadata: { 
         desktop: {
-          src: '',
           position: { posX: 0, posY: 0, scale: 1 }
         },
         mobile: {
-          src: '',
           position: { posX: 0, posY: 0, scale: 1 }
         }
       }
@@ -90,11 +88,9 @@ export function SimpleImageUploader({
         alt: newAlt,
         image_metadata: {
           desktop: {
-            src: '',
             position: { posX: 0, posY: 0, scale: 1 }
           },
           mobile: {
-            src: '',
             position: { posX: 0, posY: 0, scale: 1 }
           }
         }
