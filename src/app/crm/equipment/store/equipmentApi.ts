@@ -225,7 +225,7 @@ updateCableQuantity: builder.mutation<
 }),
 
 
-    // szczegóły – skoro mówisz, że działa, zostawiam przykładowo
+    // szczegóły sprzętu
     getEquipmentDetails: builder.query<any, string>({
       async queryFn(id) {
         const { data, error } = await supabase
@@ -243,6 +243,46 @@ updateCableQuantity: builder.mutation<
         return { data };
       },
       providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
+    }),
+
+    // szczegóły kabla
+    getCableDetails: builder.query<any, string>({
+      async queryFn(id) {
+        const { data, error } = await supabase
+          .from('cables')
+          .select(`
+            *,
+            warehouse_categories:warehouse_categories(*),
+            connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
+            connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
+          `)
+          .eq('id', id)
+          .single();
+        if (error) return { error: error as any };
+        return { data };
+      },
+      providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
+    }),
+
+    // jednostki kabla
+    getCableUnits: builder.query<any[], string>({
+      async queryFn(cableId) {
+        const { data, error } = await supabase
+          .from('cable_units')
+          .select(`
+            *,
+            storage_locations:storage_locations(id, name)
+          `)
+          .eq('cable_id', cableId)
+          .order('created_at', { ascending: false });
+
+        if (error) return { error: error as any };
+        return { data: data ?? [] };
+      },
+      providesTags: (result, _err, id) => [
+        { type: 'Units', id },
+        ...((result ?? []).map((u: any) => ({ type: 'Units' as const, id: u.id }))),
+      ],
     }),
 
     // aktualizacja sprzętu
@@ -440,7 +480,9 @@ export const {
 
   useGetEquipmentListQuery,
   useGetEquipmentDetailsQuery,
+  useGetCableDetailsQuery,
   useGetUnitsByEquipmentQuery,
+  useGetCableUnitsQuery,
   useGetConnectorTypesQuery,
   useGetStorageLocationsQuery,
   useUpdateEquipmentItemMutation,
