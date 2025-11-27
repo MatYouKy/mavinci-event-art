@@ -89,12 +89,14 @@ export default function CableDetailPage() {
         notes: editForm.notes || null,
       });
 
-      await updateCable({ id: cableId, payload }).unwrap();
+      console.log('Saving cable with payload:', payload);
+      const result = await updateCable({ id: cableId, payload }).unwrap();
+      console.log('Save result:', result);
       setIsEditing(false);
       refetchCable();
       showSnackbar('Zapisano zmiany', 'success');
     } catch (e: any) {
-      console.error(e);
+      console.error('Error saving cable:', e);
       showSnackbar('Błąd podczas zapisywania', 'error');
     } finally {
       setSaving(false);
@@ -267,12 +269,28 @@ export default function CableDetailPage() {
                 </select>
               ) : (
                 <div className="flex items-center gap-2">
-                  {cable.connector_in_type?.thumbnail_url && (
-                    <img
-                      src={cable.connector_in_type.thumbnail_url}
-                      alt={cable.connector_in_type.name}
-                      className="w-8 h-8 rounded object-cover"
+                  {cable.connector_in_type?.thumbnail_url ? (
+                    <Popover
+                      trigger={
+                        <img
+                          src={cable.connector_in_type.thumbnail_url}
+                          alt={cable.connector_in_type.name}
+                          className="w-8 h-8 rounded object-cover cursor-pointer hover:ring-2 hover:ring-[#d3bb73] transition-all"
+                        />
+                      }
+                      content={
+                        <img
+                          src={cable.connector_in_type.thumbnail_url}
+                          alt={cable.connector_in_type.name}
+                          className="w-64 h-64 rounded-lg object-cover"
+                        />
+                      }
+                      openOn="hover"
                     />
+                  ) : (
+                    <div className="w-8 h-8 bg-[#0f1119] rounded flex items-center justify-center">
+                      <Plug className="w-4 h-4 text-[#e5e4e2]/40" />
+                    </div>
                   )}
                   <p className="text-[#e5e4e2]">{cable.connector_in_type?.name || '-'}</p>
                 </div>
@@ -297,12 +315,28 @@ export default function CableDetailPage() {
                 </select>
               ) : (
                 <div className="flex items-center gap-2">
-                  {cable.connector_out_type?.thumbnail_url && (
-                    <img
-                      src={cable.connector_out_type.thumbnail_url}
-                      alt={cable.connector_out_type.name}
-                      className="w-8 h-8 rounded object-cover"
+                  {cable.connector_out_type?.thumbnail_url ? (
+                    <Popover
+                      trigger={
+                        <img
+                          src={cable.connector_out_type.thumbnail_url}
+                          alt={cable.connector_out_type.name}
+                          className="w-8 h-8 rounded object-cover cursor-pointer hover:ring-2 hover:ring-[#d3bb73] transition-all"
+                        />
+                      }
+                      content={
+                        <img
+                          src={cable.connector_out_type.thumbnail_url}
+                          alt={cable.connector_out_type.name}
+                          className="w-64 h-64 rounded-lg object-cover"
+                        />
+                      }
+                      openOn="hover"
                     />
+                  ) : (
+                    <div className="w-8 h-8 bg-[#0f1119] rounded flex items-center justify-center">
+                      <Plug className="w-4 h-4 text-[#e5e4e2]/40" />
+                    </div>
                   )}
                   <p className="text-[#e5e4e2]">{cable.connector_out_type?.name || '-'}</p>
                 </div>

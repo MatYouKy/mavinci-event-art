@@ -253,6 +253,7 @@ updateCableQuantity: builder.mutation<
           .select(`
             *,
             warehouse_categories:warehouse_categories(*),
+            storage_location:storage_locations(id, name),
             connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
             connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
           `)
