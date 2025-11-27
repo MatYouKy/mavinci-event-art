@@ -12,6 +12,7 @@ mobile/package-lock.json
 node_modules
 dist
 dist-ssr
+deploy.sh
 *.local
 
 .next
