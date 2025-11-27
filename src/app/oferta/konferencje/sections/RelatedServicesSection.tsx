@@ -28,7 +28,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   const filteredRelatedServices = relatedServices.filter(
-    (service) => service.is_active && !!service.hero_image_url,
+    (service) => service?.is_active && !!service.hero_image_url,
   );
 
   return (
