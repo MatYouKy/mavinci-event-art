@@ -322,6 +322,10 @@ updateCableQuantity: builder.mutation<
       async queryFn({ id, payload }) {
         console.log('updateCable mutation - updating cable:', id, payload);
 
+        // Sprawdź sesję użytkownika
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Current session:', session ? `User: ${session.user.email}` : 'NO SESSION');
+
         // Nie używamy .select() bo może być blokowane przez RLS
         const { error, count } = await supabase
           .from('cables')
