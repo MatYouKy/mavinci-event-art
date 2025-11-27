@@ -3,13 +3,23 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, Star, Mail, Edit2, FileText, Tag, Package, Trash2, GripVertical, Plus } from 'lucide-react';
+import {
+  Check,
+  Star,
+  Mail,
+  Edit2,
+  FileText,
+  Tag,
+  Package,
+  Trash2,
+  GripVertical,
+  Plus,
+} from 'lucide-react';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { AdminServiceEditor } from '@/components/AdminServiceEditor';
 import ServiceSEOModal from '@/components/ServiceSEOModal';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { ResponsiveCarousel } from '@/components/ResponsiveCarousel';
-import { iconMap } from '@/app/oferta/konferencje/ConferencesPage';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { selectCustomIcons, fetchCustomIcons } from '@/store/slices/customIconSlice';
 import { CustomIcon } from '@/components/UI/CustomIcon/CustomIcon';
@@ -49,6 +59,12 @@ export default function ServiceDetailClient({
   const [isAddingImage, setIsAddingImage] = useState(false);
   const [newImageData, setNewImageData] = useState<IUploadImage | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  console.log('relatedServices', relatedServices);
+
+  const filteredRelatedServices = relatedServices.filter(
+    (service) => service.is_active && !!service.hero_image_url,
+  );
 
   useEffect(() => {
     dispatch(fetchCustomIcons());
@@ -115,7 +131,7 @@ export default function ServiceDetailClient({
       if (error) throw error;
 
       showSnackbar('Zdjęcie usunięte', 'success');
-      setLocalGallery(localGallery.filter(img => img.id !== imageId));
+      setLocalGallery(localGallery.filter((img) => img.id !== imageId));
       router.refresh();
     } catch (error) {
       console.error('Error deleting image:', error);
@@ -133,17 +149,16 @@ export default function ServiceDetailClient({
     try {
       const result = await uploadOptimizedImage(newImageData.file, 'services/gallery');
 
-      const maxOrder = localGallery.length > 0 ? Math.max(...localGallery.map(g => g.display_order)) : 0;
+      const maxOrder =
+        localGallery.length > 0 ? Math.max(...localGallery.map((g) => g.display_order)) : 0;
 
-      const { error } = await supabase
-        .from('conferences_service_gallery')
-        .insert({
-          service_id: service.id,
-          image_url: result.desktop,
-          alt_text: newImageData.alt || '',
-          display_order: maxOrder + 1,
-          is_active: true,
-        });
+      const { error } = await supabase.from('conferences_service_gallery').insert({
+        service_id: service.id,
+        image_url: result.desktop,
+        alt_text: newImageData.alt || '',
+        display_order: maxOrder + 1,
+        is_active: true,
+      });
 
       if (error) throw error;
 
@@ -170,12 +185,17 @@ export default function ServiceDetailClient({
     <>
       {/* Inactive Service Banner for Admins */}
       {!service.is_active && isAdmin && (
-        <section className="bg-red-500/10 border-b border-red-500/30 px-6 py-4">
+        <section className="border-b border-red-500/30 bg-red-500/10 px-6 py-4">
           <div className="mx-auto max-w-7xl">
             <div className="flex items-center gap-3 text-red-400">
               <div className="rounded-full bg-red-500/20 p-2">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               </div>
               <div>
@@ -212,7 +232,7 @@ export default function ServiceDetailClient({
               <div className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-1">
                 <CustomIcon
                   iconId={service.icon_id}
-                  className="h-7 w-7 text-[#d3bb73]"
+                  className="h-4 w-4 text-[#d3bb73]"
                   fallback={<span className="text-xs text-[#d3bb73]">?</span>}
                 />
                 <span className="text-sm font-medium text-[#d3bb73]">{category?.name}</span>
@@ -251,6 +271,15 @@ export default function ServiceDetailClient({
                   />
                 </div>
               )}
+              <div className="min-h-[50px] px-6">
+                <div className="mx-auto min-h-[50px] max-w-screen-xl">
+                  <CategoryBreadcrumb
+                    pageSlug={`uslugi/${service.slug}`}
+                    productName={service.name}
+                    hideMetadataButton={false}
+                  />
+                </div>
+              </div>
 
               {/* Description */}
               {service.long_description && (
@@ -325,25 +354,14 @@ export default function ServiceDetailClient({
           </div>
         </div>
       </section>
-            <section className="px-6 pt-24 min-h-[50px]">
-          <div className="mx-auto min-h-[50px] max-w-screen-lg">
-            <CategoryBreadcrumb
-              pageSlug={`uslugi/${service.slug}`}
-              productName={service.name}
-              hideMetadataButton={false}
-            />
-          </div>
-        </section>
 
       {/* Gallery Section */}
       {(localGallery.length > 0 || isEditMode) && (
         <section className="bg-[#0f1119] px-6 py-20">
           <div className="mx-auto max-w-7xl">
             <div className="mb-12 flex items-center justify-between">
-              <div className="text-center flex-1">
-                <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
-                  Galeria
-                </h2>
+              <div className="flex-1 text-center">
+                <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">Galeria</h2>
                 <p className="text-[#e5e4e2]/60">Zobacz więcej zdjęć naszej usługi</p>
               </div>
               {isEditMode && (
@@ -437,7 +455,7 @@ export default function ServiceDetailClient({
         </section>
       )}
 
-      {relatedServices.length > 0 && (
+      {filteredRelatedServices.length > 0 && (
         <section className="bg-[#1c1f33] px-6 py-20">
           <div className="mx-auto max-w-7xl p-4">
             <div className="mb-12 p-4 text-center">
@@ -448,7 +466,7 @@ export default function ServiceDetailClient({
             </div>
 
             <ResponsiveCarousel
-              items={relatedServices}
+              items={filteredRelatedServices}
               responsive={{
                 desktop: 3,
                 tablet: 2,
@@ -464,7 +482,7 @@ export default function ServiceDetailClient({
                     href={`/uslugi/${item.slug}`}
                     className="group relative w-full flex-shrink-0 overflow-hidden rounded-xl transition-all hover:-translate-y-1 hover:border-[#d3bb73]/40 sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
                   >
-                    <div className="relative aspect-video overflow-hidden rounded-lg bg-[#0f1119]">
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#0f1119] sm:aspect-[8/9]">
                       {/* Obrazek */}
                       <img
                         src={item.thumbnail_url}

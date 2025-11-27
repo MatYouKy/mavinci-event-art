@@ -9,9 +9,6 @@ import StreamingCTA from './sections/StreamingCTA';
 export default function StreamingPage() {
   return (
     <main className="min-h-screen bg-[#0f1119]">
-      {/* Hero Section */}
-      <StreamingHero />
-
       {/* Benefits Section */}
       <StreamingBenefits />
 

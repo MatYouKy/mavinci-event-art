@@ -31,7 +31,6 @@ export const CustomIcon: React.FC<CustomIconProps> = ({
 
   svgCode = svgCode
     .replace(/stroke="[^"]*"/g, 'stroke="currentColor"')
-    .replace(/fill="[^"]*"/g, 'fill="currentColor"')
     .replace(/<svg/, '<svg class="w-full h-full"');
 
   if (!svgCode.includes('stroke="currentColor"')) {

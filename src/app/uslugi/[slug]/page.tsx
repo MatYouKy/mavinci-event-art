@@ -173,6 +173,7 @@ export default async function ServiceDetailPage({
   const { service, category, relatedServices, heroImage, globalConfig, gallery, hasWebsiteEdit } = data;
   // Calculate OG image URL
   const ogImageUrl = heroImage?.image_url || service.thumbnail_url || 'https://mavinci.pl/logo-mavinci-crm.png';
+  
 
   // Build Schema.org using SERVICE data (server-side)
   const pageUrl = `https://mavinci.pl/uslugi/${service.slug}`;

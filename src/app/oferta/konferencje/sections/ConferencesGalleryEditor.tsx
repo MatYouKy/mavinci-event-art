@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useWebsiteEdit } from '@/hooks/useWebsiteEdit';
+import { useEditMode } from '@/contexts/EditModeContext';
 
 interface ConferenceGalleryImage {
   id: string;
@@ -25,6 +26,7 @@ interface UploadingFile {
 }
 
 export default function ConferencesGalleryEditor() {
+  const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
   const { canEdit } = useWebsiteEdit();
   const [images, setImages] = useState<ConferenceGalleryImage[]>([]);
@@ -356,13 +358,13 @@ export default function ConferencesGalleryEditor() {
                       alt={image.title || 'Konferencja'}
                       className="w-full h-full object-cover"
                     />
-                    {image.is_primary && (
+                    {image.is_primary && isEditMode && (
                       <div className="absolute top-2 left-2 bg-[#d3bb73] text-[#1c1f33] px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
                         <Star className="w-3 h-3 fill-current" />
                         Główne
                       </div>
                     )}
-                    {canEdit && (
+                    {canEdit && isEditMode && (
                       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                         {!image.is_primary && (
                           <button
