@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Save, X, Trash2, Plug } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Trash2, Plug, Plus } from 'lucide-react';
 
 import { uploadImage } from '@/lib/storage';
 import { useDialog } from '@/contexts/DialogContext';
@@ -10,13 +10,16 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import Popover from '@/components/UI/Tooltip';
 
 import {
   useGetCableDetailsQuery,
   useGetCableUnitsQuery,
   useGetConnectorTypesQuery,
   useGetStorageLocationsQuery,
-  useGetEquipmentCategoriesQuery,
+  useUpdateCableMutation,
+  useAddCableUnitMutation,
+  useDeleteCableUnitMutation,
 } from '../../store/equipmentApi';
 
 const normalizeUuid = (v: unknown): string | null =>
@@ -39,7 +42,6 @@ export default function CableDetailPage() {
   const canEdit = canManageModule('equipment');
 
   // dictionaries
-  const { data: warehouseCategories = [] } = useGetEquipmentCategoriesQuery();
   const { data: connectorTypes = [] } = useGetConnectorTypesQuery();
   const { data: storageLocations = [] } = useGetStorageLocationsQuery();
 
@@ -57,6 +59,10 @@ export default function CableDetailPage() {
     refetch: refetchUnits,
   } = useGetCableUnitsQuery(cableId, { skip: !cableId });
 
+  const [updateCable] = useUpdateCableMutation();
+  const [addCableUnit] = useAddCableUnitMutation();
+  const [deleteCableUnit] = useDeleteCableUnitMutation();
+
   const loading = cableLoading || unitsLoading;
 
   const availableUnits = units.filter((u) => u.status === 'available').length;
@@ -66,6 +72,8 @@ export default function CableDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'units'>('details');
+  const [showAddUnit, setShowAddUnit] = useState(false);
+  const [newUnitSerial, setNewUnitSerial] = useState('');
 
   // edit form
   const [editForm, setEditForm] = useState<any>({});
@@ -76,13 +84,43 @@ export default function CableDetailPage() {
       ...cable,
       connector_in: cable?.connector_in ?? '',
       connector_out: cable?.connector_out ?? '',
-      warehouse_category_id: cable?.warehouse_category_id ?? '',
       storage_location_id: cable?.storage_location_id ?? '',
     });
     setIsEditing(true);
   };
 
   const handleCancelEdit = () => setIsEditing(false);
+
+  const handleSave = async () => {
+    if (!cable) return;
+    setSaving(true);
+    try {
+      const payload = removeUndefined({
+        name: editForm.name,
+        length_meters: toFloat(editForm.length_meters),
+        connector_in: normalizeUuid(editForm.connector_in),
+        connector_out: normalizeUuid(editForm.connector_out),
+        storage_location_id: normalizeUuid(editForm.storage_location_id),
+        stock_quantity: toInt(editForm.stock_quantity),
+        description: editForm.description || null,
+        thumbnail_url: editForm.thumbnail_url || null,
+        purchase_date: editForm.purchase_date || null,
+        purchase_price: toFloat(editForm.purchase_price),
+        current_value: toFloat(editForm.current_value),
+        notes: editForm.notes || null,
+      });
+
+      await updateCable({ id: cableId, payload }).unwrap();
+      setIsEditing(false);
+      refetchCable();
+      showSnackbar('Zapisano zmiany', 'success');
+    } catch (e: any) {
+      console.error(e);
+      showSnackbar('Błąd podczas zapisywania', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -101,6 +139,36 @@ export default function CableDetailPage() {
       showSnackbar('Zdjęcie zostało przesłane', 'success');
     } catch (err: any) {
       showSnackbar(err?.message || 'Błąd podczas przesyłania zdjęcia', 'error');
+    }
+  };
+
+  const handleAddUnit = async () => {
+    if (!newUnitSerial.trim()) {
+      showSnackbar('Podaj numer seryjny', 'error');
+      return;
+    }
+
+    try {
+      await addCableUnit({ cable_id: cableId, serial_number: newUnitSerial }).unwrap();
+      setNewUnitSerial('');
+      setShowAddUnit(false);
+      refetchUnits();
+      showSnackbar('Dodano jednostkę', 'success');
+    } catch (e) {
+      showSnackbar('Błąd podczas dodawania jednostki', 'error');
+    }
+  };
+
+  const handleDeleteUnit = async (unitId: string) => {
+    const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę jednostkę?', 'Usuń');
+    if (!confirmed) return;
+
+    try {
+      await deleteCableUnit({ id: unitId, cable_id: cableId }).unwrap();
+      refetchUnits();
+      showSnackbar('Usunięto jednostkę', 'success');
+    } catch (e) {
+      showSnackbar('Błąd podczas usuwania jednostki', 'error');
     }
   };
 
@@ -148,7 +216,7 @@ export default function CableDetailPage() {
           <ResponsiveActionBar
             actions={[
               { label: 'Anuluj', onClick: handleCancelEdit, icon: <X className="w-4 h-4" />, variant: 'default' },
-              { label: saving ? 'Zapisywanie…' : 'Zapisz', onClick: () => {}, icon: <Save className="w-4 h-4" />, variant: 'primary' },
+              { label: saving ? 'Zapisywanie…' : 'Zapisz', onClick: handleSave, icon: <Save className="w-4 h-4" />, variant: 'primary' },
             ]}
           />
         ) : canEdit ? (
@@ -179,11 +247,27 @@ export default function CableDetailPage() {
       {/* DETAILS TAB */}
       {activeTab === 'details' && (
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 space-y-6">
-          {/* Thumbnail */}
+          {/* Thumbnail with Popover */}
           <div>
             <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Zdjęcie</label>
             {cable.thumbnail_url ? (
-              <img src={cable.thumbnail_url} alt={cable.name} className="w-32 h-32 rounded-lg object-cover" />
+              <Popover
+                trigger={
+                  <img
+                    src={cable.thumbnail_url}
+                    alt={cable.name}
+                    className="w-32 h-32 rounded-lg object-cover cursor-pointer hover:ring-2 hover:ring-[#d3bb73] transition-all"
+                  />
+                }
+                content={
+                  <img
+                    src={cable.thumbnail_url}
+                    alt={cable.name}
+                    className="w-96 h-96 rounded-lg object-cover"
+                  />
+                }
+                openOn="hover"
+              />
             ) : (
               <div className="w-32 h-32 bg-[#0f1119] rounded-lg flex items-center justify-center">
                 <Plug className="w-12 h-12 text-[#e5e4e2]/40" />
@@ -252,7 +336,16 @@ export default function CableDetailPage() {
                   ))}
                 </select>
               ) : (
-                <p className="text-[#e5e4e2]">{cable.connector_in_type?.name || '-'}</p>
+                <div className="flex items-center gap-2">
+                  {cable.connector_in_type?.thumbnail_url && (
+                    <img
+                      src={cable.connector_in_type.thumbnail_url}
+                      alt={cable.connector_in_type.name}
+                      className="w-8 h-8 rounded object-cover"
+                    />
+                  )}
+                  <p className="text-[#e5e4e2]">{cable.connector_in_type?.name || '-'}</p>
+                </div>
               )}
             </div>
 
@@ -273,48 +366,34 @@ export default function CableDetailPage() {
                   ))}
                 </select>
               ) : (
-                <p className="text-[#e5e4e2]">{cable.connector_out_type?.name || '-'}</p>
+                <div className="flex items-center gap-2">
+                  {cable.connector_out_type?.thumbnail_url && (
+                    <img
+                      src={cable.connector_out_type.thumbnail_url}
+                      alt={cable.connector_out_type.name}
+                      className="w-8 h-8 rounded object-cover"
+                    />
+                  )}
+                  <p className="text-[#e5e4e2]">{cable.connector_out_type?.name || '-'}</p>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Warehouse Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Kategoria</label>
-              {isEditing ? (
-                <select
-                  name="warehouse_category_id"
-                  value={editForm.warehouse_category_id || ''}
-                  onChange={handleInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                >
-                  <option value="">Wybierz kategorię</option>
-                  {warehouseCategories.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-[#e5e4e2]">{cable.warehouse_categories?.name || '-'}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Ilość w magazynie</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  name="stock_quantity"
-                  value={editForm.stock_quantity || 0}
-                  onChange={handleInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                />
-              ) : (
-                <p className="text-[#e5e4e2]">{cable.stock_quantity || 0} szt.</p>
-              )}
-            </div>
+          {/* Stock Info */}
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Ilość w magazynie</label>
+            {isEditing ? (
+              <input
+                type="number"
+                name="stock_quantity"
+                value={editForm.stock_quantity || 0}
+                onChange={handleInputChange}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            ) : (
+              <p className="text-[#e5e4e2]">{cable.stock_quantity || 0} szt.</p>
+            )}
           </div>
 
           {/* Description */}
@@ -342,13 +421,41 @@ export default function CableDetailPage() {
             <h3 className="text-lg font-medium text-[#e5e4e2]">Jednostki kabla</h3>
             {canEdit && (
               <button
-                className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
-                onClick={() => showSnackbar('Funkcja w przygotowaniu', 'info')}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
+                onClick={() => setShowAddUnit(!showAddUnit)}
               >
+                <Plus className="w-4 h-4" />
                 Dodaj jednostkę
               </button>
             )}
           </div>
+
+          {showAddUnit && (
+            <div className="mb-4 p-4 bg-[#0f1119] rounded-lg border border-[#d3bb73]/20">
+              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Numer seryjny</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newUnitSerial}
+                  onChange={(e) => setNewUnitSerial(e.target.value)}
+                  placeholder="np. CABLE-001"
+                  className="flex-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+                <button
+                  onClick={handleAddUnit}
+                  className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
+                >
+                  Dodaj
+                </button>
+                <button
+                  onClick={() => { setShowAddUnit(false); setNewUnitSerial(''); }}
+                  className="px-4 py-2 bg-[#1c1f33] text-[#e5e4e2] rounded-lg hover:bg-[#1c1f33]/80"
+                >
+                  Anuluj
+                </button>
+              </div>
+            </div>
+          )}
 
           {units.length === 0 ? (
             <p className="text-center text-[#e5e4e2]/60 py-8">Brak jednostek</p>
@@ -365,9 +472,19 @@ export default function CableDetailPage() {
                       Status: <span className={unit.status === 'available' ? 'text-green-400' : 'text-orange-400'}>{unit.status}</span>
                     </p>
                   </div>
-                  {unit.storage_locations?.name && (
-                    <p className="text-sm text-[#e5e4e2]/60">{unit.storage_locations.name}</p>
-                  )}
+                  <div className="flex items-center gap-4">
+                    {unit.storage_locations?.name && (
+                      <p className="text-sm text-[#e5e4e2]/60">{unit.storage_locations.name}</p>
+                    )}
+                    {canEdit && (
+                      <button
+                        onClick={() => handleDeleteUnit(unit.id)}
+                        className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-400" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

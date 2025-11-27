@@ -305,6 +305,63 @@ updateCableQuantity: builder.mutation<
       ],
     }),
 
+    // aktualizacja kabla
+    updateCable: builder.mutation<
+      { success: true },
+      { id: string; payload: Record<string, any> }
+    >({
+      async queryFn({ id, payload }) {
+        const { error } = await supabase
+          .from('cables')
+          .update(payload)
+          .eq('id', id);
+
+        if (error) return { error: error as any };
+        return { data: { success: true } };
+      },
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Equipment', id },
+        'EquipmentList',
+      ],
+    }),
+
+    // dodawanie jednostki kabla
+    addCableUnit: builder.mutation<
+      { success: true },
+      { cable_id: string; serial_number?: string; status?: string }
+    >({
+      async queryFn({ cable_id, serial_number, status = 'available' }) {
+        const { error } = await supabase
+          .from('cable_units')
+          .insert({ cable_id, serial_number, status });
+
+        if (error) return { error: error as any };
+        return { data: { success: true } };
+      },
+      invalidatesTags: (_result, _error, { cable_id }) => [
+        { type: 'Units', id: cable_id },
+      ],
+    }),
+
+    // usuwanie jednostki kabla
+    deleteCableUnit: builder.mutation<
+      { success: true },
+      { id: string; cable_id: string }
+    >({
+      async queryFn({ id }) {
+        const { error } = await supabase
+          .from('cable_units')
+          .delete()
+          .eq('id', id);
+
+        if (error) return { error: error as any };
+        return { data: { success: true } };
+      },
+      invalidatesTags: (_result, _error, { cable_id }) => [
+        { type: 'Units', id: cable_id },
+      ],
+    }),
+
     // kasowanie pojedynczego sprzętu (nie dotyczy kitów)
 deleteEquipment: builder.mutation<{ success: true }, string>({
   async queryFn(id) {
@@ -486,6 +543,9 @@ export const {
   useGetConnectorTypesQuery,
   useGetStorageLocationsQuery,
   useUpdateEquipmentItemMutation,
+  useUpdateCableMutation,
+  useAddCableUnitMutation,
+  useDeleteCableUnitMutation,
   useDeleteEquipmentMutation,
   useGetEquipmentFeedQuery,
   useLazyGetEquipmentFeedQuery,
