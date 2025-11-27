@@ -321,18 +321,19 @@ updateCableQuantity: builder.mutation<
     >({
       async queryFn({ id, payload }) {
         console.log('updateCable mutation - updating cable:', id, payload);
-        const { error, data } = await supabase
+
+        // Nie używamy .select() bo może być blokowane przez RLS
+        const { error, count } = await supabase
           .from('cables')
           .update(payload)
-          .eq('id', id)
-          .select()
-          .single();
+          .eq('id', id);
 
         if (error) {
           console.error('updateCable mutation - error:', error);
           return { error: error as any };
         }
-        console.log('updateCable mutation - success:', data);
+
+        console.log('updateCable mutation - success, rows affected:', count);
         return { data: { success: true } };
       },
       invalidatesTags: (_result, _error, { id }) => {
