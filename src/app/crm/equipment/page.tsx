@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Plus, Search, Package, Grid, List, Trash2, ChevronRight,
+  Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight,
   FolderTree, Layers, MapPin
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -56,7 +56,7 @@ export default function EquipmentPage() {
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
 
   // Zakres UI
-  const [activeTab, setActiveTab] = useState<string>('all'); // 'all' | categoryId
+  const [activeTab, setActiveTab] = useState<string>('all'); // 'all' | categoryId | 'cables'
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
@@ -65,8 +65,8 @@ export default function EquipmentPage() {
   const [page, setPage] = useState(0);
   const limit = 24;
 
-  // Kategoria do filtra feedu (z activeTab, ale bez 'all')
-  const categoryId = activeTab !== 'all' ? activeTab : null;
+  // Kategoria do filtra feedu (z activeTab, ale bez 'all' i 'cables')
+  const categoryId = activeTab !== 'all' && activeTab !== 'cables' ? activeTab : null;
 
   // Hooki RTKQ
   const { data: categories = [], isLoading: catLoading, isError: catError, refetch: refetchCats } =
@@ -78,14 +78,21 @@ export default function EquipmentPage() {
     isFetching, // true również przy dociąganiu kolejnych stron
     isError,
     refetch,
-  } = useGetEquipmentFeedQuery({ q: searchTerm, categoryId, itemType: itemTypeFilter, page, limit });
+  } = useGetEquipmentFeedQuery({
+    q: searchTerm,
+    categoryId,
+    itemType: itemTypeFilter,
+    showCablesOnly: activeTab === 'cables',
+    page,
+    limit
+  });
 
   const [deleteEquipment, { isLoading: deleting }] = useDeleteEquipmentMutation();
 
   // Reset strony przy zmianie filtrów
   useEffect(() => {
     setPage(0);
-  }, [searchTerm, categoryId, itemTypeFilter]);
+  }, [searchTerm, categoryId, itemTypeFilter, activeTab]);
 
   // IntersectionObserver – strażnik na dole listy
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -283,7 +290,7 @@ export default function EquipmentPage() {
           {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
         </button>
 
-        {mainCategories.map((cat) => (
+        {mainCategories.filter(cat => cat.name !== 'PRZEWODY').map((cat) => (
           <button
             key={cat.id}
             onClick={() => setActiveTab(cat.id)}
@@ -293,6 +300,17 @@ export default function EquipmentPage() {
             {activeTab === cat.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
           </button>
         ))}
+
+        <button
+          onClick={() => setActiveTab('cables')}
+          className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === 'cables' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
+        >
+          <div className="flex items-center gap-2">
+            <Plug className="w-4 h-4" />
+            Kable
+          </div>
+          {activeTab === 'cables' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
+        </button>
       </div>
 
       {/* Filtry typu */}
@@ -348,9 +366,15 @@ export default function EquipmentPage() {
                 return (
                   <div
                     key={item.id}
-                    onClick={() =>
-                      router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)
-                    }
+                    onClick={() => {
+                      if (item.is_kit) {
+                        router.push(`/crm/equipment/kits?edit=${item.id}`);
+                      } else if (item.is_cable) {
+                        router.push(`/crm/equipment/cables/${item.id}`);
+                      } else {
+                        router.push(`/crm/equipment/${item.id}`);
+                      }
+                    }}
                     className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 cursor-pointer relative"
                   >
 {canManageModule('equipment') && (
@@ -418,9 +442,15 @@ export default function EquipmentPage() {
                 return (
                   <div
                     key={item.id}
-                    onClick={() =>
-                      router.push(item.is_kit ? `/crm/equipment/kits?edit=${item.id}` : `/crm/equipment/${item.id}`)
-                    }
+                    onClick={() => {
+                      if (item.is_kit) {
+                        router.push(`/crm/equipment/kits?edit=${item.id}`);
+                      } else if (item.is_cable) {
+                        router.push(`/crm/equipment/cables/${item.id}`);
+                      } else {
+                        router.push(`/crm/equipment/${item.id}`);
+                      }
+                    }}
                     className="flex items-center gap-4 p-4 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 last:border-0"
                   >
                     <div className="relative">

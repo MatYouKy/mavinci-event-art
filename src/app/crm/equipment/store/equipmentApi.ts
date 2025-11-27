@@ -8,6 +8,7 @@ type FeedParams = {
   q?: string;                // wyszukiwarka
   categoryId?: string|null;  // filtr kategorii (opcjonalnie)
   itemType?: 'all'|'equipment'|'kits';
+  showCablesOnly?: boolean;  // czy pokazać tylko kable
   page?: number;             // numer strony (0,1,2…)
   limit?: number;            // ile rekordów na stronę
 };
@@ -70,16 +71,44 @@ getEquipmentList: builder.query<{
   providesTags: ['EquipmentList'],
 }),
 getEquipmentFeed: builder.query<{
-      items: any[];                     // połączone items + kits
-      total?: number | null;            // jak chcesz, możesz zwrócić count
+      items: any[];                     // połączone items + kits + cables
+      total?: number | null;
       page: number;
       hasMore: boolean;
     }, FeedParams>({
-      // UWAGA: to nadal 2 zapytania i merge po stronie klienta.
-      // Docelowo najlepiej zrobić VIEW (opis pod koniec).
-      async queryFn({ q='', categoryId=null, itemType='all', page=0, limit=24 }) {
+      async queryFn({ q='', categoryId=null, itemType='all', showCablesOnly=false, page=0, limit=24 }) {
         const from = page * limit;
         const to   = from + limit - 1;
+
+        // Jeśli pokazujemy tylko kable
+        if (showCablesOnly) {
+          let cablesQ = supabase
+            .from('cables')
+            .select(`
+              id, name, warehouse_category_id, thumbnail_url, description, created_at, stock_quantity,
+              cable_units:cable_units(id, status)
+            `, { count: 'exact' })
+            .is('deleted_at', null)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .range(from, to);
+
+          if (q) cablesQ = cablesQ.ilike('name', `%${q}%`);
+
+          const cablesRes = await cablesQ;
+          if (cablesRes.error) return { error: cablesRes.error as any };
+
+          const cables = (cablesRes.data ?? []).map(c => ({
+            ...c,
+            is_cable: true,
+            is_kit: false,
+            equipment_units: c.cable_units || []
+          }));
+
+          const hasMore = (from + cables.length) < (cablesRes.count ?? 0);
+
+          return { data: { items: cables, total: cablesRes.count, page, hasMore } };
+        }
 
         // Pobierz podkategorie, jeśli categoryId jest kategoria główną
         let categoryIds: string[] = [];
@@ -103,13 +132,14 @@ getEquipmentFeed: builder.query<{
           }
         }
 
-        // --- sprzęty ---
+        // --- sprzęty (bez kabli) ---
         let itemsQ = supabase
           .from('equipment_items')
           .select(`
             id, name, warehouse_category_id, brand, model, thumbnail_url, description, created_at,
             equipment_units:equipment_units(id, status)
           `, { count: 'exact' })
+          .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
 
@@ -135,16 +165,14 @@ getEquipmentFeed: builder.query<{
 
         // złącz i posortuj (po created_at DESC)
         let merged = [
-          ...(itemsRes.data ?? []).map(i => ({ ...i, is_kit: false })),
-          ...(kitsRes.data  ?? []).map(k => ({ ...k, is_kit: true,  equipment_units: [] })),
+          ...(itemsRes.data ?? []).map(i => ({ ...i, is_kit: false, is_cable: false })),
+          ...(kitsRes.data  ?? []).map(k => ({ ...k, is_kit: true, is_cable: false, equipment_units: [] })),
         ].sort((a,b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
 
         // filtr typu (all/equipment/kits)
-        if (itemType === 'equipment') merged = merged.filter(i => !i.is_kit);
+        if (itemType === 'equipment') merged = merged.filter(i => !i.is_kit && !i.is_cable);
         if (itemType === 'kits')      merged = merged.filter(i =>  i.is_kit);
 
-        // czy jest następna strona? (przy 2 zapytaniach „count” bywa mylący,
-        // ale do prostej heurystyki wystarczy)
         const approxCount =
           (itemType !== 'kits' ? (itemsRes.count ?? 0) : 0) +
           (itemType !== 'equipment' ? (kitsRes.count ?? 0) : 0);
