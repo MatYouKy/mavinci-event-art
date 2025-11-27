@@ -42,6 +42,9 @@ export default function NewEventModal({
   const [categories, setCategories] = useState<EventCategory[]>([]);
   const [showNewOrgForm, setShowNewOrgForm] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
+  const [clientType, setClientType] = useState<'organization' | 'individual'>('organization');
+  const [contactInputType, setContactInputType] = useState<'select' | 'manual'>('select');
+  const [manualContactName, setManualContactName] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -189,14 +192,44 @@ export default function NewEventModal({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Przygotuj dane do zapisania
+    let contactPersonId = formData.contact_person_id;
+
+    if (contactInputType === 'manual' && manualContactName.trim()) {
+      try {
+        const { data: newContact, error } = await supabase
+          .from('contacts')
+          .insert([
+            {
+              full_name: manualContactName.trim(),
+              contact_type: clientType === 'individual' ? 'individual' : 'contact',
+            },
+          ])
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error creating contact:', error);
+          alert('Błąd podczas tworzenia kontaktu: ' + error.message);
+          return;
+        }
+
+        if (newContact) {
+          contactPersonId = newContact.id;
+        }
+      } catch (err) {
+        console.error('Error:', err);
+        alert('Wystąpił błąd podczas tworzenia kontaktu');
+        return;
+      }
+    }
+
     const eventData = {
       name: formData.name,
-      organization_id: formData.organization_id || null,
-      contact_person_id: formData.contact_person_id || null,
+      organization_id: clientType === 'organization' ? (formData.organization_id || null) : null,
+      contact_person_id: contactPersonId || null,
       category_id: formData.category_id || null,
       event_date: formData.event_date,
       event_end_date: formData.event_end_date || null,
@@ -208,7 +241,6 @@ export default function NewEventModal({
 
     onSave(eventData);
 
-    // Reset form
     setFormData({
       name: '',
       organization_id: '',
@@ -221,6 +253,9 @@ export default function NewEventModal({
       description: '',
       status: 'inquiry',
     });
+    setClientType('organization');
+    setContactInputType('select');
+    setManualContactName('');
 
     onClose();
   };
@@ -264,64 +299,104 @@ export default function NewEventModal({
 
             <div>
               <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                <Building2 className="w-4 h-4 inline mr-1" />
-                Organizacja / Firma
+                Typ klienta
               </label>
+              <div className="flex gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientType('organization');
+                    setFormData({ ...formData, organization_id: '', contact_person_id: '' });
+                  }}
+                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                    clientType === 'organization'
+                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
+                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 inline mr-2" />
+                  Organizacja / Firma
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientType('individual');
+                    setFormData({ ...formData, organization_id: '', contact_person_id: '' });
+                  }}
+                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                    clientType === 'individual'
+                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
+                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                  }`}
+                >
+                  <User className="w-4 h-4 inline mr-2" />
+                  Klient indywidualny
+                </button>
+              </div>
 
-              {!showNewOrgForm ? (
-                <div className="flex gap-2">
-                  <select
-                    value={formData.organization_id}
-                    onChange={(e) =>
-                      setFormData({ ...formData, organization_id: e.target.value, contact_person_id: '' })
-                    }
-                    className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                  >
-                    <option value="">Wybierz organizację</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.alias || org.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowNewOrgForm(true)}
-                    className="px-4 py-2 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Nowa
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newOrgName}
-                      onChange={(e) => setNewOrgName(e.target.value)}
-                      placeholder="Nazwa organizacji"
-                      className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddNewOrganization}
-                      className="px-4 py-2 bg-[#d3bb73] hover:bg-[#d3bb73]/80 text-[#0f1119] rounded-lg transition-colors"
-                    >
-                      Dodaj
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowNewOrgForm(false);
-                        setNewOrgName('');
-                      }}
-                      className="px-4 py-2 bg-[#e5e4e2]/10 hover:bg-[#e5e4e2]/20 text-[#e5e4e2] rounded-lg transition-colors"
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                </div>
+              {clientType === 'organization' && (
+                <>
+                  <label className="block text-sm text-[#e5e4e2]/70 mb-2">
+                    <Building2 className="w-4 h-4 inline mr-1" />
+                    Organizacja / Firma
+                  </label>
+
+                  {!showNewOrgForm ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={formData.organization_id}
+                        onChange={(e) =>
+                          setFormData({ ...formData, organization_id: e.target.value, contact_person_id: '' })
+                        }
+                        className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                      >
+                        <option value="">Wybierz organizację</option>
+                        {organizations.map((org) => (
+                          <option key={org.id} value={org.id}>
+                            {org.alias || org.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowNewOrgForm(true)}
+                        className="px-4 py-2 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors flex items-center gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Nowa
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newOrgName}
+                          onChange={(e) => setNewOrgName(e.target.value)}
+                          placeholder="Nazwa organizacji"
+                          className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddNewOrganization}
+                          className="px-4 py-2 bg-[#d3bb73] hover:bg-[#d3bb73]/80 text-[#0f1119] rounded-lg transition-colors"
+                        >
+                          Dodaj
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNewOrgForm(false);
+                            setNewOrgName('');
+                          }}
+                          className="px-4 py-2 bg-[#e5e4e2]/10 hover:bg-[#e5e4e2]/20 text-[#e5e4e2] rounded-lg transition-colors"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -330,26 +405,75 @@ export default function NewEventModal({
                 <User className="w-4 h-4 inline mr-1" />
                 Osoba kontaktowa
               </label>
-              <select
-                value={formData.contact_person_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, contact_person_id: e.target.value })
-                }
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-              >
-                <option value="">Wybierz osobę kontaktową</option>
-                {filteredContacts.map((contact) => (
-                  <option key={contact.id} value={contact.id}>
-                    {contact.full_name}
-                    {contact.contact_type === 'individual' ? ' (Prywatny)' : ''}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-[#e5e4e2]/40 mt-1">
-                {formData.organization_id
-                  ? 'Wyświetlane są osoby z wybranej organizacji'
-                  : 'Wybierz organizację aby zawęzić listę kontaktów'}
-              </p>
+
+              <div className="flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContactInputType('select');
+                    setManualContactName('');
+                  }}
+                  className={`flex-1 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                    contactInputType === 'select'
+                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
+                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                  }`}
+                >
+                  Wybierz z bazy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContactInputType('manual');
+                    setFormData({ ...formData, contact_person_id: '' });
+                  }}
+                  className={`flex-1 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                    contactInputType === 'manual'
+                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
+                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                  }`}
+                >
+                  Wpisz ręcznie
+                </button>
+              </div>
+
+              {contactInputType === 'select' ? (
+                <>
+                  <select
+                    value={formData.contact_person_id}
+                    onChange={(e) =>
+                      setFormData({ ...formData, contact_person_id: e.target.value })
+                    }
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  >
+                    <option value="">Wybierz osobę kontaktową</option>
+                    {filteredContacts.map((contact) => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.full_name}
+                        {contact.contact_type === 'individual' ? ' (Prywatny)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                    {clientType === 'organization' && formData.organization_id
+                      ? 'Wyświetlane są osoby z wybranej organizacji'
+                      : 'Wybierz organizację aby zawęzić listę kontaktów'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={manualContactName}
+                    onChange={(e) => setManualContactName(e.target.value)}
+                    placeholder="np. Jan Kowalski"
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                    Kontakt zostanie automatycznie dodany do bazy
+                  </p>
+                </>
+              )}
             </div>
 
             <div>
