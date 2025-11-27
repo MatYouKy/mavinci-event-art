@@ -34,26 +34,26 @@ const navLinks = [
 const servicesLinks = [
   { label: 'Wszystkie usługi', href: '/oferta', highlight: false },
   { label: 'Konferencje', href: '/oferta/konferencje' },
-  { label: 'Integracje firmowe', href: '/oferta/integracje' },
-  { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
-  { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
   { label: 'Kasyno', href: '/oferta/kasyno' },
-  { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
-  { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
-  { label: 'DJ Eventowy', href: '/oferta/dj-eventowy' },
   { label: 'Streaming', href: '/oferta/streaming' },
+  { label: 'Integracje firmowe', href: '/oferta/integracje' },
+  { label: 'DJ Eventowy', href: '/oferta/dj-eventowy' },
+  { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
+  { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
+  { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
+  { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
 ];
 
 const servicesCategories = [
   { label: 'Konferencje', href: '/oferta/konferencje' },
-  { label: 'Integracje firmowe', href: '/oferta/integracje' },
-  { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
-  { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
   { label: 'Kasyno', href: '/oferta/kasyno' },
-  { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
+  { label: 'Streaming', href: '/oferta/streaming' },
+  { label: 'Quizy i teleturnieje', href: '/oferta/quizy-teleturnieje' },
   { label: 'Technika sceniczna', href: '/oferta/technika-sceniczna' },
   { label: 'DJ Eventowy', href: '/oferta/dj-eventowy' },
-  { label: 'Streaming', href: '/oferta/streaming' },
+  { label: 'Integracje firmowe', href: '/oferta/integracje' },
+  { label: 'Symulatory VR', href: '/oferta/symulatory-vr' },
+  { label: 'Wieczory tematyczne', href: '/oferta/wieczory-tematyczne' },
 ];
 
 export interface CategoryNode {

@@ -35,15 +35,30 @@ export default function OfertaPageClient() {
   async function loadServices() {
     try {
       const servicePages = [
-        { slug: 'naglosnienie', table: 'naglosnienie_page_images', icon: 'Mic', order: 1 },
-        { slug: 'konferencje', table: 'konferencje_page_images', icon: 'Presentation', order: 2 },
+        { slug: 'konferencje', table: 'konferencje_page_images', icon: 'Presentation', order: 1 },
+        { slug: 'kasyno', table: 'kasyno_page_images', icon: 'Sparkles', order: 2 },
         { slug: 'streaming', table: 'streaming_page_images', icon: 'Video', order: 3 },
-        { slug: 'symulatory-vr', table: 'symulatory-vr_page_images', icon: 'Gamepad2', order: 4 },
-        { slug: 'quizy-teleturnieje', table: 'quizy-teleturnieje_page_images', icon: 'Sparkles', order: 5 },
-        { slug: 'integracje', table: 'integracje_page_images', icon: 'Users', order: 6 },
-        { slug: 'kasyno', table: 'kasyno_page_images', icon: 'Sparkles', order: 7 },
-        { slug: 'wieczory-tematyczne', table: 'wieczory-tematyczne_page_images', icon: 'Lamp', order: 8 },
-        { slug: 'technika-sceniczna', table: 'technika-sceniczna_page_images', icon: 'Monitor', order: 9 },
+        {
+          slug: 'quizy-teleturnieje',
+          table: 'quizy-teleturnieje_page_images',
+          icon: 'Sparkles',
+          order: 4,
+        },
+        {
+          slug: 'technika-sceniczna',
+          table: 'technika-sceniczna_page_images',
+          icon: 'Monitor',
+          order: 5,
+        },
+        { slug: 'dj-eventowy', table: 'dj_hero_page_images', icon: 'Palette', order: 6 },
+        { slug: 'symulatory-vr', table: 'symulatory-vr_page_images', icon: 'Gamepad2', order: 7 },
+        { slug: 'integracje', table: 'integracje_page_images', icon: 'Users', order: 8 },
+        {
+          slug: 'wieczory-tematyczne',
+          table: 'wieczory-tematyczne_page_images',
+          icon: 'Lamp',
+          order: 9,
+        },
       ];
 
       const servicesData: Service[] = [];
@@ -95,8 +110,8 @@ export default function OfertaPageClient() {
   if (loading) {
     return (
       <>
-        <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pt-28 pb-20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pb-20 pt-28">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="text-center">
               <div className="animate-pulse text-[#d3bb73]">Ładowanie usług...</div>
             </div>
@@ -108,23 +123,23 @@ export default function OfertaPageClient() {
 
   return (
     <>
-      <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pt-28 pb-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="min-h-screen bg-gradient-to-b from-[#0f1119] to-[#1c1f33] pb-20 pt-28">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-6">
             <CategoryBreadcrumb pageSlug="oferta" />
           </div>
 
-          <div className="text-center mb-16">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-light text-[#e5e4e2] mb-6">
-              Nasza <span className="text-[#d3bb73] font-normal">Oferta</span>
+          <div className="mb-16 text-center">
+            <h1 className="mb-6 text-4xl font-light text-[#e5e4e2] md:text-5xl lg:text-6xl">
+              Nasza <span className="font-normal text-[#d3bb73]">Oferta</span>
             </h1>
-            <p className="text-lg text-[#e5e4e2]/70 max-w-3xl mx-auto">
-              Oferujemy kompleksową obsługę techniczną i organizację eventów.
-              Wybierz usługę, która Cię interesuje i poznaj szczegóły.
+            <p className="mx-auto max-w-3xl text-lg text-[#e5e4e2]/70">
+              Oferujemy kompleksową obsługę techniczną i organizację eventów. Wybierz usługę, która
+              Cię interesuje i poznaj szczegóły.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
             {services.map((service, index) => (
               <ServiceCard
                 key={service.id}
@@ -146,10 +161,10 @@ export default function OfertaPageClient() {
           <div className="mt-16 text-center">
             <Link
               href="/#kontakt"
-              className="inline-flex items-center gap-2 px-8 py-4 bg-[#d3bb73] text-[#1c1f33] rounded-full font-medium hover:bg-[#d3bb73]/90 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[#d3bb73]/40"
+              className="inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-4 font-medium text-[#1c1f33] transition-all duration-300 hover:scale-105 hover:bg-[#d3bb73]/90 hover:shadow-lg hover:shadow-[#d3bb73]/40"
             >
               Skontaktuj się z nami
-              <ArrowRight className="w-5 h-5" />
+              <ArrowRight className="h-5 w-5" />
             </Link>
           </div>
         </div>

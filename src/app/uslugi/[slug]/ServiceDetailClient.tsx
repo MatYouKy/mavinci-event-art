@@ -60,8 +60,6 @@ export default function ServiceDetailClient({
   const [newImageData, setNewImageData] = useState<IUploadImage | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  console.log('relatedServices', relatedServices);
-
   const filteredRelatedServices = relatedServices.filter(
     (service) => service.is_active && !!service.hero_image_url,
   );

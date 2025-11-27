@@ -27,7 +27,9 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
 }) => {
   const [isSaving, setIsSaving] = useState(false);
 
-  console.log(relatedServices);
+  const filteredRelatedServices = relatedServices.filter(
+    (service) => service.is_active && !!service.hero_image_url,
+  );
 
   return (
     <section className="bg-gradient-to-b from-[#0f1119] to-[#1c1f33] px-6 py-20">
@@ -213,65 +215,70 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
 
         {/* Infinite Carousel */}
 
-        <ResponsiveCarousel
-          items={relatedServices}
-          responsive={{
-            desktop: 3,
-            tablet: 2,
-            mobile: 1,
-          }}
-          autoPlay={!isEditMode}
-          autoPlayDelay={4000}
-          showArrows
-          renderItem={(item, idx) => {
-            if (!item) return null;
-            const Icon = iconMap[item?.icon] || Package;
-            return (
-              <Link
-                key={`${item.id}-${idx}`}
-                href={`/uslugi/${item.slug}`}
-                className="group relative w-full flex-shrink-0 overflow-hidden rounded-xl transition-all hover:-translate-y-1 hover:border-[#d3bb73]/40 sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
-              >
-                <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#0f1119] sm:aspect-[8/9]">
-                  {/* Obrazek */}
-                  <div
-                    className="absolute inset-0 transition-transform duration-500 group-hover:scale-110"
-                    style={
-                      item.image_metadata?.desktop?.position
-                        ? {
-                            transform: `translate(${(item.image_metadata.desktop.position.posX - 50) * 0.5}%, ${(item.image_metadata.desktop.position.posY - 50) * 0.5}%) scale(${item.image_metadata.desktop.position.scale})`,
-                            transformOrigin: 'center',
-                          }
-                        : undefined
-                    }
-                  >
-                    <img
-                      src={item.thumbnail_url}
-                      alt={item.name}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
+        {filteredRelatedServices.length > 0 && (
+          <ResponsiveCarousel
+            key={filteredRelatedServices.length}
+            items={filteredRelatedServices}
+            responsive={{
+              desktop: 3,
+              tablet: 2,
+              mobile: 1,
+            }}
+            autoPlay={!isEditMode}
+            autoPlayDelay={4000}
+            showArrows
+            renderItem={(item, idx) => {
+              if (!item) return null;
+              const Icon = iconMap[item?.icon] || Package;
+              return (
+                <Link
+                  key={`${item.id}-${idx}`}
+                  href={`/uslugi/${item.slug}`}
+                  className="group relative w-full flex-shrink-0 overflow-hidden rounded-xl transition-all hover:-translate-y-1 hover:border-[#d3bb73]/40 sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
+                >
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#0f1119] sm:aspect-[8/9]">
+                    {/* Obrazek */}
+                    <div
+                      className="absolute inset-0 transition-transform duration-500 group-hover:scale-110"
+                      style={
+                        item.image_metadata?.desktop?.position
+                          ? {
+                              transform: `translate(${(item.image_metadata.desktop.position.posX - 50) * 0.5}%, ${(item.image_metadata.desktop.position.posY - 50) * 0.5}%) scale(${item.image_metadata.desktop.position.scale})`,
+                              transformOrigin: 'center',
+                            }
+                          : undefined
+                      }
+                    >
+                      <img
+                        src={item.thumbnail_url}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
 
-                  {/* 🌙 Gradient — ZAWSZE WIDOCZNY, nie tylko w hover */}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-                  <div className="absolute bottom-2 left-6 mb-4 flex flex-col gap-2">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
-                      <Icon className="h-6 w-6 text-[#d3bb73]" />
-                    </div>
-                    <div className="relative z-10">
-                      <h3 className="mb-2 text-lg font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
-                        {item.name}
-                      </h3>
-                      {item.description && (
-                        <p className="line-clamp-2 text-sm text-[#e5e4e2]/60">{item.description}</p>
-                      )}
+                    {/* 🌙 Gradient — ZAWSZE WIDOCZNY, nie tylko w hover */}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                    <div className="absolute bottom-2 left-6 mb-4 flex flex-col gap-2">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                        <Icon className="h-6 w-6 text-[#d3bb73]" />
+                      </div>
+                      <div className="relative z-10">
+                        <h3 className="mb-2 text-lg font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                          {item.name}
+                        </h3>
+                        {item.description && (
+                          <p className="line-clamp-2 text-sm text-[#e5e4e2]/60">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            );
-          }}
-        />
+                </Link>
+              );
+            }}
+          />
+        )}
 
         <div className="mt-12 text-center">
           <Link
