@@ -48,7 +48,7 @@ export const CustomIcon: React.FC<CustomIconProps> = ({
   return (
     <span
       className={cn('inline-flex items-center justify-center', className)}
-      style={{ color: 'inherit', width: '1em', height: '1em', fontSize: 'inherit' }}
+      style={{ color: 'inherit', width: '1em', height: '1em', fontSize: 'inherit', fill: 'currentColor' }}
       dangerouslySetInnerHTML={{ __html: svgCode }}
     />
   );

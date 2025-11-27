@@ -18,6 +18,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { uploadOptimizedImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 interface ServiceDetailClientProps {
   service: any;
   category: any;
@@ -326,6 +327,15 @@ export default function ServiceDetailClient({
           </div>
         </div>
       </section>
+            <section className="px-6 pt-24 min-h-[50px]">
+          <div className="mx-auto min-h-[50px] max-w-screen-lg">
+            <CategoryBreadcrumb
+              pageSlug={`uslugi/${service.slug}`}
+              productName={service.name}
+              hideMetadataButton={false}
+            />
+          </div>
+        </section>
 
       {/* Gallery Section */}
       {(localGallery.length > 0 || isEditMode) && (
