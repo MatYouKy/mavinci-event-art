@@ -16,7 +16,7 @@ type FeedParams = {
 export const equipmentApi = createApi({
   reducerPath: 'equipmentApi',
   baseQuery: fakeBaseQuery(), // ← to chcieliśmy
-  tagTypes: ['Equipment', 'EquipmentList', 'Units', 'ConnectorTypes', 'StorageLocations', 'Categories'],
+  tagTypes: ['Equipment', 'EquipmentList', 'Units', 'ConnectorTypes', 'StorageLocations', 'Categories' 'CablesList'],
 
   endpoints: (builder) => ({
 
