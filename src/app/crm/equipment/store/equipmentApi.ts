@@ -326,19 +326,20 @@ updateCableQuantity: builder.mutation<
         const { data: { session } } = await supabase.auth.getSession();
         console.log('Current session:', session ? `User: ${session.user.email}` : 'NO SESSION');
 
-        // Nie używamy .select() bo może być blokowane przez RLS
-        const { error, count } = await supabase
+        const { data, error } = await supabase
           .from('cables')
           .update(payload)
-          .eq('id', id);
+          .eq('id', id)
+          .select()
+          .single();
 
         if (error) {
           console.error('updateCable mutation - error:', error);
           return { error: error as any };
         }
 
-        console.log('updateCable mutation - success, rows affected:', count);
-        return { data: { success: true } };
+        console.log('updateCable mutation - success, updated data:', data);
+        return { data };
       },
       invalidatesTags: (_result, _error, { id }) => {
         console.log('Invalidating tags for cable:', id);
