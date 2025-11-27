@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Save, X, Trash2, Plug, Plus } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Plug } from 'lucide-react';
 
 import { uploadImage } from '@/lib/storage';
-import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
@@ -14,12 +13,9 @@ import Popover from '@/components/UI/Tooltip';
 
 import {
   useGetCableDetailsQuery,
-  useGetCableUnitsQuery,
   useGetConnectorTypesQuery,
   useGetStorageLocationsQuery,
   useUpdateCableMutation,
-  useAddCableUnitMutation,
-  useDeleteCableUnitMutation,
 } from '../../store/equipmentApi';
 
 const normalizeUuid = (v: unknown): string | null =>
@@ -36,7 +32,6 @@ export default function CableDetailPage() {
   const params = useParams();
   const cableId = Array.isArray(params.id) ? params.id[0] : (params.id as string);
 
-  const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
   const { canManageModule } = useCurrentEmployee();
   const canEdit = canManageModule('equipment');
@@ -48,32 +43,16 @@ export default function CableDetailPage() {
   // data
   const {
     data: cable,
-    isFetching: cableLoading,
+    isFetching: loading,
     isError: cableError,
     refetch: refetchCable,
   } = useGetCableDetailsQuery(cableId, { skip: !cableId });
 
-  const {
-    data: units = [],
-    isFetching: unitsLoading,
-    refetch: refetchUnits,
-  } = useGetCableUnitsQuery(cableId, { skip: !cableId });
-
   const [updateCable] = useUpdateCableMutation();
-  const [addCableUnit] = useAddCableUnitMutation();
-  const [deleteCableUnit] = useDeleteCableUnitMutation();
-
-  const loading = cableLoading || unitsLoading;
-
-  const availableUnits = units.filter((u) => u.status === 'available').length;
-  const totalUnits = units.length;
 
   // ui state
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'units'>('details');
-  const [showAddUnit, setShowAddUnit] = useState(false);
-  const [newUnitSerial, setNewUnitSerial] = useState('');
 
   // edit form
   const [editForm, setEditForm] = useState<any>({});
@@ -142,36 +121,6 @@ export default function CableDetailPage() {
     }
   };
 
-  const handleAddUnit = async () => {
-    if (!newUnitSerial.trim()) {
-      showSnackbar('Podaj numer seryjny', 'error');
-      return;
-    }
-
-    try {
-      await addCableUnit({ cable_id: cableId, serial_number: newUnitSerial }).unwrap();
-      setNewUnitSerial('');
-      setShowAddUnit(false);
-      refetchUnits();
-      showSnackbar('Dodano jednostkę', 'success');
-    } catch (e) {
-      showSnackbar('Błąd podczas dodawania jednostki', 'error');
-    }
-  };
-
-  const handleDeleteUnit = async (unitId: string) => {
-    const confirmed = await showConfirm('Czy na pewno chcesz usunąć tę jednostkę?', 'Usuń');
-    if (!confirmed) return;
-
-    try {
-      await deleteCableUnit({ id: unitId, cable_id: cableId }).unwrap();
-      refetchUnits();
-      showSnackbar('Usunięto jednostkę', 'success');
-    } catch (e) {
-      showSnackbar('Błąd podczas usuwania jednostki', 'error');
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -226,26 +175,7 @@ export default function CableDetailPage() {
         ) : null}
       </div>
 
-      {/* TABS */}
-      <div className="flex gap-2 border-b border-[#d3bb73]/10">
-        <button
-          onClick={() => setActiveTab('details')}
-          className={`px-4 py-2 text-sm relative ${activeTab === 'details' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
-        >
-          Szczegóły
-          {activeTab === 'details' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
-        </button>
-        <button
-          onClick={() => setActiveTab('units')}
-          className={`px-4 py-2 text-sm relative ${activeTab === 'units' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
-        >
-          Jednostki ({totalUnits})
-          {activeTab === 'units' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
-        </button>
-      </div>
-
-      {/* DETAILS TAB */}
-      {activeTab === 'details' && (
+      {/* DETAILS */}
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 space-y-6">
           {/* Thumbnail with Popover */}
           <div>
@@ -411,86 +341,95 @@ export default function CableDetailPage() {
               <p className="text-[#e5e4e2]">{cable.description || '-'}</p>
             )}
           </div>
-        </div>
-      )}
 
-      {/* UNITS TAB */}
-      {activeTab === 'units' && (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-[#e5e4e2]">Jednostki kabla</h3>
-            {canEdit && (
-              <button
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
-                onClick={() => setShowAddUnit(!showAddUnit)}
+          {/* Storage Location */}
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Lokalizacja magazynowa</label>
+            {isEditing ? (
+              <select
+                name="storage_location_id"
+                value={editForm.storage_location_id || ''}
+                onChange={handleInputChange}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
               >
-                <Plus className="w-4 h-4" />
-                Dodaj jednostkę
-              </button>
+                <option value="">Wybierz lokalizację</option>
+                {storageLocations.map((loc: any) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-[#e5e4e2]">{cable.storage_location?.name || '-'}</p>
             )}
           </div>
 
-          {showAddUnit && (
-            <div className="mb-4 p-4 bg-[#0f1119] rounded-lg border border-[#d3bb73]/20">
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Numer seryjny</label>
-              <div className="flex gap-2">
+          {/* Purchase Info */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Data zakupu</label>
+              {isEditing ? (
                 <input
-                  type="text"
-                  value={newUnitSerial}
-                  onChange={(e) => setNewUnitSerial(e.target.value)}
-                  placeholder="np. CABLE-001"
-                  className="flex-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                  type="date"
+                  name="purchase_date"
+                  value={editForm.purchase_date || ''}
+                  onChange={handleInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
                 />
-                <button
-                  onClick={handleAddUnit}
-                  className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
-                >
-                  Dodaj
-                </button>
-                <button
-                  onClick={() => { setShowAddUnit(false); setNewUnitSerial(''); }}
-                  className="px-4 py-2 bg-[#1c1f33] text-[#e5e4e2] rounded-lg hover:bg-[#1c1f33]/80"
-                >
-                  Anuluj
-                </button>
-              </div>
+              ) : (
+                <p className="text-[#e5e4e2]">{cable.purchase_date || '-'}</p>
+              )}
             </div>
-          )}
 
-          {units.length === 0 ? (
-            <p className="text-center text-[#e5e4e2]/60 py-8">Brak jednostek</p>
-          ) : (
-            <div className="space-y-2">
-              {units.map((unit: any) => (
-                <div
-                  key={unit.id}
-                  className="flex items-center justify-between p-4 bg-[#0f1119] rounded-lg border border-[#d3bb73]/10"
-                >
-                  <div>
-                    <p className="text-[#e5e4e2] font-medium">{unit.serial_number || 'Bez numeru'}</p>
-                    <p className="text-sm text-[#e5e4e2]/60">
-                      Status: <span className={unit.status === 'available' ? 'text-green-400' : 'text-orange-400'}>{unit.status}</span>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    {unit.storage_locations?.name && (
-                      <p className="text-sm text-[#e5e4e2]/60">{unit.storage_locations.name}</p>
-                    )}
-                    {canEdit && (
-                      <button
-                        onClick={() => handleDeleteUnit(unit.id)}
-                        className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-400" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div>
+              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Cena zakupu</label>
+              {isEditing ? (
+                <input
+                  type="number"
+                  name="purchase_price"
+                  step="0.01"
+                  value={editForm.purchase_price || ''}
+                  onChange={handleInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              ) : (
+                <p className="text-[#e5e4e2]">{cable.purchase_price ? `${cable.purchase_price} zł` : '-'}</p>
+              )}
             </div>
-          )}
+
+            <div>
+              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Wartość bieżąca</label>
+              {isEditing ? (
+                <input
+                  type="number"
+                  name="current_value"
+                  step="0.01"
+                  value={editForm.current_value || ''}
+                  onChange={handleInputChange}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                />
+              ) : (
+                <p className="text-[#e5e4e2]">{cable.current_value ? `${cable.current_value} zł` : '-'}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Notatki</label>
+            {isEditing ? (
+              <textarea
+                name="notes"
+                value={editForm.notes || ''}
+                onChange={handleInputChange}
+                rows={3}
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            ) : (
+              <p className="text-[#e5e4e2]">{cable.notes || '-'}</p>
+            )}
+          </div>
         </div>
-      )}
     </div>
   );
 }
