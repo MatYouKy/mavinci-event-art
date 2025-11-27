@@ -178,89 +178,126 @@ export default function NewEquipmentPage() {
 
     setSaving(true);
     try {
-      const dimensions = formData.dimensions_length || formData.dimensions_width || formData.dimensions_height
-        ? {
-            length: parseFloat(formData.dimensions_length) || null,
-            width: parseFloat(formData.dimensions_width) || null,
-            height: parseFloat(formData.dimensions_height) || null,
-          }
-        : null;
+      const isCable = formData.cable_length_meters || formData.cable_connector_in || formData.cable_connector_out;
 
-      const cableSpecs = formData.cable_length_meters || formData.cable_connector_in || formData.cable_connector_out
-        ? {
+      let equipmentData: any;
+
+      if (isCable) {
+        const { data, error: cableError } = await supabase
+          .from('cables')
+          .insert({
+            name: formData.name,
+            warehouse_category_id: formData.subcategory_id || formData.category_id,
+            storage_location_id: null,
+            thumbnail_url: formData.thumbnail_url || null,
+            description: formData.description || null,
             length_meters: formData.cable_length_meters ? parseFloat(formData.cable_length_meters) : null,
             connector_in: formData.cable_connector_in || null,
             connector_out: formData.cable_connector_out || null,
-          }
-        : null;
+            stock_quantity: parseInt(formData.initial_quantity) || 0,
+            purchase_date: formData.purchase_date || null,
+            purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
+            current_value: formData.current_value ? parseFloat(formData.current_value) : null,
+            notes: formData.notes || null,
+            is_active: true,
+          })
+          .select()
+          .single();
 
-      const { data: equipmentData, error: equipmentError } = await supabase
-        .from('equipment_items')
-        .insert({
-          name: formData.name,
-          warehouse_category_id: formData.subcategory_id || formData.category_id,
-          brand: formData.brand || null,
-          model: formData.model || null,
-          description: formData.description || null,
-          thumbnail_url: formData.thumbnail_url || null,
-          user_manual_url: formData.user_manual_url || null,
-          weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
-          cable_specs: cableSpecs,
-          dimensions_cm: dimensions,
-          purchase_date: formData.purchase_date || null,
-          purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
-          current_value: formData.current_value ? parseFloat(formData.current_value) : null,
-          warranty_until: formData.warranty_until || null,
-          serial_number: formData.serial_number || null,
-          barcode: formData.barcode || null,
-          notes: formData.notes || null,
-          is_active: true,
-        })
-        .select()
-        .single();
+        if (cableError) throw cableError;
+        equipmentData = data;
+      } else {
+        const dimensions = formData.dimensions_length || formData.dimensions_width || formData.dimensions_height
+          ? {
+              length: parseFloat(formData.dimensions_length) || null,
+              width: parseFloat(formData.dimensions_width) || null,
+              height: parseFloat(formData.dimensions_height) || null,
+            }
+          : null;
 
-      if (equipmentError) throw equipmentError;
+        const { data, error: equipmentError } = await supabase
+          .from('equipment_items')
+          .insert({
+            name: formData.name,
+            warehouse_category_id: formData.subcategory_id || formData.category_id,
+            brand: formData.brand || null,
+            model: formData.model || null,
+            description: formData.description || null,
+            thumbnail_url: formData.thumbnail_url || null,
+            user_manual_url: formData.user_manual_url || null,
+            weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
+            dimensions_cm: dimensions,
+            purchase_date: formData.purchase_date || null,
+            purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
+            current_value: formData.current_value ? parseFloat(formData.current_value) : null,
+            warranty_until: formData.warranty_until || null,
+            serial_number: formData.serial_number || null,
+            barcode: formData.barcode || null,
+            notes: formData.notes || null,
+            is_active: true,
+          })
+          .select()
+          .single();
+
+        if (equipmentError) throw equipmentError;
+        equipmentData = data;
+      }
 
       const initialQty = parseInt(formData.initial_quantity) || 0;
 
       if (initialQty > 0) {
-        const { error: stockError } = await supabase
-          .from('equipment_stock')
-          .update({
-            total_quantity: initialQty,
-            available_quantity: initialQty,
-            storage_location: formData.storage_location || null,
-            min_stock_level: parseInt(formData.min_stock_level) || 0,
-          })
-          .eq('equipment_id', equipmentData.id);
+        if (isCable) {
+          const cableUnitsToCreate = Array.from({ length: initialQty }, (_, index) => ({
+            cable_id: equipmentData.id,
+            serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
+            status: 'available',
+            storage_location_id: null,
+          }));
 
-        if (stockError) throw stockError;
+          const { error: unitsError } = await supabase
+            .from('cable_units')
+            .insert(cableUnitsToCreate);
 
-        const unitsToCreate = Array.from({ length: initialQty }, (_, index) => ({
-          equipment_id: equipmentData.id,
-          unit_serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
-          status: 'available',
-          location: formData.storage_location || null,
-          purchase_date: formData.purchase_date || null,
-        }));
+          if (unitsError) throw unitsError;
+        } else {
+          const { error: stockError } = await supabase
+            .from('equipment_stock')
+            .update({
+              total_quantity: initialQty,
+              available_quantity: initialQty,
+              storage_location: formData.storage_location || null,
+              min_stock_level: parseInt(formData.min_stock_level) || 0,
+            })
+            .eq('equipment_id', equipmentData.id);
 
-        const { error: unitsError } = await supabase
-          .from('equipment_units')
-          .insert(unitsToCreate);
+          if (stockError) throw stockError;
 
-        if (unitsError) throw unitsError;
-
-        const { error: historyError } = await supabase
-          .from('equipment_stock_history')
-          .insert({
+          const unitsToCreate = Array.from({ length: initialQty }, (_, index) => ({
             equipment_id: equipmentData.id,
-            change_type: 'purchase',
-            quantity_change: initialQty,
-            quantity_after: initialQty,
-            notes: 'Początkowy stan magazynowy',
-          });
+            unit_serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
+            status: 'available',
+            location: formData.storage_location || null,
+            purchase_date: formData.purchase_date || null,
+          }));
 
-        if (historyError) throw historyError;
+          const { error: unitsError } = await supabase
+            .from('equipment_units')
+            .insert(unitsToCreate);
+
+          if (unitsError) throw unitsError;
+
+          const { error: historyError } = await supabase
+            .from('equipment_stock_history')
+            .insert({
+              equipment_id: equipmentData.id,
+              change_type: 'purchase',
+              quantity_change: initialQty,
+              quantity_after: initialQty,
+              notes: 'Początkowy stan magazynowy',
+            });
+
+          if (historyError) throw historyError;
+        }
       }
 
       if (components.length > 0) {
@@ -296,7 +333,11 @@ export default function NewEquipmentPage() {
         if (galleryError) console.error('Error adding thumbnail to gallery:', galleryError);
       }
 
-      router.push(`/crm/equipment/${equipmentData.id}`);
+      if (isCable) {
+        router.push(`/crm/equipment/cables/${equipmentData.id}`);
+      } else {
+        router.push(`/crm/equipment/${equipmentData.id}`);
+      }
     } catch (error) {
       console.error('Error creating equipment:', error);
       alert('Błąd podczas tworzenia sprzętu');
