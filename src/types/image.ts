@@ -37,6 +37,8 @@ export interface IImage {
 }
 
 export interface IUploadImage {
+  mobile: { src: string; position: { posX: number; posY: number; scale: number; }; };
+  desktop: { src: string; position: { posX: number; posY: number; scale: number; }; };
   file?: File;
   alt?: string;
   image_metadata?: IImageMetadataUpload;

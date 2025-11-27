@@ -21,6 +21,12 @@
  */
 
 export interface Employee {
+  position: any;
+  surname: any;
+  name: any;
+  avatar_url: string;
+  email: string;
+  phone: string;
   id: string;
   access_level?: string;
   role?: string;
