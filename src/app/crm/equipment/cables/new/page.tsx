@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Cable } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCreateCableMutation } from '../../store/equipmentApi';
-import supabase from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function NewCablePage() {
   const router = useRouter();
