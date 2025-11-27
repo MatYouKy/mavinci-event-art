@@ -102,11 +102,6 @@ export default function QuizPopularPackages() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-
   return (
     <>
       <RelatedServicesSection
