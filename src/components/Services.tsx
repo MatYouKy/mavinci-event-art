@@ -60,7 +60,8 @@ export default function Services() {
               .select('id, name, slug, thumbnail_url')
               .eq('category_id', category.id)
               .eq('is_active', true)
-              .order('created_at')
+              .eq('is_premium', true)
+              .order('display_order')
               .limit(1)
               .maybeSingle();
 
@@ -71,7 +72,11 @@ export default function Services() {
           })
         );
 
-        setCategories(categoriesWithServices);
+        const categoriesWithPremiumServices = categoriesWithServices.filter(
+          (cat) => cat.first_service !== undefined
+        );
+
+        setCategories(categoriesWithPremiumServices);
       }
     } catch (error) {
       console.error('Error loading categories:', error);
