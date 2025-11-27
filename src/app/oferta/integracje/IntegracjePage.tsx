@@ -1,6 +1,5 @@
 'use client';
 
-import IntegrationsHero from './sections/IntegrationsHero';
 import IntegrationsTypes from './sections/IntegrationsTypes';
 import IntegrationsBenefits from './sections/IntegrationsBenefits';
 import IntegrationsGallery from './sections/IntegrationsGallery';
@@ -10,8 +9,6 @@ import IntegrationsCTA from './sections/IntegrationsCTA';
 export default function IntegracjePage() {
   return (
     <main className="min-h-screen bg-[#0f1119]">
-      {/* Hero Section */}
-      <IntegrationsHero />
 
       {/* Types Section - Kafelki z rodzajami integracji */}
       <IntegrationsTypes />

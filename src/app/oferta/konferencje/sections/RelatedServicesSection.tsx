@@ -219,11 +219,12 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
           autoPlayDelay={4000}
           showArrows
           renderItem={(item, idx) => {
-            const Icon = iconMap[item.icon] || Package;
+            const Icon = iconMap[item?.icon] || Package;
+            if (!item) return null;
             return (
               <Link
                 key={`${item.id}-${idx}`}
-                href={`/uslugi/${item.slug}`}
+                href={`/uslugi/${item?.slug}`}
                 className="group relative w-full flex-shrink-0 overflow-hidden rounded-xl transition-all hover:-translate-y-1 hover:border-[#d3bb73]/40 sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
               >
             
@@ -232,7 +233,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                     <div
                       className="absolute inset-0 transition-transform duration-500 group-hover:scale-110"
                       style={
-                        item.image_metadata?.desktop?.position
+                        item?.image_metadata?.desktop?.position
                           ? {
                               transform: `translate(${(item.image_metadata.desktop.position.posX - 50) * 0.5}%, ${(item.image_metadata.desktop.position.posY - 50) * 0.5}%) scale(${item.image_metadata.desktop.position.scale})`,
                               transformOrigin: 'center',
