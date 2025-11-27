@@ -102,8 +102,6 @@ export default function CableDetailPage() {
       const result = await updateCable({ id: cableId, payload }).unwrap();
       console.log('Save result:', result);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await refetchCable();
       setIsEditing(false);
       showSnackbar('Zapisano zmiany', 'success');
     } catch (e: any) {
