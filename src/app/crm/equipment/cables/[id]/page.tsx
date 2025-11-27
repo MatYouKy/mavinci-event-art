@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Edit, Save, X, Plug } from 'lucide-react';
 
@@ -57,6 +57,13 @@ export default function CableDetailPage() {
   // edit form
   const [editForm, setEditForm] = useState<any>({});
 
+  // Debug: log when cable data changes
+  useEffect(() => {
+    if (cable) {
+      console.log('Cable data updated:', cable);
+    }
+  }, [cable]);
+
   const handleEdit = () => {
     if (!cable) return;
     setEditForm({
@@ -68,7 +75,9 @@ export default function CableDetailPage() {
     setIsEditing(true);
   };
 
-  const handleCancelEdit = () => setIsEditing(false);
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+  };
 
   const handleSave = async () => {
     if (!cable) return;
@@ -92,8 +101,9 @@ export default function CableDetailPage() {
       console.log('Saving cable with payload:', payload);
       const result = await updateCable({ id: cableId, payload }).unwrap();
       console.log('Save result:', result);
+
+      await refetchCable();
       setIsEditing(false);
-      refetchCable();
       showSnackbar('Zapisano zmiany', 'success');
     } catch (e: any) {
       console.error('Error saving cable:', e);

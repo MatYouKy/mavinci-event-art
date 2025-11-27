@@ -248,6 +248,7 @@ updateCableQuantity: builder.mutation<
     // szczegóły kabla
     getCableDetails: builder.query<any, string>({
       async queryFn(id) {
+        console.log('getCableDetails - fetching cable:', id);
         const { data, error } = await supabase
           .from('cables')
           .select(`
@@ -259,10 +260,17 @@ updateCableQuantity: builder.mutation<
           `)
           .eq('id', id)
           .single();
-        if (error) return { error: error as any };
+        if (error) {
+          console.error('getCableDetails - error:', error);
+          return { error: error as any };
+        }
+        console.log('getCableDetails - fetched data:', data);
         return { data };
       },
-      providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
+      providesTags: (_res, _err, id) => {
+        console.log('getCableDetails - providing tag for:', id);
+        return [{ type: 'Equipment', id }];
+      },
     }),
 
     // jednostki kabla
@@ -312,18 +320,28 @@ updateCableQuantity: builder.mutation<
       { id: string; payload: Record<string, any> }
     >({
       async queryFn({ id, payload }) {
-        const { error } = await supabase
+        console.log('updateCable mutation - updating cable:', id, payload);
+        const { error, data } = await supabase
           .from('cables')
           .update(payload)
-          .eq('id', id);
+          .eq('id', id)
+          .select()
+          .single();
 
-        if (error) return { error: error as any };
+        if (error) {
+          console.error('updateCable mutation - error:', error);
+          return { error: error as any };
+        }
+        console.log('updateCable mutation - success:', data);
         return { data: { success: true } };
       },
-      invalidatesTags: (_result, _error, { id }) => [
-        { type: 'Equipment', id },
-        'EquipmentList',
-      ],
+      invalidatesTags: (_result, _error, { id }) => {
+        console.log('Invalidating tags for cable:', id);
+        return [
+          { type: 'Equipment', id },
+          'EquipmentList',
+        ];
+      },
     }),
 
     // dodawanie jednostki kabla
