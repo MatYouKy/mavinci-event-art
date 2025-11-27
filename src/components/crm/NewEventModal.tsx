@@ -199,11 +199,16 @@ export default function NewEventModal({
 
     if (contactInputType === 'manual' && manualContactName.trim()) {
       try {
+        const nameParts = manualContactName.trim().split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
         const { data: newContact, error } = await supabase
           .from('contacts')
           .insert([
             {
-              full_name: manualContactName.trim(),
+              first_name: firstName,
+              last_name: lastName,
               contact_type: clientType === 'individual' ? 'individual' : 'contact',
             },
           ])
