@@ -211,12 +211,10 @@ export default function ServiceDetailClient({
             <div className="mb-2 flex items-center gap-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-1">
                 <CustomIcon
-                  iconId={service.icon_id} // string z bazy
-                  className="h-7 w-7 text-[#1c1f33]" // rozmiar + kolor
-                  fallback={<span className="text-xs text-[#1c1f33]">?</span>}
+                  iconId={service.icon_id}
+                  className="h-7 w-7 text-[#d3bb73]"
+                  fallback={<span className="text-xs text-[#d3bb73]">?</span>}
                 />
-
-                {/* <Icon className="h-4 w-4 text-[#d3bb73]" /> */}
                 <span className="text-sm font-medium text-[#d3bb73]">{category?.name}</span>
               </div>
             </div>
