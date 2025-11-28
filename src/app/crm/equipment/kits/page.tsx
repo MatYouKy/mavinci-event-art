@@ -26,8 +26,7 @@ interface Equipment {
 interface Cable {
   id: string;
   name: string;
-  cable_type: string | null;
-  length: number | null;
+  length_meters: number | null;
   thumbnail_url: string | null;
   stock_quantity: number;
 }
@@ -137,7 +136,7 @@ export default function KitsPage() {
   const fetchCables = async () => {
     const { data } = await supabase
       .from('cables')
-      .select('id, name, cable_type, length, thumbnail_url, stock_quantity')
+      .select('id, name, length_meters, thumbnail_url, stock_quantity')
       .eq('is_active', true)
       .is('deleted_at', null)
       .order('name');
@@ -154,7 +153,7 @@ export default function KitsPage() {
           equipment_kit_items(
             *,
             equipment_items(id, name, brand, model, thumbnail_url),
-            cables(id, name, cable_type, length, thumbnail_url, stock_quantity)
+            cables(id, name, length_meters, thumbnail_url, stock_quantity)
           )
         `)
         .eq('is_active', true)
@@ -618,8 +617,8 @@ export default function KitsPage() {
                       {eq?.brand && (
                         <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
                       )}
-                      {cable?.cable_type && (
-                        <div className="text-sm text-[#e5e4e2]/60">{cable.cable_type} {cable.length ? `- ${cable.length}m` : ''}</div>
+                      {cable?.length_meters && (
+                        <div className="text-sm text-[#e5e4e2]/60">{cable.length_meters}m</div>
                       )}
                       {item.notes && (
                         <div className="text-xs text-[#e5e4e2]/40 mt-1 italic">{item.notes}</div>
@@ -789,8 +788,8 @@ export default function KitsPage() {
                           {eq?.brand && (
                             <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
                           )}
-                          {cable?.cable_type && (
-                            <div className="text-sm text-[#e5e4e2]/60">{cable.cable_type} {cable.length ? `- ${cable.length}m` : ''}</div>
+                          {cable?.length_meters && (
+                            <div className="text-sm text-[#e5e4e2]/60">{cable.length_meters}m</div>
                           )}
                           <div className="grid grid-cols-2 gap-2 mt-2">
                             <div>
@@ -944,8 +943,8 @@ export default function KitsPage() {
                             <div className="flex-1 min-w-0">
                               <div className="text-[#e5e4e2] font-medium truncate">{cable.name}</div>
                               <div className="text-xs text-[#e5e4e2]/60">
-                                {cable.cable_type && <span>{cable.cable_type}</span>}
-                                {cable.cable_type && cable.stock_quantity > 0 && <span className="mx-1">•</span>}
+                                {cable.length_meters && <span>{cable.length_meters}m</span>}
+                                {cable.length_meters && cable.stock_quantity > 0 && <span className="mx-1">•</span>}
                                 {cable.stock_quantity > 0 && <span className="text-[#d3bb73]">{cable.stock_quantity} m dostępnych</span>}
                               </div>
                             </div>

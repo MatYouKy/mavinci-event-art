@@ -24,8 +24,7 @@ interface Equipment {
 interface Cable {
   id: string;
   name: string;
-  cable_type: string | null;
-  length: number | null;
+  length_meters: number | null;
   thumbnail_url: string | null;
   stock_quantity: number;
 }
@@ -111,7 +110,7 @@ export default function KitsManagementModal({
   const fetchCables = async () => {
     const { data } = await supabase
       .from('cables')
-      .select('id, name, cable_type, length, thumbnail_url, stock_quantity')
+      .select('id, name, length_meters, thumbnail_url, stock_quantity')
       .eq('is_active', true)
       .is('deleted_at', null)
       .order('name');
@@ -137,7 +136,7 @@ export default function KitsManagementModal({
           equipment_kit_items(
             *,
             equipment_items(id, name, brand, model, thumbnail_url),
-            cables(id, name, cable_type, length, thumbnail_url, stock_quantity)
+            cables(id, name, length_meters, thumbnail_url, stock_quantity)
           )
         `)
         .eq('is_active', true)
@@ -390,8 +389,7 @@ export default function KitsManagementModal({
   );
 
   const filteredCables = cables.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.cable_type?.toLowerCase().includes(searchTerm.toLowerCase())
+    item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const wrapperClass = inline
@@ -646,8 +644,8 @@ export default function KitsManagementModal({
                               {eq?.brand && (
                                 <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
                               )}
-                              {cable?.cable_type && (
-                                <div className="text-sm text-[#e5e4e2]/60">{cable.cable_type} {cable.length ? `- ${cable.length}m` : ''}</div>
+                              {cable?.length_meters && (
+                                <div className="text-sm text-[#e5e4e2]/60">{cable.length_meters}m</div>
                               )}
                               <div className="grid grid-cols-2 gap-2 mt-2">
                                 <div>
@@ -789,8 +787,8 @@ export default function KitsManagementModal({
                             )}
                             <div className="flex-1 text-left">
                               <div className="text-[#e5e4e2] text-sm">{item.name}</div>
-                              {item.cable_type && (
-                                <div className="text-xs text-[#e5e4e2]/60">{item.cable_type} {item.length ? `- ${item.length}m` : ''}</div>
+                              {item.length_meters && (
+                                <div className="text-xs text-[#e5e4e2]/60">{item.length_meters}m</div>
                               )}
                               <div className="text-xs text-[#d3bb73] mt-1">
                                 Dostępne: {item.stock_quantity} m
