@@ -4,6 +4,15 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase, Edit as EditIcon, AlertCircle, History, UserCheck, Truck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+
+// Helper function to convert UTC date to local datetime-local format
+const toLocalDatetimeString = (utcDate: string | null): string => {
+  if (!utcDate) return '';
+  const date = new Date(utcDate);
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+};
 import EventTasksBoard from '@/components/crm/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import EventFilesExplorer from '@/components/crm/EventFilesExplorer';
@@ -3623,7 +3632,7 @@ function EditEventModal({
               </label>
               <input
                 type="datetime-local"
-                value={formData.event_date ? new Date(formData.event_date).toISOString().slice(0, 16) : ''}
+                value={toLocalDatetimeString(formData.event_date)}
                 onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               />
@@ -3635,7 +3644,7 @@ function EditEventModal({
               </label>
               <input
                 type="datetime-local"
-                value={formData.event_end_date ? new Date(formData.event_end_date).toISOString().slice(0, 16) : ''}
+                value={toLocalDatetimeString(formData.event_end_date)}
                 onChange={(e) => setFormData({ ...formData, event_end_date: e.target.value })}
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               />

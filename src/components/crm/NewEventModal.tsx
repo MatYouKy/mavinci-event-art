@@ -4,6 +4,15 @@ import { X, Plus, Building2, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
+// Helper function to convert UTC date to local datetime-local format
+const toLocalDatetimeString = (utcDate: string | null): string => {
+  if (!utcDate) return '';
+  const date = new Date(utcDate);
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+};
+
 interface NewEventModalProps {
   isOpen: boolean;
   onClose: () => void;

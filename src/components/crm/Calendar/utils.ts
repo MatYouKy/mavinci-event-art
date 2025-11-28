@@ -38,13 +38,14 @@ export const getWeekDays = (date: Date): Date[] => {
 };
 
 export const getEventsForDate = (date: Date, events: CalendarEvent[]): CalendarEvent[] => {
+  // Create a date string for comparison (YYYY-MM-DD in local timezone)
+  const targetDateStr = date.toLocaleDateString('en-CA'); // en-CA gives YYYY-MM-DD format
+
   return events.filter((event) => {
     const eventDate = new Date(event.event_date);
-    return (
-      eventDate.getDate() === date.getDate() &&
-      eventDate.getMonth() === date.getMonth() &&
-      eventDate.getFullYear() === date.getFullYear()
-    );
+    // Convert event date to local date string for comparison
+    const eventDateStr = eventDate.toLocaleDateString('en-CA');
+    return eventDateStr === targetDateStr;
   });
 };
 
