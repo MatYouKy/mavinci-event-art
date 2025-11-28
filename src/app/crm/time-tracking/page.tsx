@@ -65,7 +65,7 @@ interface Task {
 
 export default function TimeTrackingPage() {
   const { showSnackbar } = useSnackbar();
-  const { employee, loading: employeeLoading } = useCurrentEmployee();
+  const { employee, loading: employeeLoading, isAdmin } = useCurrentEmployee();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTimer, setActiveTimer] = useState<TimeEntry | null>(null);
@@ -83,8 +83,6 @@ export default function TimeTrackingPage() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [adminView, setAdminView] = useState<'dashboard' | 'list'>('dashboard');
 
-  const isAdmin = employee?.permissions?.includes('admin') || false;
-
   useEffect(() => {
     if (!employeeLoading && employee) {
       fetchData();
@@ -93,7 +91,7 @@ export default function TimeTrackingPage() {
         fetchAllEmployees();
       }
     }
-  }, [employee, employeeLoading, viewMode, filterEmployee, filterDateFrom, filterDateTo]);
+  }, [employee, employeeLoading, viewMode, filterEmployee, filterDateFrom, filterDateTo, isAdmin]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -314,6 +312,9 @@ export default function TimeTrackingPage() {
               {isAdmin && adminView === 'dashboard'
                 ? 'Raport czasu pracy zespołu'
                 : 'Loguj swój czas pracy i zarządzaj wpisami'}
+            </p>
+            <p className="text-xs text-red-400 mt-1">
+              DEBUG: isAdmin={String(isAdmin)}, role={employee?.role}, adminView={adminView}
             </p>
           </div>
           {isAdmin && (
