@@ -23,13 +23,24 @@ interface Equipment {
   equipment_units?: EquipmentUnit[];
 }
 
+interface Cable {
+  id: string;
+  name: string;
+  cable_type: string | null;
+  length: number | null;
+  thumbnail_url: string | null;
+  stock_quantity: number;
+}
+
 interface KitItem {
   id: string;
-  equipment_id: string;
+  equipment_id: string | null;
+  cable_id: string | null;
   quantity: number;
   notes: string | null;
   order_index: number;
-  equipment_items: Equipment;
+  equipment_items?: Equipment;
+  cables?: Cable;
 }
 
 interface Kit {
@@ -62,7 +73,9 @@ export default function KitsPage() {
 
   const [kits, setKits] = useState<Kit[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [cables, setCables] = useState<Cable[]>([]);
   const [categories, setCategories] = useState<WarehouseCategory[]>([]);
+  const [itemType, setItemType] = useState<'equipment' | 'cable'>('equipment');
   const [loading, setLoading] = useState(true);
   const [viewingKit, setViewingKit] = useState<Kit | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -73,7 +86,7 @@ export default function KitsPage() {
     thumbnail_url: '',
     warehouse_category_id: '',
   });
-  const [kitItems, setKitItems] = useState<{equipment_id: string; quantity: number; notes: string}[]>([]);
+  const [kitItems, setKitItems] = useState<{equipment_id: string | null; cable_id: string | null; quantity: number; notes: string}[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -81,6 +94,7 @@ export default function KitsPage() {
   useEffect(() => {
     fetchCategories();
     fetchEquipment();
+    fetchCables();
     fetchKits();
   }, []);
 
@@ -120,6 +134,16 @@ export default function KitsPage() {
     if (data) setEquipment(data);
   };
 
+  const fetchCables = async () => {
+    const { data } = await supabase
+      .from('cables')
+      .select('id, name, cable_type, length, thumbnail_url, stock_quantity')
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('name');
+    if (data) setCables(data);
+  };
+
   const fetchKits = async () => {
     try {
       setLoading(true);
@@ -129,7 +153,8 @@ export default function KitsPage() {
           *,
           equipment_kit_items(
             *,
-            equipment_items(id, name, brand, model, thumbnail_url)
+            equipment_items(id, name, brand, model, thumbnail_url),
+            cables(id, name, cable_type, length, thumbnail_url, stock_quantity)
           )
         `)
         .eq('is_active', true)
@@ -156,6 +181,7 @@ export default function KitsPage() {
       });
       setKitItems(kit.equipment_kit_items.map(item => ({
         equipment_id: item.equipment_id,
+        cable_id: item.cable_id,
         quantity: item.quantity,
         notes: item.notes || '',
       })));
@@ -359,12 +385,20 @@ export default function KitsPage() {
     e.stopPropagation();
   };
 
-  const handleAddKitItem = (equipmentId: string) => {
-    if (kitItems.some(item => item.equipment_id === equipmentId)) {
-      showSnackbar('Ten sprzęt jest już w zestawie', 'warning');
-      return;
+  const handleAddKitItem = (itemId: string, type: 'equipment' | 'cable') => {
+    if (type === 'equipment') {
+      if (kitItems.some(item => item.equipment_id === itemId)) {
+        showSnackbar('Ten sprzęt jest już w zestawie', 'warning');
+        return;
+      }
+      setKitItems(prev => [...prev, { equipment_id: itemId, cable_id: null, quantity: 1, notes: '' }]);
+    } else {
+      if (kitItems.some(item => item.cable_id === itemId)) {
+        showSnackbar('Ten przewód jest już w zestawie', 'warning');
+        return;
+      }
+      setKitItems(prev => [...prev, { equipment_id: null, cable_id: itemId, quantity: 1, notes: '' }]);
     }
-    setKitItems(prev => [...prev, { equipment_id: equipmentId, quantity: 1, notes: '' }]);
   };
 
   const handleRemoveKitItem = (index: number) => {
@@ -432,7 +466,8 @@ export default function KitsPage() {
 
       const itemsToInsert = kitItems.map((item, index) => ({
         kit_id: kitId,
-        equipment_id: item.equipment_id,
+        equipment_id: item.equipment_id || null,
+        cable_id: item.cable_id || null,
         quantity: item.quantity,
         notes: item.notes || null,
         order_index: index,
@@ -552,7 +587,14 @@ export default function KitsPage() {
             </h4>
             <div className="space-y-3">
               {viewingKit.equipment_kit_items.map((item, index) => {
-                const eq = equipment.find(e => e.id === item.equipment_id);
+                const eq = item.equipment_id ? equipment.find(e => e.id === item.equipment_id) : null;
+                const cable = item.cable_id ? cables.find(c => c.id === item.cable_id) : null;
+                const displayItem = eq || cable;
+                const unit = eq ? 'x' : 'm';
+                const availableQty = eq
+                  ? (eq.equipment_units?.filter(u => u.status === 'available').length || 0)
+                  : (cable?.stock_quantity || 0);
+
                 return (
                   <div
                     key={item.id}
@@ -561,26 +603,32 @@ export default function KitsPage() {
                     <div className="w-8 text-center text-[#e5e4e2]/40 font-mono">
                       {index + 1}.
                     </div>
-                    {eq?.thumbnail_url && (
+                    {displayItem?.thumbnail_url && (
                       <img
-                        src={eq.thumbnail_url}
-                        alt={eq.name}
+                        src={displayItem.thumbnail_url}
+                        alt={displayItem.name}
                         className="w-16 h-16 rounded object-cover"
                       />
                     )}
                     <div className="flex-1">
-                      <div className="text-[#e5e4e2] font-medium">{eq?.name || 'Nieznany sprzęt'}</div>
+                      <div className="text-[#e5e4e2] font-medium">
+                        {displayItem?.name || 'Nieznany element'}
+                        {cable && <span className="ml-2 text-xs text-[#d3bb73]">Przewód</span>}
+                      </div>
                       {eq?.brand && (
                         <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
+                      )}
+                      {cable?.cable_type && (
+                        <div className="text-sm text-[#e5e4e2]/60">{cable.cable_type} {cable.length ? `- ${cable.length}m` : ''}</div>
                       )}
                       {item.notes && (
                         <div className="text-xs text-[#e5e4e2]/40 mt-1 italic">{item.notes}</div>
                       )}
                     </div>
                     <div className="text-right">
-                      <div className="text-[#d3bb73] font-medium">x{item.quantity}</div>
+                      <div className="text-[#d3bb73] font-medium">{unit}{item.quantity}</div>
                       <div className="text-xs text-[#e5e4e2]/40">
-                        {eq?.equipment_units?.filter(u => u.status === 'available').length || 0} dostępnych
+                        {availableQty} dostępnych
                       </div>
                     </div>
                   </div>
@@ -716,30 +764,43 @@ export default function KitsPage() {
               {kitItems.length > 0 && (
                 <div className="space-y-3 mb-4">
                   {kitItems.map((item, index) => {
-                    const eq = equipment.find(e => e.id === item.equipment_id);
+                    const eq = item.equipment_id ? equipment.find(e => e.id === item.equipment_id) : null;
+                    const cable = item.cable_id ? cables.find(c => c.id === item.cable_id) : null;
+                    const displayItem = eq || cable;
+                    const maxQty = eq
+                      ? (eq.equipment_units?.filter(u => u.status === 'available').length || 0)
+                      : (cable?.stock_quantity || 0);
+                    const unit = eq ? 'szt.' : 'm';
+
                     return (
                       <div key={index} className="flex items-start gap-3 bg-[#1c1f33] p-3 rounded-lg">
-                        {eq?.thumbnail_url && (
+                        {displayItem?.thumbnail_url && (
                           <img
-                            src={eq.thumbnail_url}
-                            alt={eq.name}
+                            src={displayItem.thumbnail_url}
+                            alt={displayItem.name}
                             className="w-12 h-12 rounded object-cover"
                           />
                         )}
                         <div className="flex-1">
-                          <div className="text-[#e5e4e2] font-medium">{eq?.name || 'Nieznany sprzęt'}</div>
+                          <div className="text-[#e5e4e2] font-medium">
+                            {displayItem?.name || 'Nieznany element'}
+                            {cable && <span className="ml-2 text-xs text-[#d3bb73]">Przewód</span>}
+                          </div>
                           {eq?.brand && (
                             <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
+                          )}
+                          {cable?.cable_type && (
+                            <div className="text-sm text-[#e5e4e2]/60">{cable.cable_type} {cable.length ? `- ${cable.length}m` : ''}</div>
                           )}
                           <div className="grid grid-cols-2 gap-2 mt-2">
                             <div>
                               <label className="text-xs text-[#e5e4e2]/40">
-                                Ilość <span className="text-[#d3bb73]">(maks. {eq?.equipment_units?.filter(u => u.status === 'available').length || 0})</span>
+                                Ilość <span className="text-[#d3bb73]">(maks. {maxQty} {unit})</span>
                               </label>
                               <input
                                 type="number"
                                 min="1"
-                                max={eq?.equipment_units?.filter(u => u.status === 'available').length || 0}
+                                max={maxQty}
                                 value={item.quantity}
                                 onChange={(e) => handleUpdateKitItem(index, 'quantity', e.target.value)}
                                 className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded px-2 py-1 text-[#e5e4e2] text-sm"
@@ -770,54 +831,128 @@ export default function KitsPage() {
               )}
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-4">Dodaj sprzęt do zestawu</label>
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={() => setItemType('equipment')}
+                    className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                      itemType === 'equipment'
+                        ? 'bg-[#d3bb73] text-[#1c1f33]'
+                        : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+                    }`}
+                  >
+                    Sprzęt
+                  </button>
+                  <button
+                    onClick={() => setItemType('cable')}
+                    className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                      itemType === 'cable'
+                        ? 'bg-[#d3bb73] text-[#1c1f33]'
+                        : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+                    }`}
+                  >
+                    Przewody
+                  </button>
+                </div>
+
+                <label className="block text-sm text-[#e5e4e2]/60 mb-4">
+                  Dodaj {itemType === 'equipment' ? 'sprzęt' : 'przewody'} do zestawu
+                </label>
                 <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg max-h-96 overflow-y-auto">
-                  {equipment.length === 0 ? (
-                    <div className="p-4 text-center text-[#e5e4e2]/40">Brak dostępnego sprzętu</div>
-                  ) : (
-                    equipment.map(eq => {
-                      const isInKit = kitItems.some(item => item.equipment_id === eq.id);
-                      const availableUnits = eq.equipment_units?.filter(u => u.status === 'available').length || 0;
-                      return (
-                        <label
-                          key={eq.id}
-                          className={`flex items-center gap-3 p-3 border-b border-[#d3bb73]/5 last:border-0 cursor-pointer hover:bg-[#0f1119] transition-colors ${isInKit ? 'bg-[#d3bb73]/5' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isInKit}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                handleAddKitItem(eq.id);
-                              } else {
-                                const index = kitItems.findIndex(item => item.equipment_id === eq.id);
-                                if (index !== -1) handleRemoveKitItem(index);
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0 bg-[#0f1119]"
-                          />
-                          {eq.thumbnail_url ? (
-                            <img
-                              src={eq.thumbnail_url}
-                              alt={eq.name}
-                              className="w-12 h-12 rounded object-cover"
+                  {itemType === 'equipment' ? (
+                    equipment.length === 0 ? (
+                      <div className="p-4 text-center text-[#e5e4e2]/40">Brak dostępnego sprzętu</div>
+                    ) : (
+                      equipment.map(eq => {
+                        const isInKit = kitItems.some(item => item.equipment_id === eq.id);
+                        const availableUnits = eq.equipment_units?.filter(u => u.status === 'available').length || 0;
+                        return (
+                          <label
+                            key={eq.id}
+                            className={`flex items-center gap-3 p-3 border-b border-[#d3bb73]/5 last:border-0 cursor-pointer hover:bg-[#0f1119] transition-colors ${isInKit ? 'bg-[#d3bb73]/5' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isInKit}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handleAddKitItem(eq.id, 'equipment');
+                                } else {
+                                  const index = kitItems.findIndex(item => item.equipment_id === eq.id);
+                                  if (index !== -1) handleRemoveKitItem(index);
+                                }
+                              }}
+                              className="w-4 h-4 rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0 bg-[#0f1119]"
                             />
-                          ) : (
-                            <div className="w-12 h-12 rounded bg-[#0f1119] flex items-center justify-center">
-                              <Package className="w-6 h-6 text-[#e5e4e2]/40" />
+                            {eq.thumbnail_url ? (
+                              <img
+                                src={eq.thumbnail_url}
+                                alt={eq.name}
+                                className="w-12 h-12 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded bg-[#0f1119] flex items-center justify-center">
+                                <Package className="w-6 h-6 text-[#e5e4e2]/40" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[#e5e4e2] font-medium truncate">{eq.name}</div>
+                              <div className="text-xs text-[#e5e4e2]/60">
+                                {eq.brand && <span>{eq.brand} {eq.model}</span>}
+                                {eq.brand && availableUnits > 0 && <span className="mx-1">•</span>}
+                                {availableUnits > 0 && <span className="text-[#d3bb73]">{availableUnits} dostępnych</span>}
+                              </div>
                             </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[#e5e4e2] font-medium truncate">{eq.name}</div>
-                            <div className="text-xs text-[#e5e4e2]/60">
-                              {eq.brand && <span>{eq.brand} {eq.model}</span>}
-                              {eq.brand && availableUnits > 0 && <span className="mx-1">•</span>}
-                              {availableUnits > 0 && <span className="text-[#d3bb73]">{availableUnits} dostępnych</span>}
+                          </label>
+                        );
+                      })
+                    )
+                  ) : (
+                    cables.length === 0 ? (
+                      <div className="p-4 text-center text-[#e5e4e2]/40">Brak dostępnych przewodów</div>
+                    ) : (
+                      cables.map(cable => {
+                        const isInKit = kitItems.some(item => item.cable_id === cable.id);
+                        return (
+                          <label
+                            key={cable.id}
+                            className={`flex items-center gap-3 p-3 border-b border-[#d3bb73]/5 last:border-0 cursor-pointer hover:bg-[#0f1119] transition-colors ${isInKit ? 'bg-[#d3bb73]/5' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isInKit}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handleAddKitItem(cable.id, 'cable');
+                                } else {
+                                  const index = kitItems.findIndex(item => item.cable_id === cable.id);
+                                  if (index !== -1) handleRemoveKitItem(index);
+                                }
+                              }}
+                              className="w-4 h-4 rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0 bg-[#0f1119]"
+                            />
+                            {cable.thumbnail_url ? (
+                              <img
+                                src={cable.thumbnail_url}
+                                alt={cable.name}
+                                className="w-12 h-12 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded bg-[#0f1119] flex items-center justify-center">
+                                <Package className="w-6 h-6 text-[#e5e4e2]/40" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[#e5e4e2] font-medium truncate">{cable.name}</div>
+                              <div className="text-xs text-[#e5e4e2]/60">
+                                {cable.cable_type && <span>{cable.cable_type}</span>}
+                                {cable.cable_type && cable.stock_quantity > 0 && <span className="mx-1">•</span>}
+                                {cable.stock_quantity > 0 && <span className="text-[#d3bb73]">{cable.stock_quantity} m dostępnych</span>}
+                              </div>
                             </div>
-                          </div>
-                        </label>
-                      );
-                    })
+                          </label>
+                        );
+                      })
+                    )
                   )}
                 </div>
               </div>
