@@ -606,12 +606,12 @@ export default function TimeTrackingPage() {
               <p className="text-[#e5e4e2]/60">Brak wpisów czasu pracy</p>
             </div>
           )}
-        </div>
           </>
         )}
       </div>
+    </div>
 
-      {showAddModal && (
+    {showAddModal && (
         <StartTimerModal
           tasks={tasks}
           onClose={() => setShowAddModal(false)}
