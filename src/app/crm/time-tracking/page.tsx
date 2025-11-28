@@ -313,9 +313,6 @@ export default function TimeTrackingPage() {
                 ? 'Raport czasu pracy zespołu'
                 : 'Loguj swój czas pracy i zarządzaj wpisami'}
             </p>
-            <p className="text-xs text-red-400 mt-1">
-              DEBUG: isAdmin={String(isAdmin)}, role={employee?.role}, adminView={adminView}
-            </p>
           </div>
           {isAdmin && (
             <div className="flex gap-2">

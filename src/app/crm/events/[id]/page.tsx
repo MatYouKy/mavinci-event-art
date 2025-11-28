@@ -38,7 +38,9 @@ interface Event {
     first_name: string;
     last_name: string;
     full_name: string;
-    
+    contact_type: string;
+    email: string;
+    phone: string;
   } | null;
   category?: {
     id: string;
@@ -277,7 +279,15 @@ export default function EventDetailPage() {
         .select(`
           *,
           organization:organizations(id, name, alias),
-          contact_person:contacts(id, first_name, last_name),
+          contact_person:contacts(
+            id,
+            first_name,
+            last_name,
+            full_name,
+            contact_type,
+            email,
+            phone
+          ),
           category:event_categories(
             id,
             name,
@@ -1060,7 +1070,10 @@ export default function EventDetailPage() {
               {event.contact_person && (
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4" />
-                  <span>Kontakt: {event.contact_person.full_name || `${event.contact_person.first_name} ${event.contact_person.last_name}`}</span>
+                  <span>
+                    {event.contact_person.contact_type === 'individual' ? 'Klient: ' : 'Kontakt: '}
+                    {event.contact_person.full_name || `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                  </span>
                 </div>
               )}
               {event.creator && (
@@ -1267,10 +1280,24 @@ export default function EventDetailPage() {
                       <div className="flex items-start gap-3">
                         <User className="w-5 h-5 text-[#d3bb73] mt-0.5" />
                         <div>
-                          <p className="text-sm text-[#e5e4e2]/60">Osoba kontaktowa</p>
+                          <p className="text-sm text-[#e5e4e2]/60">
+                            {event.contact_person.contact_type === 'individual' ? 'Klient indywidualny' : 'Osoba kontaktowa'}
+                          </p>
                           <p className="text-[#e5e4e2]">
                             {event.contact_person.full_name || `${event.contact_person.first_name} ${event.contact_person.last_name}`}
                           </p>
+                          {event.contact_person.email && (
+                            <div className="flex items-center gap-2 mt-1 text-sm text-[#e5e4e2]/60">
+                              <Mail className="w-3 h-3" />
+                              <span>{event.contact_person.email}</span>
+                            </div>
+                          )}
+                          {event.contact_person.phone && (
+                            <div className="flex items-center gap-2 mt-1 text-sm text-[#e5e4e2]/60">
+                              <Phone className="w-3 h-3" />
+                              <span>{event.contact_person.phone}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -3269,14 +3296,20 @@ function EditEventModal({
         first_name,
         last_name,
         contact_type,
-        contact_organizations(organization_id)
+        email,
+        phone,
+        contact_organizations(
+          organization_id,
+          organizations(name, alias)
+        )
       `)
       .in('contact_type', ['contact', 'individual'])
       .order('full_name');
     if (data) {
       const formattedContacts = data.map(c => ({
         ...c,
-        organization_id: c.contact_organizations?.[0]?.organization_id || null
+        organization_id: c.contact_organizations?.[0]?.organization_id || null,
+        organization_name: c.contact_organizations?.[0]?.organizations?.alias || c.contact_organizations?.[0]?.organizations?.name || null
       }));
       setContacts(formattedContacts);
     }
@@ -3295,17 +3328,26 @@ function EditEventModal({
   if (!isOpen) return null;
 
   const handleContactChange = (contactId: string) => {
-    setFormData(prev => ({ ...prev, contact_person_id: contactId }));
+    if (!contactId) {
+      setFormData(prev => ({ ...prev, contact_person_id: '' }));
+      return;
+    }
 
-    if (contactId) {
-      const selectedContact = contacts.find(c => c.id === contactId);
-      if (selectedContact?.organization_id && !formData.organization_id) {
-        setFormData(prev => ({
-          ...prev,
-          contact_person_id: contactId,
-          organization_id: selectedContact.organization_id
-        }));
-      }
+    const selectedContact = contacts.find(c => c.id === contactId);
+
+    // Jeśli kontakt jest osobą kontaktową z organizacji, automatycznie ustaw organizację
+    if (selectedContact?.contact_type === 'contact' && selectedContact?.organization_id) {
+      setFormData(prev => ({
+        ...prev,
+        contact_person_id: contactId,
+        organization_id: selectedContact.organization_id
+      }));
+    } else {
+      // Jeśli kontakt jest indywidualny, tylko ustaw kontakt bez zmiany organizacji
+      setFormData(prev => ({
+        ...prev,
+        contact_person_id: contactId
+      }));
     }
   };
 
@@ -3386,7 +3428,7 @@ function EditEventModal({
 
             <div>
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                Osoba kontaktowa
+                Osoba kontaktowa / Klient indywidualny
               </label>
               <select
                 value={formData.contact_person_id}
@@ -3394,11 +3436,19 @@ function EditEventModal({
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               >
                 <option value="">Wybierz osobę</option>
-                {contacts.map((contact) => (
-                  <option key={contact.id} value={contact.id}>
-                    {contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim()}
-                  </option>
-                ))}
+                {contacts.map((contact) => {
+                  const displayName = contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+                  const suffix = contact.contact_type === 'individual'
+                    ? ' (Klient indywidualny)'
+                    : contact.organization_name
+                      ? ` (${contact.organization_name})`
+                      : '';
+                  return (
+                    <option key={contact.id} value={contact.id}>
+                      {displayName}{suffix}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
