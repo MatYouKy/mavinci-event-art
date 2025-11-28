@@ -3392,7 +3392,6 @@ function EditEventModal({
         .insert([{
           first_name: newClientData.first_name,
           last_name: newClientData.last_name,
-          full_name: `${newClientData.first_name} ${newClientData.last_name}`,
           email: newClientData.email || null,
           phone: newClientData.phone || null,
           contact_type: 'individual',
