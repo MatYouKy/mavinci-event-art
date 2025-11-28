@@ -21,13 +21,24 @@ interface Equipment {
   equipment_units?: EquipmentUnit[];
 }
 
+interface Cable {
+  id: string;
+  name: string;
+  cable_type: string | null;
+  length: number | null;
+  thumbnail_url: string | null;
+  stock_quantity: number;
+}
+
 interface KitItem {
   id: string;
-  equipment_id: string;
+  equipment_id: string | null;
+  cable_id: string | null;
   quantity: number;
   notes: string | null;
   order_index: number;
-  equipment_items: Equipment;
+  equipment_items?: Equipment;
+  cables?: Cable;
 }
 
 interface Kit {
@@ -59,6 +70,8 @@ export default function KitsManagementModal({
   initialKitId?: string | null;
   inline?: boolean;
 }) {
+  const [cables, setCables] = useState<Cable[]>([]);
+  const [itemType, setItemType] = useState<'equipment' | 'cable'>('equipment');
   const { showSnackbar } = useSnackbar();
   const { canManageModule } = useCurrentEmployee();
   const canManage = canManageModule('equipment');
@@ -75,7 +88,7 @@ export default function KitsManagementModal({
     thumbnail_url: '',
     warehouse_category_id: '',
   });
-  const [kitItems, setKitItems] = useState<{equipment_id: string; quantity: number; notes: string}[]>([]);
+  const [kitItems, setKitItems] = useState<{equipment_id: string | null; cable_id: string | null; quantity: number; notes: string}[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,6 +96,7 @@ export default function KitsManagementModal({
   useEffect(() => {
     fetchCategories();
     fetchKits();
+    fetchCables();
   }, []);
 
   const fetchCategories = async () => {
@@ -92,6 +106,16 @@ export default function KitsManagementModal({
       .eq('is_active', true)
       .order('name');
     if (data) setCategories(data);
+  };
+
+  const fetchCables = async () => {
+    const { data } = await supabase
+      .from('cables')
+      .select('id, name, cable_type, length, thumbnail_url, stock_quantity')
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('name');
+    if (data) setCables(data);
   };
 
   useEffect(() => {
@@ -112,7 +136,8 @@ export default function KitsManagementModal({
           *,
           equipment_kit_items(
             *,
-            equipment_items(id, name, brand, model, thumbnail_url)
+            equipment_items(id, name, brand, model, thumbnail_url),
+            cables(id, name, cable_type, length, thumbnail_url, stock_quantity)
           )
         `)
         .eq('is_active', true)
@@ -138,6 +163,7 @@ export default function KitsManagementModal({
       });
       setKitItems(kit.equipment_kit_items.map(item => ({
         equipment_id: item.equipment_id,
+        cable_id: item.cable_id,
         quantity: item.quantity,
         notes: item.notes || '',
       })));
@@ -170,12 +196,20 @@ export default function KitsManagementModal({
     }
   };
 
-  const handleAddKitItem = (equipmentId: string) => {
-    if (kitItems.some(item => item.equipment_id === equipmentId)) {
-      showSnackbar('Ten sprzęt jest już w zestawie', 'warning');
-      return;
+  const handleAddKitItem = (itemId: string, type: 'equipment' | 'cable') => {
+    if (type === 'equipment') {
+      if (kitItems.some(item => item.equipment_id === itemId)) {
+        showSnackbar('Ten sprzęt jest już w zestawie', 'warning');
+        return;
+      }
+      setKitItems([...kitItems, { equipment_id: itemId, cable_id: null, quantity: 1, notes: '' }]);
+    } else {
+      if (kitItems.some(item => item.cable_id === itemId)) {
+        showSnackbar('Ten przewód jest już w zestawie', 'warning');
+        return;
+      }
+      setKitItems([...kitItems, { equipment_id: null, cable_id: itemId, quantity: 1, notes: '' }]);
     }
-    setKitItems([...kitItems, { equipment_id: equipmentId, quantity: 1, notes: '' }]);
   };
 
   const handleRemoveKitItem = (index: number) => {
@@ -186,13 +220,23 @@ export default function KitsManagementModal({
     const updated = [...kitItems];
     if (field === 'quantity') {
       const newQty = typeof value === 'number' ? value : parseInt(value) || 1;
-      const equipmentItem = equipment.find(e => e.id === updated[index].equipment_id);
-      const availableQty = equipmentItem?.equipment_units?.filter(u => u.status === 'available').length || 0;
 
-      if (newQty > availableQty) {
-        showSnackbar(`Maksymalna dostępna ilość: ${availableQty} szt.`, 'warning');
-        return;
+      if (updated[index].equipment_id) {
+        const equipmentItem = equipment.find(e => e.id === updated[index].equipment_id);
+        const availableQty = equipmentItem?.equipment_units?.filter(u => u.status === 'available').length || 0;
+        if (newQty > availableQty) {
+          showSnackbar(`Maksymalna dostępna ilość: ${availableQty} szt.`, 'warning');
+          return;
+        }
+      } else if (updated[index].cable_id) {
+        const cableItem = cables.find(c => c.id === updated[index].cable_id);
+        const availableQty = cableItem?.stock_quantity || 0;
+        if (newQty > availableQty) {
+          showSnackbar(`Maksymalna dostępna ilość: ${availableQty} m`, 'warning');
+          return;
+        }
       }
+
       updated[index].quantity = newQty;
     } else {
       updated[index].notes = value as string;
@@ -259,7 +303,8 @@ export default function KitsManagementModal({
       // Dodaj nowe pozycje
       const itemsToInsert = kitItems.map((item, index) => ({
         kit_id: kitId,
-        equipment_id: item.equipment_id,
+        equipment_id: item.equipment_id || null,
+        cable_id: item.cable_id || null,
         quantity: item.quantity,
         notes: item.notes || null,
         order_index: index,
@@ -317,7 +362,8 @@ export default function KitsManagementModal({
 
       const itemsToInsert = kit.equipment_kit_items.map((item, index) => ({
         kit_id: newKit.id,
-        equipment_id: item.equipment_id,
+        equipment_id: item.equipment_id || null,
+        cable_id: item.cable_id || null,
         quantity: item.quantity,
         notes: item.notes,
         order_index: index,
@@ -341,6 +387,11 @@ export default function KitsManagementModal({
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.model?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredCables = cables.filter(item =>
+    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.cable_type?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const wrapperClass = inline
@@ -456,16 +507,23 @@ export default function KitsManagementModal({
 
                       {kit.equipment_kit_items.length > 0 && (
                         <div className="space-y-1 pl-20">
-                          {kit.equipment_kit_items.map((item) => (
-                            <div key={item.id} className="text-sm text-[#e5e4e2]/60 flex items-center gap-2">
-                              <span className="text-[#d3bb73]">•</span>
-                              <span>{item.quantity}x</span>
-                              <span>{item.equipment_items.name}</span>
-                              {item.equipment_items.brand && (
-                                <span className="text-[#e5e4e2]/40">({item.equipment_items.brand})</span>
-                              )}
-                            </div>
-                          ))}
+                          {kit.equipment_kit_items.map((item) => {
+                            const displayItem = item.equipment_items || item.cables;
+                            const unit = item.equipment_items ? 'x' : 'm';
+                            return (
+                              <div key={item.id} className="text-sm text-[#e5e4e2]/60 flex items-center gap-2">
+                                <span className="text-[#d3bb73]">•</span>
+                                <span>{item.quantity}{unit}</span>
+                                <span>{displayItem?.name}</span>
+                                {item.equipment_items?.brand && (
+                                  <span className="text-[#e5e4e2]/40">({item.equipment_items.brand})</span>
+                                )}
+                                {item.cables && (
+                                  <span className="text-xs text-[#d3bb73]/60">[Przewód]</span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -562,31 +620,44 @@ export default function KitsManagementModal({
                 {kitItems.length > 0 && (
                   <div className="space-y-3 mb-4">
                     {kitItems.map((item, index) => {
-                      const eq = equipment.find(e => e.id === item.equipment_id);
+                      const eq = item.equipment_id ? equipment.find(e => e.id === item.equipment_id) : null;
+                      const cable = item.cable_id ? cables.find(c => c.id === item.cable_id) : null;
+                      const displayItem = eq || cable;
+                      const maxQty = eq
+                        ? (eq.equipment_units?.filter(u => u.status === 'available').length || 0)
+                        : (cable?.stock_quantity || 0);
+                      const unit = eq ? 'szt.' : 'm';
+
                       return (
                         <div key={index} className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3">
                           <div className="flex items-start gap-3">
-                            {eq?.thumbnail_url && (
+                            {displayItem?.thumbnail_url && (
                               <img
-                                src={eq.thumbnail_url}
-                                alt={eq.name}
+                                src={displayItem.thumbnail_url}
+                                alt={displayItem.name}
                                 className="w-12 h-12 rounded object-cover"
                               />
                             )}
                             <div className="flex-1">
-                              <div className="text-[#e5e4e2] font-medium">{eq?.name || 'Nieznany sprzęt'}</div>
+                              <div className="text-[#e5e4e2] font-medium">
+                                {displayItem?.name || 'Nieznany element'}
+                                {cable && <span className="ml-2 text-xs text-[#d3bb73]">Przewód</span>}
+                              </div>
                               {eq?.brand && (
                                 <div className="text-sm text-[#e5e4e2]/60">{eq.brand} {eq.model}</div>
+                              )}
+                              {cable?.cable_type && (
+                                <div className="text-sm text-[#e5e4e2]/60">{cable.cable_type} {cable.length ? `- ${cable.length}m` : ''}</div>
                               )}
                               <div className="grid grid-cols-2 gap-2 mt-2">
                                 <div>
                                   <label className="text-xs text-[#e5e4e2]/40">
-                                    Ilość <span className="text-[#d3bb73]">(maks. {eq?.equipment_units?.filter(u => u.status === 'available').length || 0})</span>
+                                    Ilość <span className="text-[#d3bb73]">(maks. {maxQty} {unit})</span>
                                   </label>
                                   <input
                                     type="number"
                                     min="1"
-                                    max={eq?.equipment_units?.filter(u => u.status === 'available').length || 0}
+                                    max={maxQty}
                                     value={item.quantity}
                                     onChange={(e) => handleUpdateKitItem(index, 'quantity', e.target.value)}
                                     className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded px-2 py-1 text-[#e5e4e2] text-sm"
@@ -618,55 +689,118 @@ export default function KitsManagementModal({
                 )}
 
                 <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3 border-b border-[#d3bb73]/10 pb-3">
+                    <button
+                      onClick={() => setItemType('equipment')}
+                      className={`px-4 py-2 rounded-lg transition-colors ${
+                        itemType === 'equipment'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+                      }`}
+                    >
+                      Sprzęt
+                    </button>
+                    <button
+                      onClick={() => setItemType('cable')}
+                      className={`px-4 py-2 rounded-lg transition-colors ${
+                        itemType === 'cable'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+                      }`}
+                    >
+                      Przewody
+                    </button>
+                  </div>
+
                   <div className="flex items-center gap-2 mb-3">
                     <Search className="w-4 h-4 text-[#e5e4e2]/40" />
                     <input
                       type="text"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Szukaj sprzętu do dodania..."
+                      placeholder={itemType === 'equipment' ? 'Szukaj sprzętu...' : 'Szukaj przewodów...'}
                       className="flex-1 bg-transparent text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none"
                     />
                   </div>
 
                   <div className="max-h-60 overflow-y-auto space-y-2">
-                    {filteredEquipment.map((item) => {
-                      const isAdded = kitItems.some(ki => ki.equipment_id === item.id);
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => !isAdded && handleAddKitItem(item.id)}
-                          disabled={isAdded}
-                          className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors ${
-                            isAdded
-                              ? 'opacity-50 cursor-not-allowed'
-                              : 'hover:bg-[#1c1f33]'
-                          }`}
-                        >
-                          {item.thumbnail_url ? (
-                            <img
-                              src={item.thumbnail_url}
-                              alt={item.name}
-                              className="w-10 h-10 rounded object-cover"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 bg-[#d3bb73]/20 rounded flex items-center justify-center">
-                              <Package className="w-5 h-5 text-[#d3bb73]" />
-                            </div>
-                          )}
-                          <div className="flex-1 text-left">
-                            <div className="text-[#e5e4e2] text-sm">{item.name}</div>
-                            {item.brand && (
-                              <div className="text-xs text-[#e5e4e2]/60">{item.brand} {item.model}</div>
+                    {itemType === 'equipment' ? (
+                      filteredEquipment.map((item) => {
+                        const isAdded = kitItems.some(ki => ki.equipment_id === item.id);
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => !isAdded && handleAddKitItem(item.id, 'equipment')}
+                            disabled={isAdded}
+                            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors ${
+                              isAdded
+                                ? 'opacity-50 cursor-not-allowed'
+                                : 'hover:bg-[#1c1f33]'
+                            }`}
+                          >
+                            {item.thumbnail_url ? (
+                              <img
+                                src={item.thumbnail_url}
+                                alt={item.name}
+                                className="w-10 h-10 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 bg-[#d3bb73]/20 rounded flex items-center justify-center">
+                                <Package className="w-5 h-5 text-[#d3bb73]" />
+                              </div>
                             )}
-                            <div className="text-xs text-[#d3bb73] mt-1">
-                              Dostępne: {item.equipment_units?.filter(u => u.status === 'available').length || 0} szt.
+                            <div className="flex-1 text-left">
+                              <div className="text-[#e5e4e2] text-sm">{item.name}</div>
+                              {item.brand && (
+                                <div className="text-xs text-[#e5e4e2]/60">{item.brand} {item.model}</div>
+                              )}
+                              <div className="text-xs text-[#d3bb73] mt-1">
+                                Dostępne: {item.equipment_units?.filter(u => u.status === 'available').length || 0} szt.
+                              </div>
                             </div>
-                          </div>
-                          {isAdded && <span className="text-xs text-green-400">✓ Dodano</span>}
-                        </button>
-                      );
-                    })}
+                            {isAdded && <span className="text-xs text-green-400">✓ Dodano</span>}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      filteredCables.map((item) => {
+                        const isAdded = kitItems.some(ki => ki.cable_id === item.id);
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => !isAdded && handleAddKitItem(item.id, 'cable')}
+                            disabled={isAdded}
+                            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors ${
+                              isAdded
+                                ? 'opacity-50 cursor-not-allowed'
+                                : 'hover:bg-[#1c1f33]'
+                            }`}
+                          >
+                            {item.thumbnail_url ? (
+                              <img
+                                src={item.thumbnail_url}
+                                alt={item.name}
+                                className="w-10 h-10 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 bg-[#d3bb73]/20 rounded flex items-center justify-center">
+                                <Package className="w-5 h-5 text-[#d3bb73]" />
+                              </div>
+                            )}
+                            <div className="flex-1 text-left">
+                              <div className="text-[#e5e4e2] text-sm">{item.name}</div>
+                              {item.cable_type && (
+                                <div className="text-xs text-[#e5e4e2]/60">{item.cable_type} {item.length ? `- ${item.length}m` : ''}</div>
+                              )}
+                              <div className="text-xs text-[#d3bb73] mt-1">
+                                Dostępne: {item.stock_quantity} m
+                              </div>
+                            </div>
+                            {isAdded && <span className="text-xs text-green-400">✓ Dodano</span>}
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>
