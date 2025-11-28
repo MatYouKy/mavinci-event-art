@@ -3258,6 +3258,14 @@ function EditEventModal({
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [sameAsOrganization, setSameAsOrganization] = useState(false);
+  const [newClientData, setNewClientData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+  });
   const [formData, setFormData] = useState({
     name: event.name,
     organization_id: event.organization_id || '',
@@ -3328,12 +3336,20 @@ function EditEventModal({
   if (!isOpen) return null;
 
   const handleContactChange = (contactId: string) => {
-    if (!contactId) {
+    if (contactId === 'NEW_CLIENT') {
+      setShowNewClientForm(true);
       setFormData(prev => ({ ...prev, contact_person_id: '' }));
       return;
     }
 
+    if (!contactId) {
+      setFormData(prev => ({ ...prev, contact_person_id: '' }));
+      setShowNewClientForm(false);
+      return;
+    }
+
     const selectedContact = contacts.find(c => c.id === contactId);
+    setShowNewClientForm(false);
 
     // Jeśli kontakt jest osobą kontaktową z organizacji, automatycznie ustaw organizację
     if (selectedContact?.contact_type === 'contact' && selectedContact?.organization_id) {
@@ -3348,6 +3364,58 @@ function EditEventModal({
         ...prev,
         contact_person_id: contactId
       }));
+    }
+  };
+
+  const handleSameAsOrganization = (checked: boolean) => {
+    setSameAsOrganization(checked);
+    if (checked && formData.organization_id) {
+      // Znajdź osobę kontaktową powiązaną z wybraną organizacją
+      const orgContact = contacts.find(c =>
+        c.contact_type === 'contact' && c.organization_id === formData.organization_id
+      );
+      if (orgContact) {
+        setFormData(prev => ({ ...prev, contact_person_id: orgContact.id }));
+      }
+    }
+  };
+
+  const handleCreateNewClient = async () => {
+    if (!newClientData.first_name.trim() || !newClientData.last_name.trim()) {
+      alert('Imię i nazwisko są wymagane');
+      return;
+    }
+
+    try {
+      const { data: newContact, error } = await supabase
+        .from('contacts')
+        .insert([{
+          first_name: newClientData.first_name,
+          last_name: newClientData.last_name,
+          full_name: `${newClientData.first_name} ${newClientData.last_name}`,
+          email: newClientData.email || null,
+          phone: newClientData.phone || null,
+          contact_type: 'individual',
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Dodaj nowy kontakt do listy
+      setContacts(prev => [...prev, {
+        ...newContact,
+        organization_id: null,
+        organization_name: null
+      }]);
+
+      // Ustaw nowy kontakt jako wybrany
+      setFormData(prev => ({ ...prev, contact_person_id: newContact.id }));
+      setShowNewClientForm(false);
+      setNewClientData({ first_name: '', last_name: '', email: '', phone: '' });
+    } catch (error) {
+      console.error('Error creating contact:', error);
+      alert('Błąd podczas tworzenia klienta');
     }
   };
 
@@ -3431,11 +3499,12 @@ function EditEventModal({
                 Osoba kontaktowa / Klient indywidualny
               </label>
               <select
-                value={formData.contact_person_id}
+                value={showNewClientForm ? 'NEW_CLIENT' : formData.contact_person_id}
                 onChange={(e) => handleContactChange(e.target.value)}
                 className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
               >
                 <option value="">Wybierz osobę</option>
+                <option value="NEW_CLIENT" className="text-[#d3bb73] font-medium">+ Nowy klient jednorazowy</option>
                 {contacts.map((contact) => {
                   const displayName = contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
                   const suffix = contact.contact_type === 'individual'
@@ -3450,6 +3519,17 @@ function EditEventModal({
                   );
                 })}
               </select>
+              {formData.organization_id && !showNewClientForm && (
+                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sameAsOrganization}
+                    onChange={(e) => handleSameAsOrganization(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73] focus:ring-[#d3bb73]"
+                  />
+                  <span className="text-sm text-[#e5e4e2]/60">Osoba kontaktowa z wybranej firmy</span>
+                </label>
+              )}
             </div>
 
             <div>
@@ -3470,6 +3550,72 @@ function EditEventModal({
               </select>
             </div>
           </div>
+
+          {/* Formularz nowego klienta */}
+          {showNewClientForm && (
+            <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-[#e5e4e2]">Nowy klient jednorazowy</h3>
+                <button
+                  onClick={() => {
+                    setShowNewClientForm(false);
+                    setNewClientData({ first_name: '', last_name: '', email: '', phone: '' });
+                  }}
+                  className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#e5e4e2]/60 mb-1">Imię *</label>
+                  <input
+                    type="text"
+                    value={newClientData.first_name}
+                    onChange={(e) => setNewClientData({ ...newClientData, first_name: e.target.value })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="Jan"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e4e2]/60 mb-1">Nazwisko *</label>
+                  <input
+                    type="text"
+                    value={newClientData.last_name}
+                    onChange={(e) => setNewClientData({ ...newClientData, last_name: e.target.value })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="Kowalski"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e4e2]/60 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newClientData.email}
+                    onChange={(e) => setNewClientData({ ...newClientData, email: e.target.value })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="jan@example.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e4e2]/60 mb-1">Telefon</label>
+                  <input
+                    type="tel"
+                    value={newClientData.phone}
+                    onChange={(e) => setNewClientData({ ...newClientData, phone: e.target.value })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    placeholder="+48 123 456 789"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleCreateNewClient}
+                className="w-full bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 text-sm"
+              >
+                Dodaj klienta
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
