@@ -283,31 +283,11 @@ export default function OfferWizard({
     setLoading(true);
 
     try {
-      // 1. Pobierz event aby znaleźć organization_id
-      const { data: event, error: eventError } = await supabase
-        .from('events')
-        .select('organization_id, contact_person_id')
-        .eq('id', eventId)
-        .single();
-
-      if (eventError) throw eventError;
-
-      // 2. Znajdź odpowiadającego klienta w tabeli clients
-      let finalClientId = null;
-      if (event.organization_id) {
-        const { data: client } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('organization_id', event.organization_id)
-          .maybeSingle();
-
-        finalClientId = client?.id || null;
-      }
-
-      // 3. Utwórz ofertę
+      // Utwórz ofertę
+      // Nie potrzebujemy client_id - klient jest powiązany przez event -> organization
       const offerDataToInsert: any = {
         event_id: eventId,
-        client_id: finalClientId,
+        client_id: null, // Nie używamy już tej kolumny - klient jest w events.organization_id
         valid_until: offerData.valid_until || null,
         notes: offerData.notes || null,
         status: 'draft',
