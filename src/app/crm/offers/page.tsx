@@ -162,15 +162,57 @@ export default function OffersPage() {
           event:events!event_id(
             name,
             event_date,
-            organization:organizations(company_name, first_name, last_name),
-            contact:contacts!contact_person_id(first_name, last_name)
+            organization_id,
+            contact_person_id
           ),
           creator:employees!created_by(name, surname)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (data) setOffers(data);
+
+      // Pobierz dodatkowe dane organizacji i kontaktów
+      if (data && data.length > 0) {
+        const orgIds = data.map(o => (o.event as any)?.organization_id).filter(Boolean);
+        const contactIds = data.map(o => (o.event as any)?.contact_person_id).filter(Boolean);
+
+        let orgsMap: Record<string, any> = {};
+        let contactsMap: Record<string, any> = {};
+
+        if (orgIds.length > 0) {
+          const { data: orgs } = await supabase
+            .from('organizations')
+            .select('id, company_name, first_name, last_name')
+            .in('id', orgIds);
+          orgsMap = Object.fromEntries((orgs || []).map(o => [o.id, o]));
+        }
+
+        if (contactIds.length > 0) {
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name')
+            .in('id', contactIds);
+          contactsMap = Object.fromEntries((contacts || []).map(c => [c.id, c]));
+        }
+
+        // Dodaj dane do eventów
+        const enrichedData = data.map(offer => {
+          const event = offer.event as any;
+          if (event) {
+            if (event.organization_id && orgsMap[event.organization_id]) {
+              event.organization = orgsMap[event.organization_id];
+            }
+            if (event.contact_person_id && contactsMap[event.contact_person_id]) {
+              event.contact = contactsMap[event.contact_person_id];
+            }
+          }
+          return offer;
+        });
+
+        setOffers(enrichedData);
+      } else {
+        setOffers(data);
+      }
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd pobierania ofert', 'error');
     } finally {
@@ -313,20 +355,56 @@ export default function OffersPage() {
 
   const handleNewOffer = async () => {
     try {
-      // Pobierz eventy
-      const { data, error } = await supabase
+      // Pobierz eventy z ID-kami relacji
+      const { data: eventsData, error } = await supabase
         .from('events')
         .select(`
           id,
           name,
           event_date,
-          organization:organizations(company_name, first_name, last_name),
-          contact:contacts!contact_person_id(first_name, last_name)
+          organization_id,
+          contact_person_id
         `)
         .order('event_date', { ascending: false });
 
       if (error) throw error;
-      setEvents(data || []);
+
+      // Pobierz organizacje i kontakty osobno
+      if (eventsData && eventsData.length > 0) {
+        const orgIds = eventsData.map(e => e.organization_id).filter(Boolean);
+        const contactIds = eventsData.map(e => e.contact_person_id).filter(Boolean);
+
+        let orgsMap: Record<string, any> = {};
+        let contactsMap: Record<string, any> = {};
+
+        if (orgIds.length > 0) {
+          const { data: orgs } = await supabase
+            .from('organizations')
+            .select('id, company_name, first_name, last_name')
+            .in('id', orgIds);
+          orgsMap = Object.fromEntries((orgs || []).map(o => [o.id, o]));
+        }
+
+        if (contactIds.length > 0) {
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name')
+            .in('id', contactIds);
+          contactsMap = Object.fromEntries((contacts || []).map(c => [c.id, c]));
+        }
+
+        // Dodaj dane do eventów
+        const enrichedEvents = eventsData.map(event => ({
+          ...event,
+          organization: event.organization_id ? orgsMap[event.organization_id] : null,
+          contact: event.contact_person_id ? contactsMap[event.contact_person_id] : null,
+        }));
+
+        setEvents(enrichedEvents);
+      } else {
+        setEvents(eventsData || []);
+      }
+
       setShowEventSelector(true);
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd pobierania eventów', 'error');
