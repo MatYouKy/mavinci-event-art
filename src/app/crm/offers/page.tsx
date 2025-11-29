@@ -8,6 +8,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import TechnicalBrochureEditor from './TechnicalBrochureEditor';
 import { OffersListView, OffersTableView, OffersGridView } from './OffersViews';
+import OfferWizard from '@/components/crm/OfferWizard';
 
 type Tab = 'offers' | 'catalog' | 'templates' | 'brochure';
 
@@ -111,6 +112,12 @@ export default function OffersPage() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
 
+  // Kreator oferty
+  const [showOfferWizard, setShowOfferWizard] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [showEventSelector, setShowEventSelector] = useState(false);
+  const [events, setEvents] = useState<any[]>([]);
+
   useEffect(() => {
     const tab = searchParams.get('tab') as Tab;
     if (tab && (tab === 'offers' || tab === 'catalog' || tab === 'templates')) {
@@ -152,8 +159,12 @@ export default function OffersPage() {
         .from('offers')
         .select(`
           *,
-          client:clients!client_id(company_name, first_name, last_name),
-          event:events!event_id(name, event_date),
+          event:events!event_id(
+            name,
+            event_date,
+            organization:organizations(company_name, first_name, last_name),
+            contact:contacts!contact_person_id(first_name, last_name)
+          ),
           creator:employees!created_by(name, surname)
         `)
         .order('created_at', { ascending: false });
@@ -259,10 +270,24 @@ export default function OffersPage() {
   };
 
   const getClientName = (offer: Offer) => {
+    // Pobierz nazwę z organizacji lub kontaktu przez event
+    const event = (offer as any).event;
+    if (event?.organization?.company_name) {
+      return event.organization.company_name;
+    }
+    if (event?.organization?.first_name || event?.organization?.last_name) {
+      return `${event.organization.first_name || ''} ${event.organization.last_name || ''}`.trim();
+    }
+    if (event?.contact?.first_name || event?.contact?.last_name) {
+      return `${event.contact.first_name || ''} ${event.contact.last_name || ''}`.trim();
+    }
+
+    // Fallback do starego formatu (jeśli istnieje)
     if (offer.client?.company_name) return offer.client.company_name;
     if (offer.client?.first_name || offer.client?.last_name) {
       return `${offer.client.first_name || ''} ${offer.client.last_name || ''}`.trim();
     }
+
     return 'Brak klienta';
   };
 
@@ -284,6 +309,34 @@ export default function OffersPage() {
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd podczas usuwania oferty', 'error');
     }
+  };
+
+  const handleNewOffer = async () => {
+    try {
+      // Pobierz eventy
+      const { data, error } = await supabase
+        .from('events')
+        .select(`
+          id,
+          name,
+          event_date,
+          organization:organizations(company_name, first_name, last_name),
+          contact:contacts!contact_person_id(first_name, last_name)
+        `)
+        .order('event_date', { ascending: false });
+
+      if (error) throw error;
+      setEvents(data || []);
+      setShowEventSelector(true);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd pobierania eventów', 'error');
+    }
+  };
+
+  const handleEventSelect = (eventId: string) => {
+    setSelectedEventId(eventId);
+    setShowEventSelector(false);
+    setShowOfferWizard(true);
   };
 
   if (loading) {
@@ -407,6 +460,7 @@ export default function OffersPage() {
           viewMode={offersViewMode}
           setViewMode={setOffersViewMode}
           onDelete={handleDeleteOffer}
+          onNewOffer={handleNewOffer}
         />
       )}
 
@@ -463,12 +517,91 @@ export default function OffersPage() {
           }}
         />
       )}
+
+      {/* Event Selector Modal */}
+      {showEventSelector && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-3xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
+              <h3 className="text-xl font-light text-[#e5e4e2]">Wybierz event dla oferty</h3>
+              <button
+                onClick={() => setShowEventSelector(false)}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              {events.length === 0 ? (
+                <div className="text-center py-12 text-[#e5e4e2]/60">
+                  Brak dostępnych eventów. Utwórz event aby móc dodać ofertę.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {events.map((event: any) => {
+                    const clientName =
+                      event.organization?.company_name ||
+                      [event.organization?.first_name, event.organization?.last_name].filter(Boolean).join(' ') ||
+                      [event.contact?.first_name, event.contact?.last_name].filter(Boolean).join(' ') ||
+                      'Brak klienta';
+
+                    return (
+                      <button
+                        key={event.id}
+                        onClick={() => handleEventSelect(event.id)}
+                        className="w-full text-left bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-medium text-[#e5e4e2] mb-1">{event.name}</h4>
+                            <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+                              <span className="flex items-center gap-1">
+                                <Building2 className="w-4 h-4" />
+                                {clientName}
+                              </span>
+                              {event.event_date && (
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-4 h-4" />
+                                  {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Offer Wizard */}
+      {showOfferWizard && selectedEventId && (
+        <OfferWizard
+          isOpen={showOfferWizard}
+          onClose={() => {
+            setShowOfferWizard(false);
+            setSelectedEventId(null);
+          }}
+          eventId={selectedEventId}
+          clientId={null}
+          onSuccess={() => {
+            setShowOfferWizard(false);
+            setSelectedEventId(null);
+            fetchOffers();
+            showSnackbar('Oferta została utworzona', 'success');
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // Offers Tab Component
-function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilter, setStatusFilter, getClientName, router, onRefresh, viewMode, setViewMode, onDelete }: any) {
+function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilter, setStatusFilter, getClientName, router, onRefresh, viewMode, setViewMode, onDelete, onNewOffer }: any) {
   return (
     <>
       {/* Stats */}
@@ -588,7 +721,7 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
           </div>
 
           <button
-            onClick={onRefresh}
+            onClick={handleNewOffer}
             className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
           >
             <Plus className="w-5 h-5" />

@@ -314,8 +314,12 @@ export default function OfferWizard({
         total_amount: calculateTotal(),
       };
 
-      if (offerData.offer_number.trim()) {
-        offerDataToInsert.offer_number = offerData.offer_number;
+      // Jeśli użytkownik wprowadził numer ręcznie, użyj go. W przeciwnym razie trigger wygeneruje automatycznie
+      if (offerData.offer_number && offerData.offer_number.trim()) {
+        offerDataToInsert.offer_number = offerData.offer_number.trim();
+      } else {
+        // Nie ustawiamy offer_number - trigger automatycznie go wygeneruje
+        offerDataToInsert.offer_number = null;
       }
 
       const { data: offerResult, error: offerError } = await supabase
