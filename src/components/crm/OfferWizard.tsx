@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, ShoppingCart, Package, Search, ChevronRight, ChevronLeft } from 'lucide-react';
+import { X, Plus, Trash2, ShoppingCart, Package, Search, ChevronRight, ChevronLeft, Check, AlertTriangle, Wrench, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Product {
@@ -26,6 +26,9 @@ interface OfferItem {
   unit_price: number;
   discount_percent: number;
   subtotal: number;
+  equipment_ids?: string[];
+  subcontractor_id?: string;
+  needs_subcontractor?: boolean;
 }
 
 interface OfferWizardProps {
@@ -70,12 +73,25 @@ export default function OfferWizard({
     unit: 'szt',
     unit_price: 0,
     discount_percent: 0,
+    equipment_ids: [] as string[],
+    subcontractor_id: '',
+    needs_subcontractor: false,
   });
+
+  // Equipment and subcontractors
+  const [equipmentList, setEquipmentList] = useState<any[]>([]);
+  const [subcontractors, setSubcontractors] = useState<any[]>([]);
+  const [showEquipmentSelector, setShowEquipmentSelector] = useState(false);
+  const [showSubcontractorSelector, setShowSubcontractorSelector] = useState(false);
 
   useEffect(() => {
     if (isOpen && step === 2) {
       fetchProducts();
       fetchCategories();
+    }
+    if (isOpen && step === 3) {
+      fetchEquipment();
+      fetchSubcontractors();
     }
   }, [isOpen, step]);
 
@@ -113,6 +129,35 @@ export default function OfferWizard({
       if (data) setCategories(data);
     } catch (err) {
       console.error('Error fetching categories:', err);
+    }
+  };
+
+  const fetchEquipment = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('equipment_items')
+        .select('id, name, model, category:equipment_categories(name)')
+        .order('name');
+
+      if (error) throw error;
+      if (data) setEquipmentList(data);
+    } catch (err) {
+      console.error('Error fetching equipment:', err);
+    }
+  };
+
+  const fetchSubcontractors = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('subcontractors')
+        .select('id, name, company_name, specialization')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      if (data) setSubcontractors(data);
+    } catch (err) {
+      console.error('Error fetching subcontractors:', err);
     }
   };
 
@@ -167,6 +212,14 @@ export default function OfferWizard({
       return;
     }
 
+    // Walidacja - musi mieć sprzęt LUB podwykonawcę
+    if (customItem.equipment_ids.length === 0 && !customItem.subcontractor_id && !customItem.needs_subcontractor) {
+      if (!confirm('Ta pozycja nie ma przypisanego sprzętu ani podwykonawcy. Czy chcesz oznaczyć ją jako wymagającą podwykonawcy?')) {
+        return;
+      }
+      customItem.needs_subcontractor = true;
+    }
+
     const subtotal = customItem.quantity * customItem.unit_price * (1 - customItem.discount_percent / 100);
 
     const newItem: OfferItem = {
@@ -178,6 +231,9 @@ export default function OfferWizard({
       unit_price: customItem.unit_price,
       discount_percent: customItem.discount_percent,
       subtotal,
+      equipment_ids: customItem.equipment_ids,
+      subcontractor_id: customItem.subcontractor_id,
+      needs_subcontractor: customItem.needs_subcontractor,
     };
 
     setOfferItems([...offerItems, newItem]);
@@ -188,8 +244,13 @@ export default function OfferWizard({
       unit: 'szt',
       unit_price: 0,
       discount_percent: 0,
+      equipment_ids: [],
+      subcontractor_id: '',
+      needs_subcontractor: false,
     });
     setShowCustomItemForm(false);
+    setShowEquipmentSelector(false);
+    setShowSubcontractorSelector(false);
   };
 
   const updateOfferItem = (id: string, updates: Partial<OfferItem>) => {
@@ -427,33 +488,54 @@ export default function OfferWizard({
 
               {/* Products Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredProducts.map((product) => (
-                  <div
-                    key={product.id}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Package className="w-5 h-5 text-[#d3bb73]" />
-                        <h4 className="font-medium text-[#e5e4e2]">{product.name}</h4>
+                {filteredProducts.map((product) => {
+                  const isAdded = offerItems.some((item) => item.product_id === product.id);
+                  const addedItem = offerItems.find((item) => item.product_id === product.id);
+
+                  return (
+                    <div
+                      key={product.id}
+                      className={`bg-[#1c1f33] border rounded-lg p-4 transition-all ${
+                        isAdded
+                          ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
+                          : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2 flex-1">
+                          <Package className={`w-5 h-5 ${isAdded ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`} />
+                          <h4 className="font-medium text-[#e5e4e2]">{product.name}</h4>
+                        </div>
+                        {isAdded && (
+                          <div className="flex items-center gap-1 bg-[#d3bb73]/20 text-[#d3bb73] px-2 py-1 rounded-full text-xs">
+                            <Check className="w-3 h-3" />
+                            <span>Dodano</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-sm text-[#e5e4e2]/60 mb-3 line-clamp-2">
+                        {product.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg font-medium text-[#d3bb73]">
+                          {product.base_price.toLocaleString('pl-PL')} zł
+                        </span>
+                        {isAdded ? (
+                          <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                            <span>Ilość: {addedItem?.quantity}</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => addProductToOffer(product)}
+                            className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors text-sm"
+                          >
+                            Dodaj
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <p className="text-sm text-[#e5e4e2]/60 mb-3 line-clamp-2">
-                      {product.description}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-medium text-[#d3bb73]">
-                        {product.base_price.toLocaleString('pl-PL')} zł
-                      </span>
-                      <button
-                        onClick={() => addProductToOffer(product)}
-                        className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors text-sm"
-                      >
-                        Dodaj
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {filteredProducts.length === 0 && (
@@ -550,6 +632,130 @@ export default function OfferWizard({
                       />
                     </div>
                   </div>
+
+                  {/* Equipment and Subcontractor Selection */}
+                  <div className="mt-4 space-y-3 border-t border-[#d3bb73]/20 pt-4">
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-sm font-medium text-[#e5e4e2]">Realizacja</h5>
+                      {customItem.needs_subcontractor && (
+                        <div className="flex items-center gap-1 text-orange-400 text-xs">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Wymaga podwykonawcy</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowEquipmentSelector(!showEquipmentSelector)}
+                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                          customItem.equipment_ids.length > 0
+                            ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
+                            : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40'
+                        }`}
+                      >
+                        <Wrench className="w-4 h-4" />
+                        <span className="text-sm">
+                          Sprzęt {customItem.equipment_ids.length > 0 && `(${customItem.equipment_ids.length})`}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowSubcontractorSelector(!showSubcontractorSelector)}
+                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                          customItem.subcontractor_id
+                            ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
+                            : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40'
+                        }`}
+                      >
+                        <Users className="w-4 h-4" />
+                        <span className="text-sm">Podwykonawca</span>
+                      </button>
+                    </div>
+
+                    {/* Equipment Selector */}
+                    {showEquipmentSelector && (
+                      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-3 max-h-48 overflow-y-auto">
+                        <div className="space-y-2">
+                          {equipmentList.map((equipment) => (
+                            <label key={equipment.id} className="flex items-center gap-2 cursor-pointer hover:bg-[#1c1f33] p-2 rounded">
+                              <input
+                                type="checkbox"
+                                checked={customItem.equipment_ids.includes(equipment.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setCustomItem({
+                                      ...customItem,
+                                      equipment_ids: [...customItem.equipment_ids, equipment.id],
+                                    });
+                                  } else {
+                                    setCustomItem({
+                                      ...customItem,
+                                      equipment_ids: customItem.equipment_ids.filter((id) => id !== equipment.id),
+                                    });
+                                  }
+                                }}
+                                className="rounded border-[#d3bb73]/20"
+                              />
+                              <span className="text-sm text-[#e5e4e2]">{equipment.name}</span>
+                              {equipment.model && (
+                                <span className="text-xs text-[#e5e4e2]/40">({equipment.model})</span>
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subcontractor Selector */}
+                    {showSubcontractorSelector && (
+                      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-3 space-y-2">
+                        {subcontractors.map((sub) => (
+                          <label key={sub.id} className="flex items-start gap-2 cursor-pointer hover:bg-[#1c1f33] p-2 rounded">
+                            <input
+                              type="radio"
+                              name="subcontractor"
+                              checked={customItem.subcontractor_id === sub.id}
+                              onChange={() => {
+                                setCustomItem({
+                                  ...customItem,
+                                  subcontractor_id: sub.id,
+                                  needs_subcontractor: false,
+                                });
+                              }}
+                              className="mt-1"
+                            />
+                            <div>
+                              <div className="text-sm text-[#e5e4e2]">{sub.name}</div>
+                              {sub.company_name && (
+                                <div className="text-xs text-[#e5e4e2]/60">{sub.company_name}</div>
+                              )}
+                              {sub.specialization && (
+                                <div className="text-xs text-[#d3bb73]/60">{sub.specialization}</div>
+                              )}
+                            </div>
+                          </label>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomItem({
+                              ...customItem,
+                              subcontractor_id: '',
+                              needs_subcontractor: true,
+                            });
+                            setShowSubcontractorSelector(false);
+                          }}
+                          className="w-full py-2 text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33] rounded"
+                        >
+                          Pomiń (wymaga uzupełnienia później)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex gap-2 mt-4">
                     <button
                       onClick={addCustomItem}
@@ -558,7 +764,11 @@ export default function OfferWizard({
                       Dodaj
                     </button>
                     <button
-                      onClick={() => setShowCustomItemForm(false)}
+                      onClick={() => {
+                        setShowCustomItemForm(false);
+                        setShowEquipmentSelector(false);
+                        setShowSubcontractorSelector(false);
+                      }}
                       className="px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] rounded-lg"
                     >
                       Anuluj
@@ -586,7 +796,25 @@ export default function OfferWizard({
                       <tr key={item.id} className="border-t border-[#d3bb73]/10">
                         <td className="py-3 px-4">
                           <div>
-                            <div className="text-[#e5e4e2] font-medium">{item.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[#e5e4e2] font-medium">{item.name}</span>
+                              {item.needs_subcontractor && (
+                                <div className="flex items-center gap-1 bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded text-xs" title="Wymaga uzupełnienia podwykonawcy">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  <span>Niekompletne</span>
+                                </div>
+                              )}
+                              {item.equipment_ids && item.equipment_ids.length > 0 && (
+                                <div className="flex items-center gap-1 text-[#d3bb73]/60 text-xs" title="Ma przypisany sprzęt">
+                                  <Wrench className="w-3 h-3" />
+                                </div>
+                              )}
+                              {item.subcontractor_id && (
+                                <div className="flex items-center gap-1 text-blue-400/60 text-xs" title="Ma przypisanego podwykonawcę">
+                                  <Users className="w-3 h-3" />
+                                </div>
+                              )}
+                            </div>
                             {item.description && (
                               <div className="text-xs text-[#e5e4e2]/60">{item.description}</div>
                             )}
