@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Calendar, MapPin, Building2, Tag } from 'lucide-react';
+import { Plus, Search, Calendar, MapPin, Building2, Tag, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
 import NewEventModal from '@/components/crm/NewEventModal';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -25,21 +25,33 @@ const statusLabels = {
   invoiced: 'Rozliczony',
 };
 
+type SortField = 'event_date' | 'name' | 'budget' | 'created_at';
+type SortDirection = 'asc' | 'desc';
+
 export default function EventsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [events, setEvents] = useState<any[]>([]);
+  const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortField, setSortField] = useState<SortField>('event_date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   useEffect(() => {
     fetchEvents();
   }, []);
 
+  useEffect(() => {
+    applyFiltersAndSort();
+  }, [events, searchQuery, statusFilter, sortField, sortDirection]);
+
   const fetchEvents = async () => {
     try {
       const { data, error } = await supabase
         .from('events')
-        .select('*')
+        .select('*, organizations(name), contacts(first_name, last_name)')
         .order('event_date', { ascending: true });
 
       if (error) {
@@ -55,26 +67,66 @@ export default function EventsPage() {
       console.error('Error:', err);
     }
 
-    setEvents([
-    {
-      id: '1',
-      name: 'Konferencja Tech Summit 2025',
-      client: 'Tech Corp',
-      event_date: '2025-10-15',
-      location: 'Warszawa',
-      status: 'in_preparation' as const,
-      budget: 50000,
-    },
-    {
-      id: '2',
-      name: 'Integracja firmowa ABC',
-      client: 'ABC Corporation',
-      event_date: '2025-10-08',
-      location: 'Gdańsk',
-      status: 'offer_accepted' as const,
-      budget: 25000,
-    },
-  ]);
+    setEvents([]);
+  };
+
+  const applyFiltersAndSort = () => {
+    let result = [...events];
+
+    // Filtrowanie po wyszukiwaniu
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(event =>
+        event.name?.toLowerCase().includes(query) ||
+        event.location?.toLowerCase().includes(query) ||
+        event.organizations?.name?.toLowerCase().includes(query) ||
+        event.description?.toLowerCase().includes(query)
+      );
+    }
+
+    // Filtrowanie po statusie
+    if (statusFilter !== 'all') {
+      result = result.filter(event => event.status === statusFilter);
+    }
+
+    // Sortowanie
+    result.sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+
+      // Konwersja dat
+      if (sortField === 'event_date' || sortField === 'created_at') {
+        aVal = new Date(aVal || 0).getTime();
+        bVal = new Date(bVal || 0).getTime();
+      }
+
+      // Konwersja liczb
+      if (sortField === 'budget') {
+        aVal = Number(aVal || 0);
+        bVal = Number(bVal || 0);
+      }
+
+      // Konwersja stringów
+      if (sortField === 'name') {
+        aVal = String(aVal || '').toLowerCase();
+        bVal = String(bVal || '').toLowerCase();
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    setFilteredEvents(result);
+  };
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
   };
 
   const handleSaveEvent = async (eventData: any) => {
@@ -153,8 +205,69 @@ export default function EventsPage() {
         </div>
       </div>
 
+      {/* Filtry i sortowanie */}
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 space-y-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Wyszukiwanie */}
+          <div className="flex-1 min-w-[250px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e4e2]/50" />
+              <input
+                type="text"
+                placeholder="Szukaj po nazwie, lokalizacji, kliencie..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+              />
+            </div>
+          </div>
+
+          {/* Filtr statusu */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+          >
+            <option value="all">Wszystkie statusy</option>
+            <option value="offer_sent">Oferta wysłana</option>
+            <option value="offer_accepted">Zaakceptowana</option>
+            <option value="in_preparation">Przygotowanie</option>
+            <option value="in_progress">W trakcie</option>
+            <option value="completed">Zakończony</option>
+            <option value="invoiced">Rozliczony</option>
+          </select>
+
+          {/* Sortowanie */}
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-[#e5e4e2]/50" />
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as SortField)}
+              className="px-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+            >
+              <option value="event_date">Data eventu</option>
+              <option value="created_at">Data utworzenia</option>
+              <option value="name">Nazwa</option>
+              <option value="budget">Budżet</option>
+            </select>
+            <button
+              onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+              className="p-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+              title={sortDirection === 'asc' ? 'Rosnąco' : 'Malejąco'}
+            >
+              <ArrowUpDown className={`w-4 h-4 text-[#e5e4e2] transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Podsumowanie */}
+        <div className="text-sm text-[#e5e4e2]/50">
+          Znaleziono: {filteredEvents.length} z {events.length} eventów
+        </div>
+      </div>
+
       <div className="grid gap-4">
-        {events.map((event) => (
+        {filteredEvents.map((event) => (
           <div
             key={event.id}
             onClick={() => router.push(`/crm/events/${event.id}`)}
@@ -168,7 +281,7 @@ export default function EventsPage() {
                 <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/70">
                   <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4" />
-                    {event.client_id || 'Brak klienta'}
+                    {event.organizations?.name || 'Brak klienta'}
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
@@ -176,7 +289,7 @@ export default function EventsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
-                    {event.location}
+                    {event.location || 'Brak lokalizacji'}
                   </div>
                 </div>
               </div>
