@@ -136,7 +136,9 @@ export default function OfferWizard({
     try {
       const { data, error } = await supabase
         .from('equipment_items')
-        .select('id, name, model, category:equipment_categories(name)')
+        .select('id, name, brand, model')
+        .eq('is_active', true)
+        .is('deleted_at', null)
         .order('name');
 
       if (error) throw error;
@@ -150,9 +152,9 @@ export default function OfferWizard({
     try {
       const { data, error } = await supabase
         .from('subcontractors')
-        .select('id, name, company_name, specialization')
-        .eq('is_active', true)
-        .order('name');
+        .select('id, contact_person, company_name, specialization')
+        .eq('status', 'active')
+        .order('company_name');
 
       if (error) throw error;
       if (data) setSubcontractors(data);
@@ -678,8 +680,13 @@ export default function OfferWizard({
                     {/* Equipment Selector */}
                     {showEquipmentSelector && (
                       <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-3 max-h-48 overflow-y-auto">
-                        <div className="space-y-2">
-                          {equipmentList.map((equipment) => (
+                        {equipmentList.length === 0 ? (
+                          <div className="text-center py-4 text-sm text-[#e5e4e2]/40">
+                            Brak dostępnego sprzętu
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {equipmentList.map((equipment) => (
                             <label key={equipment.id} className="flex items-center gap-2 cursor-pointer hover:bg-[#1c1f33] p-2 rounded">
                               <input
                                 type="checkbox"
@@ -699,20 +706,31 @@ export default function OfferWizard({
                                 }}
                                 className="rounded border-[#d3bb73]/20"
                               />
-                              <span className="text-sm text-[#e5e4e2]">{equipment.name}</span>
-                              {equipment.model && (
-                                <span className="text-xs text-[#e5e4e2]/40">({equipment.model})</span>
-                              )}
+                              <div className="flex flex-col">
+                                <span className="text-sm text-[#e5e4e2]">{equipment.name}</span>
+                                <div className="text-xs text-[#e5e4e2]/40">
+                                  {equipment.brand && <span>{equipment.brand}</span>}
+                                  {equipment.brand && equipment.model && <span> • </span>}
+                                  {equipment.model && <span>{equipment.model}</span>}
+                                </div>
+                              </div>
                             </label>
                           ))}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {/* Subcontractor Selector */}
                     {showSubcontractorSelector && (
                       <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-3 space-y-2">
-                        {subcontractors.map((sub) => (
+                        {subcontractors.length === 0 ? (
+                          <div className="text-center py-4 text-sm text-[#e5e4e2]/40">
+                            Brak dostępnych podwykonawców
+                          </div>
+                        ) : (
+                          <>
+                            {subcontractors.map((sub) => (
                           <label key={sub.id} className="flex items-start gap-2 cursor-pointer hover:bg-[#1c1f33] p-2 rounded">
                             <input
                               type="radio"
@@ -728,30 +746,32 @@ export default function OfferWizard({
                               className="mt-1"
                             />
                             <div>
-                              <div className="text-sm text-[#e5e4e2]">{sub.name}</div>
-                              {sub.company_name && (
-                                <div className="text-xs text-[#e5e4e2]/60">{sub.company_name}</div>
+                              <div className="text-sm text-[#e5e4e2]">{sub.company_name || sub.contact_person}</div>
+                              {sub.contact_person && sub.company_name && (
+                                <div className="text-xs text-[#e5e4e2]/60">{sub.contact_person}</div>
                               )}
-                              {sub.specialization && (
-                                <div className="text-xs text-[#d3bb73]/60">{sub.specialization}</div>
+                              {sub.specialization && Array.isArray(sub.specialization) && sub.specialization.length > 0 && (
+                                <div className="text-xs text-[#d3bb73]/60">{sub.specialization.join(', ')}</div>
                               )}
                             </div>
                           </label>
                         ))}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomItem({
-                              ...customItem,
-                              subcontractor_id: '',
-                              needs_subcontractor: true,
-                            });
-                            setShowSubcontractorSelector(false);
-                          }}
-                          className="w-full py-2 text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33] rounded"
-                        >
-                          Pomiń (wymaga uzupełnienia później)
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomItem({
+                                  ...customItem,
+                                  subcontractor_id: '',
+                                  needs_subcontractor: true,
+                                });
+                                setShowSubcontractorSelector(false);
+                              }}
+                              className="w-full py-2 text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33] rounded"
+                            >
+                              Pomiń (wymaga uzupełnienia później)
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
