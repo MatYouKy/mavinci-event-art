@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import TechnicalBrochureEditor from './TechnicalBrochureEditor';
+import { OffersListView, OffersTableView, OffersGridView } from './OffersViews';
 
 type Tab = 'offers' | 'catalog' | 'templates' | 'brochure';
 
@@ -95,6 +96,7 @@ export default function OffersPage() {
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [offersViewMode, setOffersViewMode] = useState<'list' | 'table' | 'grid'>('list');
 
   // Katalog produktów
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -264,6 +266,26 @@ export default function OffersPage() {
     return 'Brak klienta';
   };
 
+  const handleDeleteOffer = async (offerId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tę ofertę? Tej operacji nie można cofnąć.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('offers')
+        .delete()
+        .eq('id', offerId);
+
+      if (error) throw error;
+
+      showSnackbar('Oferta została usunięta', 'success');
+      fetchOffers();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd podczas usuwania oferty', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -382,6 +404,9 @@ export default function OffersPage() {
           getClientName={getClientName}
           router={router}
           onRefresh={fetchOffers}
+          viewMode={offersViewMode}
+          setViewMode={setOffersViewMode}
+          onDelete={handleDeleteOffer}
         />
       )}
 
@@ -443,7 +468,7 @@ export default function OffersPage() {
 }
 
 // Offers Tab Component
-function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilter, setStatusFilter, getClientName, router, onRefresh }: any) {
+function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilter, setStatusFilter, getClientName, router, onRefresh, viewMode, setViewMode, onDelete }: any) {
   return (
     <>
       {/* Stats */}
@@ -526,6 +551,42 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
             <option value="rejected">Odrzucone</option>
           </select>
 
+          <div className="flex items-center gap-2 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+              title="Widok listy"
+            >
+              <List className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+              title="Widok tabeli"
+            >
+              <Grid3x3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+              title="Widok kafelków"
+            >
+              <Package className="w-5 h-5" />
+            </button>
+          </div>
+
           <button
             onClick={onRefresh}
             className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
@@ -545,60 +606,32 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {offers.map((offer: any) => (
-              <div
-                key={offer.id}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
-                onClick={() => router.push(`/crm/offers/${offer.id}`)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-12 h-12 bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-[#d3bb73]" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-medium text-[#e5e4e2]">
-                          {offer.offer_number || 'Brak numeru'}
-                        </h3>
-                        <span
-                          className={`px-2 py-1 rounded text-xs border ${
-                            statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
-                          }`}
-                        >
-                          {statusLabels[offer.status] || offer.status}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        {offer.event && (
-                          <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
-                            <Calendar className="w-4 h-4" />
-                            <span>{offer.event.name}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                          <Building2 className="w-4 h-4" />
-                          <span>{getClientName(offer)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="text-2xl font-light text-[#d3bb73] mb-1">
-                      {offer.total_amount ? offer.total_amount.toLocaleString('pl-PL') : '0'} zł
-                    </div>
-                    {offer.valid_until && (
-                      <div className="text-xs text-[#e5e4e2]/60">
-                        Ważna do: {new Date(offer.valid_until).toLocaleDateString('pl-PL')}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <>
+            {viewMode === 'list' && (
+              <OffersListView
+                offers={offers}
+                getClientName={getClientName}
+                onView={(id) => router.push(`/crm/offers/${id}`)}
+                onDelete={onDelete}
+              />
+            )}
+            {viewMode === 'table' && (
+              <OffersTableView
+                offers={offers}
+                getClientName={getClientName}
+                onView={(id) => router.push(`/crm/offers/${id}`)}
+                onDelete={onDelete}
+              />
+            )}
+            {viewMode === 'grid' && (
+              <OffersGridView
+                offers={offers}
+                getClientName={getClientName}
+                onView={(id) => router.push(`/crm/offers/${id}`)}
+                onDelete={onDelete}
+              />
+            )}
+          </>
         )}
       </div>
     </>
