@@ -327,19 +327,23 @@ export default function OfferWizard({
       if (offerError) throw offerError;
 
       // 2. Dodaj pozycje oferty
-      const itemsToInsert = offerItems.map((item) => ({
+      const itemsToInsert = offerItems.map((item, index) => ({
         offer_id: offerResult.id,
         product_id: item.product_id || null,
         name: item.name,
-        description: item.description,
+        description: item.description || null,
         quantity: item.quantity,
         unit: item.unit,
         unit_price: item.unit_price,
-        discount_percent: item.discount_percent,
+        unit_cost: 0,
+        discount_percent: item.discount_percent || 0,
         discount_amount: 0,
+        transport_cost: 0,
+        logistics_cost: 0,
         subtotal: item.subtotal,
-        vat_rate: 23,
         total: item.subtotal,
+        display_order: index + 1,
+        notes: null,
       }));
 
       const { error: itemsError } = await supabase
