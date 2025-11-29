@@ -344,8 +344,7 @@ export default function OfferWizard({
         discount_amount: 0,
         transport_cost: 0,
         logistics_cost: 0,
-        subtotal: item.subtotal,
-        total: item.subtotal,
+        // subtotal i total są kolumnami wyliczanymi - baza danych automatycznie je obliczy
         display_order: index + 1,
         notes: null,
       }));
