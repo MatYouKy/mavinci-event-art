@@ -286,7 +286,7 @@ export default function OfferWizard({
       // 1. Pobierz event aby znaleźć organization_id
       const { data: event, error: eventError } = await supabase
         .from('events')
-        .select('organization_id, contact_id')
+        .select('organization_id, contact_person_id')
         .eq('id', eventId)
         .single();
 
