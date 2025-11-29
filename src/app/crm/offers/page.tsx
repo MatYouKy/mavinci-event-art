@@ -718,10 +718,10 @@ function OffersTab({ offers, allOffers, searchQuery, setSearchQuery, statusFilte
             >
               <Package className="w-5 h-5" />
             </button>
-          </div>
+          </div>  
 
           <button
-            onClick={handleNewOffer}
+            onClick={onNewOffer}
             className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
           >
             <Plus className="w-5 h-5" />
