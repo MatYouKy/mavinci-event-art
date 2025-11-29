@@ -214,12 +214,10 @@ export default function OfferWizard({
       return;
     }
 
-    // Walidacja - musi mieć sprzęt LUB podwykonawcę
+    // Walidacja - musi mieć sprzęt LUB podwykonawcę (lub być oznaczoną jako wymagającą podwykonawcy)
     if (customItem.equipment_ids.length === 0 && !customItem.subcontractor_id && !customItem.needs_subcontractor) {
-      if (!confirm('Ta pozycja nie ma przypisanego sprzętu ani podwykonawcy. Czy chcesz oznaczyć ją jako wymagającą podwykonawcy?')) {
-        return;
-      }
-      customItem.needs_subcontractor = true;
+      alert('Musisz wybrać sprzęt lub zaznaczyć "Wymaga podwykonawcy"');
+      return;
     }
 
     const subtotal = customItem.quantity * customItem.unit_price * (1 - customItem.discount_percent / 100);
@@ -285,10 +283,31 @@ export default function OfferWizard({
     setLoading(true);
 
     try {
-      // 1. Utwórz ofertę
+      // 1. Pobierz event aby znaleźć organization_id
+      const { data: event, error: eventError } = await supabase
+        .from('events')
+        .select('organization_id, contact_id')
+        .eq('id', eventId)
+        .single();
+
+      if (eventError) throw eventError;
+
+      // 2. Znajdź odpowiadającego klienta w tabeli clients
+      let finalClientId = null;
+      if (event.organization_id) {
+        const { data: client } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('organization_id', event.organization_id)
+          .maybeSingle();
+
+        finalClientId = client?.id || null;
+      }
+
+      // 3. Utwórz ofertę
       const offerDataToInsert: any = {
         event_id: eventId,
-        client_id: clientId,
+        client_id: finalClientId,
         valid_until: offerData.valid_until || null,
         notes: offerData.notes || null,
         status: 'draft',
@@ -639,43 +658,67 @@ export default function OfferWizard({
                   <div className="mt-4 space-y-3 border-t border-[#d3bb73]/20 pt-4">
                     <div className="flex items-center justify-between">
                       <h5 className="text-sm font-medium text-[#e5e4e2]">Realizacja</h5>
-                      {customItem.needs_subcontractor && (
-                        <div className="flex items-center gap-1 text-orange-400 text-xs">
-                          <AlertTriangle className="w-3 h-3" />
-                          <span>Wymaga podwykonawcy</span>
-                        </div>
-                      )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowEquipmentSelector(!showEquipmentSelector)}
-                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                          customItem.equipment_ids.length > 0
-                            ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                            : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40'
-                        }`}
-                      >
-                        <Wrench className="w-4 h-4" />
-                        <span className="text-sm">
-                          Sprzęt {customItem.equipment_ids.length > 0 && `(${customItem.equipment_ids.length})`}
-                        </span>
-                      </button>
+                    {/* Equipment Selector Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowEquipmentSelector(!showEquipmentSelector)}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                        customItem.equipment_ids.length > 0
+                          ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
+                          : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40'
+                      }`}
+                    >
+                      <Wrench className="w-4 h-4" />
+                      <span className="text-sm">
+                        Sprzęt {customItem.equipment_ids.length > 0 && `(${customItem.equipment_ids.length})`}
+                      </span>
+                    </button>
 
+                    {/* Subcontractor Checkbox */}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={customItem.needs_subcontractor}
+                        onChange={(e) => {
+                          setCustomItem({
+                            ...customItem,
+                            needs_subcontractor: e.target.checked,
+                            subcontractor_id: e.target.checked ? customItem.subcontractor_id : '',
+                          });
+                          if (!e.target.checked) {
+                            setShowSubcontractorSelector(false);
+                          }
+                        }}
+                        className="rounded border-[#d3bb73]/20"
+                      />
+                      <span className="text-sm text-[#e5e4e2]">Wymaga podwykonawcy</span>
+                      {customItem.needs_subcontractor && !customItem.subcontractor_id && (
+                        <div className="flex items-center gap-1 text-orange-400 text-xs ml-auto">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Niekompletne</span>
+                        </div>
+                      )}
+                    </label>
+
+                    {/* Subcontractor Selector - only show if checkbox is checked */}
+                    {customItem.needs_subcontractor && (
                       <button
                         type="button"
                         onClick={() => setShowSubcontractorSelector(!showSubcontractorSelector)}
-                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                           customItem.subcontractor_id
                             ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
                             : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40'
                         }`}
                       >
                         <Users className="w-4 h-4" />
-                        <span className="text-sm">Podwykonawca</span>
+                        <span className="text-sm">
+                          {customItem.subcontractor_id ? 'Zmień podwykonawcę' : 'Wybierz podwykonawcę'}
+                        </span>
                       </button>
-                    </div>
+                    )}
 
                     {/* Equipment Selector */}
                     {showEquipmentSelector && (
@@ -730,6 +773,28 @@ export default function OfferWizard({
                           </div>
                         ) : (
                           <>
+                            {/* Option to clear selection */}
+                            {customItem.subcontractor_id && (
+                              <label className="flex items-start gap-2 cursor-pointer hover:bg-[#1c1f33] p-2 rounded border-b border-[#d3bb73]/10">
+                                <input
+                                  type="radio"
+                                  name="subcontractor"
+                                  checked={!customItem.subcontractor_id}
+                                  onChange={() => {
+                                    setCustomItem({
+                                      ...customItem,
+                                      subcontractor_id: '',
+                                      needs_subcontractor: true,
+                                    });
+                                  }}
+                                  className="mt-1"
+                                />
+                                <div>
+                                  <div className="text-sm text-[#e5e4e2]/60 italic">Brak (uzupełnij później)</div>
+                                </div>
+                              </label>
+                            )}
+
                             {subcontractors.map((sub) => (
                           <label key={sub.id} className="flex items-start gap-2 cursor-pointer hover:bg-[#1c1f33] p-2 rounded">
                             <input
@@ -756,20 +821,6 @@ export default function OfferWizard({
                             </div>
                           </label>
                         ))}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCustomItem({
-                                  ...customItem,
-                                  subcontractor_id: '',
-                                  needs_subcontractor: true,
-                                });
-                                setShowSubcontractorSelector(false);
-                              }}
-                              className="w-full py-2 text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33] rounded"
-                            >
-                              Pomiń (wymaga uzupełnienia później)
-                            </button>
                           </>
                         )}
                       </div>
