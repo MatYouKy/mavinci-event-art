@@ -18,6 +18,7 @@ import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import EventFilesExplorer from '@/components/crm/EventFilesExplorer';
 import EventSubcontractorsPanel from '@/components/crm/EventSubcontractorsPanel';
 import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
+import OfferWizard from '@/components/crm/OfferWizard';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -2057,11 +2058,11 @@ export default function EventDetailPage() {
       )}
 
       {showCreateOfferModal && event && (
-        <CreateOfferModal
+        <OfferWizard
           isOpen={showCreateOfferModal}
           onClose={() => setShowCreateOfferModal(false)}
           eventId={eventId}
-          organizationId={event.organization_id}
+          clientId={event.organization_id || event.contact_person_id || ''}
           onSuccess={() => {
             setShowCreateOfferModal(false);
             fetchOffers();
