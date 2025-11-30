@@ -56,7 +56,7 @@ export default function GoogleMapsPicker({
     setMapUrl(url);
   }, [selectedLat, selectedLng]);
 
-  // Wyszukiwanie miejsc z debounce
+  // Wyszukiwanie miejsc z debounce - Google Places API
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current as NodeJS.Timeout);
@@ -70,25 +70,26 @@ export default function GoogleMapsPicker({
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        // Symulacja Google Places Autocomplete
-        // W produkcji użyj prawdziwego API: https://maps.googleapis.com/maps/api/place/autocomplete/json
+        // Wywołanie naszego API route (unika problemów CORS)
+        const response = await fetch(
+          `/api/places/autocomplete?input=${encodeURIComponent(searchQuery)}`
+        );
 
-        // Dla demonstracji - otwórzmy wyszukiwarkę Google Maps
-        const mockSuggestions: PlaceSuggestion[] = [
-          {
-            description: `${searchQuery} - wyszukaj w Google Maps`,
-            place_id: 'search',
-            structured_formatting: {
-              main_text: searchQuery,
-              secondary_text: 'Kliknij aby wyszukać'
-            }
-          }
-        ];
+        const data = await response.json();
 
-        setSuggestions(mockSuggestions);
-        setShowSuggestions(true);
+        if (data.status === 'OK' && data.predictions) {
+          setSuggestions(data.predictions);
+          setShowSuggestions(true);
+        } else if (data.predictions && data.predictions.length === 0) {
+          setSuggestions([]);
+          setShowSuggestions(false);
+        } else {
+          console.error('Places API error:', data.status || data.error);
+          setSuggestions([]);
+        }
       } catch (error) {
         console.error('Błąd wyszukiwania:', error);
+        setSuggestions([]);
       }
     }, 500) as unknown as NodeJS.Timeout;
   }, [searchQuery]);
@@ -97,19 +98,70 @@ export default function GoogleMapsPicker({
     setSearchQuery(suggestion.structured_formatting.main_text);
     setShowSuggestions(false);
 
-    // Otwórz Google Maps do wyszukania
-    const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(suggestion.structured_formatting.main_text)}`;
-    window.open(searchUrl, '_blank', 'width=800,height=600');
+    try {
+      // Pobierz szczegóły miejsca z naszego API route
+      const detailsResponse = await fetch(
+        `/api/places/details?place_id=${suggestion.place_id}`
+      );
 
-    // Instrukcja dla użytkownika
-    alert(
-      '📍 Znajdź miejsce w Google Maps\n\n' +
-      '1. Znajdź właściwą lokalizację na otwartej mapie\n' +
-      '2. Kliknij prawym na miejsce → "Co tu jest?"\n' +
-      '3. Skopiuj współrzędne (pojawią się na dole)\n' +
-      '4. Wklej je w polach poniżej\n\n' +
-      'Lub użyj funkcji "Użyj mojej lokalizacji GPS"'
-    );
+      const detailsData = await detailsResponse.json();
+
+      if (detailsData.status === 'OK' && detailsData.result) {
+        const place = detailsData.result;
+        const lat = place.geometry.location.lat;
+        const lng = place.geometry.location.lng;
+
+        // Parsuj komponenty adresu
+        let address = '';
+        let city = '';
+        let postalCode = '';
+        let country = '';
+
+        if (place.address_components) {
+          place.address_components.forEach((component: any) => {
+            if (component.types.includes('route')) {
+              address = component.long_name;
+            }
+            if (component.types.includes('street_number')) {
+              address = `${component.long_name} ${address}`.trim();
+            }
+            if (component.types.includes('locality')) {
+              city = component.long_name;
+            }
+            if (component.types.includes('postal_code')) {
+              postalCode = component.long_name;
+            }
+            if (component.types.includes('country')) {
+              country = component.long_name;
+            }
+          });
+        }
+
+        // Ustaw nową lokalizację
+        setSelectedLat(lat);
+        setSelectedLng(lng);
+        setZoom(17);
+
+        const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+
+        // Wywołaj callback z pełnymi danymi
+        onLocationSelect({
+          latitude: lat,
+          longitude: lng,
+          formatted_address: place.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+          google_place_id: suggestion.place_id,
+          google_maps_url: googleMapsUrl,
+          address: address || undefined,
+          city: city || undefined,
+          postal_code: postalCode || undefined,
+          country: country || undefined,
+        });
+      } else {
+        console.error('Place Details API error:', detailsData.status || detailsData.error);
+      }
+    } catch (error) {
+      console.error('Błąd pobierania szczegółów miejsca:', error);
+    }
   };
 
   const handleGetCurrentLocation = () => {
@@ -230,7 +282,6 @@ export default function GoogleMapsPicker({
           {/* Google Maps iframe */}
           <iframe
             ref={iframeRef}
-            key={`${selectedLat}-${selectedLng}-${zoom}`}
             src={`https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=${zoom}&output=embed&gestureHandling=greedy`}
             className="absolute inset-0 w-full h-full pointer-events-auto"
             style={{ border: 0 }}
