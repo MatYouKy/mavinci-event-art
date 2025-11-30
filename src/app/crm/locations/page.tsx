@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapPin, Plus, Edit, Trash2, Building, Phone, Mail, User, FileText } from 'lucide-react';
+import { MapPin, Plus, Edit, Trash2, Building, Phone, Mail, User, FileText, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import GoogleMapsPicker from '@/components/crm/GoogleMapsPicker';
 
 interface Location {
   id: string;
@@ -17,6 +18,11 @@ interface Location {
   contact_phone?: string;
   contact_email?: string;
   notes?: string;
+  latitude?: number;
+  longitude?: number;
+  google_maps_url?: string;
+  google_place_id?: string;
+  formatted_address?: string;
   created_at: string;
 }
 
@@ -37,6 +43,11 @@ export default function LocationsPage() {
     contact_phone: '',
     contact_email: '',
     notes: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
+    google_maps_url: '',
+    google_place_id: '',
+    formatted_address: '',
   });
 
   useEffect(() => {
@@ -72,6 +83,11 @@ export default function LocationsPage() {
         contact_phone: location.contact_phone || '',
         contact_email: location.contact_email || '',
         notes: location.notes || '',
+        latitude: location.latitude || null,
+        longitude: location.longitude || null,
+        google_maps_url: location.google_maps_url || '',
+        google_place_id: location.google_place_id || '',
+        formatted_address: location.formatted_address || '',
       });
     } else {
       setEditingLocation(null);
@@ -86,6 +102,11 @@ export default function LocationsPage() {
         contact_phone: '',
         contact_email: '',
         notes: '',
+        latitude: null,
+        longitude: null,
+        google_maps_url: '',
+        google_place_id: '',
+        formatted_address: '',
       });
     }
     setShowModal(true);
@@ -108,6 +129,11 @@ export default function LocationsPage() {
       contact_phone: formData.contact_phone || null,
       contact_email: formData.contact_email || null,
       notes: formData.notes || null,
+      latitude: formData.latitude,
+      longitude: formData.longitude,
+      google_maps_url: formData.google_maps_url || null,
+      google_place_id: formData.google_place_id || null,
+      formatted_address: formData.formatted_address || null,
     };
 
     if (editingLocation) {
@@ -256,6 +282,43 @@ export default function LocationsPage() {
                       <span>NIP: {location.nip}</span>
                     </div>
                   )}
+
+                  {/* Google Maps link */}
+                  {location.google_maps_url && (
+                    <div className="pt-2 mt-2 border-t border-[#d3bb73]/10">
+                      <a
+                        href={location.google_maps_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span className="text-sm">Zobacz w Google Maps</span>
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Mini mapa - preview */}
+                  {location.latitude && location.longitude && (
+                    <div className="mt-2 rounded overflow-hidden border border-[#d3bb73]/20">
+                      <a
+                        href={location.google_maps_url || `https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block"
+                      >
+                        <img
+                          src={`https://maps.googleapis.com/maps/api/staticmap?center=${location.latitude},${location.longitude}&zoom=14&size=400x200&markers=color:red%7C${location.latitude},${location.longitude}&key=YOUR_GOOGLE_MAPS_API_KEY`}
+                          alt="Mapa lokalizacji"
+                          className="w-full h-32 object-cover hover:opacity-80 transition-opacity"
+                          onError={(e) => {
+                            // Fallback - pokaż iframe zamiast static map
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -393,6 +456,28 @@ export default function LocationsPage() {
                     rows={3}
                     className="w-full px-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
                     placeholder="Dodatkowe informacje..."
+                  />
+                </div>
+
+                {/* Google Maps Picker */}
+                <div className="pt-4 border-t border-[#d3bb73]/10">
+                  <GoogleMapsPicker
+                    latitude={formData.latitude}
+                    longitude={formData.longitude}
+                    onLocationSelect={(data) => {
+                      setFormData({
+                        ...formData,
+                        latitude: data.latitude,
+                        longitude: data.longitude,
+                        google_maps_url: data.google_maps_url,
+                        google_place_id: data.google_place_id || '',
+                        formatted_address: data.formatted_address,
+                        address: data.address || formData.address,
+                        city: data.city || formData.city,
+                        postal_code: data.postal_code || formData.postal_code,
+                        country: data.country || formData.country,
+                      });
+                    }}
                   />
                 </div>
               </div>
