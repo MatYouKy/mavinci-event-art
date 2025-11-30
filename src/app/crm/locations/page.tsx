@@ -596,6 +596,7 @@ export default function LocationsPage() {
                     onLocationSelect={(data) => {
                       setFormData({
                         ...formData,
+                        name: data.name || formData.name,
                         latitude: data.latitude,
                         longitude: data.longitude,
                         google_maps_url: data.google_maps_url,

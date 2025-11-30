@@ -13,6 +13,7 @@ interface GoogleMapsPickerProps {
   latitude?: number | null;
   longitude?: number | null;
   onLocationSelect: (data: {
+    name?: string;
     latitude: number;
     longitude: number;
     formatted_address: string;
@@ -209,6 +210,7 @@ export default function GoogleMapsPicker({
         const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
 
         onLocationSelect({
+          name: place.name || suggestion.structured_formatting.main_text || undefined,
           latitude: lat,
           longitude: lng,
           formatted_address: place.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
