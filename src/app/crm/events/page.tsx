@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Calendar, MapPin, Building2, Tag, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
-import NewEventModal from '@/components/crm/NewEventModal';
+import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -368,10 +368,10 @@ export default function EventsPage() {
         })}
       </div>
 
-      <NewEventModal
+      <EventWizard
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSave={handleSaveEvent}
+        onSuccess={fetchEvents}
       />
     </div>
   );

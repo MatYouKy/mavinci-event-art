@@ -22,7 +22,7 @@ import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
 import EmployeeView from './EmployeeView';
-import NewEventModal from '../NewEventModal';
+import EventWizard from '../EventWizard';
 import { useGetEventsListQuery } from '@/store/api/eventsApi';
 
 export default function CalendarMain() {
@@ -721,10 +721,10 @@ export default function CalendarMain() {
         </div>
       )}
 
-      <NewEventModal
+      <EventWizard
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSave={handleSaveEvent}
+        onSuccess={refetchEvents}
         initialDate={modalInitialDate}
       />
     </div>
