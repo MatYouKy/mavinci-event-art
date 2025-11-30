@@ -119,7 +119,7 @@ export default function GoogleMapsPicker({
   useEffect(() => {
     if (mapRef.current && latitude && longitude) {
       mapRef.current.setCenter({ lat: latitude, lng: longitude });
-      mapRef.current.setZoom(15);
+      // Nie zmieniaj zoom - zachowaj aktualny poziom
     }
   }, [latitude, longitude]);
 
@@ -203,7 +203,7 @@ export default function GoogleMapsPicker({
 
         if (mapRef.current) {
           mapRef.current.setCenter({ lat, lng });
-          mapRef.current.setZoom(17);
+          // Nie zmieniaj zoom - zachowaj aktualny poziom
         }
 
         const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
@@ -237,7 +237,7 @@ export default function GoogleMapsPicker({
 
           if (mapRef.current) {
             mapRef.current.setCenter({ lat, lng });
-            mapRef.current.setZoom(15);
+            // Nie zmieniaj zoom - zachowaj aktualny poziom
           }
 
           const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
