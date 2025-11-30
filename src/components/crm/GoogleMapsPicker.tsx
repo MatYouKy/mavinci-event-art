@@ -47,6 +47,8 @@ export default function GoogleMapsPicker({
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [clickedPlace, setClickedPlace] = useState<any>(null);
+  const [showPlacePopup, setShowPlacePopup] = useState(false);
 
   const mapRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -100,6 +102,70 @@ export default function GoogleMapsPicker({
         const newZoom = map.getZoom();
         if (newZoom) {
           setZoom(newZoom);
+        }
+      });
+
+      // LISTENER NA KLIKNIĘCIE MAPY - pobierz info o miejscu
+      map.addListener('click', async (e: any) => {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+
+        // Pobierz informacje o miejscu za pomocą Geocoding API
+        try {
+          const geocoder = new window.google.maps.Geocoder();
+          const result = await geocoder.geocode({ location: { lat, lng } });
+
+          if (result.results && result.results.length > 0) {
+            const place = result.results[0];
+
+            let name = '';
+            let address = '';
+            let city = '';
+            let postalCode = '';
+            let country = '';
+
+            // Spróbuj znaleźć nazwę POI (Point of Interest)
+            const poiResult = result.results.find((r: any) => r.types.includes('point_of_interest'));
+            if (poiResult) {
+              name = poiResult.name || '';
+            }
+
+            // Parse address components
+            if (place.address_components) {
+              place.address_components.forEach((component: any) => {
+                if (component.types.includes('route')) {
+                  address = component.long_name;
+                }
+                if (component.types.includes('street_number')) {
+                  address = `${component.long_name} ${address}`.trim();
+                }
+                if (component.types.includes('locality')) {
+                  city = component.long_name;
+                }
+                if (component.types.includes('postal_code')) {
+                  postalCode = component.long_name;
+                }
+                if (component.types.includes('country')) {
+                  country = component.long_name;
+                }
+              });
+            }
+
+            setClickedPlace({
+              name: name || place.formatted_address?.split(',')[0] || '',
+              lat,
+              lng,
+              formatted_address: place.formatted_address,
+              place_id: place.place_id,
+              address,
+              city,
+              postal_code: postalCode,
+              country,
+            });
+            setShowPlacePopup(true);
+          }
+        } catch (error) {
+          console.error('Błąd geocoding:', error);
         }
       });
     };
@@ -270,6 +336,35 @@ export default function GoogleMapsPicker({
     }
   };
 
+  // Użyj klikniętego miejsca
+  const handleUseClickedPlace = () => {
+    if (!clickedPlace) return;
+
+    const googleMapsUrl = `https://www.google.com/maps?q=${clickedPlace.lat},${clickedPlace.lng}`;
+
+    setCenterLat(clickedPlace.lat);
+    setCenterLng(clickedPlace.lng);
+
+    if (mapRef.current) {
+      mapRef.current.setCenter({ lat: clickedPlace.lat, lng: clickedPlace.lng });
+    }
+
+    onLocationSelect({
+      name: clickedPlace.name || undefined,
+      latitude: clickedPlace.lat,
+      longitude: clickedPlace.lng,
+      formatted_address: clickedPlace.formatted_address,
+      google_place_id: clickedPlace.place_id,
+      google_maps_url: googleMapsUrl,
+      address: clickedPlace.address || undefined,
+      city: clickedPlace.city || undefined,
+      postal_code: clickedPlace.postal_code || undefined,
+      country: clickedPlace.country || undefined,
+    });
+
+    setShowPlacePopup(false);
+  };
+
   return (
     <div className="space-y-4">
       {/* Wyszukiwarka */}
@@ -418,6 +513,65 @@ export default function GoogleMapsPicker({
               <ExternalLink className="w-4 h-4" />
             </a>
           </div>
+
+          {/* Custom popup po kliknięciu na miejscu */}
+          {showPlacePopup && clickedPlace && (
+            <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
+              <div className="bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <MapPin className="w-6 h-6 text-[#d3bb73] flex-shrink-0" />
+                    <h3 className="text-lg font-semibold text-[#e5e4e2]">
+                      {clickedPlace.name || 'Wybrane miejsce'}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setShowPlacePopup(false)}
+                    className="p-1 hover:bg-[#d3bb73]/10 rounded transition-colors"
+                  >
+                    <X className="w-5 h-5 text-[#e5e4e2]/70" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  {clickedPlace.address && (
+                    <div className="text-sm text-[#e5e4e2]/80">
+                      <span className="font-medium">Adres:</span> {clickedPlace.address}
+                    </div>
+                  )}
+                  {clickedPlace.city && (
+                    <div className="text-sm text-[#e5e4e2]/80">
+                      <span className="font-medium">Miasto:</span> {clickedPlace.city}
+                      {clickedPlace.postal_code && `, ${clickedPlace.postal_code}`}
+                    </div>
+                  )}
+                  {clickedPlace.formatted_address && (
+                    <div className="text-sm text-[#e5e4e2]/60 border-t border-[#d3bb73]/20 pt-3">
+                      {clickedPlace.formatted_address}
+                    </div>
+                  )}
+                  <div className="text-xs font-mono text-[#d3bb73]/80 bg-[#0f1117] px-3 py-2 rounded">
+                    {clickedPlace.lat.toFixed(6)}, {clickedPlace.lng.toFixed(6)}
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowPlacePopup(false)}
+                    className="flex-1 px-4 py-2.5 bg-[#0f1117] text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors font-medium"
+                  >
+                    Anuluj
+                  </button>
+                  <button
+                    onClick={handleUseClickedPlace}
+                    className="flex-1 px-4 py-2.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-semibold shadow-lg"
+                  >
+                    Użyj tej lokalizacji
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
