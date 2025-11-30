@@ -3,6 +3,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { MapPin, ExternalLink, Search, X, ZoomIn, ZoomOut } from 'lucide-react';
 
+declare global {
+  interface Window {
+    google: any;
+  }
+}
+
 interface GoogleMapsPickerProps {
   latitude?: number | null;
   longitude?: number | null;
@@ -33,7 +39,6 @@ export default function GoogleMapsPicker({
   longitude,
   onLocationSelect,
 }: GoogleMapsPickerProps) {
-  // State dla współrzędnych centrum mapy (aktualna pozycja pinezki)
   const [centerLat, setCenterLat] = useState<number>(latitude || 52.2297);
   const [centerLng, setCenterLng] = useState<number>(longitude || 21.0122);
   const [zoom, setZoom] = useState(latitude && longitude ? 15 : 6);
@@ -41,19 +46,75 @@ export default function GoogleMapsPicker({
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [mapKey, setMapKey] = useState(0); // Key do force refresh mapy
 
+  const mapRef = useRef<any>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Inicjalizacja mapy Google Maps JavaScript API
   useEffect(() => {
-    if (latitude && longitude) {
-      setCenterLat(latitude);
-      setCenterLng(longitude);
-      setZoom(15);
+    if (!mapContainerRef.current) return;
+
+    const initMap = () => {
+      if (!window.google) {
+        console.error('Google Maps API not loaded');
+        return;
+      }
+
+      const map = new window.google.maps.Map(mapContainerRef.current, {
+        center: { lat: centerLat, lng: centerLng },
+        zoom: zoom,
+        gestureHandling: 'greedy',
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: false,
+      });
+
+      mapRef.current = map;
+
+      // KLUCZOWY LISTENER - śledzi gdy user przesuwa mapę
+      map.addListener('center_changed', () => {
+        const center = map.getCenter();
+        if (center) {
+          const lat = center.lat();
+          const lng = center.lng();
+
+          // Aktualizuj state gdy user przesuwa mapę
+          setCenterLat(lat);
+          setCenterLng(lng);
+        }
+      });
+
+      // Listener na zmianę zoom
+      map.addListener('zoom_changed', () => {
+        const newZoom = map.getZoom();
+        if (newZoom) {
+          setZoom(newZoom);
+        }
+      });
+    };
+
+    // Załaduj Google Maps API jeśli jeszcze nie załadowane
+    if (!window.google) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.async = true;
+      script.onload = initMap;
+      document.head.appendChild(script);
+    } else {
+      initMap();
+    }
+  }, []);
+
+  // Aktualizuj mapę gdy zmieniają się współrzędne z zewnątrz
+  useEffect(() => {
+    if (mapRef.current && latitude && longitude) {
+      mapRef.current.setCenter({ lat: latitude, lng: longitude });
+      mapRef.current.setZoom(15);
     }
   }, [latitude, longitude]);
 
-  // Wyszukiwanie miejsc z debounce - Google Places API
+  // Wyszukiwanie miejsc z debounce
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current as NodeJS.Timeout);
@@ -76,12 +137,9 @@ export default function GoogleMapsPicker({
         if (data.status === 'OK' && data.predictions) {
           setSuggestions(data.predictions);
           setShowSuggestions(true);
-        } else if (data.predictions && data.predictions.length === 0) {
+        } else {
           setSuggestions([]);
           setShowSuggestions(false);
-        } else {
-          console.error('Places API error:', data.status || data.error);
-          setSuggestions([]);
         }
       } catch (error) {
         console.error('Błąd wyszukiwania:', error);
@@ -133,8 +191,11 @@ export default function GoogleMapsPicker({
 
         setCenterLat(lat);
         setCenterLng(lng);
-        setZoom(17);
-        setMapKey(prev => prev + 1); // Force refresh mapy
+
+        if (mapRef.current) {
+          mapRef.current.setCenter({ lat, lng });
+          mapRef.current.setZoom(17);
+        }
 
         const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
 
@@ -149,8 +210,6 @@ export default function GoogleMapsPicker({
           postal_code: postalCode || undefined,
           country: country || undefined,
         });
-      } else {
-        console.error('Place Details API error:', detailsData.status || detailsData.error);
       }
     } catch (error) {
       console.error('Błąd pobierania szczegółów miejsca:', error);
@@ -166,8 +225,11 @@ export default function GoogleMapsPicker({
 
           setCenterLat(lat);
           setCenterLng(lng);
-          setZoom(15);
-          setMapKey(prev => prev + 1);
+
+          if (mapRef.current) {
+            mapRef.current.setCenter({ lat, lng });
+            mapRef.current.setZoom(15);
+          }
 
           const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
           onLocationSelect({
@@ -186,14 +248,18 @@ export default function GoogleMapsPicker({
     }
   };
 
-  // Zoom z centrowaniem na AKTUALNYCH współrzędnych (nie początkowych)
+  // Zoom - UŻYWA AKTUALNEGO CENTRUM MAPY
   const handleZoom = (delta: number) => {
-    const newZoom = Math.max(3, Math.min(20, zoom + delta));
-    setZoom(newZoom);
-    setMapKey(prev => prev + 1); // Force refresh z nowymi współrzędnymi centrum
+    if (mapRef.current) {
+      const currentZoom = mapRef.current.getZoom();
+      const newZoom = Math.max(3, Math.min(20, currentZoom + delta));
+
+      // WAŻNE: setZoom automatycznie centruje na AKTUALNYM centrum mapy
+      mapRef.current.setZoom(newZoom);
+    }
   };
 
-  // Aktualizuj współrzędne gdy użytkownik przesuwa mapę
+  // Aktualizuj współrzędne gdy user przesuwa mapę
   useEffect(() => {
     const googleMapsUrl = `https://www.google.com/maps?q=${centerLat},${centerLng}`;
     onLocationSelect({
@@ -203,8 +269,6 @@ export default function GoogleMapsPicker({
       google_maps_url: googleMapsUrl,
     });
   }, [centerLat, centerLng]);
-
-  const mapUrl = `https://www.google.com/maps?q=${centerLat},${centerLng}&z=${zoom}&output=embed&gestureHandling=greedy`;
 
   return (
     <div className="space-y-4">
@@ -272,7 +336,7 @@ export default function GoogleMapsPicker({
         Użyj mojej lokalizacji GPS
       </button>
 
-      {/* Mapa interaktywna */}
+      {/* Mapa interaktywna - Google Maps JS API */}
       <div>
         <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
           Mapa lokalizacji
@@ -285,15 +349,8 @@ export default function GoogleMapsPicker({
           className="relative bg-[#0f1117] border-2 border-[#d3bb73]/30 rounded-lg overflow-hidden"
           style={{ height: '500px' }}
         >
-          {/* Google Maps iframe - INTERAKTYWNA MAPA */}
-          <iframe
-            key={mapKey} // Force refresh przy zmianie zoom/pozycji
-            src={mapUrl}
-            className="absolute inset-0 w-full h-full"
-            style={{ border: 0 }}
-            loading="lazy"
-            allowFullScreen
-          />
+          {/* Google Maps Container */}
+          <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
           {/* Pinezka w centrum - stała pozycja */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
@@ -303,7 +360,7 @@ export default function GoogleMapsPicker({
                 style={{
                   filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.7))',
                   strokeWidth: 2.5,
-                  transform: 'translateY(-50%)', // Przesunięcie żeby szpic był w centrum
+                  transform: 'translateY(-50%)',
                 }}
               />
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full animate-ping" />
@@ -364,7 +421,7 @@ export default function GoogleMapsPicker({
         </div>
       </div>
 
-      {/* Kopiowanie współrzędnych - prosty pasek */}
+      {/* Kopiowanie współrzędnych */}
       <div className="flex items-center justify-between p-3 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg">
         <div className="flex items-center gap-3">
           <MapPin className="w-5 h-5 text-[#d3bb73]" />
