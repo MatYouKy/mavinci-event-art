@@ -35,26 +35,17 @@ export default function GoogleMapsPicker({
 }: GoogleMapsPickerProps) {
   const [selectedLat, setSelectedLat] = useState<number>(latitude || 52.2297);
   const [selectedLng, setSelectedLng] = useState<number>(longitude || 21.0122);
-  const [mapUrl, setMapUrl] = useState('');
-  const [zoom, setZoom] = useState(6);
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (latitude && longitude) {
       setSelectedLat(latitude);
       setSelectedLng(longitude);
-      setZoom(13);
     }
   }, [latitude, longitude]);
-
-  useEffect(() => {
-    const url = `https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=15`;
-    setMapUrl(url);
-  }, [selectedLat, selectedLng]);
 
   // Wyszukiwanie miejsc z debounce - Google Places API
   useEffect(() => {
@@ -70,7 +61,6 @@ export default function GoogleMapsPicker({
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        // Wywołanie naszego API route (unika problemów CORS)
         const response = await fetch(
           `/api/places/autocomplete?input=${encodeURIComponent(searchQuery)}`
         );
@@ -99,7 +89,6 @@ export default function GoogleMapsPicker({
     setShowSuggestions(false);
 
     try {
-      // Pobierz szczegóły miejsca z naszego API route
       const detailsResponse = await fetch(
         `/api/places/details?place_id=${suggestion.place_id}`
       );
@@ -111,7 +100,6 @@ export default function GoogleMapsPicker({
         const lat = place.geometry.location.lat;
         const lng = place.geometry.location.lng;
 
-        // Parsuj komponenty adresu
         let address = '';
         let city = '';
         let postalCode = '';
@@ -137,14 +125,11 @@ export default function GoogleMapsPicker({
           });
         }
 
-        // Ustaw nową lokalizację
         setSelectedLat(lat);
         setSelectedLng(lng);
-        setZoom(17);
 
         const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
 
-        // Wywołaj callback z pełnymi danymi
         onLocationSelect({
           latitude: lat,
           longitude: lng,
@@ -173,7 +158,6 @@ export default function GoogleMapsPicker({
 
           setSelectedLat(lat);
           setSelectedLng(lng);
-          setZoom(15);
 
           const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
           onLocationSelect({
@@ -192,11 +176,7 @@ export default function GoogleMapsPicker({
     }
   };
 
-  const handleZoomChange = (delta: number) => {
-    // Zmiana zoom bez przeładowania iframe
-    const newZoom = Math.max(3, Math.min(20, zoom + delta));
-    setZoom(newZoom);
-  };
+  const mapUrl = `https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=15`;
 
   return (
     <div className="space-y-4">
@@ -219,6 +199,7 @@ export default function GoogleMapsPicker({
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => {
                 setSearchQuery('');
                 setSuggestions([]);
@@ -237,6 +218,7 @@ export default function GoogleMapsPicker({
             {suggestions.map((suggestion, index) => (
               <button
                 key={index}
+                type="button"
                 onClick={() => handleSuggestionClick(suggestion)}
                 className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
               >
@@ -262,102 +244,53 @@ export default function GoogleMapsPicker({
         Użyj mojej lokalizacji GPS
       </button>
 
-      {/* Mapa */}
+      {/* Mapa - otwarcie w Google Maps */}
       <div>
         <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-          Mapa lokalizacji
+          Lokalizacja na mapie
         </label>
         <p className="text-xs text-[#e5e4e2]/60 mb-3">
-          Przesuń mapę aby znaleźć miejsce. Pinezka (🔴) w centrum pokazuje wybraną lokalizację.
+          Kliknij poniżej aby otworzyć Google Maps i precyzyjnie wybrać lokalizację
         </p>
 
-        <div
-          className="relative bg-[#0f1117] border-2 border-[#d3bb73]/30 rounded-lg overflow-hidden"
-          style={{ height: '500px' }}
+        <a
+          href={mapUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block relative bg-[#0f1117] border-2 border-[#d3bb73]/30 rounded-lg overflow-hidden hover:border-[#d3bb73]/50 transition-colors"
+          style={{ height: '300px' }}
         >
-          {/* Google Maps iframe */}
-          <iframe
-            ref={iframeRef}
-            src={`https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=${zoom}&output=embed&gestureHandling=greedy`}
-            className="absolute inset-0 w-full h-full pointer-events-auto"
-            style={{ border: 0 }}
-            loading="lazy"
-            allowFullScreen
+          {/* Statyczny podgląd mapy */}
+          <img
+            src={`https://maps.googleapis.com/maps/api/staticmap?center=${selectedLat},${selectedLng}&zoom=15&size=800x300&markers=color:red%7C${selectedLat},${selectedLng}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
+            alt="Mapa lokalizacji"
+            className="w-full h-full object-cover"
           />
 
-          {/* Pinezka w centrum */}
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
-            <div className="relative">
-              <MapPin
-                className="w-12 h-12 text-red-500"
-                style={{
-                  filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.7))',
-                  strokeWidth: 2.5
-                }}
-              />
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full animate-ping" />
-            </div>
-          </div>
+          {/* Overlay z informacją */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 
-          {/* Overlay z współrzędnymi */}
-          <div className="absolute top-4 left-4 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-2 shadow-lg z-20">
-            <div className="text-xs text-[#e5e4e2]/70 mb-1">Wybrana lokalizacja:</div>
-            <div className="font-mono text-sm text-[#d3bb73] font-semibold">
-              {selectedLat.toFixed(6)}, {selectedLng.toFixed(6)}
-            </div>
-          </div>
-
-          {/* Kontrolki zoom */}
-          <div className="absolute right-4 top-4 flex flex-col gap-2 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 p-1 shadow-lg z-20">
-            <button
-              type="button"
-              onClick={() => handleZoomChange(1)}
-              className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2] font-bold text-lg"
-              title="Przybliż"
-            >
-              +
-            </button>
-            <div className="h-px bg-[#d3bb73]/30" />
-            <button
-              type="button"
-              onClick={() => handleZoomChange(-1)}
-              className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2] font-bold text-lg"
-              title="Oddal"
-            >
-              −
-            </button>
-          </div>
-
-          {/* Instrukcja */}
-          <div className="absolute left-4 bottom-4 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-3 max-w-xs shadow-lg z-20">
-            <div className="flex items-start gap-2">
-              <span className="text-xl">💡</span>
-              <div className="text-xs text-[#e5e4e2]/90 leading-relaxed">
-                <strong className="text-[#d3bb73]">Jak używać:</strong>
-                <br />• Wyszukaj miejsce powyżej
-                <br />• Lub przesuń mapę ręcznie
-                <br />• Pinezka (🔴) = wybrana lokalizacja
-                <br />• Zoom zachowuje pozycję pinezki
+          <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
+            <div className="bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-2">
+              <div className="text-xs text-[#e5e4e2]/70 mb-1">Wybrana lokalizacja:</div>
+              <div className="font-mono text-sm text-[#d3bb73] font-semibold">
+                {selectedLat.toFixed(6)}, {selectedLng.toFixed(6)}
               </div>
             </div>
-          </div>
 
-          {/* Link do Google Maps */}
-          {mapUrl && (
-            <a
-              href={mapUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] text-sm font-medium rounded-lg hover:bg-[#d3bb73]/90 transition-colors shadow-lg z-20"
-            >
+            <div className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] text-sm font-medium rounded-lg shadow-lg">
               Otwórz w Google Maps
               <ExternalLink className="w-4 h-4" />
-            </a>
-          )}
-        </div>
+            </div>
+          </div>
+        </a>
+
+        <p className="text-xs text-[#e5e4e2]/50 mt-2 italic">
+          💡 Kliknij na mapę aby otworzyć pełną wersję Google Maps, gdzie możesz dowolnie przesuwać i zoomować
+        </p>
       </div>
 
-      {/* Kopiowanie współrzędnych - prosty pasek jak na screenshocie */}
+      {/* Kopiowanie współrzędnych */}
       <div className="flex items-center justify-between p-3 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg">
         <div className="flex items-center gap-3">
           <MapPin className="w-5 h-5 text-[#d3bb73]" />
