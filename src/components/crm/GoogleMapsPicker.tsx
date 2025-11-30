@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { MapPin, Search, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MapPin, ExternalLink, Map } from 'lucide-react';
+import InteractiveMapModal from './InteractiveMapModal';
 
 interface GoogleMapsPickerProps {
   latitude?: number | null;
@@ -24,8 +25,8 @@ export default function GoogleMapsPicker({
   longitude,
   onLocationSelect,
 }: GoogleMapsPickerProps) {
-  const [searchQuery, setSearchQuery] = useState('');
   const [mapUrl, setMapUrl] = useState('');
+  const [showMapModal, setShowMapModal] = useState(false);
 
   useEffect(() => {
     // Generuj URL do Google Maps
@@ -102,51 +103,52 @@ export default function GoogleMapsPicker({
 
   return (
     <div className="space-y-4">
-      {/* Wyszukiwanie */}
+      {/* Główny przycisk - Otwórz mapę */}
       <div>
         <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-          Wyszukaj lokalizację
+          Wybierz lokalizację na mapie
         </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            className="flex-1 px-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
-            placeholder="Wpisz adres, nazwę miejsca..."
-          />
-          <button
-            type="button"
-            onClick={handleSearch}
-            className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-          >
-            <Search className="w-5 h-5" />
-          </button>
-        </div>
-        <p className="text-xs text-[#e5e4e2]/50 mt-1">
-          Otwiera Google Maps w nowej karcie - skopiuj link i wklej poniżej
+        <button
+          type="button"
+          onClick={() => setShowMapModal(true)}
+          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-[#d3bb73] to-[#c4a960] text-[#1c1f33] rounded-lg font-medium hover:from-[#c4a960] hover:to-[#d3bb73] transition-all transform hover:scale-[1.02] shadow-lg"
+        >
+          <Map className="w-6 h-6" />
+          <span className="text-lg">Otwórz mapę i wybierz miejsce</span>
+        </button>
+        <p className="text-xs text-[#e5e4e2]/50 mt-2 text-center">
+          Kliknij aby otworzyć interaktywną mapę - znajdź i zaznacz lokalizację
         </p>
       </div>
 
-      {/* Przyciski akcji */}
+      {/* Separator */}
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-[#d3bb73]/20"></div>
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="px-2 bg-[#0f1117] text-[#e5e4e2]/50">lub użyj alternatywnych metod</span>
+        </div>
+      </div>
+
+      {/* Alternatywne metody - kompaktowe */}
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={handlePasteGoogleMapsLink}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-lg hover:bg-blue-500/20 transition-colors"
+          className="flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-lg hover:bg-blue-500/20 transition-colors text-sm"
         >
           <MapPin className="w-4 h-4" />
-          Wklej link z Google Maps
+          Wklej link
         </button>
 
         <button
           type="button"
           onClick={handleManualCoordinates}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 text-green-300 rounded-lg hover:bg-green-500/20 transition-colors"
+          className="flex items-center justify-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 text-green-300 rounded-lg hover:bg-green-500/20 transition-colors text-sm"
         >
           <MapPin className="w-4 h-4" />
-          Wprowadź współrzędne
+          Współrzędne
         </button>
       </div>
 
@@ -211,10 +213,22 @@ export default function GoogleMapsPicker({
           <MapPin className="w-12 h-12 mx-auto mb-2 text-[#e5e4e2]/30" />
           <p className="text-sm">Nie wybrano lokalizacji</p>
           <p className="text-xs mt-1">
-            Użyj jednej z opcji powyżej aby dodać lokalizację
+            Kliknij "Otwórz mapę" aby wybrać miejsce
           </p>
         </div>
       )}
+
+      {/* Interactive Map Modal */}
+      <InteractiveMapModal
+        isOpen={showMapModal}
+        onClose={() => setShowMapModal(false)}
+        initialLatitude={latitude}
+        initialLongitude={longitude}
+        onLocationConfirm={(data) => {
+          onLocationSelect(data);
+          setShowMapModal(false);
+        }}
+      />
     </div>
   );
 }
