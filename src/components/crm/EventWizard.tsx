@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import LocationAutocomplete from './LocationAutocomplete';
 
 interface EventWizardProps {
   isOpen: boolean;
@@ -229,7 +230,6 @@ export default function EventWizard({
       const contactData: any = {
         first_name: newContact.first_name,
         last_name: newContact.last_name,
-        full_name: `${newContact.first_name} ${newContact.last_name}`,
         email: newContact.email || null,
         phone: newContact.phone || null,
         contact_type: clientType === 'individual' ? 'individual' : 'organization_contact',
@@ -789,13 +789,14 @@ export default function EventWizard({
                 <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
                   Lokalizacja *
                 </label>
-                <input
-                  type="text"
+                <LocationAutocomplete
                   value={eventData.location}
-                  onChange={(e) => setEventData({ ...eventData, location: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
-                  placeholder="np. Warszawa, Hotel Marriott"
+                  onChange={(value) => setEventData({ ...eventData, location: value })}
+                  placeholder="Wpisz nazwę lokalizacji, miasta lub adresu..."
                 />
+                <p className="text-xs text-[#e5e4e2]/50 mt-1">
+                  Zacznij pisać - podpowiedzi pojawią się automatycznie. Możesz też wpisać dowolny tekst.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
