@@ -41,7 +41,7 @@ export default function GoogleMapsPicker({
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (latitude && longitude) {
@@ -59,7 +59,7 @@ export default function GoogleMapsPicker({
   // Wyszukiwanie miejsc z debounce
   useEffect(() => {
     if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
+      clearTimeout(searchTimeoutRef.current as NodeJS.Timeout);
     }
 
     if (searchQuery.length < 3) {
@@ -90,13 +90,7 @@ export default function GoogleMapsPicker({
       } catch (error) {
         console.error('Błąd wyszukiwania:', error);
       }
-    }, 500);
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
+    }, 500) as unknown as NodeJS.Timeout;
   }, [searchQuery]);
 
   const handleSuggestionClick = async (suggestion: PlaceSuggestion) => {

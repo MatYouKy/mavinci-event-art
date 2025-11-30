@@ -308,7 +308,7 @@ export default function LocationsPage() {
                         className="block"
                       >
                         <img
-                          src={`https://maps.googleapis.com/maps/api/staticmap?center=${location.latitude},${location.longitude}&zoom=14&size=400x200&markers=color:red%7C${location.latitude},${location.longitude}&key=YOUR_GOOGLE_MAPS_API_KEY`}
+                          src={`https://maps.googleapis.com/maps/api/staticmap?center=${location.latitude},${location.longitude}&zoom=14&size=400x200&markers=color:red%7C${location.latitude},${location.longitude}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
                           alt="Mapa lokalizacji"
                           className="w-full h-32 object-cover hover:opacity-80 transition-opacity"
                           onError={(e) => {
