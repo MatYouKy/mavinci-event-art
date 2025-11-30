@@ -192,14 +192,10 @@ export default function GoogleMapsPicker({
     }
   };
 
-  const handleZoomChange = (newZoom: number) => {
-    // Ustaw nowy zoom, ale zachowaj obecne centrum (selectedLat, selectedLng)
+  const handleZoomChange = (delta: number) => {
+    // Zmiana zoom bez przeładowania iframe
+    const newZoom = Math.max(3, Math.min(20, zoom + delta));
     setZoom(newZoom);
-
-    // Wymuszenie przeładowania iframe z nowymi parametrami
-    if (iframeRef.current) {
-      iframeRef.current.src = `https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=${newZoom}&output=embed&gestureHandling=greedy`;
-    }
   };
 
   return (
@@ -315,7 +311,7 @@ export default function GoogleMapsPicker({
           <div className="absolute right-4 top-4 flex flex-col gap-2 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 p-1 shadow-lg z-20">
             <button
               type="button"
-              onClick={() => handleZoomChange(Math.min(zoom + 1, 20))}
+              onClick={() => handleZoomChange(1)}
               className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2] font-bold text-lg"
               title="Przybliż"
             >
@@ -324,7 +320,7 @@ export default function GoogleMapsPicker({
             <div className="h-px bg-[#d3bb73]/30" />
             <button
               type="button"
-              onClick={() => handleZoomChange(Math.max(zoom - 1, 3))}
+              onClick={() => handleZoomChange(-1)}
               className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2] font-bold text-lg"
               title="Oddal"
             >
@@ -361,63 +357,11 @@ export default function GoogleMapsPicker({
         </div>
       </div>
 
-      {/* Ręczna edycja współrzędnych */}
-      <div className="grid grid-cols-2 gap-4 p-4 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg">
-        <div>
-          <label className="block text-xs text-[#e5e4e2]/70 mb-1 font-medium">
-            Szerokość geograficzna (Latitude)
-          </label>
-          <input
-            type="number"
-            step="0.000001"
-            value={selectedLat}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val)) {
-                setSelectedLat(val);
-                const googleMapsUrl = `https://www.google.com/maps?q=${val},${selectedLng}`;
-                onLocationSelect({
-                  latitude: val,
-                  longitude: selectedLng,
-                  formatted_address: `${val.toFixed(6)}, ${selectedLng.toFixed(6)}`,
-                  google_maps_url: googleMapsUrl,
-                });
-              }
-            }}
-            className="w-full px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50 font-mono"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-[#e5e4e2]/70 mb-1 font-medium">
-            Długość geograficzna (Longitude)
-          </label>
-          <input
-            type="number"
-            step="0.000001"
-            value={selectedLng}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val)) {
-                setSelectedLng(val);
-                const googleMapsUrl = `https://www.google.com/maps?q=${selectedLat},${val}`;
-                onLocationSelect({
-                  latitude: selectedLat,
-                  longitude: val,
-                  formatted_address: `${selectedLat.toFixed(6)}, ${val.toFixed(6)}`,
-                  google_maps_url: googleMapsUrl,
-                });
-              }
-            }}
-            className="w-full px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50 font-mono"
-          />
-        </div>
-      </div>
-
-      {/* Kopiowanie współrzędnych */}
-      <div className="flex items-center justify-between p-3 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg">
-        <div className="flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-[#d3bb73]" />
-          <code className="text-sm text-[#e5e4e2] font-mono">
+      {/* Kopiowanie współrzędnych - prosty pasek jak na screenshocie */}
+      <div className="flex items-center justify-between p-3 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg">
+        <div className="flex items-center gap-3">
+          <MapPin className="w-5 h-5 text-[#d3bb73]" />
+          <code className="text-sm text-[#e5e4e2] font-mono font-medium">
             {selectedLat.toFixed(6)}, {selectedLng.toFixed(6)}
           </code>
         </div>
@@ -426,7 +370,7 @@ export default function GoogleMapsPicker({
           onClick={() => {
             navigator.clipboard.writeText(`${selectedLat}, ${selectedLng}`);
           }}
-          className="text-xs text-[#d3bb73] hover:underline font-medium"
+          className="px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors font-medium"
         >
           Kopiuj współrzędne
         </button>
