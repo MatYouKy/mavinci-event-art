@@ -19,6 +19,7 @@ import {
   Plus,
   Search,
   Trash2,
+  User,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -74,10 +75,18 @@ export default function EventWizard({
     status: 'offer_sent',
   });
 
+  const [clientType, setClientType] = useState<'business' | 'individual'>('business');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [categories, setCategories] = useState<EventCategory[]>([]);
+  const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContact, setNewContact] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+  });
 
   // Krok 2: Oferta (opcjonalnie)
   const [createOffer, setCreateOffer] = useState(false);
@@ -134,13 +143,22 @@ export default function EventWizard({
   }, [initialDate]);
 
   useEffect(() => {
-    if (eventData.organization_id) {
+    if (clientType === 'business' && eventData.organization_id) {
       const filtered = contacts.filter(c => c.organization_id === eventData.organization_id);
+      setFilteredContacts(filtered);
+
+      // Auto-select jeśli tylko jedna osoba kontaktowa
+      if (filtered.length === 1 && !eventData.contact_person_id) {
+        setEventData(prev => ({ ...prev, contact_person_id: filtered[0].id }));
+      }
+    } else if (clientType === 'individual') {
+      // Dla klienta indywidualnego - kontakty bez organizacji
+      const filtered = contacts.filter(c => !c.organization_id || c.contact_type === 'individual');
       setFilteredContacts(filtered);
     } else {
       setFilteredContacts(contacts);
     }
-  }, [eventData.organization_id, contacts]);
+  }, [eventData.organization_id, contacts, clientType]);
 
   const fetchOrganizations = async () => {
     const { data } = await supabase
@@ -199,6 +217,44 @@ export default function EventWizard({
       .eq('is_active', true)
       .order('name');
     if (data) setSubcontractorsList(data);
+  };
+
+  const handleCreateContact = async () => {
+    if (!newContact.first_name || !newContact.last_name) {
+      showSnackbar('Wypełnij imię i nazwisko', 'error');
+      return;
+    }
+
+    try {
+      const contactData: any = {
+        first_name: newContact.first_name,
+        last_name: newContact.last_name,
+        full_name: `${newContact.first_name} ${newContact.last_name}`,
+        email: newContact.email || null,
+        phone: newContact.phone || null,
+        contact_type: clientType === 'individual' ? 'individual' : 'organization_contact',
+      };
+
+      if (clientType === 'business' && eventData.organization_id) {
+        contactData.organization_id = eventData.organization_id;
+      }
+
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert([contactData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setContacts([...contacts, data]);
+      setEventData({ ...eventData, contact_person_id: data.id });
+      setShowNewContactForm(false);
+      setNewContact({ first_name: '', last_name: '', email: '', phone: '' });
+      showSnackbar('Osoba kontaktowa dodana!', 'success');
+    } catch (err: any) {
+      showSnackbar('Błąd: ' + err.message, 'error');
+    }
   };
 
   const canProceed = () => {
@@ -373,6 +429,7 @@ export default function EventWizard({
   const resetWizard = () => {
     setCurrentStep(1);
     setCreatedEventId(null);
+    setClientType('business');
     setEventData({
       name: '',
       organization_id: '',
@@ -385,6 +442,8 @@ export default function EventWizard({
       description: '',
       status: 'offer_sent',
     });
+    setShowNewContactForm(false);
+    setNewContact({ first_name: '', last_name: '', email: '', phone: '' });
     setCreateOffer(false);
     setAssignEquipment(false);
     setAssignTeam(false);
@@ -496,35 +555,130 @@ export default function EventWizard({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Organizacja
-                  </label>
-                  <select
-                    value={eventData.organization_id}
-                    onChange={(e) => setEventData({ ...eventData, organization_id: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+              {/* Typ klienta */}
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-3">
+                  Typ klienta *
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClientType('business');
+                      setEventData({ ...eventData, organization_id: '', contact_person_id: '' });
+                    }}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      clientType === 'business'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                    }`}
                   >
-                    <option value="">Wybierz organizację</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.name} {org.alias && `(${org.alias})`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <Building2 className={`w-5 h-5 mb-2 ${clientType === 'business' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/50'}`} />
+                    <div className="font-medium text-[#e5e4e2]">Businessowy</div>
+                    <div className="text-xs text-[#e5e4e2]/60 mt-1">Firmy, agencje, organizacje</div>
+                  </button>
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClientType('individual');
+                      setEventData({ ...eventData, organization_id: '', contact_person_id: '' });
+                    }}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      clientType === 'individual'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                    }`}
+                  >
+                    <User className={`w-5 h-5 mb-2 ${clientType === 'individual' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/50'}`} />
+                    <div className="font-medium text-[#e5e4e2]">Indywidualny</div>
+                    <div className="text-xs text-[#e5e4e2]/60 mt-1">Prywatny, wesela</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Klient businessowy */}
+              {clientType === 'business' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                      Organizacja
+                    </label>
+                    <select
+                      value={eventData.organization_id}
+                      onChange={(e) => {
+                        setEventData({ ...eventData, organization_id: e.target.value, contact_person_id: '' });
+                      }}
+                      className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    >
+                      <option value="">Wybierz organizację</option>
+                      {organizations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name} {org.alias && `(${org.alias})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {eventData.organization_id && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-[#e5e4e2]">
+                          Osoba kontaktowa
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewContactForm(true)}
+                          className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Dodaj nową
+                        </button>
+                      </div>
+                      <select
+                        value={eventData.contact_person_id}
+                        onChange={(e) => setEventData({ ...eventData, contact_person_id: e.target.value })}
+                        className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                      >
+                        <option value="">Wybierz kontakt</option>
+                        {filteredContacts.map((contact) => (
+                          <option key={contact.id} value={contact.id}>
+                            {contact.full_name}
+                          </option>
+                        ))}
+                      </select>
+                      {filteredContacts.length === 1 && eventData.contact_person_id && (
+                        <p className="text-xs text-green-400 mt-1">
+                          ✓ Automatycznie wybrano jedyną osobę kontaktową
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Klient indywidualny */}
+              {clientType === 'individual' && (
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Osoba kontaktowa
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-[#e5e4e2]">
+                      Osoba kontaktowa
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewContactForm(true)}
+                      className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Dodaj nową
+                    </button>
+                  </div>
                   <select
                     value={eventData.contact_person_id}
                     onChange={(e) => setEventData({ ...eventData, contact_person_id: e.target.value })}
                     className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
                   >
-                    <option value="">Wybierz kontakt</option>
+                    <option value="">Wybierz lub dodaj nową osobę</option>
                     {filteredContacts.map((contact) => (
                       <option key={contact.id} value={contact.id}>
                         {contact.full_name}
@@ -532,7 +686,60 @@ export default function EventWizard({
                     ))}
                   </select>
                 </div>
-              </div>
+              )}
+
+              {/* Formularz nowej osoby kontaktowej */}
+              {showNewContactForm && (
+                <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-medium text-[#e5e4e2]">Nowa osoba kontaktowa</h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewContactForm(false)}
+                      className="text-[#e5e4e2]/50 hover:text-[#e5e4e2]"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Imię *"
+                      value={newContact.first_name}
+                      onChange={(e) => setNewContact({ ...newContact, first_name: e.target.value })}
+                      className="px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Nazwisko *"
+                      value={newContact.last_name}
+                      onChange={(e) => setNewContact({ ...newContact, last_name: e.target.value })}
+                      className="px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                    />
+                  </div>
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={newContact.email}
+                    onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Telefon"
+                    value={newContact.phone}
+                    onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateContact}
+                    className="w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    Dodaj osobę kontaktową
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-[#e5e4e2] mb-2">

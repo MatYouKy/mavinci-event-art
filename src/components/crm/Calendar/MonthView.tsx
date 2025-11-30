@@ -22,19 +22,19 @@ export default function MonthView({
   const maxVisibleEvents = 2;
 
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-      <div className="grid grid-cols-7 gap-px bg-[#d3bb73]/10">
+    <div className="bg-[#0f1117] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+      <div className="grid grid-cols-7 bg-[#1c1f33]">
         {DAYS_OF_WEEK.map((day) => (
           <div
             key={day}
-            className="bg-[#1c1f33] p-3 text-center text-sm font-medium text-[#e5e4e2]/60"
+            className="p-3 text-center text-sm font-medium text-[#d3bb73] border-b border-[#d3bb73]/10"
           >
             {day}
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-px bg-[#d3bb73]/10">
+      <div className="grid grid-cols-7">
         {days.map((date, index) => {
           if (!date) {
             return <div key={index} className="bg-[#1c1f33] h-[130px]" />;
@@ -47,7 +47,7 @@ export default function MonthView({
           return (
             <div
               key={index}
-              className={`bg-[#1c1f33] h-[130px] p-2 relative hover:bg-[#1c1f33]/50 cursor-pointer transition-colors flex flex-col`}
+              className={`bg-[#0f1117] h-[130px] p-2 relative hover:bg-[#d3bb73]/5 cursor-pointer transition-all border border-[#d3bb73]/5 hover:border-[#d3bb73]/20 flex flex-col group`}
               onClick={() => onDateClick(date)}
             >
               <div className="flex items-start justify-between mb-2">
@@ -55,7 +55,7 @@ export default function MonthView({
                   className={`text-sm ${
                     today
                       ? 'w-7 h-7 flex items-center justify-center bg-[#d3bb73] text-[#1c1f33] rounded-full font-medium'
-                      : 'text-[#e5e4e2]/60'
+                      : 'text-[#e5e4e2]/70'
                   }`}
                 >
                   {date.getDate()}
@@ -67,7 +67,7 @@ export default function MonthView({
                       e.stopPropagation();
                       onShowAllEvents(date);
                     }}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 rounded-full transition-colors group"
+                    className="flex items-center gap-1 px-2 py-0.5 bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 rounded-full transition-colors"
                   >
                     <Layers className="w-3 h-3 text-[#d3bb73]" />
                     <span className="text-xs font-medium text-[#d3bb73]">{eventCount}</span>
@@ -77,7 +77,10 @@ export default function MonthView({
 
               {eventCount === 0 && (
                 <div className="flex items-center justify-center flex-1">
-                  <Plus className="w-6 h-6 text-[#e5e4e2]/20" />
+                  <div className="text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Plus className="w-6 h-6 text-[#d3bb73] mx-auto mb-1" />
+                    <span className="text-xs text-[#d3bb73]">Dodaj event</span>
+                  </div>
                 </div>
               )}
 
@@ -118,11 +121,15 @@ export default function MonthView({
                             style={
                               event.category?.color
                                 ? {
-                                    backgroundColor: `${event.category.color}20`,
-                                    borderColor: `${event.category.color}50`,
+                                    backgroundColor: `${event.category.color}15`,
+                                    borderColor: `${event.category.color}40`,
+                                    color: event.category.color,
+                                  }
+                                : {
+                                    backgroundColor: '#d3bb7320',
+                                    borderColor: '#d3bb7340',
                                     color: '#d3bb73',
                                   }
-                                : {}
                             }
                             onClick={(e) => {
                               e.stopPropagation();
