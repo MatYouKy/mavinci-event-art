@@ -191,7 +191,7 @@ export default function EventWizard({
   const fetchEquipment = async () => {
     const { data } = await supabase
       .from('equipment_items')
-      .select('*, equipment_categories(name)')
+      .select('id, name, brand, model, thumbnail_url, warehouse_category_id')
       .order('name');
     if (data) setEquipmentList(data);
   };
@@ -203,7 +203,7 @@ export default function EventWizard({
       // Pobierz ofertę dla tego eventu
       const { data: offer } = await supabase
         .from('offers')
-        .select('id')
+        .select('id, total_amount')
         .eq('event_id', createdEventId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -211,32 +211,28 @@ export default function EventWizard({
 
       if (!offer) return;
 
-      // Pobierz produkty z oferty
-      const { data: offerProducts } = await supabase
-        .from('offer_products')
-        .select(`
-          *,
-          equipment_item:equipment_items(*)
-        `)
+      // Zaktualizuj budżet eventu z oferty
+      if (offer.total_amount) {
+        await supabase
+          .from('events')
+          .update({ budget: offer.total_amount })
+          .eq('id', createdEventId);
+
+        setEventData(prev => ({ ...prev, budget: offer.total_amount.toString() }));
+      }
+
+      // Pobierz pozycje z oferty (offer_items)
+      const { data: offerItems } = await supabase
+        .from('offer_items')
+        .select('id, name, quantity, product_id')
         .eq('offer_id', offer.id);
 
-      if (!offerProducts || offerProducts.length === 0) return;
+      if (!offerItems || offerItems.length === 0) return;
 
-      // Przekształć produkty oferty na selectedEquipment
-      const equipmentFromOffer = offerProducts
-        .filter(p => p.equipment_item)
-        .map(p => ({
-          id: p.equipment_item.id,
-          name: p.equipment_item.name,
-          quantity: p.quantity,
-          status: 'planned' as const,
-        }));
+      // Na razie nie ładujemy sprzętu automatycznie - user może dodać ręcznie
+      // Ta funkcjonalność będzie rozszerzona gdy zdefiniujemy strukturę produktów
 
-      if (equipmentFromOffer.length > 0) {
-        setSelectedEquipment(equipmentFromOffer);
-        setAssignEquipment(true);
-        showSnackbar(`Załadowano ${equipmentFromOffer.length} pozycji sprzętu z oferty`, 'success');
-      }
+      showSnackbar('Budżet zaktualizowany z oferty', 'success');
     } catch (err: any) {
       console.error('Error loading equipment from offer:', err);
     }
@@ -391,14 +387,16 @@ export default function EventWizard({
 
       setCreatedEventId(data.id);
 
-      // Automatycznie dodaj autora do zespołu
+      // Automatycznie dodaj autora do zespołu z pełnym dostępem (status: accepted)
       if (session?.user?.id) {
         await supabase
           .from('employee_assignments')
           .insert([{
             event_id: data.id,
             employee_id: session.user.id,
-            role: 'Koordynator'
+            role: 'Koordynator',
+            access_level: 'full',
+            status: 'accepted'
           }]);
       }
 
