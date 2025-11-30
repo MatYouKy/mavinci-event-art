@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationAutocomplete from './LocationAutocomplete';
 import OfferWizard from './OfferWizard';
+import { EquipmentStep } from './EventWizardSteps';
 
 interface EventWizardProps {
   isOpen: boolean;
@@ -193,6 +194,52 @@ export default function EventWizard({
       .select('*, equipment_categories(name)')
       .order('name');
     if (data) setEquipmentList(data);
+  };
+
+  const loadEquipmentFromOffer = async () => {
+    if (!createdEventId) return;
+
+    try {
+      // Pobierz ofertę dla tego eventu
+      const { data: offer } = await supabase
+        .from('offers')
+        .select('id')
+        .eq('event_id', createdEventId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!offer) return;
+
+      // Pobierz produkty z oferty
+      const { data: offerProducts } = await supabase
+        .from('offer_products')
+        .select(`
+          *,
+          equipment_item:equipment_items(*)
+        `)
+        .eq('offer_id', offer.id);
+
+      if (!offerProducts || offerProducts.length === 0) return;
+
+      // Przekształć produkty oferty na selectedEquipment
+      const equipmentFromOffer = offerProducts
+        .filter(p => p.equipment_item)
+        .map(p => ({
+          id: p.equipment_item.id,
+          name: p.equipment_item.name,
+          quantity: p.quantity,
+          status: 'planned' as const,
+        }));
+
+      if (equipmentFromOffer.length > 0) {
+        setSelectedEquipment(equipmentFromOffer);
+        setAssignEquipment(true);
+        showSnackbar(`Załadowano ${equipmentFromOffer.length} pozycji sprzętu z oferty`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Error loading equipment from offer:', err);
+    }
   };
 
   const fetchEmployees = async () => {
@@ -975,8 +1022,32 @@ export default function EventWizard({
             </div>
           )}
 
-          {/* Steps 3-6 - proste wersje */}
-          {currentStep > 2 && (
+          {/* Step 3: Sprzęt */}
+          {currentStep === 3 && (
+            <div className="max-w-4xl mx-auto space-y-6">
+              {selectedEquipment.length > 0 && (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                  <p className="text-sm text-green-300 font-medium mb-2">
+                    ✓ Załadowano sprzęt z oferty ({selectedEquipment.length} pozycji)
+                  </p>
+                  <p className="text-xs text-green-300/70">
+                    Możesz dodać więcej sprzętu lub kontynuować dalej
+                  </p>
+                </div>
+              )}
+
+              <EquipmentStep
+                assignEquipment={assignEquipment}
+                setAssignEquipment={setAssignEquipment}
+                selectedEquipment={selectedEquipment}
+                setSelectedEquipment={setSelectedEquipment}
+                equipmentList={equipmentList}
+              />
+            </div>
+          )}
+
+          {/* Steps 4-6 - proste wersje */}
+          {currentStep > 3 && (
             <div className="text-center py-12 text-[#e5e4e2]/50">
               <p className="mb-4">Krok {currentStep}: {currentStepInfo.name}</p>
               <p className="text-sm">Te szczegóły możesz dodać później ze strony eventu</p>
@@ -1051,9 +1122,15 @@ export default function EventWizard({
           }}
           eventId={createdEventId}
           clientId={eventData.organization_id || eventData.contact_person_id || ''}
-          onSuccess={() => {
+          onSuccess={async () => {
             setShowOfferWizard(false);
             showSnackbar('Oferta utworzona pomyślnie!', 'success');
+            // Automatycznie przejdź do kroku 3 (Sprzęt)
+            setCurrentStep(3);
+            // Załaduj sprzęt z oferty
+            await loadEquipmentFromOffer();
+            // Załaduj listę dostępnego sprzętu
+            if (!equipmentList.length) await fetchEquipment();
           }}
         />
       )}

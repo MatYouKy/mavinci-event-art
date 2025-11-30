@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Plus, Trash2, Search, Check } from 'lucide-react';
 
 // Step 2: Oferta
@@ -344,6 +345,3 @@ export function TeamStep({
     </div>
   );
 }
-
-// Dodamy Steps 5 i 6 w następnym pliku ze względu na długość
-import { useState } from 'react';
