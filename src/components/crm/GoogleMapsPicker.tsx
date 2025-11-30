@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { MapPin, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { MapPin, ExternalLink, Search, X } from 'lucide-react';
 
 interface GoogleMapsPickerProps {
   latitude?: number | null;
@@ -19,6 +19,15 @@ interface GoogleMapsPickerProps {
   }) => void;
 }
 
+interface PlaceSuggestion {
+  description: string;
+  place_id: string;
+  structured_formatting: {
+    main_text: string;
+    secondary_text: string;
+  };
+}
+
 export default function GoogleMapsPicker({
   latitude,
   longitude,
@@ -28,6 +37,11 @@ export default function GoogleMapsPicker({
   const [selectedLng, setSelectedLng] = useState<number>(longitude || 21.0122);
   const [mapUrl, setMapUrl] = useState('');
   const [zoom, setZoom] = useState(6);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     if (latitude && longitude) {
@@ -42,8 +56,171 @@ export default function GoogleMapsPicker({
     setMapUrl(url);
   }, [selectedLat, selectedLng]);
 
+  // Wyszukiwanie miejsc z debounce
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Symulacja Google Places Autocomplete
+        // W produkcji użyj prawdziwego API: https://maps.googleapis.com/maps/api/place/autocomplete/json
+
+        // Dla demonstracji - otwórzmy wyszukiwarkę Google Maps
+        const mockSuggestions: PlaceSuggestion[] = [
+          {
+            description: `${searchQuery} - wyszukaj w Google Maps`,
+            place_id: 'search',
+            structured_formatting: {
+              main_text: searchQuery,
+              secondary_text: 'Kliknij aby wyszukać'
+            }
+          }
+        ];
+
+        setSuggestions(mockSuggestions);
+        setShowSuggestions(true);
+      } catch (error) {
+        console.error('Błąd wyszukiwania:', error);
+      }
+    }, 500);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  const handleSuggestionClick = async (suggestion: PlaceSuggestion) => {
+    setSearchQuery(suggestion.structured_formatting.main_text);
+    setShowSuggestions(false);
+
+    // Otwórz Google Maps do wyszukania
+    const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(suggestion.structured_formatting.main_text)}`;
+    window.open(searchUrl, '_blank', 'width=800,height=600');
+
+    // Instrukcja dla użytkownika
+    alert(
+      '📍 Znajdź miejsce w Google Maps\n\n' +
+      '1. Znajdź właściwą lokalizację na otwartej mapie\n' +
+      '2. Kliknij prawym na miejsce → "Co tu jest?"\n' +
+      '3. Skopiuj współrzędne (pojawią się na dole)\n' +
+      '4. Wklej je w polach poniżej\n\n' +
+      'Lub użyj funkcji "Użyj mojej lokalizacji GPS"'
+    );
+  };
+
+  const handleGetCurrentLocation = () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+
+          setSelectedLat(lat);
+          setSelectedLng(lng);
+          setZoom(15);
+
+          const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+          onLocationSelect({
+            latitude: lat,
+            longitude: lng,
+            formatted_address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+            google_maps_url: googleMapsUrl,
+          });
+        },
+        (error) => {
+          alert('Nie udało się pobrać lokalizacji: ' + error.message);
+        }
+      );
+    } else {
+      alert('Geolokalizacja nie jest dostępna w tej przeglądarce');
+    }
+  };
+
+  const handleZoomChange = (newZoom: number) => {
+    // Ustaw nowy zoom, ale zachowaj obecne centrum (selectedLat, selectedLng)
+    setZoom(newZoom);
+
+    // Wymuszenie przeładowania iframe z nowymi parametrami
+    if (iframeRef.current) {
+      iframeRef.current.src = `https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=${newZoom}&output=embed&gestureHandling=greedy`;
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {/* Wyszukiwarka */}
+      <div className="relative">
+        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+          Wyszukaj miejsce
+        </label>
+        <div className="relative">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
+            <Search className="w-5 h-5" />
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            placeholder="np. Hotel Omega Kraków, Stadion Narodowy..."
+            className="w-full pl-10 pr-10 py-3 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] transition-colors"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSuggestions([]);
+                setShowSuggestions(false);
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        {/* Sugestie */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={index}
+                onClick={() => handleSuggestionClick(suggestion)}
+                className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
+              >
+                <div className="font-medium text-[#e5e4e2]">
+                  {suggestion.structured_formatting.main_text}
+                </div>
+                <div className="text-sm text-[#e5e4e2]/60">
+                  {suggestion.structured_formatting.secondary_text}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Przycisk GPS */}
+      <button
+        type="button"
+        onClick={handleGetCurrentLocation}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/20 transition-colors"
+      >
+        <MapPin className="w-4 h-4" />
+        Użyj mojej lokalizacji GPS
+      </button>
+
+      {/* Mapa */}
       <div>
         <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
           Mapa lokalizacji
@@ -52,56 +229,22 @@ export default function GoogleMapsPicker({
           Przesuń mapę aby znaleźć miejsce. Pinezka (🔴) w centrum pokazuje wybraną lokalizację.
         </p>
 
-        {/* Interaktywna mapa */}
         <div
           className="relative bg-[#0f1117] border-2 border-[#d3bb73]/30 rounded-lg overflow-hidden"
           style={{ height: '500px' }}
         >
           {/* Google Maps iframe */}
           <iframe
+            ref={iframeRef}
+            key={`${selectedLat}-${selectedLng}-${zoom}`}
             src={`https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=${zoom}&output=embed&gestureHandling=greedy`}
             className="absolute inset-0 w-full h-full pointer-events-auto"
             style={{ border: 0 }}
             loading="lazy"
             allowFullScreen
-            onLoad={(e) => {
-              // Nasłuchuj na zmiany centrum mapy
-              const iframe = e.currentTarget;
-
-              // Event listener dla zmian mapy
-              const checkMapChanges = setInterval(() => {
-                try {
-                  // Gdy user przestanie przesuwać mapę, pobierz nowe centrum
-                  const currentUrl = iframe.src;
-                  const match = currentUrl.match(/q=([-\d.]+),([-\d.]+)/);
-                  if (match) {
-                    const lat = parseFloat(match[1]);
-                    const lng = parseFloat(match[2]);
-
-                    if (Math.abs(lat - selectedLat) > 0.0001 || Math.abs(lng - selectedLng) > 0.0001) {
-                      setSelectedLat(lat);
-                      setSelectedLng(lng);
-
-                      const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
-                      onLocationSelect({
-                        latitude: lat,
-                        longitude: lng,
-                        formatted_address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
-                        google_maps_url: googleMapsUrl,
-                      });
-                    }
-                  }
-                } catch (err) {
-                  // Cross-origin - nie możemy czytać iframe
-                }
-              }, 1000);
-
-              // Cleanup
-              return () => clearInterval(checkMapChanges);
-            }}
           />
 
-          {/* Pinezka w centrum - pokazuje wybraną lokalizację */}
+          {/* Pinezka w centrum */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
             <div className="relative">
               <MapPin
@@ -127,10 +270,7 @@ export default function GoogleMapsPicker({
           <div className="absolute right-4 top-4 flex flex-col gap-2 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 p-1 shadow-lg z-20">
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setZoom(Math.min(zoom + 2, 15));
-              }}
+              onClick={() => handleZoomChange(Math.min(zoom + 1, 20))}
               className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2] font-bold text-lg"
               title="Przybliż"
             >
@@ -139,10 +279,7 @@ export default function GoogleMapsPicker({
             <div className="h-px bg-[#d3bb73]/30" />
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setZoom(Math.max(zoom - 2, 3));
-              }}
+              onClick={() => handleZoomChange(Math.max(zoom - 1, 3))}
               className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2] font-bold text-lg"
               title="Oddal"
             >
@@ -156,10 +293,10 @@ export default function GoogleMapsPicker({
               <span className="text-xl">💡</span>
               <div className="text-xs text-[#e5e4e2]/90 leading-relaxed">
                 <strong className="text-[#d3bb73]">Jak używać:</strong>
-                <br />• Przesuń mapę aby znaleźć miejsce
-                <br />• Pinezka (🔴) pokazuje centrum
-                <br />• Przybliż/oddal [+] [-]
-                <br />• Współrzędne zapisują się automatycznie
+                <br />• Wyszukaj miejsce powyżej
+                <br />• Lub przesuń mapę ręcznie
+                <br />• Pinezka (🔴) = wybrana lokalizacja
+                <br />• Zoom zachowuje pozycję pinezki
               </div>
             </div>
           </div>
@@ -171,7 +308,6 @@ export default function GoogleMapsPicker({
               target="_blank"
               rel="noopener noreferrer"
               className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] text-sm font-medium rounded-lg hover:bg-[#d3bb73]/90 transition-colors shadow-lg z-20"
-              onClick={(e) => e.stopPropagation()}
             >
               Otwórz w Google Maps
               <ExternalLink className="w-4 h-4" />
@@ -233,25 +369,23 @@ export default function GoogleMapsPicker({
       </div>
 
       {/* Kopiowanie współrzędnych */}
-      {selectedLat && selectedLng && (
-        <div className="flex items-center justify-between p-3 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-[#d3bb73]" />
-            <code className="text-sm text-[#e5e4e2] font-mono">
-              {selectedLat.toFixed(6)}, {selectedLng.toFixed(6)}
-            </code>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(`${selectedLat}, ${selectedLng}`);
-            }}
-            className="text-xs text-[#d3bb73] hover:underline font-medium"
-          >
-            Kopiuj współrzędne
-          </button>
+      <div className="flex items-center justify-between p-3 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg">
+        <div className="flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-[#d3bb73]" />
+          <code className="text-sm text-[#e5e4e2] font-mono">
+            {selectedLat.toFixed(6)}, {selectedLng.toFixed(6)}
+          </code>
         </div>
-      )}
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard.writeText(`${selectedLat}, ${selectedLng}`);
+          }}
+          className="text-xs text-[#d3bb73] hover:underline font-medium"
+        >
+          Kopiuj współrzędne
+        </button>
+      </div>
     </div>
   );
 }
