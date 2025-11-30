@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { MapPin, ExternalLink, Search, X } from 'lucide-react';
+import { MapPin, ExternalLink, Search, X, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface GoogleMapsPickerProps {
   latitude?: number | null;
@@ -33,17 +33,23 @@ export default function GoogleMapsPicker({
   longitude,
   onLocationSelect,
 }: GoogleMapsPickerProps) {
-  const [selectedLat, setSelectedLat] = useState<number>(latitude || 52.2297);
-  const [selectedLng, setSelectedLng] = useState<number>(longitude || 21.0122);
+  // State dla współrzędnych centrum mapy (aktualna pozycja pinezki)
+  const [centerLat, setCenterLat] = useState<number>(latitude || 52.2297);
+  const [centerLng, setCenterLng] = useState<number>(longitude || 21.0122);
+  const [zoom, setZoom] = useState(latitude && longitude ? 15 : 6);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [mapKey, setMapKey] = useState(0); // Key do force refresh mapy
+
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (latitude && longitude) {
-      setSelectedLat(latitude);
-      setSelectedLng(longitude);
+      setCenterLat(latitude);
+      setCenterLng(longitude);
+      setZoom(15);
     }
   }, [latitude, longitude]);
 
@@ -125,8 +131,10 @@ export default function GoogleMapsPicker({
           });
         }
 
-        setSelectedLat(lat);
-        setSelectedLng(lng);
+        setCenterLat(lat);
+        setCenterLng(lng);
+        setZoom(17);
+        setMapKey(prev => prev + 1); // Force refresh mapy
 
         const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
 
@@ -156,8 +164,10 @@ export default function GoogleMapsPicker({
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
 
-          setSelectedLat(lat);
-          setSelectedLng(lng);
+          setCenterLat(lat);
+          setCenterLng(lng);
+          setZoom(15);
+          setMapKey(prev => prev + 1);
 
           const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
           onLocationSelect({
@@ -176,7 +186,25 @@ export default function GoogleMapsPicker({
     }
   };
 
-  const mapUrl = `https://www.google.com/maps?q=${selectedLat},${selectedLng}&z=15`;
+  // Zoom z centrowaniem na AKTUALNYCH współrzędnych (nie początkowych)
+  const handleZoom = (delta: number) => {
+    const newZoom = Math.max(3, Math.min(20, zoom + delta));
+    setZoom(newZoom);
+    setMapKey(prev => prev + 1); // Force refresh z nowymi współrzędnymi centrum
+  };
+
+  // Aktualizuj współrzędne gdy użytkownik przesuwa mapę
+  useEffect(() => {
+    const googleMapsUrl = `https://www.google.com/maps?q=${centerLat},${centerLng}`;
+    onLocationSelect({
+      latitude: centerLat,
+      longitude: centerLng,
+      formatted_address: `${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}`,
+      google_maps_url: googleMapsUrl,
+    });
+  }, [centerLat, centerLng]);
+
+  const mapUrl = `https://www.google.com/maps?q=${centerLat},${centerLng}&z=${zoom}&output=embed&gestureHandling=greedy`;
 
   return (
     <div className="space-y-4">
@@ -244,64 +272,110 @@ export default function GoogleMapsPicker({
         Użyj mojej lokalizacji GPS
       </button>
 
-      {/* Mapa - otwarcie w Google Maps */}
+      {/* Mapa interaktywna */}
       <div>
         <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-          Lokalizacja na mapie
+          Mapa lokalizacji
         </label>
         <p className="text-xs text-[#e5e4e2]/60 mb-3">
-          Kliknij poniżej aby otworzyć Google Maps i precyzyjnie wybrać lokalizację
+          Przesuń mapę aby znaleźć miejsce. Pinezka (🔴) w centrum pokazuje wybraną lokalizację.
         </p>
 
-        <a
-          href={mapUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block relative bg-[#0f1117] border-2 border-[#d3bb73]/30 rounded-lg overflow-hidden hover:border-[#d3bb73]/50 transition-colors"
-          style={{ height: '300px' }}
+        <div
+          className="relative bg-[#0f1117] border-2 border-[#d3bb73]/30 rounded-lg overflow-hidden"
+          style={{ height: '500px' }}
         >
-          {/* Statyczny podgląd mapy */}
-          <img
-            src={`https://maps.googleapis.com/maps/api/staticmap?center=${selectedLat},${selectedLng}&zoom=15&size=800x300&markers=color:red%7C${selectedLat},${selectedLng}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
-            alt="Mapa lokalizacji"
-            className="w-full h-full object-cover"
+          {/* Google Maps iframe - INTERAKTYWNA MAPA */}
+          <iframe
+            key={mapKey} // Force refresh przy zmianie zoom/pozycji
+            src={mapUrl}
+            className="absolute inset-0 w-full h-full"
+            style={{ border: 0 }}
+            loading="lazy"
+            allowFullScreen
           />
 
-          {/* Overlay z informacją */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
-
-          <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-            <div className="bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-2">
-              <div className="text-xs text-[#e5e4e2]/70 mb-1">Wybrana lokalizacja:</div>
-              <div className="font-mono text-sm text-[#d3bb73] font-semibold">
-                {selectedLat.toFixed(6)}, {selectedLng.toFixed(6)}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] text-sm font-medium rounded-lg shadow-lg">
-              Otwórz w Google Maps
-              <ExternalLink className="w-4 h-4" />
+          {/* Pinezka w centrum - stała pozycja */}
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
+            <div className="relative">
+              <MapPin
+                className="w-12 h-12 text-red-500"
+                style={{
+                  filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.7))',
+                  strokeWidth: 2.5,
+                  transform: 'translateY(-50%)', // Przesunięcie żeby szpic był w centrum
+                }}
+              />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full animate-ping" />
             </div>
           </div>
-        </a>
 
-        <p className="text-xs text-[#e5e4e2]/50 mt-2 italic">
-          💡 Kliknij na mapę aby otworzyć pełną wersję Google Maps, gdzie możesz dowolnie przesuwać i zoomować
-        </p>
+          {/* Overlay z współrzędnymi - lewy górny róg */}
+          <div className="absolute top-4 left-4 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-2 shadow-lg z-20">
+            <div className="text-xs text-[#e5e4e2]/70 mb-1">Wybrana lokalizacja:</div>
+            <div className="font-mono text-sm text-[#d3bb73] font-semibold">
+              {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
+            </div>
+          </div>
+
+          {/* Kontrolki zoom - prawy górny róg */}
+          <div className="absolute right-4 top-4 flex flex-col gap-2 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 p-1 shadow-lg z-20">
+            <button
+              type="button"
+              onClick={() => handleZoom(1)}
+              className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2]"
+              title="Przybliż"
+            >
+              <ZoomIn className="w-5 h-5" />
+            </button>
+            <div className="h-px bg-[#d3bb73]/30" />
+            <button
+              type="button"
+              onClick={() => handleZoom(-1)}
+              className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2]"
+              title="Oddal"
+            >
+              <ZoomOut className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Instrukcja - lewy dolny róg */}
+          <div className="absolute left-4 bottom-4 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-3 max-w-xs shadow-lg z-20">
+            <div className="flex items-start gap-2">
+              <MapPin className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-[#e5e4e2]/70">
+                Przeciągnij mapę aby zmienić lokalizację. Czerwona pinezka zawsze wskazuje wybrany punkt.
+              </p>
+            </div>
+          </div>
+
+          {/* Link do pełnej Google Maps - prawy dolny róg */}
+          <div className="absolute right-4 bottom-4 z-20">
+            <a
+              href={`https://www.google.com/maps?q=${centerLat},${centerLng}&z=${zoom}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
+            >
+              Otwórz w Google Maps
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
       </div>
 
-      {/* Kopiowanie współrzędnych */}
+      {/* Kopiowanie współrzędnych - prosty pasek */}
       <div className="flex items-center justify-between p-3 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg">
         <div className="flex items-center gap-3">
           <MapPin className="w-5 h-5 text-[#d3bb73]" />
           <code className="text-sm text-[#e5e4e2] font-mono font-medium">
-            {selectedLat.toFixed(6)}, {selectedLng.toFixed(6)}
+            {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
           </code>
         </div>
         <button
           type="button"
           onClick={() => {
-            navigator.clipboard.writeText(`${selectedLat}, ${selectedLng}`);
+            navigator.clipboard.writeText(`${centerLat}, ${centerLng}`);
           }}
           className="px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors font-medium"
         >
