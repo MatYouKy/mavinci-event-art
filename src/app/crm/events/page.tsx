@@ -38,6 +38,7 @@ export default function EventsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('event_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
 
   useEffect(() => {
     fetchEvents();
@@ -45,7 +46,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     applyFiltersAndSort();
-  }, [events, searchQuery, statusFilter, sortField, sortDirection]);
+  }, [events, searchQuery, statusFilter, sortField, sortDirection, showPastEvents]);
 
   const fetchEvents = async () => {
     try {
@@ -72,6 +73,8 @@ export default function EventsPage() {
 
   const applyFiltersAndSort = () => {
     let result = [...events];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     // Filtrowanie po wyszukiwaniu
     if (searchQuery) {
@@ -87,6 +90,15 @@ export default function EventsPage() {
     // Filtrowanie po statusie
     if (statusFilter !== 'all') {
       result = result.filter(event => event.status === statusFilter);
+    }
+
+    // Filtrowanie przeszłych eventów (tylko jeśli showPastEvents jest false)
+    if (!showPastEvents) {
+      result = result.filter(event => {
+        const eventDate = new Date(event.event_date);
+        eventDate.setHours(0, 0, 0, 0);
+        return eventDate >= today;
+      });
     }
 
     // Sortowanie
@@ -260,24 +272,68 @@ export default function EventsPage() {
           </div>
         </div>
 
-        {/* Podsumowanie */}
-        <div className="text-sm text-[#e5e4e2]/50">
-          Znaleziono: {filteredEvents.length} z {events.length} eventów
+        {/* Dodatkowe opcje i podsumowanie */}
+        <div className="flex items-center justify-between pt-4 border-t border-[#d3bb73]/10">
+          <button
+            onClick={() => setShowPastEvents(!showPastEvents)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showPastEvents
+                ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30'
+                : 'bg-[#0f1117] text-[#e5e4e2]/70 border border-[#d3bb73]/20 hover:bg-[#d3bb73]/10'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            {showPastEvents ? 'Ukryj przeszłe eventy' : 'Pokaż przeszłe eventy'}
+          </button>
+
+          <div className="text-sm text-[#e5e4e2]/50">
+            Znaleziono: <span className="text-[#d3bb73] font-medium">{filteredEvents.length}</span> z {events.length} eventów
+            {!showPastEvents && (() => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const pastEventsCount = events.filter(event => {
+                const eventDate = new Date(event.event_date);
+                eventDate.setHours(0, 0, 0, 0);
+                return eventDate < today;
+              }).length;
+              return pastEventsCount > 0 ? (
+                <span className="ml-2 text-[#e5e4e2]/40">
+                  (ukryto {pastEventsCount} {pastEventsCount === 1 ? 'przeszły' : pastEventsCount < 5 ? 'przeszłe' : 'przeszłych'})
+                </span>
+              ) : null;
+            })()}
+          </div>
         </div>
       </div>
 
       <div className="grid gap-4">
-        {filteredEvents.map((event) => (
-          <div
-            key={event.id}
-            onClick={() => router.push(`/crm/events/${event.id}`)}
-            className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-medium text-[#e5e4e2] mb-2">
-                  {event.name}
-                </h3>
+        {filteredEvents.map((event) => {
+          const eventDate = new Date(event.event_date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          eventDate.setHours(0, 0, 0, 0);
+          const isPast = eventDate < today;
+
+          return (
+            <div
+              key={event.id}
+              onClick={() => router.push(`/crm/events/${event.id}`)}
+              className={`bg-[#1c1f33] border rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer ${
+                isPast ? 'border-[#e5e4e2]/5 opacity-60' : 'border-[#d3bb73]/10'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-lg font-medium text-[#e5e4e2]">
+                      {event.name}
+                    </h3>
+                    {isPast && (
+                      <span className="text-xs px-2 py-0.5 bg-[#e5e4e2]/10 text-[#e5e4e2]/50 rounded">
+                        Przeszły
+                      </span>
+                    )}
+                  </div>
                 <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/70">
                   <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4" />
@@ -308,7 +364,8 @@ export default function EventsPage() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <NewEventModal
