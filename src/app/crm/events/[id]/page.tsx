@@ -21,6 +21,7 @@ import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
 import OfferWizard from '@/components/crm/OfferWizard';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import LocationSelector from '@/components/crm/LocationSelector';
 
 interface Event {
   id: string;
@@ -3656,12 +3657,10 @@ function EditEventModal({
             <label className="block text-sm text-[#e5e4e2]/60 mb-2">
               Lokalizacja *
             </label>
-            <input
-              type="text"
+            <LocationSelector
               value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-              placeholder="Miejsce wydarzenia"
+              onChange={(value) => setFormData({ ...formData, location: value })}
+              placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
             />
           </div>
 

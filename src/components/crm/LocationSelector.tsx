@@ -33,6 +33,7 @@ export default function LocationSelector({
   const [searchQuery, setSearchQuery] = useState('');
   const [showGoogleSearch, setShowGoogleSearch] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleSearchValue, setGoogleSearchValue] = useState('');
 
   useEffect(() => {
     fetchLocations();
@@ -74,9 +75,12 @@ export default function LocationSelector({
   };
 
   const handleGoogleLocationSelect = (googleLocation: string) => {
-    onChange(googleLocation);
-    setShowGoogleSearch(false);
-    setShowDropdown(false);
+    if (googleLocation) {
+      onChange(googleLocation);
+      setShowGoogleSearch(false);
+      setShowDropdown(false);
+      setSearchQuery('');
+    }
   };
 
   return (
@@ -123,7 +127,10 @@ export default function LocationSelector({
               </span>
               <button
                 type="button"
-                onClick={() => setShowGoogleSearch(true)}
+                onClick={() => {
+                  setShowGoogleSearch(true);
+                  setGoogleSearchValue('');
+                }}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors"
               >
                 <Search className="w-3.5 h-3.5" />
@@ -149,7 +156,10 @@ export default function LocationSelector({
                 </p>
                 <button
                   type="button"
-                  onClick={() => setShowGoogleSearch(true)}
+                  onClick={() => {
+                    setShowGoogleSearch(true);
+                    setGoogleSearchValue('');
+                  }}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium"
                 >
                   <Plus className="w-4 h-4" />
@@ -226,8 +236,11 @@ export default function LocationSelector({
           </div>
 
           <LocationAutocomplete
-            value=""
-            onChange={handleGoogleLocationSelect}
+            value={googleSearchValue}
+            onChange={(value) => {
+              setGoogleSearchValue(value);
+              handleGoogleLocationSelect(value);
+            }}
             placeholder="Szukaj w Google Maps..."
           />
 
