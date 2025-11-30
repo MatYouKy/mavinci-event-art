@@ -72,20 +72,29 @@ export default function GoogleMapsPicker({
 
       mapRef.current = map;
 
-      // KLUCZOWY LISTENER - śledzi gdy user przesuwa mapę
-      map.addListener('center_changed', () => {
+      // LISTENER NA ZAKOŃCZENIE PRZECIĄGANIA - płynne przesuwanie
+      map.addListener('dragend', () => {
         const center = map.getCenter();
         if (center) {
           const lat = center.lat();
           const lng = center.lng();
 
-          // Aktualizuj state gdy user przesuwa mapę
+          // Aktualizuj state TYLKO po zakończeniu przeciągania
           setCenterLat(lat);
           setCenterLng(lng);
+
+          // Aktualizuj dane lokalizacji
+          const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+          onLocationSelect({
+            latitude: lat,
+            longitude: lng,
+            formatted_address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+            google_maps_url: googleMapsUrl,
+          });
         }
       });
 
-      // Listener na zmianę zoom
+      // LISTENER NA ZAKOŃCZENIE ZOOM - płynny zoom
       map.addListener('zoom_changed', () => {
         const newZoom = map.getZoom();
         if (newZoom) {
@@ -258,17 +267,6 @@ export default function GoogleMapsPicker({
       mapRef.current.setZoom(newZoom);
     }
   };
-
-  // Aktualizuj współrzędne gdy user przesuwa mapę
-  useEffect(() => {
-    const googleMapsUrl = `https://www.google.com/maps?q=${centerLat},${centerLng}`;
-    onLocationSelect({
-      latitude: centerLat,
-      longitude: centerLng,
-      formatted_address: `${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}`,
-      google_maps_url: googleMapsUrl,
-    });
-  }, [centerLat, centerLng]);
 
   return (
     <div className="space-y-4">
