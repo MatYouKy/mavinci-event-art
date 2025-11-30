@@ -24,6 +24,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationAutocomplete from './LocationAutocomplete';
+import OfferWizard from './OfferWizard';
 
 interface EventWizardProps {
   isOpen: boolean;
@@ -91,6 +92,7 @@ export default function EventWizard({
 
   // Krok 2: Oferta (opcjonalnie)
   const [createOffer, setCreateOffer] = useState(false);
+  const [showOfferWizard, setShowOfferWizard] = useState(false);
   const [offerData, setOfferData] = useState({
     offer_number: '',
     valid_until: '',
@@ -266,7 +268,13 @@ export default function EventWizard({
 
   const handleNext = async () => {
     if (currentStep === 1) {
-      await createEvent();
+      if (createdEventId) {
+        // Event już istnieje - edytuj
+        await updateEvent();
+      } else {
+        // Utwórz nowy event
+        await createEvent();
+      }
     } else if (currentStep === steps.length) {
       await finishWizard();
     } else {
@@ -352,6 +360,37 @@ export default function EventWizard({
     } catch (err: any) {
       console.error('Error creating event:', err);
       showSnackbar('Błąd podczas tworzenia eventu: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateEvent = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({
+          name: eventData.name,
+          organization_id: eventData.organization_id || null,
+          contact_person_id: eventData.contact_person_id || null,
+          category_id: eventData.category_id || null,
+          event_date: eventData.event_date,
+          event_end_date: eventData.event_end_date || null,
+          location: eventData.location,
+          budget: eventData.budget ? parseFloat(eventData.budget) : null,
+          description: eventData.description || null,
+          status: eventData.status,
+        })
+        .eq('id', createdEventId);
+
+      if (error) throw error;
+
+      showSnackbar('Event zaktualizowany!', 'success');
+      setCurrentStep(2);
+    } catch (err: any) {
+      console.error('Error updating event:', err);
+      showSnackbar('Błąd podczas aktualizacji: ' + err.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -855,16 +894,31 @@ export default function EventWizard({
                   <input
                     type="checkbox"
                     checked={createOffer}
-                    onChange={(e) => setCreateOffer(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setCreateOffer(checked);
+                      if (checked && createdEventId) {
+                        // Otwórz OfferWizard
+                        setShowOfferWizard(true);
+                      }
+                    }}
                     className="w-5 h-5 rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73]"
                   />
                   <span className="text-sm text-blue-300">
-                    Utwórz ofertę dla tego eventu
+                    Utwórz ofertę dla tego eventu (otwiera kreator oferty)
                   </span>
                 </label>
               </div>
 
-              {createOffer ? (
+              {createOffer && !createdEventId && (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+                  <p className="text-sm text-yellow-300">
+                    Najpierw utwórz event w kroku 1, aby móc dodać ofertę.
+                  </p>
+                </div>
+              )}
+
+              {createOffer && createdEventId ? (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
@@ -960,10 +1014,17 @@ export default function EventWizard({
               {loading ? (
                 'Przetwarzanie...'
               ) : currentStep === 1 ? (
-                <>
-                  Utwórz event
-                  <ChevronRight className="w-4 h-4" />
-                </>
+                createdEventId ? (
+                  <>
+                    Zapisz zmiany
+                    <ChevronRight className="w-4 h-4" />
+                  </>
+                ) : (
+                  <>
+                    Utwórz event
+                    <ChevronRight className="w-4 h-4" />
+                  </>
+                )
               ) : currentStep === steps.length ? (
                 <>
                   <Check className="w-4 h-4" />
@@ -979,6 +1040,23 @@ export default function EventWizard({
           </div>
         </div>
       </div>
+
+      {/* OfferWizard - otwiera się gdy user zaznaczy checkbox */}
+      {showOfferWizard && createdEventId && (
+        <OfferWizard
+          isOpen={showOfferWizard}
+          onClose={() => {
+            setShowOfferWizard(false);
+            setCreateOffer(false);
+          }}
+          eventId={createdEventId}
+          clientId={eventData.organization_id || eventData.contact_person_id || ''}
+          onSuccess={() => {
+            setShowOfferWizard(false);
+            showSnackbar('Oferta utworzona pomyślnie!', 'success');
+          }}
+        />
+      )}
     </div>
   );
 }
