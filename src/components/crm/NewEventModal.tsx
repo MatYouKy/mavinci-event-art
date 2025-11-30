@@ -3,6 +3,7 @@
 import { X, Plus, Building2, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import LocationSelector from './LocationSelector';
 
 // Helper function to convert UTC date to local datetime-local format
 const toLocalDatetimeString = (utcDate: string | null): string => {
@@ -544,14 +545,12 @@ export default function NewEventModal({
               <label className="block text-sm text-[#e5e4e2]/70 mb-2">
                 Lokalizacja
               </label>
-              <input
-                type="text"
+              <LocationSelector
                 value={formData.location}
-                onChange={(e) =>
-                  setFormData({ ...formData, location: e.target.value })
+                onChange={(value) =>
+                  setFormData({ ...formData, location: value })
                 }
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
-                placeholder="np. Centrum Konferencyjne, Warszawa"
+                placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
               />
             </div>
 

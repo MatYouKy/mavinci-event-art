@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import LocationAutocomplete from './LocationAutocomplete';
+import LocationSelector from './LocationSelector';
 import OfferWizard from './OfferWizard';
 import { EquipmentStep } from './EventWizardSteps';
 
@@ -873,13 +873,13 @@ export default function EventWizard({
                 <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
                   Lokalizacja *
                 </label>
-                <LocationAutocomplete
+                <LocationSelector
                   value={eventData.location}
                   onChange={(value) => setEventData({ ...eventData, location: value })}
-                  placeholder="Wpisz nazwę lokalizacji, miasta lub adresu..."
+                  placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
                 />
                 <p className="text-xs text-[#e5e4e2]/50 mt-1">
-                  Zacznij pisać - podpowiedzi pojawią się automatycznie. Możesz też wpisać dowolny tekst.
+                  Wybierz z zapisanych lokalizacji lub wyszukaj nową w Google Maps
                 </p>
               </div>
 
