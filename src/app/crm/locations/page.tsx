@@ -1,7 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { MapPin, Plus, Edit, Trash2, Building, Phone, Mail, User, FileText, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  MapPin, Plus, Edit, Trash2, Building, Phone, Mail, User,
+  FileText, ExternalLink, Search, Grid3x3, List, Table2,
+  SortAsc, SortDesc, Filter, X, MapPinned
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import GoogleMapsPicker from '@/components/crm/GoogleMapsPicker';
@@ -26,12 +30,22 @@ interface Location {
   created_at: string;
 }
 
+type ViewMode = 'grid' | 'list' | 'table';
+type SortField = 'name' | 'city' | 'created_at';
+type SortDirection = 'asc' | 'desc';
+
 export default function LocationsPage() {
   const { showSnackbar } = useSnackbar();
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [cityFilter, setCityFilter] = useState<string>('all');
+
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -67,6 +81,67 @@ export default function LocationsPage() {
       setLocations(data || []);
     }
     setLoading(false);
+  };
+
+  // Filtrowanie i sortowanie
+  const filteredAndSortedLocations = useMemo(() => {
+    let filtered = locations;
+
+    // Wyszukiwanie
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((loc) =>
+        loc.name.toLowerCase().includes(query) ||
+        loc.city?.toLowerCase().includes(query) ||
+        loc.address?.toLowerCase().includes(query) ||
+        loc.contact_person_name?.toLowerCase().includes(query)
+      );
+    }
+
+    // Filtr miasta
+    if (cityFilter !== 'all') {
+      filtered = filtered.filter((loc) => loc.city === cityFilter);
+    }
+
+    // Sortowanie
+    filtered.sort((a, b) => {
+      let aVal: any = a[sortField];
+      let bVal: any = b[sortField];
+
+      if (sortField === 'created_at') {
+        aVal = new Date(aVal).getTime();
+        bVal = new Date(bVal).getTime();
+      } else {
+        aVal = aVal?.toLowerCase() || '';
+        bVal = bVal?.toLowerCase() || '';
+      }
+
+      if (sortDirection === 'asc') {
+        return aVal > bVal ? 1 : -1;
+      } else {
+        return aVal < bVal ? 1 : -1;
+      }
+    });
+
+    return filtered;
+  }, [locations, searchQuery, sortField, sortDirection, cityFilter]);
+
+  // Lista unikalnych miast
+  const cities = useMemo(() => {
+    const citySet = new Set<string>();
+    locations.forEach((loc) => {
+      if (loc.city) citySet.add(loc.city);
+    });
+    return Array.from(citySet).sort();
+  }, [locations]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
   };
 
   const handleOpenModal = (location?: Location) => {
@@ -187,7 +262,9 @@ export default function LocationsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-[#e5e4e2]">Lokalizacje</h1>
-            <p className="text-[#e5e4e2]/60 mt-1">Zarządzaj bazą lokalizacji eventów</p>
+            <p className="text-[#e5e4e2]/60 mt-1">
+              {filteredAndSortedLocations.length} {filteredAndSortedLocations.length === 1 ? 'lokalizacja' : 'lokalizacji'}
+            </p>
           </div>
           <button
             onClick={() => handleOpenModal()}
@@ -198,144 +275,196 @@ export default function LocationsPage() {
           </button>
         </div>
 
-        {/* Lista lokalizacji */}
+        {/* Toolbar - Search, Filters, View modes */}
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 mb-6">
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e4e2]/50" />
+                <input
+                  type="text"
+                  placeholder="Szukaj po nazwie, mieście, adresie..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2]"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* City Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-[#e5e4e2]/50" />
+              <select
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+                className="px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+              >
+                <option value="all">Wszystkie miasta</option>
+                {cities.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-2">
+              <select
+                value={sortField}
+                onChange={(e) => setSortField(e.target.value as SortField)}
+                className="px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+              >
+                <option value="name">Nazwa</option>
+                <option value="city">Miasto</option>
+                <option value="created_at">Data dodania</option>
+              </select>
+              <button
+                onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                title={sortDirection === 'asc' ? 'Rosnąco' : 'Malejąco'}
+              >
+                {sortDirection === 'asc' ? (
+                  <SortAsc className="w-4 h-4 text-[#d3bb73]" />
+                ) : (
+                  <SortDesc className="w-4 h-4 text-[#d3bb73]" />
+                )}
+              </button>
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                }`}
+                title="Siatka"
+              >
+                <Grid3x3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                }`}
+                title="Lista"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                }`}
+                title="Tabela"
+              >
+                <Table2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
         {loading ? (
           <div className="text-center py-12 text-[#e5e4e2]/50">Ładowanie...</div>
-        ) : locations.length === 0 ? (
+        ) : filteredAndSortedLocations.length === 0 ? (
           <div className="text-center py-12 bg-[#1c1f33] rounded-lg border border-[#d3bb73]/20">
             <MapPin className="w-16 h-16 text-[#e5e4e2]/30 mx-auto mb-4" />
-            <p className="text-[#e5e4e2]/60 mb-4">Brak lokalizacji</p>
-            <button
-              onClick={() => handleOpenModal()}
-              className="text-[#d3bb73] hover:underline"
-            >
-              Dodaj pierwszą lokalizację
-            </button>
+            <p className="text-[#e5e4e2]/60 mb-4">
+              {searchQuery || cityFilter !== 'all'
+                ? 'Brak lokalizacji pasujących do filtrów'
+                : 'Brak lokalizacji'}
+            </p>
+            {(searchQuery || cityFilter !== 'all') && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setCityFilter('all');
+                }}
+                className="text-[#d3bb73] hover:underline"
+              >
+                Wyczyść filtry
+              </button>
+            )}
+            {!searchQuery && cityFilter === 'all' && (
+              <button
+                onClick={() => handleOpenModal()}
+                className="text-[#d3bb73] hover:underline"
+              >
+                Dodaj pierwszą lokalizację
+              </button>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {locations.map((location) => (
-              <div
-                key={location.id}
-                className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-[#d3bb73]" />
-                    <h3 className="font-semibold text-[#e5e4e2]">{location.name}</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleOpenModal(location)}
-                      className="p-1 hover:bg-[#d3bb73]/10 rounded transition-colors"
-                    >
-                      <Edit className="w-4 h-4 text-[#d3bb73]" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(location.id)}
-                      className="p-1 hover:bg-red-500/10 rounded transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-400" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-sm">
-                  {location.address && (
-                    <div className="flex items-start gap-2 text-[#e5e4e2]/70">
-                      <Building className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>{location.address}</span>
-                    </div>
-                  )}
-
-                  {location.city && (
-                    <div className="text-[#e5e4e2]/70">
-                      {location.postal_code && `${location.postal_code} `}
-                      {location.city}
-                    </div>
-                  )}
-
-                  {location.contact_person_name && (
-                    <div className="flex items-center gap-2 text-[#e5e4e2]/70">
-                      <User className="w-4 h-4" />
-                      <span>{location.contact_person_name}</span>
-                    </div>
-                  )}
-
-                  {location.contact_phone && (
-                    <div className="flex items-center gap-2 text-[#e5e4e2]/70">
-                      <Phone className="w-4 h-4" />
-                      <span>{location.contact_phone}</span>
-                    </div>
-                  )}
-
-                  {location.contact_email && (
-                    <div className="flex items-center gap-2 text-[#e5e4e2]/70">
-                      <Mail className="w-4 h-4" />
-                      <span className="truncate">{location.contact_email}</span>
-                    </div>
-                  )}
-
-                  {location.nip && (
-                    <div className="flex items-center gap-2 text-[#e5e4e2]/70">
-                      <FileText className="w-4 h-4" />
-                      <span>NIP: {location.nip}</span>
-                    </div>
-                  )}
-
-                  {/* Google Maps link */}
-                  {location.google_maps_url && (
-                    <div className="pt-2 mt-2 border-t border-[#d3bb73]/10">
-                      <a
-                        href={location.google_maps_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        <span className="text-sm">Zobacz w Google Maps</span>
-                      </a>
-                    </div>
-                  )}
-
-                  {/* Mini mapa - preview */}
-                  {location.latitude && location.longitude && (
-                    <div className="mt-2 rounded overflow-hidden border border-[#d3bb73]/20">
-                      <a
-                        href={location.google_maps_url || `https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block"
-                      >
-                        <img
-                          src={`https://maps.googleapis.com/maps/api/staticmap?center=${location.latitude},${location.longitude}&zoom=14&size=400x200&markers=color:red%7C${location.latitude},${location.longitude}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
-                          alt="Mapa lokalizacji"
-                          className="w-full h-32 object-cover hover:opacity-80 transition-opacity"
-                          onError={(e) => {
-                            // Fallback - pokaż iframe zamiast static map
-                            e.currentTarget.style.display = 'none';
-                          }}
-                        />
-                      </a>
-                    </div>
-                  )}
-                </div>
+          <>
+            {/* Grid View */}
+            {viewMode === 'grid' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredAndSortedLocations.map((location) => (
+                  <LocationCardGrid
+                    key={location.id}
+                    location={location}
+                    onEdit={() => handleOpenModal(location)}
+                    onDelete={() => handleDelete(location.id)}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+
+            {/* List View */}
+            {viewMode === 'list' && (
+              <div className="space-y-3">
+                {filteredAndSortedLocations.map((location) => (
+                  <LocationCardList
+                    key={location.id}
+                    location={location}
+                    onEdit={() => handleOpenModal(location)}
+                    onDelete={() => handleDelete(location.id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Table View */}
+            {viewMode === 'table' && (
+              <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg overflow-hidden">
+                <LocationTable
+                  locations={filteredAndSortedLocations}
+                  onEdit={handleOpenModal}
+                  onDelete={handleDelete}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {/* Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-[#1c1f33] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-[#1c1f33] rounded-lg max-w-2xl w-full my-8">
               <div className="p-6 border-b border-[#d3bb73]/20">
                 <h2 className="text-xl font-bold text-[#e5e4e2]">
                   {editingLocation ? 'Edytuj lokalizację' : 'Dodaj lokalizację'}
                 </h2>
               </div>
 
-              <div className="p-6 space-y-4">
+              <div className="p-6 space-y-4 max-h-[calc(90vh-200px)] overflow-y-auto">
                 <div>
                   <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
                     Nazwa lokalizacji *
@@ -500,6 +629,251 @@ export default function LocationsPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Grid Card Component
+function LocationCardGrid({
+  location,
+  onEdit,
+  onDelete,
+}: {
+  location: Location;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 transition-colors">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <MapPin className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
+          <h3 className="font-semibold text-[#e5e4e2] line-clamp-1">{location.name}</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onEdit}
+            className="p-1 hover:bg-[#d3bb73]/10 rounded transition-colors"
+          >
+            <Edit className="w-4 h-4 text-[#d3bb73]" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1 hover:bg-red-500/10 rounded transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2 text-sm">
+        {location.address && (
+          <div className="flex items-start gap-2 text-[#e5e4e2]/70">
+            <Building className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span className="line-clamp-1">{location.address}</span>
+          </div>
+        )}
+
+        {location.city && (
+          <div className="text-[#e5e4e2]/70">
+            {location.postal_code && `${location.postal_code} `}
+            {location.city}
+          </div>
+        )}
+
+        {location.contact_person_name && (
+          <div className="flex items-center gap-2 text-[#e5e4e2]/70">
+            <User className="w-4 h-4" />
+            <span className="line-clamp-1">{location.contact_person_name}</span>
+          </div>
+        )}
+
+        {location.contact_phone && (
+          <div className="flex items-center gap-2 text-[#e5e4e2]/70">
+            <Phone className="w-4 h-4" />
+            <span>{location.contact_phone}</span>
+          </div>
+        )}
+
+        {location.google_maps_url && (
+          <div className="pt-2 mt-2 border-t border-[#d3bb73]/10">
+            <a
+              href={location.google_maps_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span className="text-sm">Zobacz na mapie</span>
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// List Card Component
+function LocationCardList({
+  location,
+  onEdit,
+  onDelete,
+}: {
+  location: Location;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 transition-colors">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <MapPinned className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
+
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-[#e5e4e2] truncate">{location.name}</h3>
+            <div className="flex items-center gap-4 mt-1 text-sm text-[#e5e4e2]/60">
+              {location.city && <span>{location.city}</span>}
+              {location.address && <span className="truncate">{location.address}</span>}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {location.contact_person_name && (
+            <div className="hidden lg:flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+              <User className="w-4 h-4" />
+              <span>{location.contact_person_name}</span>
+            </div>
+          )}
+
+          {location.contact_phone && (
+            <div className="hidden lg:flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+              <Phone className="w-4 h-4" />
+              <span>{location.contact_phone}</span>
+            </div>
+          )}
+
+          {location.google_maps_url && (
+            <a
+              href={location.google_maps_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 hover:bg-[#d3bb73]/10 rounded transition-colors"
+              title="Zobacz na mapie"
+            >
+              <ExternalLink className="w-4 h-4 text-[#d3bb73]" />
+            </a>
+          )}
+
+          <button
+            onClick={onEdit}
+            className="p-2 hover:bg-[#d3bb73]/10 rounded transition-colors"
+          >
+            <Edit className="w-4 h-4 text-[#d3bb73]" />
+          </button>
+
+          <button
+            onClick={onDelete}
+            className="p-2 hover:bg-red-500/10 rounded transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Table Component
+function LocationTable({
+  locations,
+  onEdit,
+  onDelete,
+}: {
+  locations: Location[];
+  onEdit: (location: Location) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead className="bg-[#0f1117]">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/70 uppercase tracking-wider">
+              Nazwa
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/70 uppercase tracking-wider">
+              Adres
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/70 uppercase tracking-wider">
+              Miasto
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/70 uppercase tracking-wider">
+              Kontakt
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/70 uppercase tracking-wider">
+              NIP
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-[#e5e4e2]/70 uppercase tracking-wider">
+              Akcje
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[#d3bb73]/10">
+          {locations.map((location) => (
+            <tr
+              key={location.id}
+              className="hover:bg-[#d3bb73]/5 transition-colors"
+            >
+              <td className="px-4 py-3 text-sm text-[#e5e4e2]">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
+                  <span className="font-medium">{location.name}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">
+                {location.address || '-'}
+              </td>
+              <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">
+                {location.city || '-'}
+              </td>
+              <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">
+                {location.contact_person_name || location.contact_phone || '-'}
+              </td>
+              <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">
+                {location.nip || '-'}
+              </td>
+              <td className="px-4 py-3 text-sm text-right">
+                <div className="flex items-center justify-end gap-2">
+                  {location.google_maps_url && (
+                    <a
+                      href={location.google_maps_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1 hover:bg-[#d3bb73]/10 rounded transition-colors"
+                      title="Zobacz na mapie"
+                    >
+                      <ExternalLink className="w-4 h-4 text-[#d3bb73]" />
+                    </a>
+                  )}
+                  <button
+                    onClick={() => onEdit(location)}
+                    className="p-1 hover:bg-[#d3bb73]/10 rounded transition-colors"
+                  >
+                    <Edit className="w-4 h-4 text-[#d3bb73]" />
+                  </button>
+                  <button
+                    onClick={() => onDelete(location.id)}
+                    className="p-1 hover:bg-red-500/10 rounded transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
