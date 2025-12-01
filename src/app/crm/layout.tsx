@@ -30,6 +30,7 @@ import {
   BookUser,
   BarChart,
   MapPin,
+  Receipt,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import NotificationCenter from '@/components/crm/NotificationCenter';
@@ -60,6 +61,7 @@ const allNavigation: NavigationItem[] = [
     icon: FileSignature,
     module: 'contracts',
   },
+  { key: 'invoices', name: 'Faktury', href: '/crm/invoices', icon: Receipt, module: 'finances' },
   {
     key: 'attractions',
     name: 'Atrakcje',
