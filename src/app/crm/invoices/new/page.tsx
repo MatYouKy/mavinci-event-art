@@ -49,37 +49,69 @@ export default function NewInvoicePage() {
 
   const fetchData = async () => {
     try {
-      const [settingsRes, orgsRes] = await Promise.all([
+      const [settingsRes, businessClientsRes] = await Promise.all([
         supabase.from('invoice_settings').select('*').limit(1).maybeSingle(),
-        supabase.from('organizations').select('id, name, nip, street, postal_code, city').order('name')
+        supabase.rpc('get_business_clients')
       ]);
 
       if (settingsRes.data) setSettings(settingsRes.data);
-      if (orgsRes.data) setOrganizations(orgsRes.data);
+      if (businessClientsRes.data) {
+        const formattedClients = businessClientsRes.data.map((client: any) => ({
+          id: client.id,
+          name: client.name,
+          nip: client.nip,
+          street: client.address,
+          postal_code: client.postal_code,
+          city: client.city,
+          client_type: client.client_type
+        }));
+        setOrganizations(formattedClients);
+      }
 
       if (eventId) {
-        const { data: eventData } = await supabase
-          .from('events')
-          .select('name, organization_id, organizations(id, name, nip, street, postal_code, city)')
-          .eq('id', eventId)
-          .maybeSingle();
+        const [eventRes, financialInfoRes] = await Promise.all([
+          supabase.from('events').select('name, organization_id, contact_person_id').eq('id', eventId).maybeSingle(),
+          supabase.rpc('get_event_financial_info', { p_event_id: eventId })
+        ]);
 
-        if (eventData) {
-          if (eventData.organization_id) {
-            setSelectedOrgId(eventData.organization_id);
+        if (eventRes.data && financialInfoRes.data?.[0]) {
+          const financialInfo = financialInfoRes.data[0];
+
+          // Auto-wybór nabywcy (organizacja lub kontakt businessowy)
+          if (eventRes.data.organization_id) {
+            setSelectedOrgId(eventRes.data.organization_id);
+          } else if (eventRes.data.contact_person_id && financialInfo.is_business) {
+            setSelectedOrgId(eventRes.data.contact_person_id);
           }
+
+          // Auto-wypełnienie kwoty z zaakceptowanej oferty (z budżetu eventu)
+          const offerTotal = financialInfo.accepted_offer_total || financialInfo.expected_revenue || 0;
+          const priceNet = offerTotal > 0 ? Math.round((offerTotal / 1.23) * 100) / 100 : 0;
+
           setItems([{
             position_number: 1,
-            name: `Obsługa techniczna - ${eventData.name}`,
+            name: `Obsługa techniczna - ${eventRes.data.name}`,
             unit: 'szt.',
             quantity: 1,
-            price_net: 0,
+            price_net: priceNet,
             vat_rate: 23
           }]);
+
+          if (priceNet > 0 && financialInfo.accepted_offer_number) {
+            showSnackbar(`Kwota została automatycznie wypełniona z oferty ${financialInfo.accepted_offer_number}: ${offerTotal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł brutto`, 'success');
+          } else if (priceNet > 0) {
+            showSnackbar(`Kwota została automatycznie wypełniona z budżetu eventu: ${offerTotal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł brutto`, 'success');
+          }
+
+          // Ostrzeżenie jeśli nie można wystawić faktury
+          if (!financialInfo.can_invoice) {
+            showSnackbar('Uwaga: Ten klient nie ma uzupełnionego NIP. Nie będzie można zapisać faktury.', 'warning');
+          }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching data:', err);
+      showSnackbar(err.message || 'Błąd podczas ładowania danych', 'error');
     }
   };
 
@@ -136,7 +168,7 @@ export default function NewInvoicePage() {
 
   const handleSubmit = async () => {
     if (!selectedOrgId) {
-      showSnackbar('Wybierz organizację (nabywcę)', 'error');
+      showSnackbar('Wybierz nabywcę', 'error');
       return;
     }
 
@@ -276,10 +308,10 @@ export default function NewInvoicePage() {
                   onChange={(e) => setSelectedOrgId(e.target.value)}
                   className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2]"
                 >
-                  <option value="">Wybierz organizację...</option>
+                  <option value="">Wybierz nabywcę...</option>
                   {organizations.map(org => (
                     <option key={org.id} value={org.id}>
-                      {org.name} {org.nip && `(${org.nip})`}
+                      {org.name} {org.nip && `(NIP: ${org.nip})`}
                     </option>
                   ))}
                 </select>
