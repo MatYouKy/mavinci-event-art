@@ -19,6 +19,8 @@ import EventFilesExplorer from '@/components/crm/EventFilesExplorer';
 import EventSubcontractorsPanel from '@/components/crm/EventSubcontractorsPanel';
 import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
 import OfferWizard from '@/components/crm/OfferWizard';
+import EventFinancesTab from '@/components/crm/EventFinancesTab';
+import EventStatusEditor from '@/components/crm/EventStatusEditor';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from '@/components/crm/LocationSelector';
@@ -152,7 +154,7 @@ export default function EventDetailPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'tasks' | 'offer' | 'subcontractors' | 'logistics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'tasks' | 'offer' | 'subcontractors' | 'logistics' | 'finances' | 'history'>('overview');
 
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1109,13 +1111,13 @@ export default function EventDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span
-            className={`px-4 py-2 rounded-lg text-sm border ${
-              statusColors[event.status] || 'bg-gray-500/10 text-gray-400 border-gray-500/20'
-            }`}
-          >
-            {statusLabels[event.status] || event.status || 'Nieznany status'}
-          </span>
+          <EventStatusEditor
+            eventId={event.id}
+            currentStatus={event.status}
+            onStatusChange={(newStatus) => {
+              setEvent(prev => prev ? { ...prev, status: newStatus } : null);
+            }}
+          />
           <button
             onClick={() => setShowEditEventModal(true)}
             className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
@@ -1139,6 +1141,7 @@ export default function EventDetailPage() {
         {[
           { id: 'overview', label: 'Przegląd', icon: FileText },
           { id: 'offer', label: 'Oferta', icon: DollarSign },
+          { id: 'finances', label: 'Finanse', icon: DollarSign },
           { id: 'equipment', label: 'Sprzęt', icon: Package },
           { id: 'team', label: 'Zespół', icon: Users },
           { id: 'logistics', label: 'Logistyka', icon: Truck },
@@ -1902,6 +1905,10 @@ export default function EventDetailPage() {
 
       {activeTab === 'tasks' && event && (
         <EventTasksBoard eventId={event.id} canManage={canManageTeam} />
+      )}
+
+      {activeTab === 'finances' && (
+        <EventFinancesTab eventId={eventId} />
       )}
 
       {activeTab === 'history' && (
