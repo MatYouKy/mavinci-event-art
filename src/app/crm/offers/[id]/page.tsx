@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, CreditCard as Edit, Save, X } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, CreditCard as Edit, Save, X, Pencil, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface Offer {
   id: string;
@@ -46,6 +48,8 @@ export default function OfferDetailPage() {
   const router = useRouter();
   const params = useParams();
   const offerId = params.id as string;
+  const { showSnackbar } = useSnackbar();
+  const { showDialog, closeDialog } = useDialog();
 
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,14 +104,15 @@ export default function OfferDetailPage() {
 
       if (error) {
         console.error('Error updating status:', error);
-        alert('Błąd podczas aktualizacji statusu');
+        showSnackbar('Błąd podczas aktualizacji statusu', 'error');
         return;
       }
 
+      showSnackbar('Status oferty zaktualizowany', 'success');
       fetchOfferDetails();
     } catch (err) {
       console.error('Error:', err);
-      alert('Wystąpił błąd');
+      showSnackbar('Wystąpił błąd', 'error');
     }
   };
 
@@ -122,15 +127,16 @@ export default function OfferDetailPage() {
 
       if (error) {
         console.error('Error updating notes:', error);
-        alert('Błąd podczas zapisywania notatek');
+        showSnackbar('Błąd podczas zapisywania notatek', 'error');
         return;
       }
 
       setOffer({ ...offer, notes: editedNotes });
       setIsEditingNotes(false);
+      showSnackbar('Notatki zaktualizowane', 'success');
     } catch (err) {
       console.error('Error:', err);
-      alert('Wystąpił błąd');
+      showSnackbar('Wystąpił błąd', 'error');
     }
   };
 
@@ -138,7 +144,7 @@ export default function OfferDetailPage() {
     if (!offer) return;
 
     if (!editedNumber.trim()) {
-      alert('Numer oferty nie może być pusty');
+      showSnackbar('Numer oferty nie może być pusty', 'error');
       return;
     }
 
@@ -151,20 +157,78 @@ export default function OfferDetailPage() {
       if (error) {
         console.error('Error updating offer number:', error);
         if (error.message.includes('już istnieje')) {
-          alert('Ten numer oferty już istnieje. Proszę wybrać inny.');
+          showSnackbar('Ten numer oferty już istnieje. Proszę wybrać inny.', 'error');
         } else {
-          alert('Błąd podczas zapisywania numeru oferty');
+          showSnackbar('Błąd podczas zapisywania numeru oferty', 'error');
         }
         return;
       }
 
       setOffer({ ...offer, offer_number: editedNumber });
       setIsEditingNumber(false);
-      alert('Numer oferty zaktualizowany');
+      showSnackbar('Numer oferty zaktualizowany', 'success');
     } catch (err) {
       console.error('Error:', err);
-      alert('Wystąpił błąd');
+      showSnackbar('Wystąpił błąd', 'error');
     }
+  };
+
+  const handleDeleteOffer = () => {
+    if (!offer) return;
+
+    showDialog({
+      title: 'Usunąć ofertę?',
+      message: `Czy na pewno chcesz usunąć ofertę ${offer.offer_number}? Ta operacja jest nieodwracalna.`,
+      type: 'danger',
+      confirmText: 'Usuń ofertę',
+      cancelText: 'Anuluj',
+      onConfirm: async () => {
+        try {
+          // Najpierw usuń pozycje oferty
+          const { error: itemsError } = await supabase
+            .from('offer_items')
+            .delete()
+            .eq('offer_id', offerId);
+
+          if (itemsError) {
+            console.error('Error deleting offer items:', itemsError);
+            showSnackbar('Błąd podczas usuwania pozycji oferty', 'error');
+            return;
+          }
+
+          // Potem usuń ofertę
+          const { error: offerError } = await supabase
+            .from('offers')
+            .delete()
+            .eq('id', offerId);
+
+          if (offerError) {
+            console.error('Error deleting offer:', offerError);
+            showSnackbar('Błąd podczas usuwania oferty', 'error');
+            return;
+          }
+
+          showSnackbar('Oferta usunięta', 'success');
+          closeDialog();
+
+          // Przekieruj do eventu jeśli jest event_id, inaczej do listy ofert
+          if (offer.event_id) {
+            router.push(`/crm/events/${offer.event_id}`);
+          } else {
+            router.push('/crm/offers');
+          }
+        } catch (err) {
+          console.error('Error:', err);
+          showSnackbar('Wystąpił błąd', 'error');
+        }
+      },
+    });
+  };
+
+  const handleEditOffer = () => {
+    if (!offer) return;
+    // TODO: Implementacja edycji oferty - przekierowanie do edytora lub modal
+    showSnackbar('Funkcja edycji oferty w przygotowaniu', 'info');
   };
 
   const getClientName = (offer: Offer) => {
@@ -215,6 +279,20 @@ export default function OfferDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleEditOffer}
+            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+          >
+            <Pencil className="w-4 h-4" />
+            Edytuj
+          </button>
+          <button
+            onClick={handleDeleteOffer}
+            className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Usuń
+          </button>
           <span
             className={`px-4 py-2 rounded-lg text-sm border ${
               statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
