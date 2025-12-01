@@ -284,10 +284,9 @@ export default function OfferWizard({
 
     try {
       // Utwórz ofertę
-      // Nie potrzebujemy client_id - klient jest powiązany przez event -> organization
       const offerDataToInsert: any = {
         event_id: eventId,
-        client_id: null, // Nie używamy już tej kolumny - klient jest w events.organization_id
+        client_id: clientId || null, // Klient z eventu (organization_id lub contact_person_id)
         valid_until: offerData.valid_until || null,
         notes: offerData.notes || null,
         status: 'draft',

@@ -49,7 +49,7 @@ export default function OfferDetailPage() {
   const params = useParams();
   const offerId = params.id as string;
   const { showSnackbar } = useSnackbar();
-  const { showDialog, closeDialog } = useDialog();
+  const { showConfirm } = useDialog();
 
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +57,11 @@ export default function OfferDetailPage() {
   const [editedNotes, setEditedNotes] = useState('');
   const [isEditingNumber, setIsEditingNumber] = useState(false);
   const [editedNumber, setEditedNumber] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    valid_until: '',
+    notes: '',
+  });
 
   useEffect(() => {
     if (offerId) {
@@ -173,62 +178,91 @@ export default function OfferDetailPage() {
     }
   };
 
-  const handleDeleteOffer = () => {
+  const handleDeleteOffer = async () => {
     if (!offer) return;
 
-    showDialog({
+    const confirmed = await showConfirm({
       title: 'Usunąć ofertę?',
       message: `Czy na pewno chcesz usunąć ofertę ${offer.offer_number}? Ta operacja jest nieodwracalna.`,
-      type: 'danger',
       confirmText: 'Usuń ofertę',
       cancelText: 'Anuluj',
-      onConfirm: async () => {
-        try {
-          // Najpierw usuń pozycje oferty
-          const { error: itemsError } = await supabase
-            .from('offer_items')
-            .delete()
-            .eq('offer_id', offerId);
-
-          if (itemsError) {
-            console.error('Error deleting offer items:', itemsError);
-            showSnackbar('Błąd podczas usuwania pozycji oferty', 'error');
-            return;
-          }
-
-          // Potem usuń ofertę
-          const { error: offerError } = await supabase
-            .from('offers')
-            .delete()
-            .eq('id', offerId);
-
-          if (offerError) {
-            console.error('Error deleting offer:', offerError);
-            showSnackbar('Błąd podczas usuwania oferty', 'error');
-            return;
-          }
-
-          showSnackbar('Oferta usunięta', 'success');
-          closeDialog();
-
-          // Przekieruj do eventu jeśli jest event_id, inaczej do listy ofert
-          if (offer.event_id) {
-            router.push(`/crm/events/${offer.event_id}`);
-          } else {
-            router.push('/crm/offers');
-          }
-        } catch (err) {
-          console.error('Error:', err);
-          showSnackbar('Wystąpił błąd', 'error');
-        }
-      },
     });
+
+    if (!confirmed) return;
+
+    try {
+      // Najpierw usuń pozycje oferty
+      const { error: itemsError } = await supabase
+        .from('offer_items')
+        .delete()
+        .eq('offer_id', offerId);
+
+      if (itemsError) {
+        console.error('Error deleting offer items:', itemsError);
+        showSnackbar('Błąd podczas usuwania pozycji oferty', 'error');
+        return;
+      }
+
+      // Potem usuń ofertę
+      const { error: offerError } = await supabase
+        .from('offers')
+        .delete()
+        .eq('id', offerId);
+
+      if (offerError) {
+        console.error('Error deleting offer:', offerError);
+        showSnackbar('Błąd podczas usuwania oferty', 'error');
+        return;
+      }
+
+      showSnackbar('Oferta usunięta', 'success');
+
+      // Przekieruj do eventu jeśli jest event_id, inaczej do listy ofert
+      if (offer.event_id) {
+        router.push(`/crm/events/${offer.event_id}`);
+      } else {
+        router.push('/crm/offers');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      showSnackbar('Wystąpił błąd', 'error');
+    }
   };
 
   const handleEditOffer = () => {
     if (!offer) return;
-    // TODO: Implementacja edycji oferty - przekierowanie do edytora lub modal
-    showSnackbar('Funkcja edycji oferty w przygotowaniu', 'info');
+    setEditFormData({
+      valid_until: offer.valid_until || '',
+      notes: offer.notes || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!offer) return;
+
+    try {
+      const { error } = await supabase
+        .from('offers')
+        .update({
+          valid_until: editFormData.valid_until || null,
+          notes: editFormData.notes || null,
+        })
+        .eq('id', offerId);
+
+      if (error) {
+        console.error('Error updating offer:', error);
+        showSnackbar('Błąd podczas zapisywania zmian', 'error');
+        return;
+      }
+
+      showSnackbar('Oferta zaktualizowana', 'success');
+      setShowEditModal(false);
+      fetchOfferDetails();
+    } catch (err) {
+      console.error('Error:', err);
+      showSnackbar('Wystąpił błąd', 'error');
+    }
   };
 
   const getClientName = (offer: Offer) => {
@@ -536,6 +570,66 @@ export default function OfferDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal edycji oferty */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-[#d3bb73]/20">
+              <h2 className="text-xl font-light text-[#e5e4e2]">Edytuj ofertę</h2>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Data ważności oferty
+                </label>
+                <input
+                  type="date"
+                  value={editFormData.valid_until}
+                  onChange={(e) => setEditFormData({ ...editFormData, valid_until: e.target.value })}
+                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                  Notatki
+                </label>
+                <textarea
+                  value={editFormData.notes}
+                  onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                  rows={4}
+                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-none"
+                  placeholder="Dodaj notatki do oferty..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-[#d3bb73]/20">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-6 py-2.5 rounded-lg text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10 transition-colors"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2.5 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                Zapisz zmiany
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
