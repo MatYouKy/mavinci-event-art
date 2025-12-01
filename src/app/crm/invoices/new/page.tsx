@@ -56,6 +56,11 @@ export default function NewInvoicePage() {
         supabase.rpc('get_business_clients')
       ]);
 
+      if (settingsRes.error) {
+        console.error('Error fetching invoice settings:', settingsRes.error);
+        throw new Error('Brak uprawnień do tworzenia faktur. Wymagane: invoices_manage lub finances_manage');
+      }
+
       if (settingsRes.data && settingsRes.data.length > 0) setSettings(settingsRes.data[0]);
       if (businessClientsRes.data) {
         const formattedClients = businessClientsRes.data.map((client: any) => ({
