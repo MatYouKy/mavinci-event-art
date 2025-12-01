@@ -43,6 +43,23 @@ interface FinancialSummary {
   costs_count: number;
   costs_paid_count: number;
   costs_total: number;
+  cash_budget: number;
+  actual_cash_revenue: number;
+  total_revenue: number;
+  client_type: string;
+  is_cash_only: boolean;
+}
+
+interface CashTransaction {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  description: string;
+  transaction_type: 'income' | 'expense';
+  category: string | null;
+  confirmed: boolean;
+  handled_by_name: string | null;
+  notes: string | null;
 }
 
 interface Invoice {
@@ -89,6 +106,9 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [costs, setCosts] = useState<Cost[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAddCashModal, setShowAddCashModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddCost, setShowAddCost] = useState(false);
 
@@ -104,8 +124,23 @@ export default function EventFinancesTab({ eventId }: Props) {
   });
 
   useEffect(() => {
+    checkAdminPermissions();
     fetchFinancialData();
   }, [eventId]);
+
+  const checkAdminPermissions = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return;
+
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('role, permissions')
+      .eq('id', session.user.id)
+      .single();
+
+    const hasFinancesAccess = employee?.role === 'admin' || employee?.permissions?.includes('finances_manage');
+    setIsAdmin(hasFinancesAccess);
+  };
 
   const fetchFinancialData = async () => {
     try {
@@ -133,6 +168,17 @@ export default function EventFinancesTab({ eventId }: Props) {
         setCosts(formattedCosts);
       }
       if (categoriesRes.data) setCategories(categoriesRes.data);
+
+      // Pobierz transakcje gotówkowe (tylko dla adminów)
+      if (isAdmin) {
+        const cashRes = await supabase
+          .from('event_cash_transactions')
+          .select('*')
+          .eq('event_id', eventId)
+          .order('transaction_date', { ascending: false });
+
+        if (cashRes.data) setCashTransactions(cashRes.data);
+      }
     } catch (err) {
       console.error('Error fetching financial data:', err);
       showSnackbar('Błąd podczas ładowania danych finansowych', 'error');
@@ -601,6 +647,115 @@ export default function EventFinancesTab({ eventId }: Props) {
           </div>
         )}
       </div>
+
+      {/* Cash Budget Section (only for individual clients and admins) */}
+      {isAdmin && clientInfo?.client_type === 'individual' && (
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-[#e5e4e2] flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-[#d3bb73]" />
+              Budżet gotówkowy ({cashTransactions.length})
+              <span className="text-xs px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded">
+                Tylko dla admina
+              </span>
+            </h3>
+            <button
+              onClick={() => setShowAddCashModal(true)}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj transakcję
+            </button>
+          </div>
+
+          {/* Cash Summary */}
+          {summary && (
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="bg-[#0a0d1a] border border-green-500/20 rounded-lg p-4">
+                <div className="text-xs text-[#e5e4e2]/60 mb-1">Wpłaty gotówkowe</div>
+                <div className="text-xl font-light text-green-400">
+                  {summary.actual_cash_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                </div>
+              </div>
+              <div className="bg-[#0a0d1a] border border-blue-500/20 rounded-lg p-4">
+                <div className="text-xs text-[#e5e4e2]/60 mb-1">Plan gotówkowy</div>
+                <div className="text-xl font-light text-blue-400">
+                  {summary.cash_budget.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                </div>
+              </div>
+              <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
+                <div className="text-xs text-[#e5e4e2]/60 mb-1">Łączny przychód</div>
+                <div className="text-xl font-light text-[#d3bb73]">
+                  {summary.total_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                </div>
+                <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                  Faktury + Gotówka
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cash Transactions List */}
+          {cashTransactions.length === 0 ? (
+            <div className="text-center py-8 text-[#e5e4e2]/40">
+              Brak transakcji gotówkowych
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {cashTransactions.map((transaction) => (
+                <div
+                  key={transaction.id}
+                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className={`text-sm font-medium ${
+                          transaction.transaction_type === 'income' ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {transaction.transaction_type === 'income' ? '+ ' : '- '}
+                          {transaction.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                        </span>
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          transaction.confirmed
+                            ? 'bg-green-500/20 text-green-400'
+                            : 'bg-yellow-500/20 text-yellow-400'
+                        }`}>
+                          {transaction.confirmed ? 'Potwierdzone' : 'Oczekuje'}
+                        </span>
+                        <span className="text-xs text-[#e5e4e2]/40">
+                          {new Date(transaction.transaction_date).toLocaleDateString('pl-PL')}
+                        </span>
+                      </div>
+                      <div className="text-sm text-[#e5e4e2]/80 mb-1">{transaction.description}</div>
+                      {transaction.handled_by_name && (
+                        <div className="text-xs text-[#e5e4e2]/60">
+                          Obsłużone przez: {transaction.handled_by_name}
+                        </div>
+                      )}
+                      {transaction.notes && (
+                        <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                          Notatka: {transaction.notes}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <div className="flex items-start gap-2 text-xs text-blue-400">
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>
+                Budżet gotówkowy jest widoczny tylko dla administratorów i służy do księgowania rozliczeń
+                gotówkowych z klientami indywidualnymi. Transakcje są zapisywane na subkoncie GOTÓWKA.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Financial Alert */}
       {summary && summary.actual_profit < 0 && (
