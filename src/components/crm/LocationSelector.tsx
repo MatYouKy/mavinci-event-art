@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapPin, Plus, Search, Building2, X, Map } from 'lucide-react';
+import { MapPin, Plus, Search, Building2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import GoogleMapsPicker from './GoogleMapsPicker';
+import AddLocationModal from './AddLocationModal';
 
 interface Location {
   id: string;
@@ -31,7 +31,7 @@ export default function LocationSelector({
   const [savedLocations, setSavedLocations] = useState<Location[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showGoogleSearch, setShowGoogleSearch] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -73,63 +73,49 @@ export default function LocationSelector({
     setSearchQuery('');
   };
 
-  const handleGoogleLocationSelect = (data: {
-    name?: string;
-    latitude: number;
-    longitude: number;
-    formatted_address: string;
-    google_place_id?: string;
-    google_maps_url: string;
-    address?: string;
-    city?: string;
-    postal_code?: string;
-    country?: string;
-  }) => {
-    // Zapisz lokalizację z Google Maps
-    const locationString = data.formatted_address || data.name || `${data.latitude}, ${data.longitude}`;
-    onChange(locationString);
-    setShowGoogleSearch(false);
-    setShowDropdown(false);
-    setSearchQuery('');
+  const handleLocationAdded = (location: Location) => {
+    // Dodaj nową lokalizację do listy
+    setSavedLocations((prev) => [...prev, location]);
+    // Wybierz ją
+    handleSelectLocation(location);
+    setShowAddModal(false);
   };
 
   return (
     <div className="relative">
-      {/* Search input - hide when Google search is active */}
-      {!showGoogleSearch && (
-        <div className="relative">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
-            <MapPin className="w-5 h-5" />
-          </div>
-          <input
-            type="text"
-            value={showDropdown ? searchQuery : value}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              if (!showDropdown) setShowDropdown(true);
-            }}
-            onFocus={() => setShowDropdown(true)}
-            placeholder={placeholder}
-            className="w-full pl-10 pr-10 py-3 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] transition-colors"
-          />
-          {(showDropdown || value) && (
-            <button
-              type="button"
-              onClick={() => {
-                setShowDropdown(false);
-                setSearchQuery('');
-                onChange('');
-              }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+      {/* Search input */}
+      <div className="relative">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
+          <MapPin className="w-5 h-5" />
         </div>
-      )}
+        <input
+          type="text"
+          value={showDropdown ? searchQuery : value}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            if (!showDropdown) setShowDropdown(true);
+          }}
+          onFocus={() => setShowDropdown(true)}
+          placeholder={placeholder}
+          className="w-full pl-10 pr-10 py-3 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] transition-colors"
+        />
+        {(showDropdown || value) && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowDropdown(false);
+              setSearchQuery('');
+              onChange('');
+            }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
 
       {/* Dropdown with saved locations */}
-      {showDropdown && !showGoogleSearch && (
+      {showDropdown && (
         <div className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl max-h-80 overflow-hidden">
           {/* Header */}
           <div className="px-4 py-3 border-b border-[#d3bb73]/20 bg-[#0f1117]">
@@ -140,13 +126,13 @@ export default function LocationSelector({
               <button
                 type="button"
                 onClick={() => {
-                  setShowGoogleSearch(true);
-                  setGoogleSearchValue('');
+                  setShowAddModal(true);
+                  setShowDropdown(false);
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors"
               >
-                <Search className="w-3.5 h-3.5" />
-                Szukaj nowej
+                <Plus className="w-3.5 h-3.5" />
+                Dodaj nową
               </button>
             </div>
           </div>
@@ -170,12 +156,13 @@ export default function LocationSelector({
                   <button
                     type="button"
                     onClick={() => {
-                      setShowGoogleSearch(true);
+                      setShowAddModal(true);
+                      setShowDropdown(false);
                     }}
                     className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium"
                   >
-                    <Map className="w-4 h-4" />
-                    Wyszukaj w Google Maps
+                    <Plus className="w-4 h-4" />
+                    Dodaj nową lokalizację
                   </button>
                   {searchQuery && (
                     <button
@@ -226,7 +213,7 @@ export default function LocationSelector({
                   </button>
                 ))}
 
-                {/* Button to search in Google Maps when results exist but user wants more */}
+                {/* Button to add new location when results exist but user wants more */}
                 {searchQuery && (
                   <div className="px-4 py-3 bg-[#0f1117] border-t border-[#d3bb73]/10">
                     <p className="text-xs text-[#e5e4e2]/40 mb-2">
@@ -235,12 +222,13 @@ export default function LocationSelector({
                     <button
                       type="button"
                       onClick={() => {
-                        setShowGoogleSearch(true);
+                        setShowAddModal(true);
+                        setShowDropdown(false);
                       }}
                       className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors text-sm"
                     >
-                      <Map className="w-4 h-4" />
-                      Wyszukaj w Google Maps
+                      <Plus className="w-4 h-4" />
+                      Dodaj nową lokalizację
                     </button>
                   </div>
                 )}
@@ -254,7 +242,6 @@ export default function LocationSelector({
               type="button"
               onClick={() => {
                 setShowDropdown(false);
-                setShowGoogleSearch(false);
               }}
               className="w-full text-center text-xs text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
             >
@@ -264,42 +251,12 @@ export default function LocationSelector({
         </div>
       )}
 
-      {/* Google Maps modal - full view */}
-      {showGoogleSearch && (
-        <div className="space-y-2">
-          {/* Header with back button */}
-          <div className="flex items-center gap-2 px-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowGoogleSearch(false);
-                setShowDropdown(true);
-              }}
-              className="flex items-center gap-1 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
-            >
-              <X className="w-4 h-4" />
-              Powrót do listy
-            </button>
-          </div>
-
-          {/* Google Maps Picker */}
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">
-              Wyszukaj lokalizację w Google Maps
-            </h3>
-
-            <GoogleMapsPicker
-              latitude={null}
-              longitude={null}
-              onLocationSelect={handleGoogleLocationSelect}
-            />
-
-            <p className="text-xs text-[#e5e4e2]/40 mt-3">
-              Wyszukaj miejsce lub kliknij na mapie aby wybrać lokalizację
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Add Location Modal */}
+      <AddLocationModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onLocationAdded={handleLocationAdded}
+      />
     </div>
   );
 }
