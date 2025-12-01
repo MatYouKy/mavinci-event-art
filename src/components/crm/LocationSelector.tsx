@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapPin, Plus, Search, Building2, X } from 'lucide-react';
+import { MapPin, Plus, Search, Building2, X, Map } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import LocationAutocomplete from './LocationAutocomplete';
+import GoogleMapsPicker from './GoogleMapsPicker';
 
 interface Location {
   id: string;
@@ -33,7 +33,6 @@ export default function LocationSelector({
   const [searchQuery, setSearchQuery] = useState('');
   const [showGoogleSearch, setShowGoogleSearch] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleSearchValue, setGoogleSearchValue] = useState('');
 
   useEffect(() => {
     fetchLocations();
@@ -74,15 +73,24 @@ export default function LocationSelector({
     setSearchQuery('');
   };
 
-  const handleGoogleLocationSelect = (googleLocation: string, locationId?: string) => {
-    // Tylko zamknij i zapisz gdy user wybrał z listy (ma locationId) lub nacisnął Enter
-    if (googleLocation && locationId) {
-      onChange(googleLocation);
-      setShowGoogleSearch(false);
-      setShowDropdown(false);
-      setSearchQuery('');
-      setGoogleSearchValue('');
-    }
+  const handleGoogleLocationSelect = (data: {
+    name?: string;
+    latitude: number;
+    longitude: number;
+    formatted_address: string;
+    google_place_id?: string;
+    google_maps_url: string;
+    address?: string;
+    city?: string;
+    postal_code?: string;
+    country?: string;
+  }) => {
+    // Zapisz lokalizację z Google Maps
+    const locationString = data.formatted_address || data.name || `${data.latitude}, ${data.longitude}`;
+    onChange(locationString);
+    setShowGoogleSearch(false);
+    setShowDropdown(false);
+    setSearchQuery('');
   };
 
   return (
@@ -155,52 +163,88 @@ export default function LocationSelector({
                 <Building2 className="w-12 h-12 text-[#e5e4e2]/30 mx-auto mb-3" />
                 <p className="text-sm text-[#e5e4e2]/50 mb-3">
                   {searchQuery
-                    ? 'Nie znaleziono lokalizacji'
+                    ? `Nie znaleziono lokalizacji "${searchQuery}" w Twojej liście`
                     : 'Brak zapisanych lokalizacji'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowGoogleSearch(true);
-                    setGoogleSearchValue('');
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium"
-                >
-                  <Plus className="w-4 h-4" />
-                  Dodaj pierwszą lokalizację
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGoogleSearch(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium"
+                  >
+                    <Map className="w-4 h-4" />
+                    Wyszukaj w Google Maps
+                  </button>
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange(searchQuery);
+                        setShowDropdown(false);
+                        setSearchQuery('');
+                      }}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Użyj "{searchQuery}" jako tekst
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
-              filteredLocations.map((location) => (
-                <button
-                  key={location.id}
-                  type="button"
-                  onClick={() => handleSelectLocation(location)}
-                  className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
-                >
-                  <div className="flex items-start gap-3">
-                    <MapPin className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-1" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-[#e5e4e2] mb-1">
-                        {location.name}
+              <>
+                {filteredLocations.map((location) => (
+                  <button
+                    key={location.id}
+                    type="button"
+                    onClick={() => handleSelectLocation(location)}
+                    className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10"
+                  >
+                    <div className="flex items-start gap-3">
+                      <MapPin className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-1" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-[#e5e4e2] mb-1">
+                          {location.name}
+                        </div>
+                        {(location.address || location.city) && (
+                          <div className="text-sm text-[#e5e4e2]/60">
+                            {location.address}
+                            {location.address && location.city && ', '}
+                            {location.city}
+                            {location.postal_code && ` ${location.postal_code}`}
+                          </div>
+                        )}
+                        {location.formatted_address && (
+                          <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                            {location.formatted_address}
+                          </div>
+                        )}
                       </div>
-                      {(location.address || location.city) && (
-                        <div className="text-sm text-[#e5e4e2]/60">
-                          {location.address}
-                          {location.address && location.city && ', '}
-                          {location.city}
-                          {location.postal_code && ` ${location.postal_code}`}
-                        </div>
-                      )}
-                      {location.formatted_address && (
-                        <div className="text-xs text-[#e5e4e2]/40 mt-1">
-                          {location.formatted_address}
-                        </div>
-                      )}
                     </div>
+                  </button>
+                ))}
+
+                {/* Button to search in Google Maps when results exist but user wants more */}
+                {searchQuery && (
+                  <div className="px-4 py-3 bg-[#0f1117] border-t border-[#d3bb73]/10">
+                    <p className="text-xs text-[#e5e4e2]/40 mb-2">
+                      Nie znalazłeś czego szukasz?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowGoogleSearch(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors text-sm"
+                    >
+                      <Map className="w-4 h-4" />
+                      Wyszukaj w Google Maps
+                    </button>
                   </div>
-                </button>
-              ))
+                )}
+              </>
             )}
           </div>
 
@@ -220,7 +264,7 @@ export default function LocationSelector({
         </div>
       )}
 
-      {/* Google search modal - full view */}
+      {/* Google Maps modal - full view */}
       {showGoogleSearch && (
         <div className="space-y-2">
           {/* Header with back button */}
@@ -230,7 +274,6 @@ export default function LocationSelector({
               onClick={() => {
                 setShowGoogleSearch(false);
                 setShowDropdown(true);
-                setGoogleSearchValue('');
               }}
               className="flex items-center gap-1 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
             >
@@ -239,44 +282,21 @@ export default function LocationSelector({
             </button>
           </div>
 
-          {/* Google Maps search */}
+          {/* Google Maps Picker */}
           <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg p-4">
             <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">
-              Wyszukaj nowe miejsce w Google Maps
+              Wyszukaj lokalizację w Google Maps
             </h3>
 
-            <LocationAutocomplete
-              value={googleSearchValue}
-              onChange={(value, locationId) => {
-                setGoogleSearchValue(value);
-                // Tylko zamknij gdy user wybrał konkretną lokalizację (locationId jest przekazane)
-                if (locationId) {
-                  handleGoogleLocationSelect(value, locationId);
-                }
-              }}
-              placeholder="Wpisz nazwę miejsca, adres lub miasto..."
+            <GoogleMapsPicker
+              latitude={null}
+              longitude={null}
+              onLocationSelect={handleGoogleLocationSelect}
             />
 
             <p className="text-xs text-[#e5e4e2]/40 mt-3">
-              Wpisz nazwę lokalizacji i wybierz z listy lub naciśnij Enter aby zapisać
+              Wyszukaj miejsce lub kliknij na mapie aby wybrać lokalizację
             </p>
-
-            {/* Przycisk zapisz jeśli coś wpisano ale nie wybrano */}
-            {googleSearchValue && (
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(googleSearchValue);
-                  setShowGoogleSearch(false);
-                  setShowDropdown(false);
-                  setSearchQuery('');
-                  setGoogleSearchValue('');
-                }}
-                className="mt-3 w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium text-sm"
-              >
-                Użyj "{googleSearchValue}" jako lokalizację
-              </button>
-            )}
           </div>
         </div>
       )}
