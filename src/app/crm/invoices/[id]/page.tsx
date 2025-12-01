@@ -142,6 +142,57 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     showSnackbar('Generowanie PDF - wkrótce dostępne', 'info');
   };
 
+  const handleSendEmail = async () => {
+    try {
+      // Pobierz email kontaktu z organizacji
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('email, name')
+        .eq('id', invoice.organization_id)
+        .maybeSingle();
+
+      if (!orgData || !orgData.email) {
+        showSnackbar('Brak adresu email dla tej organizacji', 'error');
+        return;
+      }
+
+      // Pobierz konto email systemowe
+      const { data: emailAccounts } = await supabase
+        .from('employee_email_accounts')
+        .select('id, email_address, smtp_host, smtp_port, smtp_user')
+        .eq('is_system_account', true)
+        .limit(1);
+
+      if (!emailAccounts || emailAccounts.length === 0) {
+        showSnackbar('Brak skonfigurowanego konta systemowego', 'error');
+        return;
+      }
+
+      const systemAccount = emailAccounts[0];
+
+      // Utwórz wpis w sent_emails
+      const { data: sentEmail, error } = await supabase
+        .from('sent_emails')
+        .insert({
+          account_id: systemAccount.id,
+          to_email: orgData.email,
+          subject: `Faktura ${invoice.invoice_number} - ${invoice.seller_name}`,
+          body_text: `Szanowni Państwo,\n\nW załączniku przesyłamy fakturę ${invoice.invoice_number}.\n\nPozdrawiamy,\n${invoice.seller_name}`,
+          body_html: `<p>Szanowni Państwo,</p><p>W załączniku przesyłamy fakturę <strong>${invoice.invoice_number}</strong>.</p><p>Pozdrawiamy,<br/>${invoice.seller_name}</p>`,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      showSnackbar('Faktura została dodana do kolejki wysyłki', 'success');
+    } catch (err) {
+      console.error('Error sending email:', err);
+      showSnackbar('Błąd podczas wysyłania email', 'error');
+    }
+  };
+
   const handleStatusChange = async (newStatus: string) => {
     try {
       const { error } = await supabase
@@ -290,6 +341,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </p>
           </div>
           <div className="flex gap-3">
+            {invoice.status === 'draft' && (
+              <button
+                onClick={() => router.push(`/crm/invoices/${invoice.id}/edit`)}
+                className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5"
+              >
+                <Edit className="w-4 h-4" />
+                Edytuj
+              </button>
+            )}
             <button
               onClick={handleGeneratePDF}
               className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5"
@@ -313,16 +373,28 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 Wystaw
               </button>
             )}
+            {invoice.status === 'issued' && (
+              <button
+                onClick={handleSendEmail}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                <Send className="w-4 h-4" />
+                Wyślij email
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Invoice Preview */}
-        <div className="bg-white text-black rounded-xl p-12 mb-6">
+        {/* Invoice Preview - A4 Format (210mm x 297mm at 96dpi = 794px x 1123px) */}
+        <div className="bg-white text-black rounded-xl mb-6 mx-auto" style={{ width: '794px', minHeight: '1123px', padding: '60px' }}>
           {/* Header */}
           <div className="flex justify-between items-start mb-12">
-            <div>
-              <div className="text-4xl font-bold mb-2">MAVINCI</div>
-              <div className="text-sm text-gray-600">event & art</div>
+            <div className="flex items-center gap-4">
+              <img
+                src="/logo-mavinci-crm.png"
+                alt="MAVINCI Logo"
+                className="h-16 w-auto object-contain"
+              />
             </div>
             <div className="text-right text-sm">
               <div className="mb-4">
