@@ -139,7 +139,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   const handleGeneratePDF = async () => {
-    showSnackbar('Generowanie PDF - wkrótce dostępne', 'info');
+    window.print();
   };
 
   const handleSendEmail = async () => {
@@ -386,7 +386,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         </div>
 
         {/* Invoice Preview - A4 Format (210mm x 297mm at 96dpi = 794px x 1123px) */}
-        <div className="bg-white text-black rounded-xl mb-6 mx-auto" style={{ width: '794px', minHeight: '1123px', padding: '60px' }}>
+        <div className="invoice-preview bg-white text-black rounded-xl mb-6 mx-auto" style={{ width: '794px', minHeight: '1123px', padding: '60px' }}>
           {/* Header */}
           <div className="flex justify-between items-start mb-12">
             <div className="flex items-center gap-4">
@@ -563,6 +563,36 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           </div>
         )}
       </div>
+
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+
+          .invoice-preview, .invoice-preview * {
+            visibility: visible;
+          }
+
+          .invoice-preview {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 210mm;
+            height: 297mm;
+            margin: 0;
+            padding: 20mm;
+            background: white;
+            box-shadow: none;
+            border-radius: 0;
+          }
+
+          @page {
+            size: A4;
+            margin: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }

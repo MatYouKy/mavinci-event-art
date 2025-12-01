@@ -30,6 +30,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { parseGoogleMapsUrl } from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { OrganizationLocationPicker } from '@/components/crm/OrganizationLocationPicker';
 
 interface Organization {
   id: string;
@@ -57,6 +58,7 @@ interface Organization {
   latitude: number | null;
   longitude: number | null;
   location_notes: string | null;
+  location_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -908,9 +910,24 @@ export default function OrganizationDetailPage() {
 
             <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
               <h2 className="text-xl font-semibold text-white mb-4">Adres i lokalizacja</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Adres</label>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-400 mb-2">
+                  Lokalizacja z bazy danych
+                </label>
+                <OrganizationLocationPicker
+                  organizationId={params.id}
+                  currentLocationId={editMode ? editedData.location_id : organization.location_id}
+                  onLocationChange={(locationId) => setEditedData({ ...editedData, location_id: locationId })}
+                  editMode={editMode}
+                />
+              </div>
+
+              <div className="border-t border-gray-700 pt-6 mt-6">
+                <h3 className="text-lg font-medium text-white mb-4">Ręczny adres (opcjonalnie)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Adres</label>
                   {editMode ? (
                     <input
                       type="text"
@@ -1027,6 +1044,7 @@ export default function OrganizationDetailPage() {
                     </a>
                   </div>
                 )}
+                </div>
               </div>
             </div>
 
