@@ -42,6 +42,8 @@ export default function NewInvoicePage() {
   const [items, setItems] = useState<InvoiceItem[]>([
     { position_number: 1, name: '', unit: 'szt.', quantity: 1, price_net: 0, vat_rate: 23 }
   ]);
+  const [simplifiedInvoice, setSimplifiedInvoice] = useState(false);
+  const [simplifiedServiceName, setSimplifiedServiceName] = useState('Obsługa muzyczna');
 
   useEffect(() => {
     fetchData();
@@ -166,6 +168,28 @@ export default function NewInvoicePage() {
     setItems(newItems);
   };
 
+  const getItemsForInvoice = () => {
+    if (!simplifiedInvoice || items.length <= 1) {
+      return items;
+    }
+
+    // Sumuj wszystkie pozycje w jedną
+    const totalNet = items.reduce((sum, item) => {
+      const { valueNet } = calculateItemValues(item);
+      return sum + valueNet;
+    }, 0);
+
+    // Zwróć jedną pozycję z sumą i nową nazwą
+    return [{
+      position_number: 1,
+      name: simplifiedServiceName,
+      unit: 'usł.',
+      quantity: 1,
+      price_net: Math.round(totalNet * 100) / 100,
+      vat_rate: 23
+    }];
+  };
+
   const handleSubmit = async () => {
     if (!selectedOrgId) {
       showSnackbar('Wybierz nabywcę', 'error');
@@ -230,7 +254,10 @@ export default function NewInvoicePage() {
 
       if (invoiceError) throw invoiceError;
 
-      const itemsToInsert = items.map(item => {
+      // Użyj uproszczonych pozycji jeśli checkbox zaznaczony
+      const finalItems = getItemsForInvoice();
+
+      const itemsToInsert = finalItems.map(item => {
         const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
         return {
           invoice_id: invoice.id,
@@ -370,6 +397,46 @@ export default function NewInvoicePage() {
                 </button>
               </div>
 
+              {/* Checkbox uproszczonej faktury */}
+              {items.length > 1 && (
+                <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={simplifiedInvoice}
+                      onChange={(e) => setSimplifiedInvoice(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-[#e5e4e2] mb-1">
+                        Uproszczona faktura (jedna pozycja)
+                      </div>
+                      <div className="text-xs text-[#e5e4e2]/60">
+                        Wszystkie pozycje zostaną zsumowane w jedną z własną nazwą usługi
+                      </div>
+                    </div>
+                  </label>
+
+                  {simplifiedInvoice && (
+                    <div className="mt-3">
+                      <label className="block text-xs text-[#e5e4e2]/60 mb-2">
+                        Nazwa usługi na fakturze *
+                      </label>
+                      <input
+                        type="text"
+                        value={simplifiedServiceName}
+                        onChange={(e) => setSimplifiedServiceName(e.target.value)}
+                        placeholder="np. Obsługa muzyczna"
+                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] text-sm"
+                      />
+                      <div className="mt-2 text-xs text-blue-400">
+                        Np. zamiast "DJ Standard 2500 zł + Konferansjer 3000 zł" → "Obsługa muzyczna 5500 zł"
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-4">
                 {items.map((item, index) => {
                   const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
@@ -471,6 +538,21 @@ export default function NewInvoicePage() {
             <div className="border-t border-[#d3bb73]/10 pt-6">
               <div className="bg-[#d3bb73]/5 border border-[#d3bb73]/20 rounded-lg p-6">
                 <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Podsumowanie</h3>
+
+                {simplifiedInvoice && items.length > 1 && (
+                  <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                    <div className="text-xs text-blue-400 mb-2 font-medium">
+                      📄 Podgląd uproszczonej faktury:
+                    </div>
+                    <div className="text-sm text-[#e5e4e2]">
+                      1. {simplifiedServiceName || 'Obsługa muzyczna'} - {totals.totalNet.toFixed(2)} zł netto
+                    </div>
+                    <div className="text-xs text-[#e5e4e2]/60 mt-2">
+                      Oryginalne pozycje ({items.length}): {items.map(i => i.name).join(', ')}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-6">
                   <div>
                     <div className="text-sm text-[#e5e4e2]/60 mb-1">Suma netto</div>
