@@ -23,7 +23,7 @@ import {
 interface Invoice {
   id: string;
   invoice_number: string;
-  invoice_type: 'proforma' | 'advance' | 'final' | 'corrective';
+  invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective';
   status: 'draft' | 'issued' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   issue_date: string;
   sale_date: string;
@@ -65,7 +65,7 @@ export default function InvoicesPage() {
         .from('invoices')
         .select(`
           *,
-          event:events(title),
+          event:events(name),
           organization:organizations(name)
         `)
         .order('issue_date', { ascending: false });
@@ -106,9 +106,9 @@ export default function InvoicesPage() {
 
   const getTypeBadge = (type: string) => {
     const typeLabels = {
+      vat: 'Faktura VAT',
       proforma: 'Proforma',
       advance: 'Zaliczkowa',
-      final: 'Końcowa',
       corrective: 'Korygująca'
     };
 
@@ -243,9 +243,9 @@ export default function InvoicesPage() {
                   className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
                 >
                   <option value="all">Wszystkie typy</option>
+                  <option value="vat">Faktura VAT</option>
                   <option value="proforma">Proforma</option>
                   <option value="advance">Zaliczkowa</option>
-                  <option value="final">Końcowa</option>
                   <option value="corrective">Korygująca</option>
                 </select>
               </div>
@@ -328,7 +328,7 @@ export default function InvoicesPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="font-medium text-[#e5e4e2]">{invoice.invoice_number}</div>
                         {invoice.event && (
-                          <div className="text-xs text-[#e5e4e2]/40 mt-1">{invoice.event.title}</div>
+                          <div className="text-xs text-[#e5e4e2]/40 mt-1">{invoice.event.name}</div>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

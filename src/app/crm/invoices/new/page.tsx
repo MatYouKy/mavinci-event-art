@@ -34,7 +34,7 @@ export default function NewInvoicePage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [settings, setSettings] = useState<any>(null);
 
-  const [invoiceType, setInvoiceType] = useState<'proforma' | 'advance' | 'final' | 'corrective'>('final');
+  const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>('vat');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentDays, setPaymentDays] = useState(14);
@@ -60,7 +60,7 @@ export default function NewInvoicePage() {
       if (eventId) {
         const { data: eventData } = await supabase
           .from('events')
-          .select('title, organization_id, organizations(id, name, nip, street, postal_code, city)')
+          .select('name, organization_id, organizations(id, name, nip, street, postal_code, city)')
           .eq('id', eventId)
           .maybeSingle();
 
@@ -70,7 +70,7 @@ export default function NewInvoicePage() {
           }
           setItems([{
             position_number: 1,
-            name: `Obsługa techniczna - ${eventData.title}`,
+            name: `Obsługa techniczna - ${eventData.name}`,
             unit: 'szt.',
             quantity: 1,
             price_net: 0,
@@ -262,9 +262,9 @@ export default function NewInvoicePage() {
                   onChange={(e) => setInvoiceType(e.target.value as any)}
                   className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2]"
                 >
+                  <option value="vat">Faktura VAT</option>
                   <option value="proforma">Proforma</option>
                   <option value="advance">Zaliczkowa</option>
-                  <option value="final">Końcowa</option>
                   <option value="corrective">Korygująca</option>
                 </select>
               </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Download, Edit, Printer, Send, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Download, Edit, Printer, Send, CheckCircle, XCircle, Building2, Calendar, FileText, Link as LinkIcon } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Invoice {
@@ -31,6 +31,16 @@ interface Invoice {
   total_gross: number;
   issue_place: string;
   pdf_url: string | null;
+  event_id: string | null;
+  organization_id: string | null;
+  related_invoice_id: string | null;
+}
+
+interface RelatedData {
+  event?: { id: string; name: string; event_date: string } | null;
+  organization?: { id: string; name: string; nip: string } | null;
+  relatedInvoice?: { id: string; invoice_number: string; invoice_type: string } | null;
+  relatedInvoices?: Array<{ id: string; invoice_number: string; invoice_type: string; relation_type: string }>;
 }
 
 interface InvoiceItem {
@@ -51,6 +61,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const { showSnackbar } = useSnackbar();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
+  const [relatedData, setRelatedData] = useState<RelatedData>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,7 +75,60 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         supabase.from('invoice_items').select('*').eq('invoice_id', params.id).order('position_number')
       ]);
 
-      if (invoiceRes.data) setInvoice(invoiceRes.data);
+      if (invoiceRes.data) {
+        setInvoice(invoiceRes.data);
+
+        const promises = [];
+
+        if (invoiceRes.data.event_id) {
+          promises.push(
+            supabase.from('events').select('id, name, event_date').eq('id', invoiceRes.data.event_id).maybeSingle()
+          );
+        }
+
+        if (invoiceRes.data.organization_id) {
+          promises.push(
+            supabase.from('organizations').select('id, name, nip').eq('id', invoiceRes.data.organization_id).maybeSingle()
+          );
+        }
+
+        if (invoiceRes.data.related_invoice_id) {
+          promises.push(
+            supabase.from('invoices').select('id, invoice_number, invoice_type').eq('id', invoiceRes.data.related_invoice_id).maybeSingle()
+          );
+        }
+
+        promises.push(
+          supabase.rpc('get_related_invoices', { p_invoice_id: params.id })
+        );
+
+        const results = await Promise.all(promises);
+
+        const related: RelatedData = {};
+        let resultIndex = 0;
+
+        if (invoiceRes.data.event_id && results[resultIndex]?.data) {
+          related.event = results[resultIndex].data;
+          resultIndex++;
+        }
+
+        if (invoiceRes.data.organization_id && results[resultIndex]?.data) {
+          related.organization = results[resultIndex].data;
+          resultIndex++;
+        }
+
+        if (invoiceRes.data.related_invoice_id && results[resultIndex]?.data) {
+          related.relatedInvoice = results[resultIndex].data;
+          resultIndex++;
+        }
+
+        if (results[resultIndex]?.data) {
+          related.relatedInvoices = results[resultIndex].data;
+        }
+
+        setRelatedData(related);
+      }
+
       if (itemsRes.data) setItems(itemsRes.data);
     } catch (err) {
       console.error('Error fetching invoice:', err);
@@ -113,9 +177,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
+      vat: 'Faktura VAT',
       proforma: 'Proforma',
       advance: 'Zaliczkowa',
-      final: 'Końcowa',
       corrective: 'Korygująca'
     };
     return labels[type] || type;
@@ -131,6 +195,89 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           <ArrowLeft className="w-5 h-5" />
           Powrót
         </button>
+
+        {/* Relations Section */}
+        {(relatedData.event || relatedData.organization || relatedData.relatedInvoice || (relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0)) && (
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 mb-6">
+            <h3 className="text-lg font-medium text-[#e5e4e2] mb-4 flex items-center gap-2">
+              <LinkIcon className="w-5 h-5 text-[#d3bb73]" />
+              Powiązania
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {relatedData.event && (
+                <div
+                  onClick={() => router.push(`/crm/events/${relatedData.event!.id}`)}
+                  className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <Calendar className="w-5 h-5 text-blue-400 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-xs text-[#e5e4e2]/40 mb-1">Event</div>
+                      <div className="text-[#e5e4e2] font-medium">{relatedData.event.name}</div>
+                      <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                        {new Date(relatedData.event.event_date).toLocaleDateString('pl-PL')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {relatedData.organization && (
+                <div
+                  onClick={() => router.push(`/crm/contacts?org=${relatedData.organization!.id}`)}
+                  className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-xs text-[#e5e4e2]/40 mb-1">Organizacja</div>
+                      <div className="text-[#e5e4e2] font-medium">{relatedData.organization.name}</div>
+                      {relatedData.organization.nip && (
+                        <div className="text-xs text-[#e5e4e2]/60 mt-1">NIP: {relatedData.organization.nip}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {relatedData.relatedInvoice && (
+                <div
+                  onClick={() => router.push(`/crm/invoices/${relatedData.relatedInvoice!.id}`)}
+                  className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <FileText className="w-5 h-5 text-purple-400 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-xs text-[#e5e4e2]/40 mb-1">Powiązana faktura</div>
+                      <div className="text-[#e5e4e2] font-medium">{relatedData.relatedInvoice.invoice_number}</div>
+                      <div className="text-xs text-[#e5e4e2]/60 mt-1">{getTypeLabel(relatedData.relatedInvoice.invoice_type)}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0 && (
+                <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <FileText className="w-5 h-5 text-orange-400 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-xs text-[#e5e4e2]/40 mb-2">Faktury korygujące</div>
+                      {relatedData.relatedInvoices.map((rel) => (
+                        <div
+                          key={rel.id}
+                          onClick={() => router.push(`/crm/invoices/${rel.id}`)}
+                          className="text-[#e5e4e2] hover:text-[#d3bb73] cursor-pointer mb-1"
+                        >
+                          {rel.invoice_number} <span className="text-xs text-[#e5e4e2]/60">({getTypeLabel(rel.invoice_type)})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Header Actions */}
         <div className="flex items-center justify-between mb-6">
