@@ -305,7 +305,19 @@ export default function EventDetailPage() {
             color,
             icon:custom_icons(id, name, svg_code, preview_color)
           ),
-          creator:employees!events_created_by_fkey(id, name, surname, avatar_url)
+          creator:employees!events_created_by_fkey(id, name, surname, avatar_url),
+          location_details:locations!location_id(
+            id,
+            name,
+            address,
+            city,
+            postal_code,
+            country,
+            formatted_address,
+            latitude,
+            longitude,
+            google_maps_url
+          )
         `)
         .eq('id', eventId)
         .maybeSingle();
@@ -1269,9 +1281,43 @@ export default function EventDetailPage() {
 
                 <div className="flex items-start gap-3">
                   <MapPin className="w-5 h-5 text-[#d3bb73] mt-0.5" />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
-                    <p className="text-[#e5e4e2]">{event.location}</p>
+                    {event.location_details ? (
+                      <div className="group relative">
+                        <button
+                          onClick={() => event.location_details?.id && router.push(`/crm/locations/${event.location_details.id}`)}
+                          className="text-[#e5e4e2] hover:text-[#d3bb73] transition-colors text-left"
+                        >
+                          {event.location_details.name}
+                        </button>
+                        <div className="invisible group-hover:visible absolute left-0 top-full mt-2 z-50 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-4 shadow-xl min-w-[300px] max-w-md">
+                          <p className="text-sm text-[#e5e4e2] font-medium mb-2">
+                            {event.location_details.name}
+                          </p>
+                          {event.location_details.formatted_address && (
+                            <p className="text-xs text-[#e5e4e2]/60 mb-3">
+                              {event.location_details.formatted_address}
+                            </p>
+                          )}
+                          {event.location_details.google_maps_url && (
+                            <a
+                              href={event.location_details.google_maps_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-[#d3bb73] hover:underline flex items-center gap-1"
+                            >
+                              Zobacz na mapie
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[#e5e4e2]">{event.location || 'Brak lokalizacji'}</p>
+                    )}
                   </div>
                 </div>
 
@@ -3285,6 +3331,7 @@ function EditEventModal({
     event_date: event.event_date,
     event_end_date: event.event_end_date || '',
     location: event.location,
+    location_id: event.location_id || null,
     budget: event.budget?.toString() || '',
     status: event.status,
   });
@@ -3451,6 +3498,7 @@ function EditEventModal({
       event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
       event_end_date: formData.event_end_date ? new Date(formData.event_end_date).toISOString() : null,
       location: formData.location,
+      location_id: formData.location_id || null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
     };
@@ -3659,7 +3707,11 @@ function EditEventModal({
             </label>
             <LocationSelector
               value={formData.location}
-              onChange={(value) => setFormData({ ...formData, location: value })}
+              onChange={(value, locationData) => setFormData({
+                ...formData,
+                location: value,
+                location_id: locationData?.id || null
+              })}
               placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
             />
           </div>
