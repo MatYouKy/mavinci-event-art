@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Calendar, MapPin, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, Save, X, User, Tag, ChevronDown, ChevronUp, Mail, Phone, Briefcase, Edit as EditIcon, AlertCircle, History, UserCheck, Truck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 // Helper function to convert UTC date to local datetime-local format
 const toLocalDatetimeString = (utcDate: string | null): string => {
@@ -148,6 +149,7 @@ export default function EventDetailPage() {
   const eventId = params.id as string;
   const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
+  const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
@@ -1155,6 +1157,10 @@ export default function EventDetailPage() {
           if (hasLimitedAccess) {
             return tab.id === 'overview';
           }
+          // Ukryj zakładkę Finanse dla użytkowników bez uprawnień
+          if (tab.id === 'finances' && !isUserAdmin && !hasScope('finances_manage') && !hasScope('finances_view')) {
+            return false;
+          }
           return true;
         })
         .map((tab) => {
@@ -1460,31 +1466,33 @@ export default function EventDetailPage() {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-              <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Budżet</h2>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
-                  <p className="text-2xl font-light text-[#d3bb73]">
-                    {event.expected_revenue ? event.expected_revenue.toLocaleString('pl-PL') : '0'} zł
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
-                  <p className="text-2xl font-light text-[#e5e4e2]">
-                    {event.actual_revenue ? event.actual_revenue.toLocaleString('pl-PL') : '0'} zł
-                  </p>
-                </div>
-                {event.expected_revenue && event.expected_revenue > 0 && event.actual_revenue && (
+            {(isUserAdmin || hasScope('finances_manage') || hasScope('finances_view')) && (
+              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+                <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Budżet</h2>
+                <div className="space-y-3">
                   <div>
-                    <p className="text-sm text-[#e5e4e2]/60">Marża realizacji</p>
-                    <p className="text-xl font-light text-[#e5e4e2]">
-                      {((event.actual_revenue / event.expected_revenue) * 100).toFixed(1)}%
+                    <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
+                    <p className="text-2xl font-light text-[#d3bb73]">
+                      {event.expected_revenue ? event.expected_revenue.toLocaleString('pl-PL') : '0'} zł
                     </p>
                   </div>
-                )}
+                  <div>
+                    <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
+                    <p className="text-2xl font-light text-[#e5e4e2]">
+                      {event.actual_revenue ? event.actual_revenue.toLocaleString('pl-PL') : '0'} zł
+                    </p>
+                  </div>
+                  {event.expected_revenue && event.expected_revenue > 0 && event.actual_revenue && (
+                    <div>
+                      <p className="text-sm text-[#e5e4e2]/60">Marża realizacji</p>
+                      <p className="text-xl font-light text-[#e5e4e2]">
+                        {((event.actual_revenue / event.expected_revenue) * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
               <h2 className="text-lg font-light text-[#e5e4e2] mb-4">

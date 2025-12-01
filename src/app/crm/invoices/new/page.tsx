@@ -52,11 +52,11 @@ export default function NewInvoicePage() {
   const fetchData = async () => {
     try {
       const [settingsRes, businessClientsRes] = await Promise.all([
-        supabase.from('invoice_settings').select('*').limit(1).maybeSingle(),
+        supabase.rpc('get_invoice_settings_for_creation'),
         supabase.rpc('get_business_clients')
       ]);
 
-      if (settingsRes.data) setSettings(settingsRes.data);
+      if (settingsRes.data && settingsRes.data.length > 0) setSettings(settingsRes.data[0]);
       if (businessClientsRes.data) {
         const formattedClients = businessClientsRes.data.map((client: any) => ({
           id: client.id,
