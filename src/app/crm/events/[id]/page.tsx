@@ -1464,16 +1464,22 @@ export default function EventDetailPage() {
               <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Budżet</h2>
               <div className="space-y-3">
                 <div>
-                  <p className="text-sm text-[#e5e4e2]/60">Planowany budżet</p>
+                  <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
                   <p className="text-2xl font-light text-[#d3bb73]">
-                    {event.budget ? event.budget.toLocaleString('pl-PL') : '0'} zł
+                    {event.expected_revenue ? event.expected_revenue.toLocaleString('pl-PL') : '0'} zł
                   </p>
                 </div>
-                {event.final_cost && event.final_cost > 0 && (
+                <div>
+                  <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
+                  <p className="text-2xl font-light text-[#e5e4e2]">
+                    {event.actual_revenue ? event.actual_revenue.toLocaleString('pl-PL') : '0'} zł
+                  </p>
+                </div>
+                {event.expected_revenue && event.expected_revenue > 0 && event.actual_revenue && (
                   <div>
-                    <p className="text-sm text-[#e5e4e2]/60">Koszt końcowy</p>
-                    <p className="text-2xl font-light text-[#e5e4e2]">
-                      {event.final_cost.toLocaleString('pl-PL')} zł
+                    <p className="text-sm text-[#e5e4e2]/60">Marża realizacji</p>
+                    <p className="text-xl font-light text-[#e5e4e2]">
+                      {((event.actual_revenue / event.expected_revenue) * 100).toFixed(1)}%
                     </p>
                   </div>
                 )}
