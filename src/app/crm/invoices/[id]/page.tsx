@@ -341,7 +341,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </p>
           </div>
           <div className="flex gap-3">
-            {invoice.status === 'draft' && (
+            {(invoice.status === 'draft' || invoice.status === 'issued') && (
               <button
                 onClick={() => router.push(`/crm/invoices/${invoice.id}/edit`)}
                 className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5"

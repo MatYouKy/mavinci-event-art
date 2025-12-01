@@ -160,7 +160,8 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         buyer_city: selectedOrg.city || '',
         total_net: totals.totalNet,
         total_vat: totals.totalVat,
-        total_gross: totals.totalGross
+        total_gross: totals.totalGross,
+        status: 'draft'
       };
 
       const { error: invoiceError } = await supabase
@@ -212,12 +213,10 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
     );
   }
 
-  if (!invoice || invoice.status !== 'draft') {
+  if (!invoice) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0a0d1a]">
-        <div className="text-[#e5e4e2]/60">
-          {invoice ? 'Można edytować tylko faktury w statusie szkic' : 'Faktura nie została znaleziona'}
-        </div>
+        <div className="text-[#e5e4e2]/60">Faktura nie została znaleziona</div>
       </div>
     );
   }
@@ -239,6 +238,29 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
           <h1 className="text-2xl font-light text-[#e5e4e2] mb-8">
             Edytuj fakturę {invoice.invoice_number}
           </h1>
+
+          {invoice.status === 'issued' && (
+            <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="text-yellow-500 mt-0.5">⚠️</div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-yellow-500 mb-1">
+                    Uwaga: Edycja wystawionej faktury
+                  </div>
+                  <div className="text-xs text-[#e5e4e2]/60 mb-3">
+                    Ta faktura została już wystawiona. Po zapisaniu zmian, faktura zostanie cofnięta do statusu szkic.
+                    Będziesz musiał ją ponownie wystawić.
+                  </div>
+                  <button
+                    onClick={() => router.back()}
+                    className="text-xs text-yellow-500 hover:text-yellow-400 underline"
+                  >
+                    Anuluj i wróć
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-6">
