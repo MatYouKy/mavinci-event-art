@@ -212,19 +212,25 @@ export default function AddLocationModal({
               latitude={formData.latitude}
               longitude={formData.longitude}
               onLocationSelect={(data) => {
-                setFormData({
-                  ...formData,
-                  name: data.name || formData.name,
+                // Aktualizuj formularz danymi z Google Maps
+                // WAŻNE: data.name to nazwa miejsca (np. "Warmiński Hotel & Conference Olsztyn")
+                // data.address to ulica i numer (np. "Kołobrzeska 1")
+
+                setFormData((prev) => ({
+                  ...prev,
+                  // Nazwa: użyj nazwy miejsca z Google, jeśli nie ma - zachowaj poprzednią
+                  name: data.name || prev.name,
                   latitude: data.latitude,
                   longitude: data.longitude,
                   google_maps_url: data.google_maps_url,
                   google_place_id: data.google_place_id || '',
                   formatted_address: data.formatted_address,
-                  address: data.address || formData.address,
-                  city: data.city || formData.city,
-                  postal_code: data.postal_code || formData.postal_code,
-                  country: data.country || formData.country,
-                });
+                  // Adres: numer domu + ulica (nie nazwa!)
+                  address: data.address || prev.address,
+                  city: data.city || prev.city,
+                  postal_code: data.postal_code || prev.postal_code,
+                  country: data.country || prev.country,
+                }));
               }}
             />
           </div>
