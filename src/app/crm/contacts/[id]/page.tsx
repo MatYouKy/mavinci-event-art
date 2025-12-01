@@ -923,8 +923,9 @@ export default function OrganizationDetailPage() {
                 />
               </div>
 
-              <div className="border-t border-gray-700 pt-6 mt-6">
-                <h3 className="text-lg font-medium text-white mb-4">Ręczny adres (opcjonalnie)</h3>
+              {!(editMode ? editedData.location_id : organization.location_id) && (
+                <div className="border-t border-gray-700 pt-6 mt-6">
+                  <h3 className="text-lg font-medium text-white mb-4">Ręczny adres (opcjonalnie)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-400 mb-1">Adres</label>
@@ -1045,7 +1046,8 @@ export default function OrganizationDetailPage() {
                   </div>
                 )}
                 </div>
-              </div>
+                </div>
+              )}
             </div>
 
             {organization.organization_type === 'subcontractor' && (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   MapPin, Plus, Edit, Trash2, Building, Phone, Mail, User,
   FileText, ExternalLink, Search, Grid3x3, List, Table2,
@@ -35,6 +36,7 @@ type SortField = 'name' | 'city' | 'created_at';
 type SortDirection = 'asc' | 'desc';
 
 export default function LocationsPage() {
+  const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
@@ -422,6 +424,7 @@ export default function LocationsPage() {
                     location={location}
                     onEdit={() => handleOpenModal(location)}
                     onDelete={() => handleDelete(location.id)}
+                    onClick={() => router.push(`/crm/locations/${location.id}`)}
                   />
                 ))}
               </div>
@@ -436,6 +439,7 @@ export default function LocationsPage() {
                     location={location}
                     onEdit={() => handleOpenModal(location)}
                     onDelete={() => handleDelete(location.id)}
+                    onClick={() => router.push(`/crm/locations/${location.id}`)}
                   />
                 ))}
               </div>
@@ -639,13 +643,18 @@ function LocationCardGrid({
   location,
   onEdit,
   onDelete,
+  onClick,
 }: {
   location: Location;
   onEdit: () => void;
   onDelete: () => void;
+  onClick: () => void;
 }) {
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 transition-colors">
+    <div
+      onClick={onClick}
+      className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 transition-colors cursor-pointer"
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <MapPin className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
@@ -653,13 +662,19 @@ function LocationCardGrid({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={onEdit}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
             className="p-1 hover:bg-[#d3bb73]/10 rounded transition-colors"
           >
             <Edit className="w-4 h-4 text-[#d3bb73]" />
           </button>
           <button
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="p-1 hover:bg-red-500/10 rounded transition-colors"
           >
             <Trash2 className="w-4 h-4 text-red-400" />
@@ -719,13 +734,18 @@ function LocationCardList({
   location,
   onEdit,
   onDelete,
+  onClick,
 }: {
   location: Location;
   onEdit: () => void;
   onDelete: () => void;
+  onClick: () => void;
 }) {
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 transition-colors">
+    <div
+      onClick={onClick}
+      className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 transition-colors cursor-pointer"
+    >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <MapPinned className="w-5 h-5 text-[#d3bb73] flex-shrink-0" />
@@ -759,6 +779,7 @@ function LocationCardList({
               href={location.google_maps_url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="p-2 hover:bg-[#d3bb73]/10 rounded transition-colors"
               title="Zobacz na mapie"
             >
@@ -767,14 +788,20 @@ function LocationCardList({
           )}
 
           <button
-            onClick={onEdit}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
             className="p-2 hover:bg-[#d3bb73]/10 rounded transition-colors"
           >
             <Edit className="w-4 h-4 text-[#d3bb73]" />
           </button>
 
           <button
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="p-2 hover:bg-red-500/10 rounded transition-colors"
           >
             <Trash2 className="w-4 h-4 text-red-400" />
