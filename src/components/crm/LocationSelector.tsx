@@ -74,12 +74,14 @@ export default function LocationSelector({
     setSearchQuery('');
   };
 
-  const handleGoogleLocationSelect = (googleLocation: string) => {
-    if (googleLocation) {
+  const handleGoogleLocationSelect = (googleLocation: string, locationId?: string) => {
+    // Tylko zamknij i zapisz gdy user wybrał z listy (ma locationId) lub nacisnął Enter
+    if (googleLocation && locationId) {
       onChange(googleLocation);
       setShowGoogleSearch(false);
       setShowDropdown(false);
       setSearchQuery('');
+      setGoogleSearchValue('');
     }
   };
 
@@ -245,16 +247,36 @@ export default function LocationSelector({
 
             <LocationAutocomplete
               value={googleSearchValue}
-              onChange={(value) => {
+              onChange={(value, locationId) => {
                 setGoogleSearchValue(value);
-                handleGoogleLocationSelect(value);
+                // Tylko zamknij gdy user wybrał konkretną lokalizację (locationId jest przekazane)
+                if (locationId) {
+                  handleGoogleLocationSelect(value, locationId);
+                }
               }}
               placeholder="Wpisz nazwę miejsca, adres lub miasto..."
             />
 
             <p className="text-xs text-[#e5e4e2]/40 mt-3">
-              Zacznij wpisywać aby zobaczyć sugestie z Google Maps
+              Wpisz nazwę lokalizacji i wybierz z listy lub naciśnij Enter aby zapisać
             </p>
+
+            {/* Przycisk zapisz jeśli coś wpisano ale nie wybrano */}
+            {googleSearchValue && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(googleSearchValue);
+                  setShowGoogleSearch(false);
+                  setShowDropdown(false);
+                  setSearchQuery('');
+                  setGoogleSearchValue('');
+                }}
+                className="mt-3 w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium text-sm"
+              >
+                Użyj "{googleSearchValue}" jako lokalizację
+              </button>
+            )}
           </div>
         </div>
       )}
