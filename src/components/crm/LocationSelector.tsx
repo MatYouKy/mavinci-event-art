@@ -85,36 +85,38 @@ export default function LocationSelector({
 
   return (
     <div className="relative">
-      {/* Search input */}
-      <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
-          <MapPin className="w-5 h-5" />
-        </div>
-        <input
-          type="text"
-          value={showDropdown ? searchQuery : value}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            if (!showDropdown) setShowDropdown(true);
-          }}
-          onFocus={() => setShowDropdown(true)}
-          placeholder={placeholder}
-          className="w-full pl-10 pr-10 py-3 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] transition-colors"
-        />
-        {(showDropdown || value) && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowDropdown(false);
-              setSearchQuery('');
-              onChange('');
+      {/* Search input - hide when Google search is active */}
+      {!showGoogleSearch && (
+        <div className="relative">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
+            <MapPin className="w-5 h-5" />
+          </div>
+          <input
+            type="text"
+            value={showDropdown ? searchQuery : value}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (!showDropdown) setShowDropdown(true);
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
+            onFocus={() => setShowDropdown(true)}
+            placeholder={placeholder}
+            className="w-full pl-10 pr-10 py-3 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] transition-colors"
+          />
+          {(showDropdown || value) && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowDropdown(false);
+                setSearchQuery('');
+                onChange('');
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Dropdown with saved locations */}
       {showDropdown && !showGoogleSearch && (
@@ -216,37 +218,44 @@ export default function LocationSelector({
         </div>
       )}
 
-      {/* Google search modal */}
+      {/* Google search modal - full view */}
       {showGoogleSearch && (
-        <div className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-[#e5e4e2]">
-              Wyszukaj nowe miejsce
-            </h3>
+        <div className="space-y-2">
+          {/* Header with back button */}
+          <div className="flex items-center gap-2 px-2">
             <button
               type="button"
               onClick={() => {
                 setShowGoogleSearch(false);
                 setShowDropdown(true);
+                setGoogleSearchValue('');
               }}
-              className="text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+              className="flex items-center gap-1 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
             >
               <X className="w-4 h-4" />
+              Powrót do listy
             </button>
           </div>
 
-          <LocationAutocomplete
-            value={googleSearchValue}
-            onChange={(value) => {
-              setGoogleSearchValue(value);
-              handleGoogleLocationSelect(value);
-            }}
-            placeholder="Szukaj w Google Maps..."
-          />
+          {/* Google Maps search */}
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">
+              Wyszukaj nowe miejsce w Google Maps
+            </h3>
 
-          <p className="text-xs text-[#e5e4e2]/40 mt-3">
-            Wpisz nazwę miejsca, adres lub miasto aby wyszukać w Google Maps
-          </p>
+            <LocationAutocomplete
+              value={googleSearchValue}
+              onChange={(value) => {
+                setGoogleSearchValue(value);
+                handleGoogleLocationSelect(value);
+              }}
+              placeholder="Wpisz nazwę miejsca, adres lub miasto..."
+            />
+
+            <p className="text-xs text-[#e5e4e2]/40 mt-3">
+              Zacznij wpisywać aby zobaczyć sugestie z Google Maps
+            </p>
+          </div>
         </div>
       )}
     </div>
