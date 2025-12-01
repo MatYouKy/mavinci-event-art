@@ -21,7 +21,10 @@ import {
   Truck,
   Upload,
   Eye,
-  AlertCircle
+  AlertCircle,
+  Building2,
+  User,
+  Info
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -65,6 +68,14 @@ interface Cost {
   created_by_name: string;
 }
 
+interface ClientInfo {
+  client_type: string;
+  client_name: string;
+  client_nip: string | null;
+  is_business: boolean;
+  can_invoice: boolean;
+}
+
 interface Props {
   eventId: string;
 }
@@ -77,6 +88,7 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [costs, setCosts] = useState<Cost[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddCost, setShowAddCost] = useState(false);
 
@@ -97,7 +109,7 @@ export default function EventFinancesTab({ eventId }: Props) {
 
   const fetchFinancialData = async () => {
     try {
-      const [summaryRes, invoicesRes, costsRes, categoriesRes] = await Promise.all([
+      const [summaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes] = await Promise.all([
         supabase.rpc('get_event_financial_summary', { p_event_id: eventId }),
         supabase.from('invoices').select('*').eq('event_id', eventId).order('issue_date', { ascending: false }),
         supabase.from('event_costs').select(`
@@ -106,11 +118,13 @@ export default function EventFinancesTab({ eventId }: Props) {
           subcontractor:subcontractors(company_name),
           creator:created_by(name, surname)
         `).eq('event_id', eventId).order('cost_date', { ascending: false }),
-        supabase.from('event_cost_categories').select('*').eq('is_active', true).order('name')
+        supabase.from('event_cost_categories').select('*').eq('is_active', true).order('name'),
+        supabase.rpc('get_event_client_info', { p_event_id: eventId })
       ]);
 
       if (summaryRes.data?.[0]) setSummary(summaryRes.data[0]);
       if (invoicesRes.data) setInvoices(invoicesRes.data);
+      if (clientInfoRes.data?.[0]) setClientInfo(clientInfoRes.data[0]);
       if (costsRes.data) {
         const formattedCosts = costsRes.data.map((cost: any) => ({
           ...cost,
@@ -225,6 +239,60 @@ export default function EventFinancesTab({ eventId }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Client Info Banner */}
+      {clientInfo && (
+        <div className={`border rounded-xl p-4 ${
+          clientInfo.is_business
+            ? 'bg-blue-500/10 border-blue-500/30'
+            : 'bg-yellow-500/10 border-yellow-500/30'
+        }`}>
+          <div className="flex items-start gap-3">
+            {clientInfo.is_business ? (
+              <Building2 className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+            ) : (
+              <User className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+            )}
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-1">
+                <span className="font-medium text-[#e5e4e2]">
+                  {clientInfo.is_business ? 'Klient businessowy' : 'Klient indywidualny'}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded ${
+                  clientInfo.can_invoice
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-red-500/20 text-red-400'
+                }`}>
+                  {clientInfo.can_invoice ? 'Można wystawiać faktury' : 'Brak możliwości fakturowania'}
+                </span>
+              </div>
+              <div className="text-sm text-[#e5e4e2]/80">
+                {clientInfo.client_name}
+                {clientInfo.client_nip && (
+                  <span className="ml-2 text-[#e5e4e2]/60">NIP: {clientInfo.client_nip}</span>
+                )}
+              </div>
+              {!clientInfo.is_business && (
+                <div className="mt-2 flex items-start gap-2 text-xs text-[#e5e4e2]/60">
+                  <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Dla klientów indywidualnych nie można wystawiać faktur VAT. Jeśli klient prowadzi działalność gospodarczą,
+                    oznacz go jako klienta businessowego i dodaj NIP.
+                  </span>
+                </div>
+              )}
+              {clientInfo.is_business && !clientInfo.can_invoice && (
+                <div className="mt-2 flex items-start gap-2 text-xs text-yellow-400">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Klient nie ma uzupełnionego NIP. Dodaj NIP aby móc wystawiać faktury VAT.
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Financial Summary */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -290,8 +358,20 @@ export default function EventFinancesTab({ eventId }: Props) {
             Faktury ({invoices.length})
           </h3>
           <button
-            onClick={() => router.push(`/crm/invoices/new?event=${eventId}`)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/90"
+            onClick={() => {
+              if (clientInfo?.can_invoice) {
+                router.push(`/crm/invoices/new?event=${eventId}`);
+              } else {
+                showSnackbar('Nie można wystawiać faktur dla tego klienta. Wymagany jest klient businessowy z NIP.', 'error');
+              }
+            }}
+            disabled={!clientInfo?.can_invoice}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              clientInfo?.can_invoice
+                ? 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#d3bb73]/90 cursor-pointer'
+                : 'bg-[#d3bb73]/20 text-[#e5e4e2]/40 cursor-not-allowed'
+            }`}
+            title={!clientInfo?.can_invoice ? 'Wymagany klient businessowy z NIP' : ''}
           >
             <Plus className="w-4 h-4" />
             Wystaw fakturę
