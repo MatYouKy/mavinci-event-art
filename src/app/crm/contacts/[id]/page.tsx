@@ -25,6 +25,8 @@ import {
   ExternalLink,
   Trash2,
   StickyNote,
+  Receipt,
+  Calendar,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -123,7 +125,7 @@ interface ContactHistory {
   next_action: string | null;
 }
 
-type TabType = 'details' | 'contacts' | 'notes' | 'history';
+type TabType = 'details' | 'contacts' | 'notes' | 'history' | 'invoices' | 'events';
 
 const businessTypeLabels = {
   company: 'Firma',
@@ -155,6 +157,8 @@ export default function OrganizationDetailPage() {
   const [contactPersons, setContactPersons] = useState<ContactPerson[]>([]);
   const [organizationNotes, setOrganizationNotes] = useState<OrganizationNote[]>([]);
   const [history, setHistory] = useState<ContactHistory[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [editedData, setEditedData] = useState<Partial<Organization | Contact>>({});
@@ -182,6 +186,14 @@ export default function OrganizationDetailPage() {
       fetchData();
     }
   }, [organizationId]);
+
+  useEffect(() => {
+    if (activeTab === 'invoices') {
+      fetchInvoices();
+    } else if (activeTab === 'events') {
+      fetchEvents();
+    }
+  }, [activeTab, organizationId]);
 
   useEffect(() => {
     const channel = supabase
@@ -281,6 +293,26 @@ export default function OrganizationDetailPage() {
       .order('created_at', { ascending: false });
 
     setOrganizationNotes(notesData || []);
+  };
+
+  const fetchInvoices = async () => {
+    const { data: invoicesData } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('issue_date', { ascending: false });
+
+    setInvoices(invoicesData || []);
+  };
+
+  const fetchEvents = async () => {
+    const { data: eventsData } = await supabase
+      .from('events')
+      .select('id, name, event_date, start_date, end_date, status')
+      .eq('organization_id', organizationId)
+      .order('event_date', { ascending: false });
+
+    setEvents(eventsData || []);
   };
 
   const handleEdit = () => {
@@ -735,10 +767,12 @@ export default function OrganizationDetailPage() {
           )}
         </div>
 
-        <div className="flex space-x-2 mb-6 border-b border-gray-700">
+        <div className="flex space-x-2 mb-6 border-b border-gray-700 overflow-x-auto">
           {[
             { key: 'details' as TabType, label: 'Szczegóły', icon: FileText },
             { key: 'contacts' as TabType, label: `Kontakty (${contactPersons.length})`, icon: Users },
+            { key: 'invoices' as TabType, label: `Faktury (${invoices.length})`, icon: Receipt },
+            { key: 'events' as TabType, label: `Realizacje (${events.length})`, icon: Calendar },
             { key: 'notes' as TabType, label: `Notatki (${organizationNotes.length})`, icon: StickyNote },
             { key: 'history' as TabType, label: 'Historia', icon: History },
           ].map(({ key, label, icon: Icon }) => (
@@ -1259,6 +1293,140 @@ export default function OrganizationDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'invoices' && (
+          <div className="space-y-6">
+            <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-white">Podsumowanie</h2>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4">
+                  <div className="text-sm text-gray-400 mb-1">Liczba faktur</div>
+                  <div className="text-2xl font-bold text-[#d3bb73]">{invoices.length}</div>
+                </div>
+                <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4">
+                  <div className="text-sm text-gray-400 mb-1">Wartość brutto</div>
+                  <div className="text-2xl font-bold text-[#d3bb73]">
+                    {invoices.reduce((sum, inv) => sum + (inv.total_gross || 0), 0).toFixed(2)} PLN
+                  </div>
+                </div>
+                <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4">
+                  <div className="text-sm text-gray-400 mb-1">Wartość netto</div>
+                  <div className="text-2xl font-bold text-[#d3bb73]">
+                    {invoices.reduce((sum, inv) => sum + (inv.total_net || 0), 0).toFixed(2)} PLN
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-white mb-4">Faktury</h2>
+              {invoices.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">Brak faktur</p>
+              ) : (
+                <div className="space-y-3">
+                  {invoices.map((invoice) => (
+                    <div
+                      key={invoice.id}
+                      onClick={() => router.push(`/crm/invoices/${invoice.id}`)}
+                      className="bg-[#0f1119] border border-gray-700 rounded-lg p-4 hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-white font-medium">{invoice.invoice_number}</h3>
+                            <span className={`px-2 py-1 text-xs rounded ${
+                              invoice.status === 'paid' ? 'bg-green-500/20 text-green-400' :
+                              invoice.status === 'issued' ? 'bg-blue-500/20 text-blue-400' :
+                              invoice.status === 'draft' ? 'bg-gray-500/20 text-gray-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>
+                              {invoice.status === 'paid' ? 'Opłacona' :
+                               invoice.status === 'issued' ? 'Wystawiona' :
+                               invoice.status === 'draft' ? 'Szkic' : invoice.status}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            Data wystawienia: {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-[#d3bb73]">
+                            {invoice.total_gross?.toFixed(2)} PLN
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Netto: {invoice.total_net?.toFixed(2)} PLN
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'events' && (
+          <div className="space-y-6">
+            <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-white">Podsumowanie realizacji</h2>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4">
+                  <div className="text-sm text-gray-400 mb-1">Liczba realizacji</div>
+                  <div className="text-2xl font-bold text-[#d3bb73]">{events.length}</div>
+                </div>
+                <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4">
+                  <div className="text-sm text-gray-400 mb-1">Zakończonych</div>
+                  <div className="text-2xl font-bold text-[#d3bb73]">
+                    {events.filter(e => e.status === 'completed').length}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-white mb-4">Realizacje</h2>
+              {events.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">Brak realizacji</p>
+              ) : (
+                <div className="space-y-3">
+                  {events.map((event) => (
+                    <div
+                      key={event.id}
+                      onClick={() => router.push(`/crm/events/${event.id}`)}
+                      className="bg-[#0f1119] border border-gray-700 rounded-lg p-4 hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-white font-medium">{event.name}</h3>
+                            <span className={`px-2 py-1 text-xs rounded ${
+                              event.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                              event.status === 'in_progress' ? 'bg-blue-500/20 text-blue-400' :
+                              event.status === 'planning' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-gray-500/20 text-gray-400'
+                            }`}>
+                              {event.status === 'completed' ? 'Zakończone' :
+                               event.status === 'in_progress' ? 'W trakcie' :
+                               event.status === 'planning' ? 'Planowanie' : event.status}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            Data wydarzenia: {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

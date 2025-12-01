@@ -275,7 +275,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
               {relatedData.organization && (
                 <div
-                  onClick={() => router.push(`/crm/contacts?org=${relatedData.organization!.id}`)}
+                  onClick={() => router.push(`/crm/contacts/${relatedData.organization!.id}`)}
                   className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4 hover:border-[#d3bb73]/40 cursor-pointer transition-colors"
                 >
                   <div className="flex items-start gap-3">
