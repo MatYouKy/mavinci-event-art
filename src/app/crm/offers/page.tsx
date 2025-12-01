@@ -16,16 +16,14 @@ interface Offer {
   id: string;
   offer_number: string;
   event_id: string;
-  client_id: string;
+  organization_id: string;
   total_amount: number;
   valid_until: string;
   status: string;
   created_at: string;
   created_by?: string;
-  client?: {
-    company_name?: string;
-    first_name?: string;
-    last_name?: string;
+  organization?: {
+    name?: string;
   };
   event?: {
     name: string;

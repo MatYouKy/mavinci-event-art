@@ -510,7 +510,7 @@ export default function EventDetailPage() {
         .from('offers')
         .select(`
           *,
-          client:clients!client_id(company_name, first_name, last_name)
+          organization:organizations!organization_id(name)
         `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: false });
@@ -1844,7 +1844,7 @@ export default function EventDetailPage() {
                           </span>
                         </div>
                         <p className="text-sm text-[#e5e4e2]/60">
-                          Klient: {offer.client?.company_name || `${offer.client?.first_name || ''} ${offer.client?.last_name || ''}`.trim() || 'Brak klienta'}
+                          Klient: {offer.organization?.name || 'Brak klienta'}
                         </p>
                       </div>
                       <div className="text-right">
