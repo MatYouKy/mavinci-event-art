@@ -11,16 +11,14 @@ interface Offer {
   id: string;
   offer_number: string;
   event_id: string;
-  client_id: string;
+  organization_id: string;
   total_amount: number;
   valid_until: string;
   status: string;
   notes: string;
   created_at: string;
-  client?: {
-    company_name?: string;
-    first_name?: string;
-    last_name?: string;
+  organization?: {
+    name?: string;
   };
   event?: {
     name: string;
@@ -77,7 +75,7 @@ export default function OfferDetailPage() {
         .from('offers')
         .select(`
           *,
-          client:clients!client_id(company_name, first_name, last_name),
+          organization:organizations!organization_id(name),
           event:events!event_id(name, event_date, location)
         `)
         .eq('id', offerId)
@@ -266,10 +264,7 @@ export default function OfferDetailPage() {
   };
 
   const getClientName = (offer: Offer) => {
-    if (offer.client?.company_name) return offer.client.company_name;
-    if (offer.client?.first_name || offer.client?.last_name) {
-      return `${offer.client.first_name || ''} ${offer.client.last_name || ''}`.trim();
-    }
+    if (offer.organization?.name) return offer.organization.name;
     return 'Brak klienta';
   };
 

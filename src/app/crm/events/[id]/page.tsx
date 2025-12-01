@@ -2116,11 +2116,12 @@ export default function EventDetailPage() {
           isOpen={showCreateOfferModal}
           onClose={() => setShowCreateOfferModal(false)}
           eventId={eventId}
-          clientId={event.organization_id || event.contact_person_id || ''}
+          organizationId={event.organization_id}
           onSuccess={() => {
             setShowCreateOfferModal(false);
             fetchOffers();
             setActiveTab('offer');
+            fetchEventDetails(); // Odśwież dane eventu aby zaktualizować budżet
           }}
         />
       )}

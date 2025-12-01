@@ -35,7 +35,7 @@ interface OfferWizardProps {
   isOpen: boolean;
   onClose: () => void;
   eventId: string;
-  clientId: string;
+  organizationId?: string;
   onSuccess: () => void;
 }
 
@@ -43,7 +43,7 @@ export default function OfferWizard({
   isOpen,
   onClose,
   eventId,
-  clientId,
+  organizationId,
   onSuccess,
 }: OfferWizardProps) {
   const [step, setStep] = useState(1);
@@ -286,7 +286,7 @@ export default function OfferWizard({
       // Utwórz ofertę
       const offerDataToInsert: any = {
         event_id: eventId,
-        client_id: clientId || null, // Klient z eventu (organization_id lub contact_person_id)
+        organization_id: organizationId || null, // Organizacja z eventu
         valid_until: offerData.valid_until || null,
         notes: offerData.notes || null,
         status: 'draft',
