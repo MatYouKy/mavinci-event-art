@@ -308,7 +308,7 @@ export default function OrganizationDetailPage() {
   const fetchEvents = async () => {
     const { data: eventsData } = await supabase
       .from('events')
-      .select('id, name, event_date, start_date, end_date, status')
+      .select('id, name, event_date, status')
       .eq('organization_id', organizationId)
       .order('event_date', { ascending: false });
 

@@ -22,6 +22,7 @@ import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
 import OfferWizard from '@/components/crm/OfferWizard';
 import EventFinancesTab from '@/components/crm/EventFinancesTab';
 import EventStatusEditor from '@/components/crm/EventStatusEditor';
+import { EventContractTab } from '@/components/crm/EventContractTab';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from '@/components/crm/LocationSelector';
@@ -156,7 +157,7 @@ export default function EventDetailPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'tasks' | 'offer' | 'subcontractors' | 'logistics' | 'finances' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'team' | 'files' | 'tasks' | 'offer' | 'subcontractors' | 'logistics' | 'finances' | 'contract' | 'history'>('overview');
 
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1144,6 +1145,7 @@ export default function EventDetailPage() {
           { id: 'overview', label: 'Przegląd', icon: FileText },
           { id: 'offer', label: 'Oferta', icon: DollarSign },
           { id: 'finances', label: 'Finanse', icon: DollarSign },
+          { id: 'contract', label: 'Umowa', icon: FileText },
           { id: 'equipment', label: 'Sprzęt', icon: Package },
           { id: 'team', label: 'Zespół', icon: Users },
           { id: 'logistics', label: 'Logistyka', icon: Truck },
@@ -1293,14 +1295,14 @@ export default function EventDetailPage() {
                   <div className="flex-1">
                     <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
                     {event.location_details ? (
-                      <div className="group relative">
+                      <div className="group relative inline-block">
                         <button
                           onClick={() => event.location_details?.id && router.push(`/crm/locations/${event.location_details.id}`)}
                           className="text-[#e5e4e2] hover:text-[#d3bb73] transition-colors text-left"
                         >
                           {event.location_details.name}
                         </button>
-                        <div className="invisible group-hover:visible absolute left-0 top-full mt-2 z-50 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-4 shadow-xl min-w-[300px] max-w-md">
+                        <div className="invisible group-hover:visible absolute left-0 top-full mt-1 z-50 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-xl p-4 shadow-xl min-w-[300px] max-w-md before:content-[''] before:absolute before:left-0 before:right-0 before:-top-1 before:h-1">
                           <p className="text-sm text-[#e5e4e2] font-medium mb-2">
                             {event.location_details.name}
                           </p>
@@ -1923,6 +1925,10 @@ export default function EventDetailPage() {
 
       {activeTab === 'finances' && (
         <EventFinancesTab eventId={eventId} />
+      )}
+
+      {activeTab === 'contract' && (
+        <EventContractTab eventId={eventId} />
       )}
 
       {activeTab === 'history' && (
