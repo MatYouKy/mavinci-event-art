@@ -17,10 +17,44 @@ export default function EditTemplateWYSIWYGPage() {
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState<any>(null);
   const [contentHtml, setContentHtml] = useState('');
+  const [pages, setPages] = useState<string[]>(['']);
+  const [logoSize, setLogoSize] = useState(80);
+  const [history, setHistory] = useState<string[]>(['']);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
   useEffect(() => {
     fetchTemplate();
   }, [templateId]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+      if (ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (ctrlKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      } else if (ctrlKey && e.key === 'b') {
+        e.preventDefault();
+        execCommand('bold');
+      } else if (ctrlKey && e.key === 'i') {
+        e.preventDefault();
+        execCommand('italic');
+      } else if (ctrlKey && e.key === 'u') {
+        e.preventDefault();
+        execCommand('underline');
+      } else if (ctrlKey && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [historyIndex, history]);
 
   const fetchTemplate = async () => {
     try {
@@ -96,10 +130,42 @@ export default function EditTemplateWYSIWYGPage() {
     }
   };
 
+  const addToHistory = (content: string) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(content);
+    if (newHistory.length > 50) newHistory.shift();
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  };
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setContentHtml(history[newIndex]);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = history[newIndex];
+      }
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setContentHtml(history[newIndex]);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = history[newIndex];
+      }
+    }
+  };
+
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value);
     if (editorRef.current) {
-      setContentHtml(editorRef.current.innerHTML);
+      const newContent = editorRef.current.innerHTML;
+      setContentHtml(newContent);
+      addToHistory(newContent);
     }
   };
 
@@ -115,7 +181,9 @@ export default function EditTemplateWYSIWYGPage() {
     selection.removeAllRanges();
     selection.addRange(range);
 
-    setContentHtml(editorRef.current.innerHTML);
+    const newContent = editorRef.current.innerHTML;
+    setContentHtml(newContent);
+    addToHistory(newContent);
   };
 
   const insertLogo = () => {
@@ -136,7 +204,32 @@ export default function EditTemplateWYSIWYGPage() {
     selection.removeAllRanges();
     selection.addRange(range);
 
-    setContentHtml(editorRef.current.innerHTML);
+    const newContent = editorRef.current.innerHTML;
+    setContentHtml(newContent);
+    addToHistory(newContent);
+  };
+
+  const insertParagraphMarker = () => {
+    const p = document.createElement('p');
+    p.style.fontWeight = 'bold';
+    p.style.textAlign = 'center';
+    p.style.margin = '1.5em 0';
+    p.innerHTML = '§ ';
+
+    const selection = window.getSelection();
+    if (!selection || !editorRef.current) return;
+
+    const range = selection.getRangeAt(0);
+    range.insertNode(p);
+
+    range.setStart(p.firstChild!, 2);
+    range.setEnd(p.firstChild!, 2);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const newContent = editorRef.current.innerHTML;
+    setContentHtml(newContent);
+    addToHistory(newContent);
   };
 
   if (loading) {
@@ -236,9 +329,28 @@ export default function EditTemplateWYSIWYGPage() {
 
             <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
 
+            <button onClick={insertParagraphMarker} className="px-3 py-1.5 bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded text-sm font-medium hover:bg-[#d3bb73]/10" title="Nowy paragraf (§)">
+              § Paragraf
+            </button>
+
+            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+
             <button onClick={insertLogo} className="px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded text-sm font-medium hover:bg-[#d3bb73]/90">
               Wstaw Logo
             </button>
+
+            <div className="flex items-center gap-2 ml-2">
+              <span className="text-xs text-[#e5e4e2]/60">Rozmiar logo:</span>
+              <input
+                type="range"
+                min="40"
+                max="120"
+                value={logoSize}
+                onChange={(e) => setLogoSize(Number(e.target.value))}
+                className="w-24 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+              />
+              <span className="text-xs text-[#e5e4e2] w-8">{logoSize}%</span>
+            </div>
 
             <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
 
@@ -270,7 +382,7 @@ export default function EditTemplateWYSIWYGPage() {
       <div className="bg-[#f5f5f5] min-h-screen py-8">
         <div className="max-w-[230mm] mx-auto px-4">
           <div className="contract-a4-page-wysiwyg">
-            <div className="contract-header-logo-wysiwyg">
+            <div className="contract-header-logo-wysiwyg" style={{ width: `${logoSize}%` }}>
               <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
             </div>
 
