@@ -234,9 +234,21 @@ export default function EditTemplateWYSIWYGPage() {
 
   const insertPlaceholder = (placeholder: string) => {
     const selection = window.getSelection();
-    if (!selection || !editorRef.current) return;
+    if (!selection || selection.rangeCount === 0) return;
 
     const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+
+    let editorElement = container.nodeType === 3 ? container.parentElement : container as HTMLElement;
+    while (editorElement && !editorElement.classList.contains('contract-content-wysiwyg')) {
+      editorElement = editorElement.parentElement;
+    }
+
+    if (!editorElement) return;
+
+    const pageIndex = pageRefs.current.findIndex(ref => ref === editorElement);
+    if (pageIndex === -1) return;
+
     const textNode = document.createTextNode(placeholder);
     range.insertNode(textNode);
     range.setStartAfter(textNode);
@@ -244,12 +256,26 @@ export default function EditTemplateWYSIWYGPage() {
     selection.removeAllRanges();
     selection.addRange(range);
 
-    const newContent = editorRef.current.innerHTML;
-    setContentHtml(newContent);
-    addToHistory(newContent);
+    updatePageContent(pageIndex, editorElement.innerHTML);
   };
 
   const insertLogo = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+
+    let editorElement = container.nodeType === 3 ? container.parentElement : container as HTMLElement;
+    while (editorElement && !editorElement.classList.contains('contract-content-wysiwyg')) {
+      editorElement = editorElement.parentElement;
+    }
+
+    if (!editorElement) return;
+
+    const pageIndex = pageRefs.current.findIndex(ref => ref === editorElement);
+    if (pageIndex === -1) return;
+
     const img = document.createElement('img');
     img.src = '/erulers_logo_vect.png';
     img.style.maxWidth = '300px';
@@ -257,42 +283,45 @@ export default function EditTemplateWYSIWYGPage() {
     img.style.display = 'block';
     img.style.margin = '20px auto';
 
-    const selection = window.getSelection();
-    if (!selection || !editorRef.current) return;
-
-    const range = selection.getRangeAt(0);
     range.insertNode(img);
     range.setStartAfter(img);
     range.setEndAfter(img);
     selection.removeAllRanges();
     selection.addRange(range);
 
-    const newContent = editorRef.current.innerHTML;
-    setContentHtml(newContent);
-    addToHistory(newContent);
+    updatePageContent(pageIndex, editorElement.innerHTML);
   };
 
   const insertParagraphMarker = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+
+    let editorElement = container.nodeType === 3 ? container.parentElement : container as HTMLElement;
+    while (editorElement && !editorElement.classList.contains('contract-content-wysiwyg')) {
+      editorElement = editorElement.parentElement;
+    }
+
+    if (!editorElement) return;
+
+    const pageIndex = pageRefs.current.findIndex(ref => ref === editorElement);
+    if (pageIndex === -1) return;
+
     const p = document.createElement('p');
     p.style.fontWeight = 'bold';
     p.style.textAlign = 'center';
     p.style.margin = '1.5em 0';
     p.innerHTML = '§ ';
 
-    const selection = window.getSelection();
-    if (!selection || !editorRef.current) return;
-
-    const range = selection.getRangeAt(0);
     range.insertNode(p);
-
     range.setStart(p.firstChild!, 2);
     range.setEnd(p.firstChild!, 2);
     selection.removeAllRanges();
     selection.addRange(range);
 
-    const newContent = editorRef.current.innerHTML;
-    setContentHtml(newContent);
-    addToHistory(newContent);
+    updatePageContent(pageIndex, editorElement.innerHTML);
   };
 
   const addNewPage = () => {
@@ -438,14 +467,40 @@ export default function EditTemplateWYSIWYGPage() {
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <select
-              onChange={(e) => execCommand('fontSize', e.target.value)}
+              onChange={(e) => {
+                const size = e.target.value;
+                document.execCommand('fontSize', false, '7');
+                const fontElements = document.getElementsByTagName('font');
+                for (let i = 0; i < fontElements.length; i++) {
+                  if (fontElements[i].size === '7') {
+                    fontElements[i].removeAttribute('size');
+                    fontElements[i].style.fontSize = size + 'pt';
+                  }
+                }
+              }}
               className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
             >
-              <option value="3">12pt</option>
-              <option value="4">14pt</option>
-              <option value="5">16pt</option>
-              <option value="6">18pt</option>
-              <option value="7">24pt</option>
+              <option value="">Czcionka</option>
+              <option value="6">6pt</option>
+              <option value="8">8pt</option>
+              <option value="9">9pt</option>
+              <option value="10">10pt</option>
+              <option value="11">11pt</option>
+              <option value="12">12pt</option>
+              <option value="14">14pt</option>
+              <option value="16">16pt</option>
+              <option value="18">18pt</option>
+              <option value="20">20pt</option>
+              <option value="22">22pt</option>
+              <option value="24">24pt</option>
+              <option value="28">28pt</option>
+              <option value="32">32pt</option>
+              <option value="36">36pt</option>
+              <option value="40">40pt</option>
+              <option value="48">48pt</option>
+              <option value="56">56pt</option>
+              <option value="64">64pt</option>
+              <option value="72">72pt</option>
             </select>
 
             <div className="ml-2 flex items-center gap-2">
