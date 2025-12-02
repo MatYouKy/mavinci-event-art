@@ -65,26 +65,43 @@ export default function EditTemplateWYSIWYGPage() {
       return;
     }
 
+    if (!contentHtml || contentHtml.trim() === '' || contentHtml === '<p><br></p>') {
+      showSnackbar('Treść szablonu nie może być pusta', 'error');
+      return;
+    }
+
     try {
       setSaving(true);
 
-      const plainText = contentHtml.replace(/<[^>]*>/g, '');
+      console.log('Saving content_html:', contentHtml);
 
-      const { error } = await supabase
+      const plainText = contentHtml.replace(/<[^>]*>/g, '').trim();
+
+      const updateData = {
+        content: plainText || 'Szablon umowy',
+        content_html: contentHtml,
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log('Update data:', updateData);
+
+      const { data, error } = await supabase
         .from('contract_templates')
-        .update({
-          content: plainText,
-          content_html: contentHtml,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', templateId);
+        .update(updateData)
+        .eq('id', templateId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
-      showSnackbar('Szablon zapisany', 'success');
-      fetchTemplate();
+      console.log('Saved successfully:', data);
+      showSnackbar('Szablon zapisany pomyślnie', 'success');
+
+      await fetchTemplate();
     } catch (err: any) {
-      console.error('Error:', err);
+      console.error('Error saving template:', err);
       showSnackbar(err.message || 'Błąd podczas zapisywania szablonu', 'error');
     } finally {
       setSaving(false);
@@ -188,23 +205,38 @@ export default function EditTemplateWYSIWYGPage() {
         </div>
       </div>
 
+      {/* Debug Info */}
+      <div className="max-w-[1200px] mx-auto px-6 pb-4">
+        <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3 text-xs text-yellow-200">
+          <div><strong>Debug:</strong> contentHtml length = {contentHtml?.length || 0}</div>
+          <div>Has content: {contentHtml ? 'Yes' : 'No'}</div>
+          <div>Preview: {contentHtml?.substring(0, 100)}...</div>
+        </div>
+      </div>
+
       {/* Editor */}
       <div className="max-w-[1200px] mx-auto px-6 py-8">
         {!showPreview ? (
           <div className="bg-white rounded-lg shadow-2xl overflow-hidden">
-            <ReactQuill
-              ref={quillRef}
-              theme="snow"
-              value={contentHtml}
-              onChange={setContentHtml}
-              modules={modules}
-              formats={formats}
-              className="wysiwyg-editor"
-              style={{
-                minHeight: '800px',
-                backgroundColor: 'white',
-              }}
-            />
+            {typeof window !== 'undefined' && (
+              <ReactQuill
+                ref={quillRef}
+                theme="snow"
+                value={contentHtml}
+                onChange={(content, delta, source, editor) => {
+                  console.log('Content changed:', content);
+                  setContentHtml(content);
+                }}
+                modules={modules}
+                formats={formats}
+                className="wysiwyg-editor"
+                placeholder="Wpisz treść szablonu umowy..."
+                style={{
+                  minHeight: '800px',
+                  backgroundColor: 'white',
+                }}
+              />
+            )}
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-2xl overflow-hidden p-12">
