@@ -27,14 +27,12 @@ export default function EditTemplateWYSIWYGPage() {
   }, [templateId]);
 
   useEffect(() => {
-    if (editorRef.current) {
+    if (editorRef.current && contentHtml && !editorRef.current.innerHTML) {
+      editorRef.current.innerHTML = contentHtml;
       editorRef.current.setAttribute('dir', 'ltr');
       editorRef.current.style.direction = 'ltr';
       editorRef.current.style.textAlign = 'left';
       editorRef.current.style.unicodeBidi = 'embed';
-      if (contentHtml) {
-        editorRef.current.innerHTML = contentHtml;
-      }
     }
   }, [contentHtml]);
 
@@ -411,17 +409,8 @@ export default function EditTemplateWYSIWYGPage() {
               contentEditable={true}
               suppressContentEditableWarning
               dir="ltr"
-              onInput={(e) => {
-                const target = e.currentTarget;
-                setContentHtml(target.innerHTML);
-                target.setAttribute('dir', 'ltr');
-                target.style.direction = 'ltr';
-              }}
+              onInput={(e) => setContentHtml(e.currentTarget.innerHTML)}
               onBlur={(e) => setContentHtml(e.currentTarget.innerHTML)}
-              onFocus={(e) => {
-                e.currentTarget.setAttribute('dir', 'ltr');
-                e.currentTarget.style.direction = 'ltr';
-              }}
               className="contract-content-wysiwyg"
               style={{ outline: 'none', direction: 'ltr', unicodeBidi: 'embed', textAlign: 'left' }}
             />
