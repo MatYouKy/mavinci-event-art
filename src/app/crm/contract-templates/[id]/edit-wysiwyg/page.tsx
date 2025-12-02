@@ -283,6 +283,11 @@ export default function EditTemplateWYSIWYGPage() {
 
         .wysiwyg-editor .ql-editor p {
           margin-bottom: 1em !important;
+          display: block !important;
+        }
+
+        .wysiwyg-editor .ql-editor p br {
+          display: block !important;
         }
 
         .wysiwyg-editor .ql-editor h1,

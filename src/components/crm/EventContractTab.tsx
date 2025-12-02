@@ -295,18 +295,27 @@ export function EventContractTab({ eventId }: Props) {
           text-align: justify;
         }
 
+        .contract-content > * {
+          display: block;
+          white-space: pre-wrap;
+        }
+
         .contract-content p {
+          display: block;
           margin-bottom: 1em;
           text-align: justify;
+          white-space: pre-wrap;
         }
 
         .contract-content h1,
         .contract-content h2,
         .contract-content h3,
         .contract-content h4 {
+          display: block;
           margin-top: 1.5em;
           margin-bottom: 0.75em;
           font-weight: bold;
+          white-space: pre-wrap;
         }
 
         .contract-content h1 {
@@ -397,7 +406,12 @@ export function EventContractTab({ eventId }: Props) {
         .contract-content br {
           display: block;
           content: "";
-          margin-top: 0.5em;
+          margin: 0.5em 0;
+        }
+
+        .contract-content p br {
+          display: inline;
+          margin: 0;
         }
 
         @media print {
