@@ -272,34 +272,46 @@ export function EventContractTab({ eventId }: Props) {
         </div>
       )}
 
-      <div className="contract-preview bg-white text-black rounded-xl p-12 mx-auto" style={{ maxWidth: '210mm' }}>
+      <div className="contract-preview bg-white text-black rounded-xl shadow-lg mx-auto" style={{ maxWidth: '210mm', padding: '40mm 25mm' }}>
         <div className="contract-header text-center mb-8">
           <img src="/erulers_logo_vect.png" alt="EVENT RULERS" className="mx-auto mb-4" style={{ height: '60px' }} />
         </div>
         <div
           className="contract-content"
-          dangerouslySetInnerHTML={{ __html: contractContent.replace(/\n/g, '<br />') }}
+          dangerouslySetInnerHTML={{ __html: contractContent }}
         />
       </div>
 
       <style jsx global>{`
         .contract-preview {
-          font-family: 'Times New Roman', serif;
-          font-size: 12pt;
+          font-family: 'Calibri', 'Arial', sans-serif;
+          font-size: 11pt;
           line-height: 1.6;
+          color: #000;
+        }
+
+        .contract-content {
+          text-align: justify;
         }
 
         .contract-content strong,
         .contract-content b {
-          font-weight: bold;
+          font-weight: 600;
         }
 
-        .contract-content p {
-          margin-bottom: 1em;
-        }
-
-        .contract-content [style*="text-align: center"] {
+        .contract-content div[style*="text-align: center"] {
           text-align: center;
+        }
+
+        .contract-content table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .contract-content br {
+          display: block;
+          content: "";
+          margin-top: 0.5em;
         }
 
         @media print {
@@ -318,11 +330,11 @@ export function EventContractTab({ eventId }: Props) {
             width: 210mm;
             min-height: 297mm;
             margin: 0;
-            padding: 20mm;
+            padding: 20mm 25mm;
             background: white;
             box-shadow: none;
             border-radius: 0;
-            font-family: 'Times New Roman', serif;
+            font-family: 'Calibri', 'Arial', sans-serif;
             font-size: 11pt;
             line-height: 1.5;
           }
