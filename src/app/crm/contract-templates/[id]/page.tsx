@@ -127,10 +127,14 @@ export default function ContractTemplateViewPage() {
               style={{ height: '60px' }}
             />
           </div>
-          <div
-            className="contract-content"
-            dangerouslySetInnerHTML={{ __html: template.content }}
-          />
+          {template.content.startsWith('<') ? (
+            <div
+              className="contract-content"
+              dangerouslySetInnerHTML={{ __html: template.content }}
+            />
+          ) : (
+            <pre className="contract-content-plain">{template.content}</pre>
+          )}
         </div>
       </div>
 
@@ -147,6 +151,17 @@ export default function ContractTemplateViewPage() {
 
         .contract-content {
           text-align: justify;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        }
+
+        .contract-content-plain {
+          font-family: 'Calibri', 'Arial', sans-serif;
+          font-size: 11pt;
+          line-height: 1.6;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          margin: 0;
         }
 
         .contract-content strong,
@@ -195,7 +210,8 @@ export default function ContractTemplateViewPage() {
             height: 50px;
           }
 
-          .contract-content {
+          .contract-content,
+          .contract-content-plain {
             font-size: 11pt;
             line-height: 1.5;
           }

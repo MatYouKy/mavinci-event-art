@@ -523,16 +523,42 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-editor .ql-container {
           border: none;
           font-size: 12px;
-          font-family: Arial, sans-serif;
+          font-family: 'Calibri', Arial, sans-serif;
           height: calc(100% - 42px);
+          background: white;
         }
         .contract-editor .ql-editor {
           min-height: 980px;
+          background: white;
+          color: #000;
+          padding: 20px;
+        }
+        .contract-editor .ql-editor.ql-blank::before {
+          color: #999;
+          font-style: italic;
         }
         .contract-editor .ql-toolbar {
           border: none;
           background: white;
           border-bottom: 2px solid #e5e4e2;
+        }
+        .contract-editor .ql-toolbar button {
+          color: #333;
+        }
+        .contract-editor .ql-toolbar button:hover {
+          color: #d3bb73;
+        }
+        .contract-editor .ql-toolbar .ql-stroke {
+          stroke: #333;
+        }
+        .contract-editor .ql-toolbar .ql-fill {
+          fill: #333;
+        }
+        .contract-editor .ql-toolbar button:hover .ql-stroke {
+          stroke: #d3bb73;
+        }
+        .contract-editor .ql-toolbar button:hover .ql-fill {
+          fill: #d3bb73;
         }
         .placeholder {
           background-color: #fff3cd;
@@ -778,10 +804,11 @@ function PreviewModal({
 
       <style jsx>{`
         .contract-preview-content {
-          font-size: 12px;
-          font-family: Arial, sans-serif;
-          line-height: 1.5;
+          font-size: 11pt;
+          font-family: 'Calibri', Arial, sans-serif;
+          line-height: 1.6;
           color: #000;
+          text-align: justify;
         }
         .contract-preview-content p {
           margin: 0 0 12px 0;
@@ -790,12 +817,16 @@ function PreviewModal({
         .contract-preview-content h2,
         .contract-preview-content h3 {
           margin: 16px 0 8px 0;
-          font-weight: bold;
+          font-weight: 600;
         }
         .contract-preview-content ul,
         .contract-preview-content ol {
           margin: 0 0 12px 0;
           padding-left: 24px;
+        }
+        .contract-preview-content strong,
+        .contract-preview-content b {
+          font-weight: 600;
         }
         .contract-preview-content :global(.placeholder) {
           background-color: #fff3cd;
