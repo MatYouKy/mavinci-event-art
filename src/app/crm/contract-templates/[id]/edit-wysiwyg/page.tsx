@@ -402,7 +402,7 @@ export default function EditTemplateWYSIWYGPage() {
               onBlur={(e) => setContentHtml(e.currentTarget.innerHTML)}
               dangerouslySetInnerHTML={{ __html: contentHtml }}
               className="contract-content-wysiwyg"
-              style={{ outline: 'none' }}
+              style={{ outline: 'none', direction: 'ltr' }}
             />
 
             <div className="contract-footer-wysiwyg">
@@ -440,17 +440,17 @@ export default function EditTemplateWYSIWYGPage() {
           top: 15mm;
           left: 50%;
           transform: translateX(-50%);
-          width: 80%;
           height: 60mm;
           display: flex;
           align-items: center;
           justify-content: center;
           pointer-events: none;
+          transition: width 0.2s ease;
         }
 
         .contract-header-logo-wysiwyg img {
-          max-width: 100%;
-          max-height: 100%;
+          width: 100%;
+          height: auto;
           object-fit: contain;
         }
 
@@ -472,6 +472,7 @@ export default function EditTemplateWYSIWYGPage() {
           font-family: Arial, sans-serif;
           font-size: 12pt;
           line-height: 1.6;
+          direction: ltr;
         }
 
         .contract-content-wysiwyg:focus {
@@ -522,10 +523,20 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-content-wysiwyg ol {
           margin: 1em 0;
           padding-left: 2em;
+          list-style-position: outside;
+        }
+
+        .contract-content-wysiwyg ul {
+          list-style-type: disc;
+        }
+
+        .contract-content-wysiwyg ol {
+          list-style-type: decimal;
         }
 
         .contract-content-wysiwyg li {
           margin: 0.5em 0;
+          display: list-item;
         }
 
         .contract-content-wysiwyg img {
@@ -538,39 +549,38 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-footer-wysiwyg {
           position: absolute;
           bottom: 0;
-          left: 0;
-          right: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 80%;
           height: 180px;
           display: flex;
+          flex-direction: column;
           align-items: center;
-          justify-content: space-between;
-          padding: 20px 25mm;
+          justify-content: center;
+          padding: 20px 0;
           background: white;
-          border-top: 3px solid #d3bb73;
-          box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05);
           pointer-events: none;
         }
 
-        .footer-logo-wysiwyg {
-          flex-shrink: 0;
-          width: 120px;
-          height: 80px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .contract-footer-wysiwyg::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: #d3bb73;
         }
 
-        .footer-logo-wysiwyg img {
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
+        .footer-logo-wysiwyg {
+          display: none;
         }
 
         .footer-info-wysiwyg {
-          text-align: right;
+          text-align: center;
           font-size: 10pt;
           color: #333;
-          line-height: 1.4;
+          line-height: 1.6;
         }
 
         .footer-info-wysiwyg p {
