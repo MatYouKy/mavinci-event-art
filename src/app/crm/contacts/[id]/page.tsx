@@ -325,6 +325,56 @@ export default function OrganizationDetailPage() {
     setEditedData({});
   };
 
+  const handleSaveContact = async () => {
+    if (!contact) return;
+
+    try {
+      setSaving(true);
+
+      const fullName = `${editedData.first_name || ''} ${editedData.last_name || ''}`.trim();
+
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          ...editedData,
+          full_name: fullName || editedData.full_name,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contact.id);
+
+      if (error) throw error;
+
+      showSnackbar('Dane kontaktu zaktualizowane', 'success');
+      setEditMode(false);
+      fetchData();
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas zapisywania', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Czy na pewno chcesz usunąć ten kontakt?')) return;
+
+    try {
+      const tableToDelete = entityType === 'contact' ? 'contacts' : 'organizations';
+      const entityId = contact?.id || organization?.id;
+
+      const { error } = await supabase
+        .from(tableToDelete)
+        .delete()
+        .eq('id', entityId);
+
+      if (error) throw error;
+
+      showSnackbar('Kontakt usunięty', 'success');
+      router.push('/crm/contacts');
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas usuwania', 'error');
+    }
+  };
+
   const handleSave = async () => {
     if (!organization) return;
 
@@ -596,97 +646,259 @@ export default function OrganizationDetailPage() {
                 )}
               </div>
             </div>
+
+            <div className="flex items-center gap-3">
+              {!editMode ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setEditMode(true);
+                      setEditedData(contact);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1a1d2e] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Edytuj
+                  </button>
+                  <button
+                    onClick={() => handleDelete()}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Usuń
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleSaveContact}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {saving ? 'Zapisywanie...' : 'Zapisz'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditMode(false);
+                      setEditedData({});
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    Anuluj
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Dane kontaktu */}
           <div className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-6">
             <h2 className="text-xl font-semibold text-white mb-4">Dane kontaktowe</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {contact.email && (
-                <div className="flex items-center space-x-3">
-                  <Mail className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Email</p>
-                    <p className="text-white">{contact.email}</p>
-                  </div>
-                </div>
-              )}
-              {contact.phone && (
-                <div className="flex items-center space-x-3">
-                  <Phone className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Telefon prywatny</p>
-                    <p className="text-white">{contact.phone}</p>
-                  </div>
-                </div>
-              )}
-              {contact.business_phone && (
-                <div className="flex items-center space-x-3">
-                  <Phone className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Telefon firmowy</p>
-                    <p className="text-white">{contact.business_phone}</p>
-                  </div>
-                </div>
-              )}
-              {contact.city && (
-                <div className="flex items-center space-x-3">
-                  <MapPin className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Miasto</p>
-                    <p className="text-white">{contact.city}</p>
-                  </div>
-                </div>
-              )}
-              {contact.nip && (
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">NIP</p>
-                    <p className="text-white">{contact.nip}</p>
-                  </div>
-                </div>
-              )}
-              {contact.pesel && (
-                <div className="flex items-center space-x-3">
-                  <CreditCard className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">PESEL</p>
-                    <p className="text-white">{contact.pesel}</p>
-                  </div>
-                </div>
-              )}
-              {contact.id_number && (
-                <div className="flex items-center space-x-3">
-                  <CreditCard className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Numer dowodu</p>
-                    <p className="text-white">{contact.id_number}</p>
-                  </div>
-                </div>
-              )}
-              {contact.event_type && (
-                <div className="flex items-center space-x-3">
-                  <Star className="w-5 h-5 text-[#d3bb73]" />
-                  <div>
-                    <p className="text-sm text-gray-400">Rodzaj uroczystości</p>
-                    <p className="text-white capitalize">{contact.event_type}</p>
-                  </div>
-                </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Imię</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.first_name || ''}
+                    onChange={(e) => setEditedData({ ...editedData, first_name: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.first_name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Nazwisko</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.last_name || ''}
+                    onChange={(e) => setEditedData({ ...editedData, last_name: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.last_name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Email</label>
+                {editMode ? (
+                  <input
+                    type="email"
+                    value={editedData.email || ''}
+                    onChange={(e) => setEditedData({ ...editedData, email: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.email || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Telefon prywatny</label>
+                {editMode ? (
+                  <input
+                    type="tel"
+                    value={editedData.phone || ''}
+                    onChange={(e) => setEditedData({ ...editedData, phone: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.phone || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Telefon firmowy</label>
+                {editMode ? (
+                  <input
+                    type="tel"
+                    value={editedData.business_phone || ''}
+                    onChange={(e) => setEditedData({ ...editedData, business_phone: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.business_phone || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Miasto</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.city || ''}
+                    onChange={(e) => setEditedData({ ...editedData, city: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.city || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Kod pocztowy</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.postal_code || ''}
+                    onChange={(e) => setEditedData({ ...editedData, postal_code: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.postal_code || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Adres</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.address || ''}
+                    onChange={(e) => setEditedData({ ...editedData, address: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.address || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">NIP</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.nip || ''}
+                    onChange={(e) => setEditedData({ ...editedData, nip: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.nip || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">PESEL</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.pesel || ''}
+                    onChange={(e) => setEditedData({ ...editedData, pesel: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.pesel || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Numer dowodu</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.id_number || ''}
+                    onChange={(e) => setEditedData({ ...editedData, id_number: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.id_number || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Rodzaj uroczystości</label>
+                {editMode ? (
+                  <select
+                    value={editedData.event_type || ''}
+                    onChange={(e) => setEditedData({ ...editedData, event_type: e.target.value })}
+                    className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  >
+                    <option value="">Wybierz</option>
+                    <option value="wesele">Wesele</option>
+                    <option value="urodziny">Urodziny</option>
+                    <option value="rocznica">Rocznica</option>
+                    <option value="impreza firmowa">Impreza firmowa</option>
+                    <option value="inne">Inne</option>
+                  </select>
+                ) : (
+                  <p className="text-white capitalize">{contact.event_type || '-'}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-gray-700">
+              <label className="block text-sm text-gray-400 mb-2">Szczegóły uroczystości</label>
+              {editMode ? (
+                <textarea
+                  value={editedData.event_details || ''}
+                  onChange={(e) => setEditedData({ ...editedData, event_details: e.target.value })}
+                  rows={3}
+                  className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                />
+              ) : (
+                <p className="text-white">{contact.event_details || '-'}</p>
               )}
             </div>
-            {contact.event_details && (
-              <div className="mt-6 pt-6 border-t border-gray-700">
-                <p className="text-sm text-gray-400 mb-2">Szczegóły uroczystości</p>
-                <p className="text-white">{contact.event_details}</p>
-              </div>
-            )}
-            {contact.notes && (
-              <div className="mt-6 pt-6 border-t border-gray-700">
-                <p className="text-sm text-gray-400 mb-2">Notatki</p>
-                <p className="text-white whitespace-pre-wrap">{contact.notes}</p>
-              </div>
-            )}
+
+            <div className="mt-6 pt-6 border-t border-gray-700">
+              <label className="block text-sm text-gray-400 mb-2">Notatki</label>
+              {editMode ? (
+                <textarea
+                  value={editedData.notes || ''}
+                  onChange={(e) => setEditedData({ ...editedData, notes: e.target.value })}
+                  rows={4}
+                  className="w-full bg-[#0f1119] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                />
+              ) : (
+                <p className="text-white whitespace-pre-wrap">{contact.notes || '-'}</p>
+              )}
+            </div>
           </div>
         </div>
       </div>

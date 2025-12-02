@@ -10,8 +10,11 @@ interface ContractTemplate {
   name: string;
   description: string;
   content: string;
+  content_html: string | null;
   category: string;
   placeholders: any[];
+  logo_positions: any[] | null;
+  page_settings: any | null;
   is_active: boolean;
   created_at: string;
 }
@@ -127,10 +130,33 @@ export default function ContractTemplateViewPage() {
               style={{ height: '60px' }}
             />
           </div>
-          {template.content.startsWith('<') ? (
+
+          {/* Render logos */}
+          {template.logo_positions && template.logo_positions.length > 0 && (
+            <div className="logos-container">
+              {template.logo_positions.map((logo: any) => (
+                <img
+                  key={logo.id}
+                  src={logo.url}
+                  alt="Logo"
+                  style={{
+                    position: 'absolute',
+                    left: `${logo.x}px`,
+                    top: `${logo.y}px`,
+                    width: `${logo.width}px`,
+                    height: `${logo.height}px`,
+                    objectFit: 'contain',
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Render content */}
+          {template.content_html ? (
             <div
-              className="contract-content"
-              dangerouslySetInnerHTML={{ __html: template.content }}
+              className="contract-content prose prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: template.content_html }}
             />
           ) : (
             <pre className="contract-content-plain">{template.content}</pre>
@@ -143,16 +169,80 @@ export default function ContractTemplateViewPage() {
           max-width: 210mm;
           margin: 0 auto;
           padding: 40mm 25mm;
-          font-family: 'Calibri', 'Arial', sans-serif;
-          font-size: 11pt;
+          font-family: 'Arial', sans-serif;
+          font-size: 12pt;
           line-height: 1.6;
           color: #000;
+          position: relative;
+        }
+
+        .logos-container {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          pointer-events: none;
         }
 
         .contract-content {
+          position: relative;
+          z-index: 1;
+        }
+
+        .contract-content p {
+          margin-bottom: 1em;
           text-align: justify;
-          white-space: pre-wrap;
-          word-wrap: break-word;
+        }
+
+        .contract-content h1,
+        .contract-content h2,
+        .contract-content h3,
+        .contract-content h4 {
+          margin-top: 1.5em;
+          margin-bottom: 0.5em;
+          font-weight: bold;
+        }
+
+        .contract-content h1 {
+          font-size: 18pt;
+        }
+
+        .contract-content h2 {
+          font-size: 16pt;
+        }
+
+        .contract-content h3 {
+          font-size: 14pt;
+        }
+
+        .contract-content ul,
+        .contract-content ol {
+          margin-left: 1.5em;
+          margin-bottom: 1em;
+        }
+
+        .contract-content li {
+          margin-bottom: 0.5em;
+        }
+
+        .contract-content strong {
+          font-weight: bold;
+        }
+
+        .contract-content em {
+          font-style: italic;
+        }
+
+        .contract-content u {
+          text-decoration: underline;
+        }
+
+        .contract-content blockquote {
+          margin-left: 2em;
+          padding-left: 1em;
+          border-left: 3px solid #ccc;
+          font-style: italic;
         }
 
         .contract-content-plain {
