@@ -50,7 +50,6 @@ export default function EditTemplateWYSIWYGPage() {
       editorRef.current.innerHTML = contentHtml;
       editorRef.current.setAttribute('dir', 'ltr');
       editorRef.current.style.direction = 'ltr';
-      editorRef.current.style.textAlign = 'left';
       editorRef.current.style.unicodeBidi = 'embed';
       editorRef.current.style.lineHeight = String(lineHeight);
     }
@@ -763,7 +762,6 @@ export default function EditTemplateWYSIWYGPage() {
                   outline: 'none',
                   direction: 'ltr',
                   unicodeBidi: 'embed',
-                  textAlign: 'left',
                   lineHeight: String(lineHeight),
                 }}
               />
@@ -843,7 +841,7 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-content-wysiwyg {
           flex: 1;
           min-height: 160mm;
-          text-align: left;
+          text-align: justify;
           color: #000;
           font-family: Arial, sans-serif;
           font-size: 12pt;
