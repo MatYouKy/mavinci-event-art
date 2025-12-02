@@ -17,11 +17,13 @@ export default function EditTemplateWYSIWYGPage() {
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState<any>(null);
   const [contentHtml, setContentHtml] = useState('');
-  const [pages, setPages] = useState<string[]>(['']);
-  const [logoSize, setLogoSize] = useState(80);
+  const [logoScale, setLogoScale] = useState(80);
+  const [logoPositionX, setLogoPositionX] = useState(50);
+  const [logoPositionY, setLogoPositionY] = useState(0);
   const [lineHeight, setLineHeight] = useState(1.6);
   const [history, setHistory] = useState<string[]>(['']);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     fetchTemplate();
@@ -102,7 +104,9 @@ export default function EditTemplateWYSIWYGPage() {
         setContentHtml(initialHtml);
 
         if (data.page_settings) {
-          if (data.page_settings.logoSize) setLogoSize(data.page_settings.logoSize);
+          if (data.page_settings.logoScale) setLogoScale(data.page_settings.logoScale);
+          if (data.page_settings.logoPositionX !== undefined) setLogoPositionX(data.page_settings.logoPositionX);
+          if (data.page_settings.logoPositionY !== undefined) setLogoPositionY(data.page_settings.logoPositionY);
           if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
         }
       }
@@ -134,7 +138,9 @@ export default function EditTemplateWYSIWYGPage() {
         content: plainText || 'Szablon umowy',
         content_html: contentHtml,
         page_settings: {
-          logoSize,
+          logoScale,
+          logoPositionX,
+          logoPositionY,
           lineHeight,
           marginTop: 50,
           marginBottom: 50,
@@ -419,17 +425,45 @@ export default function EditTemplateWYSIWYGPage() {
               Wstaw Logo
             </button>
 
-            <div className="flex items-center gap-2 ml-2">
-              <span className="text-xs text-[#e5e4e2]/60">Rozmiar logo:</span>
-              <input
-                type="range"
-                min="20"
-                max="120"
-                value={logoSize}
-                onChange={(e) => setLogoSize(Number(e.target.value))}
-                className="w-24 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
-              />
-              <span className="text-xs text-[#e5e4e2] w-8">{logoSize}%</span>
+            <div className="flex items-center gap-4 ml-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#e5e4e2]/60">Skala:</span>
+                <input
+                  type="range"
+                  min="20"
+                  max="120"
+                  value={logoScale}
+                  onChange={(e) => setLogoScale(Number(e.target.value))}
+                  className="w-20 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                />
+                <span className="text-xs text-[#e5e4e2] w-8">{logoScale}%</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#e5e4e2]/60">Poz X:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={logoPositionX}
+                  onChange={(e) => setLogoPositionX(Number(e.target.value))}
+                  className="w-20 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                />
+                <span className="text-xs text-[#e5e4e2] w-8">{logoPositionX}%</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#e5e4e2]/60">Poz Y:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={logoPositionY}
+                  onChange={(e) => setLogoPositionY(Number(e.target.value))}
+                  className="w-20 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                />
+                <span className="text-xs text-[#e5e4e2] w-8">{logoPositionY}mm</span>
+              </div>
             </div>
 
             <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
@@ -462,7 +496,15 @@ export default function EditTemplateWYSIWYGPage() {
       <div className="bg-[#f5f5f5] min-h-screen py-8">
         <div className="max-w-[230mm] mx-auto px-4">
           <div className="contract-a4-page-wysiwyg">
-            <div className="contract-header-logo-wysiwyg" style={{ width: `${logoSize}%` }}>
+            <div
+              className="contract-header-logo-wysiwyg"
+              style={{
+                width: `${logoScale}%`,
+                marginLeft: `${logoPositionX}%`,
+                transform: `translateX(-${logoPositionX}%)`,
+                marginTop: `${logoPositionY}mm`
+              }}
+            >
               <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
             </div>
 
@@ -513,9 +555,10 @@ export default function EditTemplateWYSIWYGPage() {
           font-size: 12pt;
           line-height: 1.6;
           color: #000;
-          overflow: hidden;
           page-break-after: always;
           break-after: page;
+          display: flex;
+          flex-direction: column;
         }
 
         .contract-header-logo-wysiwyg {
@@ -542,9 +585,8 @@ export default function EditTemplateWYSIWYGPage() {
         }
 
         .contract-content-wysiwyg {
-          min-height: 180mm;
-          max-height: 220mm;
-          overflow: hidden;
+          flex: 1;
+          min-height: 200mm;
           text-align: left;
           color: #000;
           font-family: Arial, sans-serif;
@@ -552,6 +594,8 @@ export default function EditTemplateWYSIWYGPage() {
           line-height: 1.6;
           direction: ltr !important;
           unicode-bidi: embed !important;
+          overflow-wrap: break-word;
+          word-wrap: break-word;
         }
 
         .contract-content-wysiwyg * {
@@ -659,19 +703,17 @@ export default function EditTemplateWYSIWYGPage() {
         }
 
         .contract-footer-wysiwyg {
-          position: absolute;
-          bottom: 0;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 80%;
-          height: 120px;
+          margin-top: auto;
+          width: 100%;
+          min-height: 25mm;
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: center;
+          justify-content: flex-end;
           padding: 10px 0;
           background: white;
           pointer-events: none;
+          flex-shrink: 0;
         }
 
         .contract-footer-wysiwyg::before {
