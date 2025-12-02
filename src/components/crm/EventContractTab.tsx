@@ -84,7 +84,7 @@ export function EventContractTab({ eventId }: Props) {
           event_categories:category_id(
             name,
             contract_template_id,
-            contract_templates:contract_template_id(id, name, content)
+            contract_templates:contract_template_id(id, name, content, content_html)
           )
         `)
         .eq('id', eventId)
@@ -101,7 +101,7 @@ export function EventContractTab({ eventId }: Props) {
       }
 
       setTemplateExists(true);
-      setOriginalTemplate(template.content);
+      setOriginalTemplate(template.content_html || template.content);
 
       const { data: offers } = await supabase
         .from('offers')
@@ -152,7 +152,8 @@ export function EventContractTab({ eventId }: Props) {
 
       setVariables(varsMap);
       setEditedVariables(varsMap);
-      setContractContent(replaceVariables(template.content, varsMap));
+      const templateToUse = template.content_html || template.content;
+      setContractContent(replaceVariables(templateToUse, varsMap));
 
     } catch (err) {
       console.error('Error fetching contract data:', err);
@@ -284,8 +285,8 @@ export function EventContractTab({ eventId }: Props) {
 
       <style jsx global>{`
         .contract-preview {
-          font-family: 'Calibri', 'Arial', sans-serif;
-          font-size: 11pt;
+          font-family: 'Arial', sans-serif;
+          font-size: 12pt;
           line-height: 1.6;
           color: #000;
         }
@@ -294,18 +295,103 @@ export function EventContractTab({ eventId }: Props) {
           text-align: justify;
         }
 
-        .contract-content strong,
-        .contract-content b {
-          font-weight: 600;
+        .contract-content p {
+          margin-bottom: 1em;
+          text-align: justify;
         }
 
-        .contract-content div[style*="text-align: center"] {
+        .contract-content h1,
+        .contract-content h2,
+        .contract-content h3,
+        .contract-content h4 {
+          margin-top: 1.5em;
+          margin-bottom: 0.75em;
+          font-weight: bold;
+        }
+
+        .contract-content h1 {
+          font-size: 18pt;
           text-align: center;
+        }
+
+        .contract-content h2 {
+          font-size: 16pt;
+        }
+
+        .contract-content h3 {
+          font-size: 14pt;
+        }
+
+        .contract-content strong,
+        .contract-content b {
+          font-weight: bold;
+        }
+
+        .contract-content em,
+        .contract-content i {
+          font-style: italic;
+        }
+
+        .contract-content u {
+          text-decoration: underline;
+        }
+
+        .contract-content ul,
+        .contract-content ol {
+          margin-left: 2em;
+          margin-bottom: 1em;
+          padding-left: 0;
+        }
+
+        .contract-content li {
+          margin-bottom: 0.5em;
+        }
+
+        .contract-content blockquote {
+          margin-left: 2em;
+          padding-left: 1em;
+          border-left: 3px solid #ccc;
+          font-style: italic;
+          margin-bottom: 1em;
+        }
+
+        .contract-content div[style*="text-align: center"],
+        .contract-content .ql-align-center {
+          text-align: center;
+        }
+
+        .contract-content div[style*="text-align: right"],
+        .contract-content .ql-align-right {
+          text-align: right;
+        }
+
+        .contract-content div[style*="text-align: left"],
+        .contract-content .ql-align-left {
+          text-align: left;
+        }
+
+        .contract-content .ql-indent-1 {
+          padding-left: 3em;
+        }
+
+        .contract-content .ql-indent-2 {
+          padding-left: 6em;
+        }
+
+        .contract-content .ql-indent-3 {
+          padding-left: 9em;
         }
 
         .contract-content table {
           width: 100%;
           border-collapse: collapse;
+          margin-bottom: 1em;
+        }
+
+        .contract-content table td,
+        .contract-content table th {
+          border: 1px solid #ddd;
+          padding: 8px;
         }
 
         .contract-content br {
