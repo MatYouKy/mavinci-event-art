@@ -273,26 +273,103 @@ export function EventContractTab({ eventId }: Props) {
         </div>
       )}
 
-      <div className="contract-preview bg-white text-black rounded-xl shadow-lg mx-auto" style={{ maxWidth: '210mm', padding: '40mm 25mm' }}>
-        <div className="contract-header text-center mb-8">
-          <img src="/erulers_logo_vect.png" alt="EVENT RULERS" className="mx-auto mb-4" style={{ height: '60px' }} />
+      <div className="contract-a4-container">
+        <div className="contract-a4-page">
+          <div className="contract-header-logo">
+            <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+          </div>
+
+          <div className="contract-current-date">
+            {new Date().toLocaleDateString('pl-PL', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })}
+          </div>
+
+          <div
+            className="contract-content"
+            dangerouslySetInnerHTML={{ __html: contractContent }}
+          />
+
+          <div className="contract-footer">
+            <div className="footer-logo">
+              <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+            </div>
+            <div className="footer-info">
+              <p>EVENT RULERS – Więcej niż Wodzireje!</p>
+              <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+              <p>tel: 698-212-279</p>
+            </div>
+          </div>
         </div>
-        <div
-          className="contract-content"
-          dangerouslySetInnerHTML={{ __html: contractContent }}
-        />
       </div>
 
       <style jsx global>{`
-        .contract-preview {
-          font-family: 'Arial', sans-serif;
+        @media print {
+          @page {
+            size: A4;
+            margin: 0;
+          }
+
+          body {
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+        }
+
+        .contract-a4-container {
+          background: #f5f5f5;
+          padding: 20px;
+          min-height: 100vh;
+        }
+
+        .contract-a4-page {
+          position: relative;
+          width: 210mm;
+          min-height: 297mm;
+          margin: 0 auto;
+          padding: 20mm 25mm 40mm 25mm;
+          background: white;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+          font-family: Arial, sans-serif;
           font-size: 12pt;
           line-height: 1.6;
           color: #000;
         }
 
+        .contract-header-logo {
+          position: absolute;
+          top: 15mm;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 80%;
+          height: 60mm;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 10mm;
+        }
+
+        .contract-header-logo img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+        }
+
+        .contract-current-date {
+          position: absolute;
+          top: 15mm;
+          right: 25mm;
+          font-size: 10pt;
+          color: #333;
+          font-weight: 500;
+        }
+
         .contract-content {
+          margin-top: 80mm;
           text-align: justify;
+          color: #000;
         }
 
         .contract-content > * {
@@ -312,6 +389,7 @@ export function EventContractTab({ eventId }: Props) {
           line-height: 1.6;
           border: none;
           background: transparent;
+          color: #000;
         }
 
         .contract-content h1,
@@ -323,6 +401,7 @@ export function EventContractTab({ eventId }: Props) {
           margin-bottom: 0.75em;
           font-weight: bold;
           white-space: pre-wrap;
+          color: #000;
         }
 
         .contract-content h1 {
@@ -341,11 +420,54 @@ export function EventContractTab({ eventId }: Props) {
         .contract-content strong,
         .contract-content b {
           font-weight: bold;
+          color: #000;
         }
 
         .contract-content em,
         .contract-content i {
           font-style: italic;
+          color: #000;
+        }
+
+        .contract-footer {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 180px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 25mm;
+          background: white;
+          border-top: 2px solid #e0e0e0;
+        }
+
+        .footer-logo {
+          flex-shrink: 0;
+          width: 120px;
+          height: 80px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .footer-logo img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+        }
+
+        .footer-info {
+          text-align: right;
+          font-size: 10pt;
+          color: #333;
+          line-height: 1.4;
+        }
+
+        .footer-info p {
+          margin: 4px 0;
+          color: #333;
         }
 
         .contract-content u {
