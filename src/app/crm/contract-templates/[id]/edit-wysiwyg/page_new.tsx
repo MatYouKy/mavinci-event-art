@@ -7,6 +7,7 @@ import { Save, ArrowLeft, Upload, Eye, FileCode, Image as ImageIcon } from 'luci
 import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
 import 'react-quill/dist/quill.snow.css';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 
@@ -40,6 +41,7 @@ interface ContractTemplate {
 export default function ContractTemplateEditorPage() {
   const params = useParams();
   const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const templateId = params.id as string;
   const quillRef = useRef<any>(null);
 
@@ -79,7 +81,7 @@ export default function ContractTemplateEditorPage() {
       }
     } catch (err) {
       console.error('Error fetching template:', err);
-      alert('Błąd ładowania szablonu');
+      showSnackbar('Błąd ładowania szablonu', 'error');
     } finally {
       setLoading(false);
     }
@@ -104,10 +106,10 @@ export default function ContractTemplateEditorPage() {
 
       if (error) throw error;
 
-      alert('Szablon zapisany pomyślnie');
+      showSnackbar('Szablon zapisany', 'success');
     } catch (err) {
       console.error('Error saving template:', err);
-      alert('Błąd podczas zapisywania szablonu');
+      showSnackbar('Błąd podczas zapisywania szablonu', 'error');
     } finally {
       setSaving(false);
     }
@@ -140,7 +142,7 @@ export default function ContractTemplateEditorPage() {
       setLogos([...logos, newLogo]);
     } catch (err) {
       console.error('Error uploading logo:', err);
-      alert('Błąd podczas uploadu logo');
+      showSnackbar('Błąd podczas uploadu logo', 'error');
     }
   };
 

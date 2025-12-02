@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Save, ArrowLeft, Plus, Trash2, Eye } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Placeholder {
   key: string;
@@ -14,6 +15,7 @@ interface Placeholder {
 export default function EditTemplatePage() {
   const params = useParams();
   const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const templateId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,7 @@ export default function EditTemplatePage() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      alert('Nazwa szablonu jest wymagana');
+      showSnackbar('Nazwa szablonu jest wymagana', 'error');
       return;
     }
 
@@ -104,11 +106,11 @@ export default function EditTemplatePage() {
 
       if (error) throw error;
 
-      alert('Szablon zapisany pomyślnie');
+      showSnackbar('Szablon zapisany', 'success');
       router.push('/crm/contract-templates');
     } catch (err) {
       console.error('Error saving template:', err);
-      alert('Błąd podczas zapisywania szablonu');
+      showSnackbar('Błąd podczas zapisywania szablonu', 'error');
     } finally {
       setSaving(false);
     }

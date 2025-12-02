@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { FileText, Plus, CreditCard as Edit, Trash2, Copy, Eye, Search } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface ContractTemplate {
   id: string;
@@ -12,13 +13,13 @@ interface ContractTemplate {
   content: string;
   event_category_id: string | null;
   event_categories?: { id: string; name: string; color: string };
-  placeholders: any[];
   is_active: boolean;
   created_at: string;
 }
 
 export default function ContractTemplatesPage() {
   const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<ContractTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,8 +47,8 @@ export default function ContractTemplatesPage() {
       if (data) {
         setTemplates(data);
       }
-    } catch (err) {
-      console.error('Error fetching templates:', err);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd ładowania szablonów', 'error');
     } finally {
       setLoading(false);
     }
@@ -81,10 +82,10 @@ export default function ContractTemplatesPage() {
         .eq('id', id);
 
       if (error) throw error;
+      showSnackbar('Szablon usunięty', 'success');
       fetchTemplates();
-    } catch (err) {
-      console.error('Error deleting template:', err);
-      alert('Błąd podczas usuwania szablonu');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd podczas usuwania szablonu', 'error');
     }
   };
 
@@ -96,10 +97,10 @@ export default function ContractTemplatesPage() {
         .eq('id', id);
 
       if (error) throw error;
+      showSnackbar('Status szablonu zaktualizowany', 'success');
       fetchTemplates();
-    } catch (err) {
-      console.error('Error updating template:', err);
-      alert('Błąd podczas aktualizacji szablonu');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd podczas aktualizacji szablonu', 'error');
     }
   };
 
@@ -209,9 +210,6 @@ export default function ContractTemplatesPage() {
                     )}
                     <div className="flex items-center gap-4 text-xs text-[#e5e4e2]/40">
                       <span>
-                        Placeholdery: {template.placeholders?.length || 0}
-                      </span>
-                      <span>
                         Utworzono:{' '}
                         {new Date(template.created_at).toLocaleDateString('pl-PL')}
                       </span>
@@ -279,6 +277,7 @@ function CreateTemplateModal({
   onSuccess: () => void;
 }) {
   const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -300,8 +299,8 @@ function CreateTemplateModal({
 
       if (error) throw error;
       setEventCategories(data || []);
-    } catch (err) {
-      console.error('Error fetching event categories:', err);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd ładowania kategorii', 'error');
     }
   };
 
@@ -309,7 +308,7 @@ function CreateTemplateModal({
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
-      alert('Nazwa szablonu jest wymagana');
+      showSnackbar('Nazwa szablonu jest wymagana', 'error');
       return;
     }
 
@@ -322,7 +321,6 @@ function CreateTemplateModal({
             description: formData.description || null,
             event_category_id: formData.event_category_id || null,
             content: '',
-            placeholders: [],
             is_active: true,
           },
         ])
@@ -331,11 +329,11 @@ function CreateTemplateModal({
       if (error) throw error;
 
       if (data && data[0]) {
+        showSnackbar('Szablon utworzony', 'success');
         router.push(`/crm/contract-templates/${data[0].id}/edit-wysiwyg`);
       }
-    } catch (err) {
-      console.error('Error creating template:', err);
-      alert('Błąd podczas tworzenia szablonu');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd podczas tworzenia szablonu', 'error');
     }
   };
 

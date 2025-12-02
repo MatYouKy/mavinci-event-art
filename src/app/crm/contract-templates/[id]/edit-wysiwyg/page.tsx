@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Save, ArrowLeft, Trash2, Upload, FileCode, Eye } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
 import 'react-quill/dist/quill.snow.css';
@@ -36,6 +37,7 @@ const A4_HEIGHT = 1123;
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
   const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const templateId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -113,7 +115,7 @@ export default function EditTemplateWYSIWYGPage() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      alert('Nazwa szablonu jest wymagana');
+      showSnackbar('Nazwa szablonu jest wymagana', 'error');
       return;
     }
 
@@ -138,11 +140,11 @@ export default function EditTemplateWYSIWYGPage() {
 
       if (error) throw error;
 
-      alert('Szablon zapisany pomyślnie');
+      showSnackbar('Szablon zapisany', 'success');
       router.push('/crm/contract-templates');
     } catch (err) {
       console.error('Error saving template:', err);
-      alert('Błąd podczas zapisywania szablonu');
+      showSnackbar('Błąd podczas zapisywania szablonu', 'error');
     } finally {
       setSaving(false);
     }
@@ -224,7 +226,7 @@ export default function EditTemplateWYSIWYGPage() {
       setLogos([...logos, newLogo]);
     } catch (err) {
       console.error('Error uploading logo:', err);
-      alert('Błąd podczas uploadu logo');
+      showSnackbar('Błąd podczas uploadu logo', 'error');
     } finally {
       setIsUploadingLogo(false);
     }
