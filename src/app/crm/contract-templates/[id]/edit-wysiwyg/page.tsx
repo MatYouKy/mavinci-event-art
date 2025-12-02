@@ -73,13 +73,21 @@ export default function EditTemplateWYSIWYGPage() {
     try {
       setSaving(true);
 
-      console.log('Saving content_html:', contentHtml);
+      console.log('Saving content_html (original):', contentHtml);
 
       const plainText = contentHtml.replace(/<[^>]*>/g, '').trim();
 
+      let processedHtml = contentHtml;
+      processedHtml = processedHtml.replace(/<p>/g, '<pre>');
+      processedHtml = processedHtml.replace(/<\/p>/g, '</pre>');
+      processedHtml = processedHtml.replace(/<pre><br><\/pre>/g, '<pre>\n</pre>');
+      processedHtml = processedHtml.replace(/<br>/g, '\n');
+
+      console.log('Saving content_html (processed):', processedHtml);
+
       const updateData = {
         content: plainText || 'Szablon umowy',
-        content_html: contentHtml,
+        content_html: processedHtml,
         updated_at: new Date().toISOString(),
       };
 

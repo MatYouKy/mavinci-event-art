@@ -300,11 +300,18 @@ export function EventContractTab({ eventId }: Props) {
           white-space: pre-wrap;
         }
 
-        .contract-content p {
+        .contract-content p,
+        .contract-content pre {
           display: block;
-          margin-bottom: 1em;
+          margin: 0;
+          padding: 0;
           text-align: justify;
           white-space: pre-wrap;
+          font-family: Arial, sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          border: none;
+          background: transparent;
         }
 
         .contract-content h1,
