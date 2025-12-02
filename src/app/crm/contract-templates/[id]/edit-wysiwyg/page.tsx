@@ -38,6 +38,8 @@ export default function EditTemplateWYSIWYGPage() {
   const [pages, setPages] = useState<string[]>(['']);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [editingName, setEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
 
   useEffect(() => {
     fetchTemplate();
@@ -138,6 +140,29 @@ export default function EditTemplateWYSIWYGPage() {
       showSnackbar(err.message || 'Błąd ładowania szablonu', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveTemplateName = async () => {
+    if (!tempName.trim()) {
+      showSnackbar('Nazwa szablonu nie może być pusta', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('contract_templates')
+        .update({ name: tempName.trim(), updated_at: new Date().toISOString() })
+        .eq('id', templateId);
+
+      if (error) throw error;
+
+      setTemplate({ ...template, name: tempName.trim() });
+      setEditingName(false);
+      showSnackbar('Nazwa szablonu została zmieniona', 'success');
+    } catch (err: any) {
+      console.error('Error:', err);
+      showSnackbar(err.message || 'Błąd zapisu nazwy', 'error');
     }
   };
 
@@ -309,15 +334,19 @@ export default function EditTemplateWYSIWYGPage() {
     const pageIndex = pageRefs.current.findIndex(ref => ref === editorElement);
     if (pageIndex === -1) return;
 
+    const existingParagraphs = editorElement.querySelectorAll('p[data-paragraph-number]');
+    const nextNumber = existingParagraphs.length + 1;
+
     const p = document.createElement('p');
     p.style.fontWeight = 'bold';
     p.style.textAlign = 'center';
     p.style.margin = '1.5em 0';
-    p.innerHTML = '§ ';
+    p.setAttribute('data-paragraph-number', String(nextNumber));
+    p.innerHTML = `§${nextNumber}. `;
 
     range.insertNode(p);
-    range.setStart(p.firstChild!, 2);
-    range.setEnd(p.firstChild!, 2);
+    range.setStart(p.firstChild!, p.innerHTML.length);
+    range.setEnd(p.firstChild!, p.innerHTML.length);
     selection.removeAllRanges();
     selection.addRange(range);
 
@@ -380,7 +409,50 @@ export default function EditTemplateWYSIWYGPage() {
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <div>
-                <h1 className="text-xl font-light text-[#e5e4e2]">{template.name}</h1>
+                {editingName ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveTemplateName();
+                        if (e.key === 'Escape') {
+                          setEditingName(false);
+                          setTempName('');
+                        }
+                      }}
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1 text-lg text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSaveTemplateName}
+                      className="rounded-lg bg-[#d3bb73] px-3 py-1 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                    >
+                      Zapisz
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingName(false);
+                        setTempName('');
+                      }}
+                      className="rounded-lg border border-[#d3bb73]/20 px-3 py-1 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                ) : (
+                  <h1
+                    onClick={() => {
+                      setEditingName(true);
+                      setTempName(template.name);
+                    }}
+                    className="cursor-pointer text-xl font-light text-[#e5e4e2] hover:text-[#d3bb73]"
+                    title="Kliknij aby edytować nazwę"
+                  >
+                    {template.name}
+                  </h1>
+                )}
                 <p className="text-sm text-[#e5e4e2]/40">Edytor WYSIWYG</p>
               </div>
             </div>
@@ -608,8 +680,12 @@ export default function EditTemplateWYSIWYGPage() {
               { key: '{{organization_name}}', label: 'Nazwa firmy' },
               { key: '{{organization_nip}}', label: 'NIP firmy' },
               { key: '{{event_name}}', label: 'Wydarzenie' },
-              { key: '{{event_date}}', label: 'Data rozpoczęcia' },
-              { key: '{{event_end_date}}', label: 'Data zakończenia' },
+              { key: '{{event_date}}', label: 'Data i czas start' },
+              { key: '{{event_end_date}}', label: 'Data i czas koniec' },
+              { key: '{{event_date_only}}', label: 'Data start (DD.MM.RRRR)' },
+              { key: '{{event_end_date_only}}', label: 'Data koniec (DD.MM.RRRR)' },
+              { key: '{{event_time_start}}', label: 'Godzina start (HH:MM)' },
+              { key: '{{event_time_end}}', label: 'Godzina koniec (HH:MM)' },
               { key: '{{location_name}}', label: 'Nazwa lokalizacji' },
               { key: '{{location_address}}', label: 'Adres lokalizacji' },
               { key: '{{location_city}}', label: 'Miasto lokalizacji' },

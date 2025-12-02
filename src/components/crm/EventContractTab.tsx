@@ -136,6 +136,25 @@ export function EventContractTab({ eventId }: Props) {
         });
       };
 
+      const formatDateOnly = (dateStr: string) => {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('pl-PL', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+      };
+
+      const formatTimeOnly = (dateStr: string) => {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        return date.toLocaleTimeString('pl-PL', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      };
+
       const contact = event.contacts;
       const organization = event.organizations;
       const location = event.locations;
@@ -179,6 +198,10 @@ export function EventContractTab({ eventId }: Props) {
         event_name: event.name || '',
         event_date: formatDate(event.event_date),
         event_end_date: formatDate(event.event_end_date),
+        event_date_only: formatDateOnly(event.event_date),
+        event_end_date_only: formatDateOnly(event.event_end_date),
+        event_time_start: formatTimeOnly(event.event_date),
+        event_time_end: formatTimeOnly(event.event_end_date),
 
         location_name: location?.name || parsedLocation.address || '',
         location_address: location?.address || parsedLocation.address || '',
