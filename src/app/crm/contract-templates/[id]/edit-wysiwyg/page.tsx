@@ -25,6 +25,7 @@ export default function EditTemplateWYSIWYGPage() {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [pages, setPages] = useState<string[]>(['']);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     fetchTemplate();
@@ -509,30 +510,39 @@ export default function EditTemplateWYSIWYGPage() {
         <div className="max-w-[230mm] mx-auto px-4">
           {pages.map((pageContent, pageIndex) => (
             <div key={pageIndex} className="contract-a4-page-wysiwyg">
+              {pageIndex === 0 && (
+                <>
+                  <div
+                    className="contract-header-logo-wysiwyg"
+                    style={{
+                      width: `${logoScale}%`,
+                      justifyContent: logoPositionX <= 33 ? 'flex-start' : logoPositionX >= 67 ? 'flex-end' : 'center',
+                      marginTop: `${logoPositionY}mm`
+                    }}
+                  >
+                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                  </div>
+
+                  <div className="contract-current-date-wysiwyg">
+                    {new Date().toLocaleDateString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </div>
+                </>
+              )}
+
               <div
-                className="contract-header-logo-wysiwyg"
-                style={{
-                  width: `${logoScale}%`,
-                  justifyContent: logoPositionX <= 33 ? 'flex-start' : logoPositionX >= 67 ? 'flex-end' : 'center',
-                  marginTop: `${logoPositionY}mm`
+                ref={(el) => {
+                  pageRefs.current[pageIndex] = el;
+                  if (el && el.innerHTML === '' && pageContent) {
+                    el.innerHTML = pageContent;
+                  }
                 }}
-              >
-                <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
-              </div>
-
-              <div className="contract-current-date-wysiwyg">
-                {new Date().toLocaleDateString('pl-PL', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </div>
-
-              <div
                 contentEditable={true}
                 suppressContentEditableWarning
                 dir="ltr"
-                dangerouslySetInnerHTML={{ __html: pageContent }}
                 onInput={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
                 onBlur={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
                 className="contract-content-wysiwyg"
@@ -546,6 +556,11 @@ export default function EditTemplateWYSIWYGPage() {
               />
 
               <div className="contract-footer-wysiwyg">
+                {pageIndex > 0 && pages.length > 1 && (
+                  <div className="page-number-footer">
+                    Strona {pageIndex + 1}
+                  </div>
+                )}
                 <div className="footer-logo-wysiwyg">
                   <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
                 </div>
@@ -747,6 +762,16 @@ export default function EditTemplateWYSIWYGPage() {
           background: white;
           pointer-events: none;
           flex-shrink: 0;
+          position: relative;
+        }
+
+        .page-number-footer {
+          position: absolute;
+          top: -20px;
+          right: 0;
+          font-size: 10pt;
+          color: #666;
+          font-weight: 500;
         }
 
         .contract-footer-wysiwyg::before {
