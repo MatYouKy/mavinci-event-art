@@ -440,7 +440,8 @@ export function EventContractTab({ eventId }: Props) {
           justify-content: space-between;
           padding: 20px 25mm;
           background: white;
-          border-top: 2px solid #e0e0e0;
+          border-top: 3px solid #d3bb73;
+          box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05);
         }
 
         .footer-logo {

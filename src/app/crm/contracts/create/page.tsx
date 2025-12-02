@@ -234,34 +234,61 @@ export default function CreateContractPage() {
           <div className="lg:col-span-2">
             {showPreview ? (
               <div className="contract-a4-container-create">
-                <div className="contract-a4-page-create">
-                  <div className="contract-header-logo-create">
-                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
-                  </div>
+                {generatedContent.split('\n\n').reduce((pages: any[], paragraph, idx, arr) => {
+                  const currentPage = pages[pages.length - 1];
+                  const paragraphLines = paragraph.split('\n').length;
 
-                  <div className="contract-current-date-create">
-                    {new Date().toLocaleDateString('pl-PL', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </div>
+                  if (!currentPage || currentPage.lines + paragraphLines > 35) {
+                    pages.push({ content: [paragraph], lines: paragraphLines });
+                  } else {
+                    currentPage.content.push(paragraph);
+                    currentPage.lines += paragraphLines;
+                  }
 
-                  <div className="contract-content-create" style={{ whiteSpace: 'pre-wrap' }}>
-                    {generatedContent}
-                  </div>
+                  return pages;
+                }, [{ content: [], lines: 0 }]).map((page, pageIndex, allPages) => (
+                  <div key={pageIndex} className="contract-a4-page-create">
+                    {pageIndex === 0 && (
+                      <>
+                        <div className="contract-header-logo-create">
+                          <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                        </div>
 
-                  <div className="contract-footer-create">
-                    <div className="footer-logo-create">
-                      <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                        <div className="contract-current-date-create">
+                          {new Date().toLocaleDateString('pl-PL', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
+                        </div>
+                      </>
+                    )}
+
+                    <div
+                      className="contract-content-create"
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        marginTop: pageIndex === 0 ? '80mm' : '20mm'
+                      }}
+                    >
+                      {page.content.join('\n\n')}
                     </div>
-                    <div className="footer-info-create">
-                      <p>EVENT RULERS – Więcej niż Wodzireje!</p>
-                      <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                      <p>tel: 698-212-279</p>
+
+                    <div className="contract-footer-create">
+                      <div className="footer-logo-create">
+                        <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                      </div>
+                      <div className="footer-info-create">
+                        <p>EVENT RULERS – Więcej niż Wodzireje!</p>
+                        <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                        <p>tel: 698-212-279</p>
+                        <p style={{ marginTop: '8px', fontSize: '9pt', color: '#999' }}>
+                          Strona {pageIndex + 1} z {allPages.length}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
             ) : (
               <div className="space-y-6">
@@ -397,12 +424,15 @@ export default function CreateContractPage() {
         background: #f5f5f5;
         padding: 20px;
         border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
       }
 
       .contract-a4-page-create {
         position: relative;
         width: 210mm;
-        min-height: 297mm;
+        height: 297mm;
         margin: 0 auto;
         padding: 20mm 25mm 40mm 25mm;
         background: white;
@@ -411,6 +441,8 @@ export default function CreateContractPage() {
         font-size: 12pt;
         line-height: 1.6;
         color: #000;
+        overflow: hidden;
+        page-break-after: always;
       }
 
       .contract-header-logo-create {
@@ -461,7 +493,8 @@ export default function CreateContractPage() {
         justify-content: space-between;
         padding: 20px 25mm;
         background: white;
-        border-top: 2px solid #e0e0e0;
+        border-top: 3px solid #d3bb73;
+        box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05);
       }
 
       .footer-logo-create {

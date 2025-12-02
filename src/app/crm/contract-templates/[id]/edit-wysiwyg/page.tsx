@@ -141,7 +141,7 @@ export default function EditTemplateWYSIWYGPage() {
         [{ indent: '-1' }, { indent: '+1' }],
         [{ align: [] }],
         ['blockquote', 'code-block'],
-        ['link'],
+        ['link', 'image'],
         ['clean'],
       ],
     }),
@@ -152,6 +152,7 @@ export default function EditTemplateWYSIWYGPage() {
     'header',
     'font',
     'size',
+    'image',
     'bold',
     'italic',
     'underline',
@@ -240,11 +241,17 @@ export default function EditTemplateWYSIWYGPage() {
           <div className="flex flex-wrap items-center gap-4">
             <button
               onClick={() => {
-                const editor = quillRef.current?.getEditor();
-                if (editor) {
-                  const range = editor.getSelection(true);
-                  editor.insertEmbed(range.index, 'image', '/erulers_logo_vect.png', 'user');
-                  editor.setSelection(range.index + 1);
+                try {
+                  if (quillRef.current) {
+                    const quill = quillRef.current.getEditor();
+                    const range = quill.getSelection();
+                    const position = range ? range.index : quill.getLength();
+                    quill.insertEmbed(position, 'image', '/erulers_logo_vect.png');
+                    quill.setSelection(position + 1);
+                  }
+                } catch (err) {
+                  console.error('Error inserting logo:', err);
+                  showSnackbar('Błąd wstawiania logo', 'error');
                 }
               }}
               className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
@@ -276,11 +283,17 @@ export default function EditTemplateWYSIWYGPage() {
               <button
                 key={placeholder.key}
                 onClick={() => {
-                  const editor = quillRef.current?.getEditor();
-                  if (editor) {
-                    const range = editor.getSelection(true);
-                    editor.insertText(range.index, placeholder.key, 'user');
-                    editor.setSelection(range.index + placeholder.key.length);
+                  try {
+                    if (quillRef.current) {
+                      const quill = quillRef.current.getEditor();
+                      const range = quill.getSelection();
+                      const position = range ? range.index : quill.getLength();
+                      quill.insertText(position, placeholder.key);
+                      quill.setSelection(position + placeholder.key.length);
+                    }
+                  } catch (err) {
+                    console.error('Error inserting placeholder:', err);
+                    showSnackbar('Błąd wstawiania placeholder', 'error');
                   }
                 }}
                 className="px-3 py-1.5 text-sm bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/30 rounded-md hover:bg-[#d3bb73]/10 transition-colors"
