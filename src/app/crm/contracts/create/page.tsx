@@ -233,31 +233,34 @@ export default function CreateContractPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             {showPreview ? (
-              <div className="bg-white text-black border border-[#d3bb73]/10 rounded-xl p-8">
-                {template.show_header_logo && template.header_logo_url && (
-                  <div className="mb-6 pb-4 border-b border-gray-300">
-                    <img
-                      src={template.header_logo_url}
-                      alt="Logo"
-                      style={{ height: `${template.header_logo_height || 50}px` }}
-                      className="object-contain"
-                    />
+              <div className="contract-a4-container-create">
+                <div className="contract-a4-page-create">
+                  <div className="contract-header-logo-create">
+                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
                   </div>
-                )}
 
-                {template.show_center_logo && template.center_logo_url && (
-                  <div className="mb-12 text-center">
-                    <img
-                      src={template.center_logo_url}
-                      alt="Logo"
-                      style={{ height: `${template.center_logo_height || 100}px` }}
-                      className="object-contain mx-auto"
-                    />
+                  <div className="contract-current-date-create">
+                    {new Date().toLocaleDateString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
                   </div>
-                )}
 
-                <div className="whitespace-pre-wrap font-mono text-sm" style={{ whiteSpace: 'pre-wrap' }}>
-                  {generatedContent}
+                  <div className="contract-content-create" style={{ whiteSpace: 'pre-wrap' }}>
+                    {generatedContent}
+                  </div>
+
+                  <div className="contract-footer-create">
+                    <div className="footer-logo-create">
+                      <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                    </div>
+                    <div className="footer-info-create">
+                      <p>EVENT RULERS – Więcej niż Wodzireje!</p>
+                      <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                      <p>tel: 698-212-279</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -388,6 +391,106 @@ export default function CreateContractPage() {
           </div>
         </div>
       </div>
+
+      <style jsx global>{`
+      .contract-a4-container-create {
+        background: #f5f5f5;
+        padding: 20px;
+        border-radius: 12px;
+      }
+
+      .contract-a4-page-create {
+        position: relative;
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 20mm 25mm 40mm 25mm;
+        background: white;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        font-family: Arial, sans-serif;
+        font-size: 12pt;
+        line-height: 1.6;
+        color: #000;
+      }
+
+      .contract-header-logo-create {
+        position: absolute;
+        top: 15mm;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80%;
+        height: 60mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .contract-header-logo-create img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+
+      .contract-current-date-create {
+        position: absolute;
+        top: 15mm;
+        right: 25mm;
+        font-size: 10pt;
+        color: #333;
+        font-weight: 500;
+      }
+
+      .contract-content-create {
+        margin-top: 80mm;
+        text-align: justify;
+        color: #000;
+        white-space: pre-wrap;
+        font-family: Arial, sans-serif;
+        font-size: 12pt;
+        line-height: 1.6;
+      }
+
+      .contract-footer-create {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 180px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 25mm;
+        background: white;
+        border-top: 2px solid #e0e0e0;
+      }
+
+      .footer-logo-create {
+        flex-shrink: 0;
+        width: 120px;
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .footer-logo-create img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+
+      .footer-info-create {
+        text-align: right;
+        font-size: 10pt;
+        color: #333;
+        line-height: 1.4;
+      }
+
+      .footer-info-create p {
+        margin: 4px 0;
+        color: #333;
+      }
+      `}</style>
     </div>
   );
 }

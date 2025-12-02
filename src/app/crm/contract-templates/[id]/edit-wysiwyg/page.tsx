@@ -234,6 +234,65 @@ export default function EditTemplateWYSIWYGPage() {
         </div>
       </div>
 
+      {/* Toolbar - Logo i Placeholdery */}
+      <div className="max-w-[1200px] mx-auto px-6 pb-4">
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={() => {
+                const editor = quillRef.current?.getEditor();
+                if (editor) {
+                  const range = editor.getSelection(true);
+                  editor.insertEmbed(range.index, 'image', '/erulers_logo_vect.png', 'user');
+                  editor.setSelection(range.index + 1);
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            >
+              <Upload className="w-4 h-4" />
+              Wstaw Logo
+            </button>
+
+            <div className="h-6 w-px bg-[#d3bb73]/30" />
+
+            <span className="text-sm text-[#e5e4e2]/60">Wstaw placeholder:</span>
+
+            {[
+              { key: '{{client_name}}', label: 'Nazwa klienta' },
+              { key: '{{client_address}}', label: 'Adres klienta' },
+              { key: '{{client_city}}', label: 'Miasto klienta' },
+              { key: '{{client_postal_code}}', label: 'Kod pocztowy' },
+              { key: '{{client_nip}}', label: 'NIP klienta' },
+              { key: '{{client_phone}}', label: 'Telefon klienta' },
+              { key: '{{client_email}}', label: 'Email klienta' },
+              { key: '{{client_id_number}}', label: 'Nr dowodu' },
+              { key: '{{event_name}}', label: 'Nazwa wydarzenia' },
+              { key: '{{event_date}}', label: 'Data wydarzenia' },
+              { key: '{{event_location}}', label: 'Lokalizacja' },
+              { key: '{{contract_date}}', label: 'Data umowy' },
+              { key: '{{contract_number}}', label: 'Numer umowy' },
+              { key: '{{total_price}}', label: 'Cena całkowita' },
+            ].map((placeholder) => (
+              <button
+                key={placeholder.key}
+                onClick={() => {
+                  const editor = quillRef.current?.getEditor();
+                  if (editor) {
+                    const range = editor.getSelection(true);
+                    editor.insertText(range.index, placeholder.key, 'user');
+                    editor.setSelection(range.index + placeholder.key.length);
+                  }
+                }}
+                className="px-3 py-1.5 text-sm bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/30 rounded-md hover:bg-[#d3bb73]/10 transition-colors"
+                title={`Wstaw: ${placeholder.key}`}
+              >
+                {placeholder.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Editor */}
       <div className="max-w-[1200px] mx-auto px-6 py-8">
         {!showPreview ? (
