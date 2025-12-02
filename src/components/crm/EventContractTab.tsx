@@ -272,11 +272,36 @@ export function EventContractTab({ eventId }: Props) {
         </div>
       )}
 
-      <div className="contract-preview bg-white text-black rounded-xl p-12 mx-auto whitespace-pre-wrap font-mono text-sm" style={{ maxWidth: '210mm' }}>
-        {contractContent}
+      <div className="contract-preview bg-white text-black rounded-xl p-12 mx-auto" style={{ maxWidth: '210mm' }}>
+        <div className="contract-header text-center mb-8">
+          <img src="/erulers_logo_vect.png" alt="EVENT RULERS" className="mx-auto mb-4" style={{ height: '60px' }} />
+        </div>
+        <div
+          className="contract-content"
+          dangerouslySetInnerHTML={{ __html: contractContent.replace(/\n/g, '<br />') }}
+        />
       </div>
 
       <style jsx global>{`
+        .contract-preview {
+          font-family: 'Times New Roman', serif;
+          font-size: 12pt;
+          line-height: 1.6;
+        }
+
+        .contract-content strong,
+        .contract-content b {
+          font-weight: bold;
+        }
+
+        .contract-content p {
+          margin-bottom: 1em;
+        }
+
+        .contract-content [style*="text-align: center"] {
+          text-align: center;
+        }
+
         @media print {
           body * {
             visibility: hidden;
@@ -300,6 +325,10 @@ export function EventContractTab({ eventId }: Props) {
             font-family: 'Times New Roman', serif;
             font-size: 11pt;
             line-height: 1.5;
+          }
+
+          .contract-header img {
+            height: 50px;
           }
 
           @page {
