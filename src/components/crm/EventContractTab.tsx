@@ -75,16 +75,19 @@ export function EventContractTab({ eventId }: Props) {
           id,
           name,
           event_date,
+          event_end_date,
           budget,
           organization_id,
           location_id,
           category_id,
+          contact_person_id,
           locations:location_id(name, formatted_address, address, city, postal_code),
           organizations:organization_id(name, nip, address, city, postal_code, phone, email),
+          contacts:contact_person_id(first_name, last_name, full_name, email, phone, pesel, address, city, postal_code),
           event_categories:category_id(
             name,
             contract_template_id,
-            contract_templates:contract_template_id(id, name, content, content_html)
+            contract_templates:contract_template_id(id, name, content, content_html, page_settings)
           )
         `)
         .eq('id', eventId)
@@ -101,7 +104,12 @@ export function EventContractTab({ eventId }: Props) {
       }
 
       setTemplateExists(true);
-      setOriginalTemplate(template.content_html || template.content);
+
+      let templateToStore = template.content_html || template.content;
+      if (template.page_settings?.pages) {
+        templateToStore = JSON.stringify(template.page_settings);
+      }
+      setOriginalTemplate(templateToStore);
 
       const { data: offers } = await supabase
         .from('offers')
@@ -113,47 +121,82 @@ export function EventContractTab({ eventId }: Props) {
 
       const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
       const totalPrice = event.budget || offers?.total_price || 0;
-      const depositAmount = Math.round(totalPrice * 0.3);
+      const depositAmount = Math.round(totalPrice * 0.5);
+
+      const formatDate = (dateStr: string) => {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('pl-PL', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      };
+
+      const contact = event.contacts;
+      const organization = event.organizations;
+      const location = event.locations;
 
       const varsMap: Record<string, string> = {
-        client_name: event.organizations?.name || '',
-        client_address: event.organizations?.address || '',
-        client_postal_code: event.organizations?.postal_code || '',
-        client_city: event.organizations?.city || '',
-        client_nip: event.organizations?.nip || '',
-        client_id_number: '',
-        client_phone: event.organizations?.phone || '',
-        client_email: event.organizations?.email || '',
-        executor_name: 'MAVINCI SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ',
-        executor_address: 'Marcina Kasprzaka',
-        executor_postal_code: '10-057',
-        executor_city: 'Olsztyn',
-        executor_nip: '7393958411',
-        executor_phone: '+48 698-212-279',
-        executor_email: 'wedding@eventrulers.pl',
+        contact_first_name: contact?.first_name || '',
+        contact_last_name: contact?.last_name || '',
+        contact_full_name: contact?.full_name || '',
+        contact_email: contact?.email || '',
+        contact_phone: contact?.phone || '',
+        contact_pesel: contact?.pesel || '',
+        contact_address: contact?.address || '',
+        contact_city: contact?.city || '',
+        contact_postal_code: contact?.postal_code || '',
+
+        organization_name: organization?.name || '',
+        organization_nip: organization?.nip || '',
+        organization_address: organization?.address || '',
+        organization_city: organization?.city || '',
+        organization_postal_code: organization?.postal_code || '',
+        organization_phone: organization?.phone || '',
+        organization_email: organization?.email || '',
+
         event_name: event.name || '',
-        event_date: event.event_date ? new Date(event.event_date).toLocaleDateString('pl-PL') : '',
-        event_time_start: '17:00',
-        event_time_end: '4:00',
-        event_location_name: event.locations?.name || '',
-        event_location_address: event.locations?.formatted_address || `${event.locations?.address || ''}, ${event.locations?.postal_code || ''} ${event.locations?.city || ''}`.trim(),
+        event_date: formatDate(event.event_date),
+        event_end_date: formatDate(event.event_end_date),
+
+        location_name: location?.name || '',
+        location_address: location?.address || '',
+        location_city: location?.city || '',
+        location_postal_code: location?.postal_code || '',
+        location_full: location?.formatted_address || `${location?.address || ''}, ${location?.postal_code || ''} ${location?.city || ''}`.trim(),
+
+        budget: totalPrice.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
+        deposit_amount: depositAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
+
         contract_number: contractNumber,
         contract_date: new Date().toLocaleDateString('pl-PL'),
-        total_price: totalPrice.toString(),
-        total_price_words: numberToWords(totalPrice) + ' złotych',
-        deposit_amount: depositAmount.toString(),
-        deposit_amount_words: numberToWords(depositAmount) + ' złotych',
-        remaining_amount: (totalPrice - depositAmount).toString(),
-        overtime_hour1_price: '1500',
-        overtime_hour2_price: '2000',
-        scope_description: offers?.description || 'Zakres usług zgodnie z ofertą',
-        services_list: '• Flagowe Trio (Dj, Wodzirej, Akordeonista)\n• Familiada',
+
+        executor_name: 'EVENT RULERS',
+        executor_address: 'ul. Przykładowa 1',
+        executor_postal_code: '30-000',
+        executor_city: 'Kraków',
+        executor_nip: '1234567890',
+        executor_phone: '698-212-279',
+        executor_email: 'biuro@eventrulers.pl',
       };
 
       setVariables(varsMap);
       setEditedVariables(varsMap);
-      const templateToUse = template.content_html || template.content;
-      setContractContent(replaceVariables(templateToUse, varsMap));
+
+      let contentToSet = '';
+      if (template.page_settings?.pages) {
+        const pages = template.page_settings.pages.map((page: string) =>
+          replaceVariables(page, varsMap)
+        );
+        contentToSet = JSON.stringify(pages);
+      } else {
+        const templateToUse = template.content_html || template.content;
+        contentToSet = replaceVariables(templateToUse, varsMap);
+      }
+      setContractContent(contentToSet);
 
     } catch (err) {
       console.error('Error fetching contract data:', err);
@@ -165,7 +208,21 @@ export function EventContractTab({ eventId }: Props) {
 
   const handleSave = () => {
     setVariables(editedVariables);
-    setContractContent(replaceVariables(originalTemplate, editedVariables));
+
+    try {
+      const parsed = JSON.parse(originalTemplate);
+      if (Array.isArray(parsed)) {
+        const pages = parsed.map((page: string) =>
+          replaceVariables(page, editedVariables)
+        );
+        setContractContent(JSON.stringify(pages));
+      } else {
+        setContractContent(replaceVariables(originalTemplate, editedVariables));
+      }
+    } catch {
+      setContractContent(replaceVariables(originalTemplate, editedVariables));
+    }
+
     setEditMode(false);
     showSnackbar('Dane umowy zostały zaktualizowane', 'success');
   };
@@ -274,35 +331,78 @@ export function EventContractTab({ eventId }: Props) {
       )}
 
       <div className="contract-a4-container">
-        <div className="contract-a4-page">
-          <div className="contract-header-logo">
-            <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
-          </div>
+        {(() => {
+          try {
+            const pages = JSON.parse(contractContent);
+            if (Array.isArray(pages)) {
+              return pages.map((pageContent: string, pageIndex: number) => (
+                <div key={pageIndex} className="contract-a4-page" style={{ marginBottom: pageIndex < pages.length - 1 ? '20px' : '0' }}>
+                  <div className="contract-header-logo">
+                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                  </div>
 
-          <div className="contract-current-date">
-            {new Date().toLocaleDateString('pl-PL', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
-          </div>
+                  <div className="contract-current-date">
+                    {new Date().toLocaleDateString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </div>
 
-          <div
-            className="contract-content"
-            dangerouslySetInnerHTML={{ __html: contractContent }}
-          />
+                  <div
+                    className="contract-content"
+                    dangerouslySetInnerHTML={{ __html: pageContent }}
+                  />
 
-          <div className="contract-footer">
-            <div className="footer-logo">
-              <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                  <div className="contract-footer">
+                    <div className="footer-logo">
+                      <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                    </div>
+                    <div className="footer-info">
+                      <p><strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em></p>
+                      <p>www.eventrulers.pl | biuro@eventrulers.pl | tel: 698-212-279</p>
+                    </div>
+                    {pageIndex > 0 && pages.length > 1 && (
+                      <div className="footer-page-number">Strona {pageIndex + 1}</div>
+                    )}
+                  </div>
+                </div>
+              ));
+            }
+          } catch (e) {
+            // Fallback dla starych szablonów
+          }
+          return (
+            <div className="contract-a4-page">
+              <div className="contract-header-logo">
+                <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+              </div>
+
+              <div className="contract-current-date">
+                {new Date().toLocaleDateString('pl-PL', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </div>
+
+              <div
+                className="contract-content"
+                dangerouslySetInnerHTML={{ __html: contractContent }}
+              />
+
+              <div className="contract-footer">
+                <div className="footer-logo">
+                  <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                </div>
+                <div className="footer-info">
+                  <p><strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em></p>
+                  <p>www.eventrulers.pl | biuro@eventrulers.pl | tel: 698-212-279</p>
+                </div>
+              </div>
             </div>
-            <div className="footer-info">
-              <p>EVENT RULERS – Więcej niż Wodzireje!</p>
-              <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-              <p>tel: 698-212-279</p>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
       </div>
 
       <style jsx global>{`
@@ -469,6 +569,14 @@ export function EventContractTab({ eventId }: Props) {
         .footer-info p {
           margin: 4px 0;
           color: #333;
+        }
+
+        .footer-page-number {
+          position: absolute;
+          top: -25px;
+          right: 25mm;
+          font-size: 10pt;
+          color: #666;
         }
 
         .contract-content u {
