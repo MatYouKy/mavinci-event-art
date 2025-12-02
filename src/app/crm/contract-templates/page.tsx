@@ -11,8 +11,6 @@ interface ContractTemplate {
   name: string;
   description: string;
   content: string;
-  event_category_id: string | null;
-  event_categories?: { id: string; name: string; color: string };
   is_active: boolean;
   created_at: string;
 }
@@ -24,7 +22,6 @@ export default function ContractTemplatesPage() {
   const [filteredTemplates, setFilteredTemplates] = useState<ContractTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
@@ -33,14 +30,14 @@ export default function ContractTemplatesPage() {
 
   useEffect(() => {
     filterTemplates();
-  }, [searchQuery, categoryFilter, templates]);
+  }, [searchQuery, templates]);
 
   const fetchTemplates = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('contract_templates')
-        .select('*, event_categories(id, name, color)')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -65,9 +62,6 @@ export default function ContractTemplatesPage() {
       );
     }
 
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter((t) => t.event_category_id === categoryFilter);
-    }
 
     setFilteredTemplates(filtered);
   };
@@ -141,18 +135,6 @@ export default function ContractTemplatesPage() {
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]"
               />
             </div>
-
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              <option value="all">Wszystkie kategorie</option>
-              <option value="event">Event</option>
-              <option value="service">Usługa</option>
-              <option value="rental">Wynajem</option>
-              <option value="other">Inne</option>
-            </select>
           </div>
         </div>
 
@@ -191,17 +173,6 @@ export default function ContractTemplatesPage() {
                       >
                         {template.is_active ? 'Aktywny' : 'Nieaktywny'}
                       </span>
-                      {template.event_categories && (
-                        <span
-                          className="text-xs px-2 py-1 rounded flex items-center gap-1"
-                          style={{
-                            backgroundColor: `${template.event_categories.color}20`,
-                            color: template.event_categories.color
-                          }}
-                        >
-                          {template.event_categories.name}
-                        </span>
-                      )}
                     </div>
                     {template.description && (
                       <p className="text-sm text-[#e5e4e2]/60 mb-3">
@@ -281,28 +252,7 @@ function CreateTemplateModal({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    event_category_id: '',
   });
-  const [eventCategories, setEventCategories] = useState<{id: string; name: string; color: string}[]>([]);
-
-  useEffect(() => {
-    fetchEventCategories();
-  }, []);
-
-  const fetchEventCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('event_categories')
-        .select('id, name, color')
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) throw error;
-      setEventCategories(data || []);
-    } catch (err: any) {
-      showSnackbar(err.message || 'Błąd ładowania kategorii', 'error');
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -319,7 +269,6 @@ function CreateTemplateModal({
           {
             name: formData.name,
             description: formData.description || null,
-            event_category_id: formData.event_category_id || null,
             content: '',
             is_active: true,
           },
@@ -376,23 +325,6 @@ function CreateTemplateModal({
             />
           </div>
 
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Kategoria wydarzenia (opcjonalnie)
-            </label>
-            <select
-              value={formData.event_category_id}
-              onChange={(e) => setFormData({ ...formData, event_category_id: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              <option value="">Bez kategorii</option>
-              {eventCategories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="flex gap-3 mt-6">
