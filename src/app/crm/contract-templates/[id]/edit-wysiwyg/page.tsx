@@ -19,6 +19,7 @@ export default function EditTemplateWYSIWYGPage() {
   const [contentHtml, setContentHtml] = useState('');
   const [pages, setPages] = useState<string[]>(['']);
   const [logoSize, setLogoSize] = useState(80);
+  const [lineHeight, setLineHeight] = useState(1.6);
   const [history, setHistory] = useState<string[]>(['']);
   const [historyIndex, setHistoryIndex] = useState(0);
 
@@ -33,8 +34,15 @@ export default function EditTemplateWYSIWYGPage() {
       editorRef.current.style.direction = 'ltr';
       editorRef.current.style.textAlign = 'left';
       editorRef.current.style.unicodeBidi = 'embed';
+      editorRef.current.style.lineHeight = String(lineHeight);
     }
   }, [contentHtml]);
+
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.style.lineHeight = String(lineHeight);
+    }
+  }, [lineHeight]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -242,6 +250,30 @@ export default function EditTemplateWYSIWYGPage() {
     addToHistory(newContent);
   };
 
+  const insertPageBreak = () => {
+    const pageBreak = document.createElement('div');
+    pageBreak.style.pageBreakAfter = 'always';
+    pageBreak.style.breakAfter = 'page';
+    pageBreak.style.height = '1px';
+    pageBreak.style.backgroundColor = 'transparent';
+    pageBreak.setAttribute('data-page-break', 'true');
+    pageBreak.innerHTML = '<hr style="border: 1px dashed #d3bb73; margin: 20px 0;" />';
+
+    const selection = window.getSelection();
+    if (!selection || !editorRef.current) return;
+
+    const range = selection.getRangeAt(0);
+    range.insertNode(pageBreak);
+    range.setStartAfter(pageBreak);
+    range.setEndAfter(pageBreak);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const newContent = editorRef.current.innerHTML;
+    setContentHtml(newContent);
+    addToHistory(newContent);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
@@ -337,10 +369,34 @@ export default function EditTemplateWYSIWYGPage() {
               <option value="7">24pt</option>
             </select>
 
+            <div className="flex items-center gap-2 ml-2">
+              <span className="text-xs text-[#e5e4e2]/60">Odstęp linii:</span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.1"
+                value={lineHeight}
+                onChange={(e) => {
+                  const newValue = Number(e.target.value);
+                  setLineHeight(newValue);
+                  if (editorRef.current) {
+                    editorRef.current.style.lineHeight = String(newValue);
+                  }
+                }}
+                className="w-24 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+              />
+              <span className="text-xs text-[#e5e4e2] w-8">{lineHeight.toFixed(1)}</span>
+            </div>
+
             <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
 
             <button onClick={insertParagraphMarker} className="px-3 py-1.5 bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded text-sm font-medium hover:bg-[#d3bb73]/10" title="Nowy paragraf (§)">
               § Paragraf
+            </button>
+
+            <button onClick={insertPageBreak} className="px-3 py-1.5 bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded text-sm font-medium hover:bg-[#d3bb73]/10" title="Podział strony">
+              📄 Nowa strona
             </button>
 
             <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
@@ -475,14 +531,20 @@ export default function EditTemplateWYSIWYGPage() {
         }
 
         .contract-content-wysiwyg {
-          margin-top: 40mm;
+          margin-top: 80mm;
           min-height: 400px;
-          text-align: justify;
+          text-align: left;
           color: #000;
           font-family: Arial, sans-serif;
           font-size: 12pt;
           line-height: 1.6;
-          direction: ltr;
+          direction: ltr !important;
+          unicode-bidi: embed !important;
+        }
+
+        .contract-content-wysiwyg * {
+          direction: ltr !important;
+          unicode-bidi: embed !important;
         }
 
         .contract-content-wysiwyg:focus {
@@ -492,6 +554,8 @@ export default function EditTemplateWYSIWYGPage() {
 
         .contract-content-wysiwyg p {
           margin: 0 0 1em 0;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
 
         .contract-content-wysiwyg h1,
@@ -500,6 +564,10 @@ export default function EditTemplateWYSIWYGPage() {
           margin-top: 1.5em;
           margin-bottom: 0.75em;
           font-weight: bold;
+          page-break-after: avoid;
+          break-after: avoid;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
 
         .contract-content-wysiwyg h1 {
@@ -554,6 +622,28 @@ export default function EditTemplateWYSIWYGPage() {
           height: auto;
           display: block;
           margin: 10px auto;
+        }
+
+        .contract-content-wysiwyg div[data-page-break="true"] {
+          page-break-after: always;
+          break-after: page;
+          margin: 20px 0;
+        }
+
+        .contract-content-wysiwyg div[data-page-break="true"] hr {
+          border: 1px dashed #d3bb73;
+          margin: 20px 0;
+        }
+
+        @media print {
+          .contract-content-wysiwyg div[data-page-break="true"] hr {
+            display: none;
+          }
+
+          .contract-content-wysiwyg div[data-page-break="true"] {
+            margin: 0;
+            height: 0;
+          }
         }
 
         .contract-footer-wysiwyg {
