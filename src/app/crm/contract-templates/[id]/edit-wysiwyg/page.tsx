@@ -23,7 +23,8 @@ export default function EditTemplateWYSIWYGPage() {
   const [lineHeight, setLineHeight] = useState(1.6);
   const [history, setHistory] = useState<string[]>(['']);
   const [historyIndex, setHistoryIndex] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [pages, setPages] = useState<string[]>(['']);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   useEffect(() => {
     fetchTemplate();
@@ -108,6 +109,13 @@ export default function EditTemplateWYSIWYGPage() {
           if (data.page_settings.logoPositionX !== undefined) setLogoPositionX(data.page_settings.logoPositionX);
           if (data.page_settings.logoPositionY !== undefined) setLogoPositionY(data.page_settings.logoPositionY);
           if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
+          if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
+            setPages(data.page_settings.pages);
+          } else if (initialHtml) {
+            setPages([initialHtml]);
+          }
+        } else if (initialHtml) {
+          setPages([initialHtml]);
         }
       }
     } catch (err: any) {
@@ -132,16 +140,18 @@ export default function EditTemplateWYSIWYGPage() {
     try {
       setSaving(true);
 
-      const plainText = contentHtml.replace(/<[^>]*>/g, '').trim();
+      const allContent = pages.join('\n\n--- PAGE BREAK ---\n\n');
+      const plainText = allContent.replace(/<[^>]*>/g, '').trim();
 
       const updateData = {
         content: plainText || 'Szablon umowy',
-        content_html: contentHtml,
+        content_html: allContent,
         page_settings: {
           logoScale,
           logoPositionX,
           logoPositionY,
           lineHeight,
+          pages,
           marginTop: 50,
           marginBottom: 50,
           marginLeft: 50,
@@ -270,28 +280,30 @@ export default function EditTemplateWYSIWYGPage() {
     addToHistory(newContent);
   };
 
-  const insertPageBreak = () => {
-    const pageBreak = document.createElement('div');
-    pageBreak.style.pageBreakAfter = 'always';
-    pageBreak.style.breakAfter = 'page';
-    pageBreak.style.height = '1px';
-    pageBreak.style.backgroundColor = 'transparent';
-    pageBreak.setAttribute('data-page-break', 'true');
-    pageBreak.innerHTML = '<hr style="border: 1px dashed #d3bb73; margin: 20px 0;" />';
+  const addNewPage = () => {
+    const newPages = [...pages, ''];
+    setPages(newPages);
+    setCurrentPageIndex(newPages.length - 1);
+    showSnackbar('Dodano nową stronę', 'success');
+  };
 
-    const selection = window.getSelection();
-    if (!selection || !editorRef.current) return;
+  const updatePageContent = (pageIndex: number, content: string) => {
+    const newPages = [...pages];
+    newPages[pageIndex] = content;
+    setPages(newPages);
+  };
 
-    const range = selection.getRangeAt(0);
-    range.insertNode(pageBreak);
-    range.setStartAfter(pageBreak);
-    range.setEndAfter(pageBreak);
-    selection.removeAllRanges();
-    selection.addRange(range);
-
-    const newContent = editorRef.current.innerHTML;
-    setContentHtml(newContent);
-    addToHistory(newContent);
+  const deletePage = (pageIndex: number) => {
+    if (pages.length <= 1) {
+      showSnackbar('Nie można usunąć ostatniej strony', 'error');
+      return;
+    }
+    const newPages = pages.filter((_, i) => i !== pageIndex);
+    setPages(newPages);
+    if (currentPageIndex >= newPages.length) {
+      setCurrentPageIndex(newPages.length - 1);
+    }
+    showSnackbar('Usunięto stronę', 'success');
   };
 
   if (loading) {
@@ -415,8 +427,8 @@ export default function EditTemplateWYSIWYGPage() {
               § Paragraf
             </button>
 
-            <button onClick={insertPageBreak} className="px-3 py-1.5 bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded text-sm font-medium hover:bg-[#d3bb73]/10" title="Podział strony">
-              📄 Nowa strona
+            <button onClick={addNewPage} className="px-3 py-1.5 bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded text-sm font-medium hover:bg-[#d3bb73]/10" title="Dodaj nową stronę">
+              📄 Dodaj stronę
             </button>
 
             <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
@@ -495,49 +507,70 @@ export default function EditTemplateWYSIWYGPage() {
       {/* A4 Editor */}
       <div className="bg-[#f5f5f5] min-h-screen py-8">
         <div className="max-w-[230mm] mx-auto px-4">
-          <div className="contract-a4-page-wysiwyg">
-            <div
-              className="contract-header-logo-wysiwyg"
-              style={{
-                width: `${logoScale}%`,
-                marginLeft: `${logoPositionX}%`,
-                transform: `translateX(-${logoPositionX}%)`,
-                marginTop: `${logoPositionY}mm`
-              }}
-            >
-              <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
-            </div>
-
-            <div className="contract-current-date-wysiwyg">
-              {new Date().toLocaleDateString('pl-PL', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              })}
-            </div>
-
-            <div
-              ref={editorRef}
-              contentEditable={true}
-              suppressContentEditableWarning
-              dir="ltr"
-              onInput={(e) => setContentHtml(e.currentTarget.innerHTML)}
-              onBlur={(e) => setContentHtml(e.currentTarget.innerHTML)}
-              className="contract-content-wysiwyg"
-              style={{ outline: 'none', direction: 'ltr', unicodeBidi: 'embed', textAlign: 'left' }}
-            />
-
-            <div className="contract-footer-wysiwyg">
-              <div className="footer-logo-wysiwyg">
+          {pages.map((pageContent, pageIndex) => (
+            <div key={pageIndex} className="contract-a4-page-wysiwyg">
+              <div
+                className="contract-header-logo-wysiwyg"
+                style={{
+                  width: `${logoScale}%`,
+                  justifyContent: logoPositionX <= 33 ? 'flex-start' : logoPositionX >= 67 ? 'flex-end' : 'center',
+                  marginTop: `${logoPositionY}mm`
+                }}
+              >
                 <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
               </div>
-              <div className="footer-info-wysiwyg">
-                <p>EVENT RULERS – Więcej niż Wodzireje!</p>
-                <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                <p>tel: 698-212-279</p>
+
+              <div className="contract-current-date-wysiwyg">
+                {new Date().toLocaleDateString('pl-PL', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </div>
+
+              <div
+                contentEditable={true}
+                suppressContentEditableWarning
+                dir="ltr"
+                dangerouslySetInnerHTML={{ __html: pageContent }}
+                onInput={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
+                onBlur={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
+                className="contract-content-wysiwyg"
+                style={{
+                  outline: 'none',
+                  direction: 'ltr',
+                  unicodeBidi: 'embed',
+                  textAlign: 'left',
+                  lineHeight: String(lineHeight)
+                }}
+              />
+
+              <div className="contract-footer-wysiwyg">
+                <div className="footer-logo-wysiwyg">
+                  <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                </div>
+                <div className="footer-info-wysiwyg">
+                  <p>EVENT RULERS – Więcej niż Wodzireje!</p>
+                  <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                  <p>tel: 698-212-279</p>
+                </div>
+              </div>
+
+              {pages.length > 1 && (
+                <button
+                  onClick={() => deletePage(pageIndex)}
+                  className="absolute top-2 right-2 p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"
+                  title="Usuń stronę"
+                >
+                  🗑️
+                </button>
+              )}
+
+              <div className="absolute bottom-2 right-2 text-xs text-[#e5e4e2]/40">
+                Strona {pageIndex + 1} z {pages.length}
               </div>
             </div>
-          </div>
+          ))}
         </div>
       </div>
 
