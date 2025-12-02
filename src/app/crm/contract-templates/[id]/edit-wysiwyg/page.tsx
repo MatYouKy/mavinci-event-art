@@ -3,7 +3,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Save, ArrowLeft, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Type } from 'lucide-react';
+import {
+  Save,
+  ArrowLeft,
+  Bold,
+  Italic,
+  Underline,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  List,
+  ListOrdered,
+  Type,
+} from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export default function EditTemplateWYSIWYGPage() {
@@ -97,7 +109,7 @@ export default function EditTemplateWYSIWYGPage() {
         if (!initialHtml && data.content) {
           initialHtml = data.content
             .split('\n')
-            .map(line => `<pre>${line || '\n'}</pre>`)
+            .map((line) => `<pre>${line || '\n'}</pre>`)
             .join('');
 
           console.log('Auto-converted plain content to HTML with <pre> tags');
@@ -107,8 +119,10 @@ export default function EditTemplateWYSIWYGPage() {
 
         if (data.page_settings) {
           if (data.page_settings.logoScale) setLogoScale(data.page_settings.logoScale);
-          if (data.page_settings.logoPositionX !== undefined) setLogoPositionX(data.page_settings.logoPositionX);
-          if (data.page_settings.logoPositionY !== undefined) setLogoPositionY(data.page_settings.logoPositionY);
+          if (data.page_settings.logoPositionX !== undefined)
+            setLogoPositionX(data.page_settings.logoPositionX);
+          if (data.page_settings.logoPositionY !== undefined)
+            setLogoPositionY(data.page_settings.logoPositionY);
           if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
           if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
             setPages(data.page_settings.pages);
@@ -157,7 +171,7 @@ export default function EditTemplateWYSIWYGPage() {
           marginBottom: 50,
           marginLeft: 50,
           marginRight: 50,
-          pageSize: 'A4'
+          pageSize: 'A4',
         },
         updated_at: new Date().toISOString(),
       };
@@ -309,7 +323,7 @@ export default function EditTemplateWYSIWYGPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0b14]">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -317,7 +331,7 @@ export default function EditTemplateWYSIWYGPage() {
 
   if (!template) {
     return (
-      <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0b14]">
         <div className="text-[#e5e4e2]">Szablon nie został znaleziony</div>
       </div>
     );
@@ -326,15 +340,15 @@ export default function EditTemplateWYSIWYGPage() {
   return (
     <div className="min-h-screen bg-[#0a0b14]">
       {/* Header */}
-      <div className="bg-[#1c1f33] border-b border-[#d3bb73]/20 sticky top-0 z-40">
-        <div className="max-w-[1400px] mx-auto px-6 py-4">
+      <div className="sticky top-0 z-40 border-b border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="mx-auto max-w-[1400px] px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => router.push('/crm/contract-templates')}
-                className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="h-5 w-5" />
               </button>
               <div>
                 <h1 className="text-xl font-light text-[#e5e4e2]">{template.name}</h1>
@@ -345,9 +359,9 @@ export default function EditTemplateWYSIWYGPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
+              <Save className="h-4 w-4" />
               {saving ? 'Zapisywanie...' : 'Zapisz'}
             </button>
           </div>
@@ -355,45 +369,77 @@ export default function EditTemplateWYSIWYGPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="bg-[#1c1f33] border-b border-[#d3bb73]/20 sticky top-[73px] z-30">
-        <div className="max-w-[1400px] mx-auto px-6 py-3">
+      <div className="sticky top-[73px] z-30 border-b border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="mx-auto max-w-[1400px] px-6 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => execCommand('bold')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Pogrubienie">
-              <Bold className="w-4 h-4 text-[#e5e4e2]" />
+            <button
+              onClick={() => execCommand('bold')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Pogrubienie"
+            >
+              <Bold className="h-4 w-4 text-[#e5e4e2]" />
             </button>
-            <button onClick={() => execCommand('italic')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Kursywa">
-              <Italic className="w-4 h-4 text-[#e5e4e2]" />
+            <button
+              onClick={() => execCommand('italic')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Kursywa"
+            >
+              <Italic className="h-4 w-4 text-[#e5e4e2]" />
             </button>
-            <button onClick={() => execCommand('underline')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Podkreślenie">
-              <Underline className="w-4 h-4 text-[#e5e4e2]" />
-            </button>
-
-            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
-
-            <button onClick={() => execCommand('justifyLeft')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Do lewej">
-              <AlignLeft className="w-4 h-4 text-[#e5e4e2]" />
-            </button>
-            <button onClick={() => execCommand('justifyCenter')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Wyśrodkuj">
-              <AlignCenter className="w-4 h-4 text-[#e5e4e2]" />
-            </button>
-            <button onClick={() => execCommand('justifyRight')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Do prawej">
-              <AlignRight className="w-4 h-4 text-[#e5e4e2]" />
-            </button>
-
-            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
-
-            <button onClick={() => execCommand('insertUnorderedList')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Lista">
-              <List className="w-4 h-4 text-[#e5e4e2]" />
-            </button>
-            <button onClick={() => execCommand('insertOrderedList')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Lista numerowana">
-              <ListOrdered className="w-4 h-4 text-[#e5e4e2]" />
+            <button
+              onClick={() => execCommand('underline')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Podkreślenie"
+            >
+              <Underline className="h-4 w-4 text-[#e5e4e2]" />
             </button>
 
-            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <button
+              onClick={() => execCommand('justifyLeft')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Do lewej"
+            >
+              <AlignLeft className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('justifyCenter')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Wyśrodkuj"
+            >
+              <AlignCenter className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('justifyRight')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Do prawej"
+            >
+              <AlignRight className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <button
+              onClick={() => execCommand('insertUnorderedList')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Lista"
+            >
+              <List className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('insertOrderedList')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Lista numerowana"
+            >
+              <ListOrdered className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <select
               onChange={(e) => execCommand('fontSize', e.target.value)}
-              className="bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/20 rounded px-2 py-1 text-sm"
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
             >
               <option value="3">12pt</option>
               <option value="4">14pt</option>
@@ -402,7 +448,7 @@ export default function EditTemplateWYSIWYGPage() {
               <option value="7">24pt</option>
             </select>
 
-            <div className="flex items-center gap-2 ml-2">
+            <div className="ml-2 flex items-center gap-2">
               <span className="text-xs text-[#e5e4e2]/60">Odstęp linii:</span>
               <input
                 type="range"
@@ -417,28 +463,39 @@ export default function EditTemplateWYSIWYGPage() {
                     editorRef.current.style.lineHeight = String(newValue);
                   }
                 }}
-                className="w-24 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                className="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
               />
-              <span className="text-xs text-[#e5e4e2] w-8">{lineHeight.toFixed(1)}</span>
+              <span className="w-8 text-xs text-[#e5e4e2]">{lineHeight.toFixed(1)}</span>
             </div>
 
-            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
-            <button onClick={insertParagraphMarker} className="px-3 py-1.5 bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded text-sm font-medium hover:bg-[#d3bb73]/10" title="Nowy paragraf (§)">
+            <button
+              onClick={insertParagraphMarker}
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              title="Nowy paragraf (§)"
+            >
               § Paragraf
             </button>
 
-            <button onClick={addNewPage} className="px-3 py-1.5 bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded text-sm font-medium hover:bg-[#d3bb73]/10" title="Dodaj nową stronę">
+            <button
+              onClick={addNewPage}
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              title="Dodaj nową stronę"
+            >
               📄 Dodaj stronę
             </button>
 
-            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
-            <button onClick={insertLogo} className="px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded text-sm font-medium hover:bg-[#d3bb73]/90">
+            <button
+              onClick={insertLogo}
+              className="rounded bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+            >
               Wstaw Logo
             </button>
 
-            <div className="flex items-center gap-4 ml-2">
+            <div className="ml-2 flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[#e5e4e2]/60">Skala:</span>
                 <input
@@ -447,9 +504,9 @@ export default function EditTemplateWYSIWYGPage() {
                   max="120"
                   value={logoScale}
                   onChange={(e) => setLogoScale(Number(e.target.value))}
-                  className="w-20 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                  className="h-1 w-20 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
                 />
-                <span className="text-xs text-[#e5e4e2] w-8">{logoScale}%</span>
+                <span className="w-8 text-xs text-[#e5e4e2]">{logoScale}%</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -460,9 +517,9 @@ export default function EditTemplateWYSIWYGPage() {
                   max="100"
                   value={logoPositionX}
                   onChange={(e) => setLogoPositionX(Number(e.target.value))}
-                  className="w-20 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                  className="h-1 w-20 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
                 />
-                <span className="text-xs text-[#e5e4e2] w-8">{logoPositionX}%</span>
+                <span className="w-8 text-xs text-[#e5e4e2]">{logoPositionX}%</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -473,13 +530,13 @@ export default function EditTemplateWYSIWYGPage() {
                   max="50"
                   value={logoPositionY}
                   onChange={(e) => setLogoPositionY(Number(e.target.value))}
-                  className="w-20 h-1 bg-[#0f1119] rounded-lg appearance-none cursor-pointer accent-[#d3bb73]"
+                  className="h-1 w-20 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
                 />
-                <span className="text-xs text-[#e5e4e2] w-8">{logoPositionY}mm</span>
+                <span className="w-8 text-xs text-[#e5e4e2]">{logoPositionY}mm</span>
               </div>
             </div>
 
-            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <span className="text-xs text-[#e5e4e2]/60">Placeholdery:</span>
 
@@ -495,7 +552,7 @@ export default function EditTemplateWYSIWYGPage() {
               <button
                 key={p.key}
                 onClick={() => insertPlaceholder(p.key)}
-                className="px-2 py-1 text-xs bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded hover:bg-[#d3bb73]/10"
+                className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
                 title={p.key}
               >
                 {p.label}
@@ -506,8 +563,8 @@ export default function EditTemplateWYSIWYGPage() {
       </div>
 
       {/* A4 Editor */}
-      <div className="bg-[#f5f5f5] min-h-screen py-8">
-        <div className="max-w-[230mm] mx-auto px-4">
+      <div className="min-h-screen bg-[#f5f5f5] py-8">
+        <div className="mx-auto max-w-[230mm] px-4">
           {pages.map((pageContent, pageIndex) => (
             <div key={pageIndex} className="contract-a4-page-wysiwyg">
               {pageIndex === 0 && (
@@ -515,19 +572,30 @@ export default function EditTemplateWYSIWYGPage() {
                   <div
                     className="contract-header-logo-wysiwyg"
                     style={{
-                      width: `${logoScale}%`,
-                      justifyContent: logoPositionX <= 33 ? 'flex-start' : logoPositionX >= 67 ? 'flex-end' : 'center',
-                      marginTop: `${logoPositionY}mm`
+                      justifyContent:
+                        logoPositionX <= 33
+                          ? 'flex-start'
+                          : logoPositionX >= 67
+                            ? 'flex-end'
+                            : 'center',
+                      marginTop: `${logoPositionY}mm`,
                     }}
                   >
-                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                    <img
+                      src="/erulers_logo_vect.png"
+                      alt="EVENT RULERS"
+                      style={{
+                        maxWidth: `${logoScale}%`, // skalowanie samego logo
+                        height: 'auto',
+                      }}
+                    />
                   </div>
 
                   <div className="contract-current-date-wysiwyg">
-                    {new Date().toLocaleDateString('pl-PL', {
+                    Olsztyn, {new Date().toLocaleDateString('pl-PL', {
                       year: 'numeric',
                       month: 'long',
-                      day: 'numeric'
+                      day: 'numeric',
                     })}
                   </div>
                 </>
@@ -551,21 +619,16 @@ export default function EditTemplateWYSIWYGPage() {
                   direction: 'ltr',
                   unicodeBidi: 'embed',
                   textAlign: 'left',
-                  lineHeight: String(lineHeight)
+                  lineHeight: String(lineHeight),
                 }}
               />
 
               <div className="contract-footer-wysiwyg">
-                {pageIndex > 0 && pages.length > 1 && (
-                  <div className="page-number-footer">
-                    Strona {pageIndex + 1}
-                  </div>
-                )}
                 <div className="footer-logo-wysiwyg">
                   <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
                 </div>
                 <div className="footer-info-wysiwyg">
-                  <p>EVENT RULERS – Więcej niż Wodzireje!</p>
+                  <p><span className="font-bold">EVENT RULERS</span> – <span className="italic">Więcej niż Wodzireje!</span></p>
                   <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
                   <p>tel: 698-212-279</p>
                 </div>
@@ -574,14 +637,14 @@ export default function EditTemplateWYSIWYGPage() {
               {pages.length > 1 && (
                 <button
                   onClick={() => deletePage(pageIndex)}
-                  className="absolute top-2 right-2 p-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"
+                  className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
                   title="Usuń stronę"
                 >
                   🗑️
                 </button>
               )}
 
-              <div className="absolute bottom-2 right-2 text-xs text-[#e5e4e2]/40">
+              <div className="absolute bottom-8 right-20 text-xs text-[#000]/50">
                 Strona {pageIndex + 1} z {pages.length}
               </div>
             </div>
@@ -594,9 +657,8 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-a4-page-wysiwyg {
           position: relative;
           width: 210mm;
-          height: 297mm;
           margin: 0 auto 20px auto;
-          padding: 20mm 25mm;
+          padding: 20mm 25mm 5mm;
           background: white;
           box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
           font-family: Arial, sans-serif;
@@ -614,27 +676,28 @@ export default function EditTemplateWYSIWYGPage() {
           display: flex;
           justify-content: center;
           align-items: center;
-          margin-bottom: 10mm;
+          margin-bottom: 4mm;
           transition: all 0.2s ease;
         }
 
         .contract-header-logo-wysiwyg img {
-          max-width: 100%;
           height: auto;
           object-fit: contain;
         }
 
         .contract-current-date-wysiwyg {
+          position: absolute;
+          top: 20mm;
+          right: 20mm;
           text-align: right;
           font-size: 10pt;
           color: #333;
           font-weight: 500;
-          margin-bottom: 10mm;
         }
 
         .contract-content-wysiwyg {
           flex: 1;
-          min-height: 200mm;
+          min-height: 160mm;
           text-align: left;
           color: #000;
           font-family: Arial, sans-serif;
@@ -728,23 +791,23 @@ export default function EditTemplateWYSIWYGPage() {
           margin: 10px auto;
         }
 
-        .contract-content-wysiwyg div[data-page-break="true"] {
+        .contract-content-wysiwyg div[data-page-break='true'] {
           page-break-after: always;
           break-after: page;
           margin: 20px 0;
         }
 
-        .contract-content-wysiwyg div[data-page-break="true"] hr {
+        .contract-content-wysiwyg div[data-page-break='true'] hr {
           border: 1px dashed #d3bb73;
           margin: 20px 0;
         }
 
         @media print {
-          .contract-content-wysiwyg div[data-page-break="true"] hr {
+          .contract-content-wysiwyg div[data-page-break='true'] hr {
             display: none;
           }
 
-          .contract-content-wysiwyg div[data-page-break="true"] {
+          .contract-content-wysiwyg div[data-page-break='true'] {
             margin: 0;
             height: 0;
           }
@@ -792,7 +855,7 @@ export default function EditTemplateWYSIWYGPage() {
           text-align: center;
           font-size: 10pt;
           color: #333;
-          line-height: 1.6;
+          line-height: 1.2;
         }
 
         .footer-info-wysiwyg p {
