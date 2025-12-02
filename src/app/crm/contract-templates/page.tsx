@@ -10,7 +10,8 @@ interface ContractTemplate {
   name: string;
   description: string;
   content: string;
-  category: string;
+  event_category_id: string | null;
+  event_categories?: { id: string; name: string; icon: string | null };
   placeholders: any[];
   is_active: boolean;
   created_at: string;
@@ -38,7 +39,7 @@ export default function ContractTemplatesPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('contract_templates')
-        .select('*')
+        .select('*, event_categories(id, name, icon)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -64,7 +65,7 @@ export default function ContractTemplatesPage() {
     }
 
     if (categoryFilter !== 'all') {
-      filtered = filtered.filter((t) => t.category === categoryFilter);
+      filtered = filtered.filter((t) => t.event_category_id === categoryFilter);
     }
 
     setFilteredTemplates(filtered);
@@ -100,13 +101,6 @@ export default function ContractTemplatesPage() {
       console.error('Error updating template:', err);
       alert('Błąd podczas aktualizacji szablonu');
     }
-  };
-
-  const categoryLabels: Record<string, string> = {
-    event: 'Event',
-    service: 'Usługa',
-    rental: 'Wynajem',
-    other: 'Inne',
   };
 
   if (loading) {
@@ -196,9 +190,12 @@ export default function ContractTemplatesPage() {
                       >
                         {template.is_active ? 'Aktywny' : 'Nieaktywny'}
                       </span>
-                      <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">
-                        {categoryLabels[template.category]}
-                      </span>
+                      {template.event_categories && (
+                        <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 flex items-center gap-1">
+                          {template.event_categories.icon && <span>{template.event_categories.icon}</span>}
+                          {template.event_categories.name}
+                        </span>
+                      )}
                     </div>
                     {template.description && (
                       <p className="text-sm text-[#e5e4e2]/60 mb-3">
@@ -280,8 +277,28 @@ function CreateTemplateModal({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    category: 'event',
+    event_category_id: '',
   });
+  const [eventCategories, setEventCategories] = useState<{id: string; name: string; icon: string | null}[]>([]);
+
+  useEffect(() => {
+    fetchEventCategories();
+  }, []);
+
+  const fetchEventCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('event_categories')
+        .select('id, name, icon')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setEventCategories(data || []);
+    } catch (err) {
+      console.error('Error fetching event categories:', err);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -298,7 +315,7 @@ function CreateTemplateModal({
           {
             name: formData.name,
             description: formData.description || null,
-            category: formData.category,
+            event_category_id: formData.event_category_id || null,
             content: '',
             placeholders: [],
             is_active: true,
@@ -358,17 +375,19 @@ function CreateTemplateModal({
 
           <div>
             <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Kategoria
+              Kategoria wydarzenia (opcjonalnie)
             </label>
             <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              value={formData.event_category_id}
+              onChange={(e) => setFormData({ ...formData, event_category_id: e.target.value })}
               className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
             >
-              <option value="event">Event</option>
-              <option value="service">Usługa</option>
-              <option value="rental">Wynajem</option>
-              <option value="other">Inne</option>
+              <option value="">Bez kategorii</option>
+              {eventCategories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.icon ? `${cat.icon} ${cat.name}` : cat.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>
