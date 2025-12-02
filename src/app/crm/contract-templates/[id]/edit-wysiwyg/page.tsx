@@ -343,7 +343,7 @@ export default function EditTemplateWYSIWYGPage() {
               <span className="text-xs text-[#e5e4e2]/60">Rozmiar logo:</span>
               <input
                 type="range"
-                min="40"
+                min="20"
                 max="120"
                 value={logoSize}
                 onChange={(e) => setLogoSize(Number(e.target.value))}
@@ -426,7 +426,7 @@ export default function EditTemplateWYSIWYGPage() {
           width: 210mm;
           min-height: 297mm;
           margin: 0 auto 20px auto;
-          padding: 20mm 25mm 40mm 25mm;
+          padding: 20mm 25mm 20mm 25mm;
           background: white;
           box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
           font-family: Arial, sans-serif;
@@ -440,7 +440,7 @@ export default function EditTemplateWYSIWYGPage() {
           top: 15mm;
           left: 50%;
           transform: translateX(-50%);
-          height: 60mm;
+          height: 40mm;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -465,7 +465,7 @@ export default function EditTemplateWYSIWYGPage() {
         }
 
         .contract-content-wysiwyg {
-          margin-top: 80mm;
+          margin-top: 40mm;
           min-height: 400px;
           text-align: justify;
           color: #000;
@@ -535,7 +535,7 @@ export default function EditTemplateWYSIWYGPage() {
         }
 
         .contract-content-wysiwyg li {
-          margin: 0.5em 0;
+          margin: 0.1em 0;
           display: list-item;
         }
 
@@ -543,7 +543,7 @@ export default function EditTemplateWYSIWYGPage() {
           max-width: 100%;
           height: auto;
           display: block;
-          margin: 20px auto;
+          margin: 10px auto;
         }
 
         .contract-footer-wysiwyg {
@@ -552,12 +552,12 @@ export default function EditTemplateWYSIWYGPage() {
           left: 50%;
           transform: translateX(-50%);
           width: 80%;
-          height: 180px;
+          height: 120px;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 20px 0;
+          padding: 10px 0;
           background: white;
           pointer-events: none;
         }
@@ -568,7 +568,7 @@ export default function EditTemplateWYSIWYGPage() {
           top: 0;
           left: 0;
           right: 0;
-          height: 2px;
+          height: 1px;
           background: #d3bb73;
         }
 
