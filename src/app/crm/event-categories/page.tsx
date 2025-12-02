@@ -20,6 +20,7 @@ interface EventCategory {
   is_active: boolean;
   icon_id: string | null;
   icon?: CustomIcon;
+  contract_template_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -27,6 +28,7 @@ interface EventCategory {
 export default function EventCategoriesPage() {
   const [categories, setCategories] = useState<EventCategory[]>([]);
   const [icons, setIcons] = useState<CustomIcon[]>([]);
+  const [contractTemplates, setContractTemplates] = useState<{id: string; name: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showIconModal, setShowIconModal] = useState(false);
@@ -39,6 +41,7 @@ export default function EventCategoriesPage() {
     description: '',
     is_active: true,
     icon_id: '',
+    contract_template_id: '',
   });
   const [iconFormData, setIconFormData] = useState({
     name: '',
@@ -49,6 +52,7 @@ export default function EventCategoriesPage() {
   useEffect(() => {
     fetchCategories();
     fetchIcons();
+    fetchContractTemplates();
   }, []);
 
   useEffect(() => {
@@ -59,6 +63,7 @@ export default function EventCategoriesPage() {
         description: editingCategory.description || '',
         is_active: editingCategory.is_active,
         icon_id: editingCategory.icon_id || '',
+        contract_template_id: editingCategory.contract_template_id || '',
       });
     }
   }, [editingCategory]);
@@ -96,6 +101,21 @@ export default function EventCategoriesPage() {
     }
   };
 
+  const fetchContractTemplates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contract_templates')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setContractTemplates(data || []);
+    } catch (error) {
+      console.error('Error fetching contract templates:', error);
+    }
+  };
+
   const handleOpenModal = (category?: EventCategory) => {
     if (category) {
       setEditingCategory(category);
@@ -105,6 +125,7 @@ export default function EventCategoriesPage() {
         description: category.description || '',
         is_active: category.is_active,
         icon_id: category.icon_id || '',
+        contract_template_id: category.contract_template_id || '',
       });
     } else {
       setEditingCategory(null);
@@ -114,6 +135,7 @@ export default function EventCategoriesPage() {
         description: '',
         is_active: true,
         icon_id: '',
+        contract_template_id: '',
       });
     }
     setShowModal(true);
@@ -128,6 +150,7 @@ export default function EventCategoriesPage() {
       description: '',
       is_active: true,
       icon_id: '',
+      contract_template_id: '',
     });
   };
 
@@ -167,6 +190,7 @@ export default function EventCategoriesPage() {
       const dataToSave = {
         ...formData,
         icon_id: formData.icon_id || null,
+        contract_template_id: formData.contract_template_id || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -553,6 +577,24 @@ export default function EventCategoriesPage() {
                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       rows={3}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Szablon umowy (opcjonalnie)
+                    </label>
+                    <select
+                      value={formData.contract_template_id}
+                      onChange={(e) => setFormData({ ...formData, contract_template_id: e.target.value })}
+                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Brak szablonu</option>
+                      {contractTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="flex items-center gap-3">

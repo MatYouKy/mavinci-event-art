@@ -11,7 +11,7 @@ interface ContractTemplate {
   description: string;
   content: string;
   event_category_id: string | null;
-  event_categories?: { id: string; name: string; icon: string | null };
+  event_categories?: { id: string; name: string; color: string };
   placeholders: any[];
   is_active: boolean;
   created_at: string;
@@ -39,7 +39,7 @@ export default function ContractTemplatesPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('contract_templates')
-        .select('*, event_categories(id, name, icon)')
+        .select('*, event_categories(id, name, color)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -191,8 +191,13 @@ export default function ContractTemplatesPage() {
                         {template.is_active ? 'Aktywny' : 'Nieaktywny'}
                       </span>
                       {template.event_categories && (
-                        <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 flex items-center gap-1">
-                          {template.event_categories.icon && <span>{template.event_categories.icon}</span>}
+                        <span
+                          className="text-xs px-2 py-1 rounded flex items-center gap-1"
+                          style={{
+                            backgroundColor: `${template.event_categories.color}20`,
+                            color: template.event_categories.color
+                          }}
+                        >
                           {template.event_categories.name}
                         </span>
                       )}
@@ -279,7 +284,7 @@ function CreateTemplateModal({
     description: '',
     event_category_id: '',
   });
-  const [eventCategories, setEventCategories] = useState<{id: string; name: string; icon: string | null}[]>([]);
+  const [eventCategories, setEventCategories] = useState<{id: string; name: string; color: string}[]>([]);
 
   useEffect(() => {
     fetchEventCategories();
@@ -289,7 +294,7 @@ function CreateTemplateModal({
     try {
       const { data, error } = await supabase
         .from('event_categories')
-        .select('id, name, icon')
+        .select('id, name, color')
         .eq('is_active', true)
         .order('name');
 
@@ -385,7 +390,7 @@ function CreateTemplateModal({
               <option value="">Bez kategorii</option>
               {eventCategories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
-                  {cat.icon ? `${cat.icon} ${cat.name}` : cat.name}
+                  {cat.name}
                 </option>
               ))}
             </select>
