@@ -49,7 +49,19 @@ export default function EditTemplateWYSIWYGPage() {
 
       if (data) {
         setTemplate(data);
-        setContentHtml(data.content_html || data.content || '');
+
+        let initialHtml = data.content_html || '';
+
+        if (!initialHtml && data.content) {
+          initialHtml = data.content
+            .split('\n')
+            .map(line => `<pre>${line || '\n'}</pre>`)
+            .join('');
+
+          console.log('Auto-converted plain content to HTML with <pre> tags');
+        }
+
+        setContentHtml(initialHtml);
       }
     } catch (err: any) {
       console.error('Error:', err);
