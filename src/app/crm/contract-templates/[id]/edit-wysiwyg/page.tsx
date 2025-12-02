@@ -1,36 +1,22 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Save, ArrowLeft, Upload, Eye, X } from 'lucide-react';
+import { Save, ArrowLeft, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Type } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import dynamic from 'next/dynamic';
-import 'react-quill/dist/quill.snow.css';
-
-const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
-
-interface Logo {
-  id: string;
-  url: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
 
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const templateId = params.id as string;
-  const quillRef = useRef<any>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState<any>(null);
   const [contentHtml, setContentHtml] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     fetchTemplate();
@@ -77,7 +63,7 @@ export default function EditTemplateWYSIWYGPage() {
       return;
     }
 
-    if (!contentHtml || contentHtml.trim() === '' || contentHtml === '<p><br></p>') {
+    if (!contentHtml || contentHtml.trim() === '') {
       showSnackbar('Treść szablonu nie może być pusta', 'error');
       return;
     }
@@ -85,40 +71,22 @@ export default function EditTemplateWYSIWYGPage() {
     try {
       setSaving(true);
 
-      console.log('Saving content_html (original):', contentHtml);
-
       const plainText = contentHtml.replace(/<[^>]*>/g, '').trim();
-
-      let processedHtml = contentHtml;
-      processedHtml = processedHtml.replace(/<p>/g, '<pre>');
-      processedHtml = processedHtml.replace(/<\/p>/g, '</pre>');
-      processedHtml = processedHtml.replace(/<pre><br><\/pre>/g, '<pre>\n</pre>');
-      processedHtml = processedHtml.replace(/<br>/g, '\n');
-
-      console.log('Saving content_html (processed):', processedHtml);
 
       const updateData = {
         content: plainText || 'Szablon umowy',
-        content_html: processedHtml,
+        content_html: contentHtml,
         updated_at: new Date().toISOString(),
       };
 
-      console.log('Update data:', updateData);
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('contract_templates')
         .update(updateData)
-        .eq('id', templateId)
-        .select();
+        .eq('id', templateId);
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('Saved successfully:', data);
       showSnackbar('Szablon zapisany pomyślnie', 'success');
-
       await fetchTemplate();
     } catch (err: any) {
       console.error('Error saving template:', err);
@@ -128,46 +96,48 @@ export default function EditTemplateWYSIWYGPage() {
     }
   };
 
-  const modules = useMemo(
-    () => ({
-      toolbar: [
-        [{ header: [1, 2, 3, 4, 5, 6, false] }],
-        [{ font: [] }],
-        [{ size: ['small', false, 'large', 'huge'] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ color: [] }, { background: [] }],
-        [{ script: 'sub' }, { script: 'super' }],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        [{ indent: '-1' }, { indent: '+1' }],
-        [{ align: [] }],
-        ['blockquote', 'code-block'],
-        ['link', 'image'],
-        ['clean'],
-      ],
-    }),
-    []
-  );
+  const execCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    if (editorRef.current) {
+      setContentHtml(editorRef.current.innerHTML);
+    }
+  };
 
-  const formats = [
-    'header',
-    'font',
-    'size',
-    'image',
-    'bold',
-    'italic',
-    'underline',
-    'strike',
-    'color',
-    'background',
-    'script',
-    'list',
-    'bullet',
-    'indent',
-    'align',
-    'blockquote',
-    'code-block',
-    'link',
-  ];
+  const insertPlaceholder = (placeholder: string) => {
+    const selection = window.getSelection();
+    if (!selection || !editorRef.current) return;
+
+    const range = selection.getRangeAt(0);
+    const textNode = document.createTextNode(placeholder);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    setContentHtml(editorRef.current.innerHTML);
+  };
+
+  const insertLogo = () => {
+    const img = document.createElement('img');
+    img.src = '/erulers_logo_vect.png';
+    img.style.maxWidth = '300px';
+    img.style.height = 'auto';
+    img.style.display = 'block';
+    img.style.margin = '20px auto';
+
+    const selection = window.getSelection();
+    if (!selection || !editorRef.current) return;
+
+    const range = selection.getRangeAt(0);
+    range.insertNode(img);
+    range.setStartAfter(img);
+    range.setEndAfter(img);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    setContentHtml(editorRef.current.innerHTML);
+  };
 
   if (loading) {
     return (
@@ -204,254 +174,296 @@ export default function EditTemplateWYSIWYGPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowPreview(!showPreview)}
-                className="flex items-center gap-2 px-4 py-2 text-[#e5e4e2] border border-[#d3bb73]/20 rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
-              >
-                <Eye className="w-4 h-4" />
-                {showPreview ? 'Edycja' : 'Podgląd'}
-              </button>
-
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {saving ? 'Zapisywanie...' : 'Zapisz'}
-              </button>
-            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {saving ? 'Zapisywanie...' : 'Zapisz'}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Debug Info */}
-      <div className="max-w-[1200px] mx-auto px-6 pb-4">
-        <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3 text-xs text-yellow-200">
-          <div><strong>Debug:</strong> contentHtml length = {contentHtml?.length || 0}</div>
-          <div>Has content: {contentHtml ? 'Yes' : 'No'}</div>
-          <div>Preview: {contentHtml?.substring(0, 100)}...</div>
-        </div>
-      </div>
+      {/* Toolbar */}
+      <div className="bg-[#1c1f33] border-b border-[#d3bb73]/20 sticky top-[73px] z-30">
+        <div className="max-w-[1400px] mx-auto px-6 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => execCommand('bold')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Pogrubienie">
+              <Bold className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
+            <button onClick={() => execCommand('italic')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Kursywa">
+              <Italic className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
+            <button onClick={() => execCommand('underline')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Podkreślenie">
+              <Underline className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
 
-      {/* Toolbar - Logo i Placeholdery */}
-      <div className="max-w-[1200px] mx-auto px-6 pb-4">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              onClick={() => {
-                try {
-                  if (quillRef.current) {
-                    const quill = quillRef.current.getEditor();
-                    const range = quill.getSelection();
-                    const position = range ? range.index : quill.getLength();
-                    quill.insertEmbed(position, 'image', '/erulers_logo_vect.png');
-                    quill.setSelection(position + 1);
-                  }
-                } catch (err) {
-                  console.error('Error inserting logo:', err);
-                  showSnackbar('Błąd wstawiania logo', 'error');
-                }
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+
+            <button onClick={() => execCommand('justifyLeft')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Do lewej">
+              <AlignLeft className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
+            <button onClick={() => execCommand('justifyCenter')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Wyśrodkuj">
+              <AlignCenter className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
+            <button onClick={() => execCommand('justifyRight')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Do prawej">
+              <AlignRight className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
+
+            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+
+            <button onClick={() => execCommand('insertUnorderedList')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Lista">
+              <List className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
+            <button onClick={() => execCommand('insertOrderedList')} className="p-2 hover:bg-[#d3bb73]/10 rounded" title="Lista numerowana">
+              <ListOrdered className="w-4 h-4 text-[#e5e4e2]" />
+            </button>
+
+            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+
+            <select
+              onChange={(e) => execCommand('fontSize', e.target.value)}
+              className="bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/20 rounded px-2 py-1 text-sm"
             >
-              <Upload className="w-4 h-4" />
+              <option value="3">12pt</option>
+              <option value="4">14pt</option>
+              <option value="5">16pt</option>
+              <option value="6">18pt</option>
+              <option value="7">24pt</option>
+            </select>
+
+            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
+
+            <button onClick={insertLogo} className="px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded text-sm font-medium hover:bg-[#d3bb73]/90">
               Wstaw Logo
             </button>
 
-            <div className="h-6 w-px bg-[#d3bb73]/30" />
+            <div className="h-6 w-px bg-[#d3bb73]/30 mx-2" />
 
-            <span className="text-sm text-[#e5e4e2]/60">Wstaw placeholder:</span>
+            <span className="text-xs text-[#e5e4e2]/60">Placeholdery:</span>
 
             {[
-              { key: '{{client_name}}', label: 'Nazwa klienta' },
-              { key: '{{client_address}}', label: 'Adres klienta' },
-              { key: '{{client_city}}', label: 'Miasto klienta' },
-              { key: '{{client_postal_code}}', label: 'Kod pocztowy' },
-              { key: '{{client_nip}}', label: 'NIP klienta' },
-              { key: '{{client_phone}}', label: 'Telefon klienta' },
-              { key: '{{client_email}}', label: 'Email klienta' },
-              { key: '{{client_id_number}}', label: 'Nr dowodu' },
-              { key: '{{event_name}}', label: 'Nazwa wydarzenia' },
-              { key: '{{event_date}}', label: 'Data wydarzenia' },
+              { key: '{{client_name}}', label: 'Klient' },
+              { key: '{{client_address}}', label: 'Adres' },
+              { key: '{{client_nip}}', label: 'NIP' },
+              { key: '{{event_name}}', label: 'Wydarzenie' },
+              { key: '{{event_date}}', label: 'Data' },
               { key: '{{event_location}}', label: 'Lokalizacja' },
-              { key: '{{contract_date}}', label: 'Data umowy' },
-              { key: '{{contract_number}}', label: 'Numer umowy' },
-              { key: '{{total_price}}', label: 'Cena całkowita' },
-            ].map((placeholder) => (
+              { key: '{{total_price}}', label: 'Cena' },
+            ].map((p) => (
               <button
-                key={placeholder.key}
-                onClick={() => {
-                  try {
-                    if (quillRef.current) {
-                      const quill = quillRef.current.getEditor();
-                      const range = quill.getSelection();
-                      const position = range ? range.index : quill.getLength();
-                      quill.insertText(position, placeholder.key);
-                      quill.setSelection(position + placeholder.key.length);
-                    }
-                  } catch (err) {
-                    console.error('Error inserting placeholder:', err);
-                    showSnackbar('Błąd wstawiania placeholder', 'error');
-                  }
-                }}
-                className="px-3 py-1.5 text-sm bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/30 rounded-md hover:bg-[#d3bb73]/10 transition-colors"
-                title={`Wstaw: ${placeholder.key}`}
+                key={p.key}
+                onClick={() => insertPlaceholder(p.key)}
+                className="px-2 py-1 text-xs bg-[#0f1119] text-[#d3bb73] border border-[#d3bb73]/20 rounded hover:bg-[#d3bb73]/10"
+                title={p.key}
               >
-                {placeholder.label}
+                {p.label}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Editor */}
-      <div className="max-w-[1200px] mx-auto px-6 py-8">
-        {!showPreview ? (
-          <div className="bg-white rounded-lg shadow-2xl overflow-hidden">
-            {typeof window !== 'undefined' && (
-              <ReactQuill
-                ref={quillRef}
-                theme="snow"
-                value={contentHtml}
-                onChange={(content, delta, source, editor) => {
-                  console.log('Content changed:', content);
-                  setContentHtml(content);
-                }}
-                modules={modules}
-                formats={formats}
-                className="wysiwyg-editor"
-                placeholder="Wpisz treść szablonu umowy..."
-                style={{
-                  minHeight: '800px',
-                  backgroundColor: 'white',
-                }}
-              />
-            )}
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-2xl overflow-hidden p-12">
+      {/* A4 Editor */}
+      <div className="bg-[#f5f5f5] min-h-screen py-8">
+        <div className="max-w-[230mm] mx-auto px-4">
+          <div className="contract-a4-page-wysiwyg">
+            <div className="contract-header-logo-wysiwyg">
+              <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+            </div>
+
+            <div className="contract-current-date-wysiwyg">
+              {new Date().toLocaleDateString('pl-PL', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })}
+            </div>
+
             <div
-              className="prose prose-lg max-w-none"
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={(e) => setContentHtml(e.currentTarget.innerHTML)}
+              onBlur={(e) => setContentHtml(e.currentTarget.innerHTML)}
               dangerouslySetInnerHTML={{ __html: contentHtml }}
-              style={{
-                minHeight: '800px',
-                color: '#000',
-                fontFamily: 'Arial, sans-serif',
-                fontSize: '12pt',
-                lineHeight: '1.6',
-              }}
+              className="contract-content-wysiwyg"
+              style={{ outline: 'none' }}
             />
+
+            <div className="contract-footer-wysiwyg">
+              <div className="footer-logo-wysiwyg">
+                <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+              </div>
+              <div className="footer-info-wysiwyg">
+                <p>EVENT RULERS – Więcej niż Wodzireje!</p>
+                <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                <p>tel: 698-212-279</p>
+              </div>
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Custom Styles */}
       <style jsx global>{`
-        .wysiwyg-editor .ql-toolbar {
-          background: #f8f9fa !important;
-          border: 1px solid #dee2e6 !important;
-          border-bottom: none !important;
-          border-radius: 8px 8px 0 0 !important;
-          padding: 12px !important;
+        .contract-a4-page-wysiwyg {
+          position: relative;
+          width: 210mm;
+          min-height: 297mm;
+          margin: 0 auto 20px auto;
+          padding: 20mm 25mm 40mm 25mm;
+          background: white;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+          font-family: Arial, sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          color: #000;
         }
 
-        .wysiwyg-editor .ql-container {
-          background: white !important;
-          border: 1px solid #dee2e6 !important;
-          border-radius: 0 0 8px 8px !important;
-          font-family: Arial, sans-serif !important;
-          font-size: 12pt !important;
-          line-height: 1.6 !important;
-          min-height: 800px !important;
+        .contract-header-logo-wysiwyg {
+          position: absolute;
+          top: 15mm;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 80%;
+          height: 60mm;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: none;
         }
 
-        .wysiwyg-editor .ql-editor {
-          min-height: 800px !important;
-          padding: 40px !important;
-          color: #000 !important;
+        .contract-header-logo-wysiwyg img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
         }
 
-        .wysiwyg-editor .ql-editor p {
-          margin-bottom: 1em !important;
-          display: block !important;
+        .contract-current-date-wysiwyg {
+          position: absolute;
+          top: 15mm;
+          right: 25mm;
+          font-size: 10pt;
+          color: #333;
+          font-weight: 500;
+          pointer-events: none;
         }
 
-        .wysiwyg-editor .ql-editor p br {
-          display: block !important;
+        .contract-content-wysiwyg {
+          margin-top: 80mm;
+          min-height: 400px;
+          text-align: justify;
+          color: #000;
+          font-family: Arial, sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
         }
 
-        .wysiwyg-editor .ql-editor h1,
-        .wysiwyg-editor .ql-editor h2,
-        .wysiwyg-editor .ql-editor h3 {
-          margin-top: 1.5em !important;
-          margin-bottom: 0.75em !important;
+        .contract-content-wysiwyg:focus {
+          outline: 2px solid #d3bb73;
+          outline-offset: 4px;
         }
 
-        .wysiwyg-editor .ql-snow .ql-picker {
-          color: #000 !important;
+        .contract-content-wysiwyg p {
+          margin: 0 0 1em 0;
         }
 
-        .wysiwyg-editor .ql-toolbar button:hover,
-        .wysiwyg-editor .ql-toolbar button.ql-active {
-          color: #d3bb73 !important;
-        }
-
-        .wysiwyg-editor .ql-snow.ql-toolbar button:hover .ql-stroke,
-        .wysiwyg-editor .ql-snow .ql-toolbar button:hover .ql-stroke,
-        .wysiwyg-editor .ql-snow.ql-toolbar button.ql-active .ql-stroke,
-        .wysiwyg-editor .ql-snow .ql-toolbar button.ql-active .ql-stroke {
-          stroke: #d3bb73 !important;
-        }
-
-        .wysiwyg-editor .ql-snow.ql-toolbar button:hover .ql-fill,
-        .wysiwyg-editor .ql-snow .ql-toolbar button:hover .ql-fill,
-        .wysiwyg-editor .ql-snow.ql-toolbar button.ql-active .ql-fill,
-        .wysiwyg-editor .ql-snow .ql-toolbar button.ql-active .ql-fill {
-          fill: #d3bb73 !important;
-        }
-
-        .prose p {
-          margin-bottom: 1em;
-        }
-
-        .prose h1,
-        .prose h2,
-        .prose h3,
-        .prose h4 {
+        .contract-content-wysiwyg h1,
+        .contract-content-wysiwyg h2,
+        .contract-content-wysiwyg h3 {
           margin-top: 1.5em;
           margin-bottom: 0.75em;
           font-weight: bold;
         }
 
-        .prose strong {
+        .contract-content-wysiwyg h1 {
+          font-size: 18pt;
+          text-align: center;
+        }
+
+        .contract-content-wysiwyg h2 {
+          font-size: 16pt;
+        }
+
+        .contract-content-wysiwyg h3 {
+          font-size: 14pt;
+        }
+
+        .contract-content-wysiwyg strong,
+        .contract-content-wysiwyg b {
           font-weight: bold;
         }
 
-        .prose em {
+        .contract-content-wysiwyg em,
+        .contract-content-wysiwyg i {
           font-style: italic;
         }
 
-        .prose u {
+        .contract-content-wysiwyg u {
           text-decoration: underline;
         }
 
-        .prose ul,
-        .prose ol {
-          margin-left: 1.5em;
-          margin-bottom: 1em;
+        .contract-content-wysiwyg ul,
+        .contract-content-wysiwyg ol {
+          margin: 1em 0;
+          padding-left: 2em;
         }
 
-        .prose li {
-          margin-bottom: 0.5em;
+        .contract-content-wysiwyg li {
+          margin: 0.5em 0;
         }
 
-        .prose blockquote {
-          margin-left: 2em;
-          padding-left: 1em;
-          border-left: 3px solid #ccc;
-          font-style: italic;
+        .contract-content-wysiwyg img {
+          max-width: 100%;
+          height: auto;
+          display: block;
+          margin: 20px auto;
+        }
+
+        .contract-footer-wysiwyg {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 180px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 25mm;
+          background: white;
+          border-top: 3px solid #d3bb73;
+          box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05);
+          pointer-events: none;
+        }
+
+        .footer-logo-wysiwyg {
+          flex-shrink: 0;
+          width: 120px;
+          height: 80px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .footer-logo-wysiwyg img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+        }
+
+        .footer-info-wysiwyg {
+          text-align: right;
+          font-size: 10pt;
+          color: #333;
+          line-height: 1.4;
+        }
+
+        .footer-info-wysiwyg p {
+          margin: 4px 0;
+          color: #333;
         }
       `}</style>
     </div>
