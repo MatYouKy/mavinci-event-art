@@ -9,31 +9,57 @@ interface Props {
   eventId: string;
 }
 
-interface ContractData {
-  client_name: string;
-  client_nip: string;
-  client_address: string;
-  client_city: string;
-  client_postal_code: string;
-  executor_name: string;
-  executor_nip: string;
-  executor_address: string;
-  executor_city: string;
-  executor_postal_code: string;
-  event_name: string;
-  event_date: string;
-  event_location: string;
-  scope_from_offer: string;
-  budget_amount: number;
-  contract_number: string;
-}
+const numberToWords = (num: number): string => {
+  const units = ['', 'jeden', 'dwa', 'trzy', 'cztery', 'pięć', 'sześć', 'siedem', 'osiem', 'dziewięć'];
+  const teens = ['dziesięć', 'jedenaście', 'dwanaście', 'trzynaście', 'czternaście', 'piętnaście', 'szesnaście', 'siedemnaście', 'osiemnaście', 'dziewiętnaście'];
+  const tens = ['', '', 'dwadzieścia', 'trzydzieści', 'czterdzieści', 'pięćdziesiąt', 'sześćdziesiąt', 'siedemdziesiąt', 'osiemdziesiąt', 'dziewięćdziesiąt'];
+  const hundreds = ['', 'sto', 'dwieście', 'trzysta', 'czterysta', 'pięćset', 'sześćset', 'siedemset', 'osiemset', 'dziewięćset'];
+
+  if (num === 0) return 'zero';
+  if (num < 0) return 'minus ' + numberToWords(-num);
+
+  let result = '';
+  const thousand = Math.floor(num / 1000);
+  const remainder = num % 1000;
+
+  if (thousand > 0) {
+    if (thousand === 1) result += 'tysiąc ';
+    else if (thousand < 10) result += units[thousand] + ' tysiące ';
+    else result += numberToWords(thousand) + ' tysięcy ';
+  }
+
+  const hundred = Math.floor(remainder / 100);
+  const ten = Math.floor((remainder % 100) / 10);
+  const unit = remainder % 10;
+
+  if (hundred > 0) result += hundreds[hundred] + ' ';
+  if (ten === 1) result += teens[unit] + ' ';
+  else {
+    if (ten > 0) result += tens[ten] + ' ';
+    if (unit > 0) result += units[unit] + ' ';
+  }
+
+  return result.trim();
+};
+
+const replaceVariables = (template: string, variables: Record<string, string>): string => {
+  let result = template;
+  Object.entries(variables).forEach(([key, value]) => {
+    const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+    result = result.replace(regex, value || '');
+  });
+  return result;
+};
 
 export function EventContractTab({ eventId }: Props) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
-  const [contractData, setContractData] = useState<ContractData | null>(null);
-  const [editedData, setEditedData] = useState<Partial<ContractData>>({});
+  const [contractContent, setContractContent] = useState('');
+  const [originalTemplate, setOriginalTemplate] = useState('');
+  const [variables, setVariables] = useState<Record<string, string>>({});
+  const [editedVariables, setEditedVariables] = useState<Record<string, string>>({});
+  const [templateExists, setTemplateExists] = useState(false);
 
   useEffect(() => {
     fetchContractData();
@@ -52,19 +78,30 @@ export function EventContractTab({ eventId }: Props) {
           budget,
           organization_id,
           location_id,
-          locations:location_id(name, formatted_address),
-          organizations:organization_id(
+          category_id,
+          locations:location_id(name, formatted_address, address, city, postal_code),
+          organizations:organization_id(name, nip, address, city, postal_code, phone, email),
+          event_categories:category_id(
             name,
-            nip,
-            address,
-            city,
-            postal_code
+            contract_template_id,
+            contract_templates:contract_template_id(id, name, content)
           )
         `)
         .eq('id', eventId)
         .single();
 
       if (eventError) throw eventError;
+
+      const template = event.event_categories?.contract_templates;
+
+      if (!template) {
+        setTemplateExists(false);
+        setLoading(false);
+        return;
+      }
+
+      setTemplateExists(true);
+      setOriginalTemplate(template.content);
 
       const { data: offers } = await supabase
         .from('offers')
@@ -75,28 +112,48 @@ export function EventContractTab({ eventId }: Props) {
         .maybeSingle();
 
       const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      const totalPrice = event.budget || offers?.total_price || 0;
+      const depositAmount = Math.round(totalPrice * 0.3);
 
-      const contract: ContractData = {
+      const varsMap: Record<string, string> = {
         client_name: event.organizations?.name || '',
-        client_nip: event.organizations?.nip || '',
         client_address: event.organizations?.address || '',
-        client_city: event.organizations?.city || '',
         client_postal_code: event.organizations?.postal_code || '',
-        executor_name: 'MAVINCI Mateusz Kwiatkowski',
-        executor_nip: '5242932863',
-        executor_address: 'ul. Przykładowa 1',
-        executor_city: 'Warszawa',
-        executor_postal_code: '00-001',
+        client_city: event.organizations?.city || '',
+        client_nip: event.organizations?.nip || '',
+        client_id_number: '',
+        client_phone: event.organizations?.phone || '',
+        client_email: event.organizations?.email || '',
+        executor_name: 'MAVINCI SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ',
+        executor_address: 'Marcina Kasprzaka',
+        executor_postal_code: '10-057',
+        executor_city: 'Olsztyn',
+        executor_nip: '7393958411',
+        executor_phone: '+48 698-212-279',
+        executor_email: 'wedding@eventrulers.pl',
         event_name: event.name || '',
-        event_date: event.event_date || '',
-        event_location: event.locations?.name || event.locations?.formatted_address || '',
-        scope_from_offer: offers?.description || '',
-        budget_amount: event.budget || offers?.total_price || 0,
+        event_date: event.event_date ? new Date(event.event_date).toLocaleDateString('pl-PL') : '',
+        event_time_start: '17:00',
+        event_time_end: '4:00',
+        event_location_name: event.locations?.name || '',
+        event_location_address: event.locations?.formatted_address || `${event.locations?.address || ''}, ${event.locations?.postal_code || ''} ${event.locations?.city || ''}`.trim(),
         contract_number: contractNumber,
+        contract_date: new Date().toLocaleDateString('pl-PL'),
+        total_price: totalPrice.toString(),
+        total_price_words: numberToWords(totalPrice) + ' złotych',
+        deposit_amount: depositAmount.toString(),
+        deposit_amount_words: numberToWords(depositAmount) + ' złotych',
+        remaining_amount: (totalPrice - depositAmount).toString(),
+        overtime_hour1_price: '1500',
+        overtime_hour2_price: '2000',
+        scope_description: offers?.description || 'Zakres usług zgodnie z ofertą',
+        services_list: '• Flagowe Trio (Dj, Wodzirej, Akordeonista)\n• Familiada',
       };
 
-      setContractData(contract);
-      setEditedData(contract);
+      setVariables(varsMap);
+      setEditedVariables(varsMap);
+      setContractContent(replaceVariables(template.content, varsMap));
+
     } catch (err) {
       console.error('Error fetching contract data:', err);
       showSnackbar('Błąd podczas ładowania danych umowy', 'error');
@@ -106,13 +163,14 @@ export function EventContractTab({ eventId }: Props) {
   };
 
   const handleSave = () => {
-    setContractData({ ...contractData, ...editedData } as ContractData);
+    setVariables(editedVariables);
+    setContractContent(replaceVariables(originalTemplate, editedVariables));
     setEditMode(false);
     showSnackbar('Dane umowy zostały zaktualizowane', 'success');
   };
 
   const handleCancel = () => {
-    setEditedData(contractData || {});
+    setEditedVariables(variables);
     setEditMode(false);
   };
 
@@ -128,10 +186,19 @@ export function EventContractTab({ eventId }: Props) {
     );
   }
 
-  if (!contractData) {
+  if (!templateExists) {
     return (
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
-        <div className="text-center text-[#e5e4e2]/60">Brak danych do wygenerowania umowy</div>
+        <div className="text-center">
+          <FileText className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <h3 className="text-xl text-[#e5e4e2] mb-2">Brak szablonu umowy</h3>
+          <p className="text-[#e5e4e2]/60 mb-4">
+            Dla tej kategorii wydarzenia nie został przypisany szablon umowy.
+          </p>
+          <p className="text-sm text-[#e5e4e2]/40">
+            Przejdź do <a href="/crm/event-categories" className="text-[#d3bb73] hover:underline">kategorii wydarzeń</a> aby przypisać szablon.
+          </p>
+        </div>
       </div>
     );
   }
@@ -142,7 +209,7 @@ export function EventContractTab({ eventId }: Props) {
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2] mb-1">Umowa na realizację wydarzenia</h2>
           <p className="text-sm text-[#e5e4e2]/60">
-            Szablon umowy z danymi klienta i wykonawcy
+            Automatycznie wygenerowana z danych wydarzenia
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -170,7 +237,7 @@ export function EventContractTab({ eventId }: Props) {
                 className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5"
               >
                 <Edit className="w-4 h-4" />
-                Edytuj
+                Edytuj zmienne
               </button>
               <button
                 onClick={handlePrint}
@@ -184,163 +251,29 @@ export function EventContractTab({ eventId }: Props) {
         </div>
       </div>
 
-      <div className="contract-preview bg-white text-black rounded-xl p-12 mx-auto" style={{ maxWidth: '210mm' }}>
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold mb-2">UMOWA NR {contractData.contract_number}</h1>
-          <p className="text-sm text-gray-600">na realizację wydarzenia</p>
-        </div>
-
-        <div className="mb-8 text-sm">
-          <p className="mb-1">
-            Zawarta w dniu {new Date().toLocaleDateString('pl-PL')} pomiędzy:
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-8 mb-8">
-          <div>
-            <h3 className="font-bold mb-3">ZAMAWIAJĄCY:</h3>
-            <div className="text-sm space-y-1">
-              {editMode ? (
-                <>
-                  <input
-                    type="text"
-                    value={editedData.client_name || ''}
-                    onChange={(e) => setEditedData({ ...editedData, client_name: e.target.value })}
-                    className="w-full border border-gray-300 rounded px-2 py-1 mb-1"
-                    placeholder="Nazwa klienta"
-                  />
-                  <input
-                    type="text"
-                    value={editedData.client_nip || ''}
-                    onChange={(e) => setEditedData({ ...editedData, client_nip: e.target.value })}
-                    className="w-full border border-gray-300 rounded px-2 py-1 mb-1"
-                    placeholder="NIP"
-                  />
-                  <input
-                    type="text"
-                    value={editedData.client_address || ''}
-                    onChange={(e) => setEditedData({ ...editedData, client_address: e.target.value })}
-                    className="w-full border border-gray-300 rounded px-2 py-1 mb-1"
-                    placeholder="Adres"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={editedData.client_postal_code || ''}
-                      onChange={(e) => setEditedData({ ...editedData, client_postal_code: e.target.value })}
-                      className="w-24 border border-gray-300 rounded px-2 py-1"
-                      placeholder="Kod"
-                    />
-                    <input
-                      type="text"
-                      value={editedData.client_city || ''}
-                      onChange={(e) => setEditedData({ ...editedData, client_city: e.target.value })}
-                      className="flex-1 border border-gray-300 rounded px-2 py-1"
-                      placeholder="Miasto"
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="font-medium">{contractData.client_name}</p>
-                  {contractData.client_nip && <p>NIP: {contractData.client_nip}</p>}
-                  {contractData.client_address && <p>{contractData.client_address}</p>}
-                  {(contractData.client_postal_code || contractData.client_city) && (
-                    <p>
-                      {contractData.client_postal_code} {contractData.client_city}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-bold mb-3">WYKONAWCA:</h3>
-            <div className="text-sm space-y-1">
-              <p className="font-medium">{contractData.executor_name}</p>
-              <p>NIP: {contractData.executor_nip}</p>
-              <p>{contractData.executor_address}</p>
-              <p>
-                {contractData.executor_postal_code} {contractData.executor_city}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h3 className="font-bold mb-3">§ 1. PRZEDMIOT UMOWY</h3>
-          <div className="text-sm space-y-2">
-            <p>
-              1. Przedmiotem umowy jest realizacja wydarzenia pod nazwą:{' '}
-              <span className="font-medium">{contractData.event_name}</span>
-            </p>
-            <p>
-              2. Data wydarzenia: <span className="font-medium">{new Date(contractData.event_date).toLocaleDateString('pl-PL')}</span>
-            </p>
-            <p>
-              3. Miejsce wydarzenia: <span className="font-medium">{contractData.event_location}</span>
-            </p>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h3 className="font-bold mb-3">§ 2. ZAKRES USŁUG</h3>
-          <div className="text-sm">
-            {editMode ? (
-              <textarea
-                value={editedData.scope_from_offer || ''}
-                onChange={(e) => setEditedData({ ...editedData, scope_from_offer: e.target.value })}
-                rows={6}
-                className="w-full border border-gray-300 rounded px-3 py-2"
-                placeholder="Zakres usług z oferty..."
-              />
-            ) : (
-              <p className="whitespace-pre-wrap">{contractData.scope_from_offer || 'Zakres usług zgodnie z ofertą'}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h3 className="font-bold mb-3">§ 3. WYNAGRODZENIE</h3>
-          <div className="text-sm space-y-2">
-            <p>
-              1. Za wykonanie przedmiotu umowy Zamawiający zobowiązuje się zapłacić Wykonawcy wynagrodzenie w wysokości:{' '}
-              {editMode ? (
+      {editMode && (
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+          <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Edycja zmiennych</h3>
+          <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+            {Object.entries(editedVariables).map(([key, value]) => (
+              <div key={key}>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-1">
+                  {key.replace(/_/g, ' ')}
+                </label>
                 <input
-                  type="number"
-                  value={editedData.budget_amount || 0}
-                  onChange={(e) => setEditedData({ ...editedData, budget_amount: parseFloat(e.target.value) })}
-                  className="w-32 border border-gray-300 rounded px-2 py-1 inline-block"
+                  type="text"
+                  value={value}
+                  onChange={(e) => setEditedVariables({ ...editedVariables, [key]: e.target.value })}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
                 />
-              ) : (
-                <span className="font-medium">{contractData.budget_amount.toFixed(2)} PLN brutto</span>
-              )}
-            </p>
-            <p>2. Płatność nastąpi przelewem na podstawie faktury VAT w terminie 14 dni od daty wystawienia.</p>
+              </div>
+            ))}
           </div>
         </div>
+      )}
 
-        <div className="mb-8">
-          <h3 className="font-bold mb-3">§ 4. POSTANOWIENIA KOŃCOWE</h3>
-          <div className="text-sm space-y-2">
-            <p>1. Umowa została sporządzona w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze stron.</p>
-            <p>2. W sprawach nieuregulowanych niniejszą umową mają zastosowanie przepisy Kodeksu cywilnego.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-8 mt-12">
-          <div className="text-center">
-            <div className="border-t border-black pt-2 mt-16">
-              <p className="text-sm font-medium">Podpis Zamawiającego</p>
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="border-t border-black pt-2 mt-16">
-              <p className="text-sm font-medium">Podpis Wykonawcy</p>
-            </div>
-          </div>
-        </div>
+      <div className="contract-preview bg-white text-black rounded-xl p-12 mx-auto whitespace-pre-wrap font-mono text-sm" style={{ maxWidth: '210mm' }}>
+        {contractContent}
       </div>
 
       <style jsx global>{`
@@ -364,6 +297,9 @@ export function EventContractTab({ eventId }: Props) {
             background: white;
             box-shadow: none;
             border-radius: 0;
+            font-family: 'Times New Roman', serif;
+            font-size: 11pt;
+            line-height: 1.5;
           }
 
           @page {
