@@ -17,6 +17,7 @@ interface Category {
   icon: string | null;
   display_order: number;
   is_active: boolean;
+  contract_template_id: string | null;
   products_count?: number;
   children_count?: number;
 }
@@ -31,11 +32,13 @@ export default function OfferCategoriesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [parentId, setParentId] = useState<string | null>(null);
+  const [contractTemplates, setContractTemplates] = useState<{id: string; name: string}[]>([]);
 
   const canManage = isAdmin || hasScope('offers_manage');
 
   useEffect(() => {
     fetchCategories();
+    fetchContractTemplates();
   }, []);
 
   const fetchCategories = async () => {
@@ -52,6 +55,21 @@ export default function OfferCategoriesPage() {
       showSnackbar(err.message || 'Błąd pobierania kategorii', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchContractTemplates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contract_templates')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setContractTemplates(data || []);
+    } catch (err: any) {
+      console.error('Błąd pobierania szablonów:', err);
     }
   };
 
@@ -97,6 +115,7 @@ export default function OfferCategoriesPage() {
       icon: formData.get('icon') as string || null,
       display_order: parseInt(formData.get('display_order') as string) || 0,
       is_active: formData.get('is_active') === 'on',
+      contract_template_id: formData.get('contract_template_id') as string || null,
     };
 
     try {
@@ -192,6 +211,7 @@ export default function OfferCategoriesPage() {
           category={editingCategory}
           parentId={parentId}
           categories={categories}
+          contractTemplates={contractTemplates}
           onClose={() => setShowModal(false)}
           onSave={handleSaveCategory}
         />
@@ -361,11 +381,12 @@ interface CategoryModalProps {
   category: Category | null;
   parentId: string | null;
   categories: Category[];
+  contractTemplates: {id: string; name: string}[];
   onClose: () => void;
   onSave: (e: React.FormEvent<HTMLFormElement>) => void;
 }
 
-function CategoryModal({ category, parentId, categories, onClose, onSave }: CategoryModalProps) {
+function CategoryModal({ category, parentId, categories, contractTemplates, onClose, onSave }: CategoryModalProps) {
   const parentCategory = parentId ? categories.find((c) => c.id === parentId) : null;
   const mainCategories = categories.filter((c) => c.level === 0);
 
@@ -446,6 +467,22 @@ function CategoryModal({ category, parentId, categories, onClose, onSave }: Cate
               defaultValue={category?.display_order || 0}
               className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Szablon umowy</label>
+            <select
+              name="contract_template_id"
+              defaultValue={category?.contract_template_id || ''}
+              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            >
+              <option value="">Brak szablonu</option>
+              {contractTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center gap-2">
