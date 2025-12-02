@@ -596,14 +596,23 @@ export default function EditTemplateWYSIWYGPage() {
             <span className="text-xs text-[#e5e4e2]/60">Placeholdery:</span>
 
             {[
-              { key: '{{client_name}}', label: 'Klient' },
-              { key: '{{client_address}}', label: 'Adres' },
+              { key: '{{client_first_name}}', label: 'Imię' },
+              { key: '{{client_last_name}}', label: 'Nazwisko' },
+              { key: '{{client_full_name}}', label: 'Imię i nazwisko' },
               { key: '{{client_email}}', label: 'Email' },
               { key: '{{client_phone}}', label: 'Telefon' },
-              { key: '{{client_nip}}', label: 'NIP' },
+              { key: '{{client_pesel}}', label: 'PESEL' },
+              { key: '{{client_address}}', label: 'Adres (ulica)' },
+              { key: '{{client_city}}', label: 'Miasto' },
+              { key: '{{client_postal_code}}', label: 'Kod pocztowy' },
+              { key: '{{client_nip}}', label: 'NIP (firma)' },
               { key: '{{event_name}}', label: 'Wydarzenie' },
               { key: '{{event_date}}', label: 'Data' },
-              { key: '{{event_location}}', label: 'Lokalizacja' },
+              { key: '{{location_name}}', label: 'Nazwa lokalizacji' },
+              { key: '{{location_address}}', label: 'Adres lokalizacji' },
+              { key: '{{location_city}}', label: 'Miasto lokalizacji' },
+              { key: '{{location_postal_code}}', label: 'Kod pocztowy lok.' },
+              { key: '{{location_full}}', label: 'Pełny adres lok.' },
               { key: '{{total_price}}', label: 'Cena całkowita' },
               { key: '{{deposit_amount}}', label: 'Zadatek' },
             ].map((p) => (

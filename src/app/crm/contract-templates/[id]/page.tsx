@@ -153,7 +153,59 @@ export default function ContractTemplateViewPage() {
           )}
 
           {/* Render content */}
-          {template.content_html ? (
+          {template.page_settings?.pages ? (
+            <div className="contract-pages">
+              {template.page_settings.pages.map((pageContent: string, pageIndex: number) => (
+                <div
+                  key={pageIndex}
+                  className="contract-page"
+                  style={{
+                    minHeight: '297mm',
+                    width: '210mm',
+                    padding: '20mm',
+                    marginBottom: pageIndex < template.page_settings.pages.length - 1 ? '10mm' : '0',
+                    pageBreakAfter: pageIndex < template.page_settings.pages.length - 1 ? 'always' : 'auto',
+                    background: 'white',
+                    position: 'relative',
+                  }}
+                >
+                  <div
+                    className="contract-content prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: pageContent }}
+                  />
+
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '15mm',
+                      left: '20mm',
+                      right: '20mm',
+                      textAlign: 'center',
+                      fontSize: '10pt',
+                      color: '#666',
+                      borderTop: '1px solid #ddd',
+                      paddingTop: '10px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
+                      <img src="/erulers_logo_vect.png" alt="EVENT RULERS" style={{ height: '30px' }} />
+                    </div>
+                    <p style={{ margin: 0 }}>
+                      <strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em>
+                    </p>
+                    <p style={{ margin: '5px 0 0 0' }}>
+                      www.eventrulers.pl | biuro@eventrulers.pl | tel: 698-212-279
+                    </p>
+                    {pageIndex > 0 && template.page_settings.pages.length > 1 && (
+                      <div style={{ position: 'absolute', top: '-25px', right: '0', fontSize: '10pt', color: '#666' }}>
+                        Strona {pageIndex + 1}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : template.content_html ? (
             <div
               className="contract-content prose prose-sm max-w-none"
               dangerouslySetInnerHTML={{ __html: template.content_html }}
