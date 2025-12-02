@@ -79,6 +79,7 @@ export function EventContractTab({ eventId }: Props) {
           budget,
           organization_id,
           location_id,
+          location,
           category_id,
           contact_person_id,
           locations:location_id(name, formatted_address, address, city, postal_code),
@@ -139,6 +140,23 @@ export function EventContractTab({ eventId }: Props) {
       const organization = event.organizations;
       const location = event.locations;
 
+      const parseLocationString = (locationStr: string) => {
+        if (!locationStr) return { address: '', city: '', postal: '' };
+        const parts = locationStr.split(',').map(s => s.trim());
+        if (parts.length >= 3) {
+          const postalCity = parts[1].trim().split(' ');
+          return {
+            address: parts[0] || '',
+            postal: postalCity[0] || '',
+            city: postalCity.slice(1).join(' ') || '',
+          };
+        }
+        return { address: locationStr, city: '', postal: '' };
+      };
+
+      const locationString = event.location || '';
+      const parsedLocation = parseLocationString(locationString);
+
       const varsMap: Record<string, string> = {
         contact_first_name: contact?.first_name || '',
         contact_last_name: contact?.last_name || '',
@@ -162,11 +180,11 @@ export function EventContractTab({ eventId }: Props) {
         event_date: formatDate(event.event_date),
         event_end_date: formatDate(event.event_end_date),
 
-        location_name: location?.name || '',
-        location_address: location?.address || '',
-        location_city: location?.city || '',
-        location_postal_code: location?.postal_code || '',
-        location_full: location?.formatted_address || `${location?.address || ''}, ${location?.postal_code || ''} ${location?.city || ''}`.trim(),
+        location_name: location?.name || parsedLocation.address || '',
+        location_address: location?.address || parsedLocation.address || '',
+        location_city: location?.city || parsedLocation.city || '',
+        location_postal_code: location?.postal_code || parsedLocation.postal || '',
+        location_full: location?.formatted_address || locationString || '',
 
         budget: totalPrice.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
         deposit_amount: depositAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
