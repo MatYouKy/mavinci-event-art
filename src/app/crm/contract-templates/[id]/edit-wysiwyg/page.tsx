@@ -598,11 +598,14 @@ export default function EditTemplateWYSIWYGPage() {
             {[
               { key: '{{client_name}}', label: 'Klient' },
               { key: '{{client_address}}', label: 'Adres' },
+              { key: '{{client_email}}', label: 'Email' },
+              { key: '{{client_phone}}', label: 'Telefon' },
               { key: '{{client_nip}}', label: 'NIP' },
               { key: '{{event_name}}', label: 'Wydarzenie' },
               { key: '{{event_date}}', label: 'Data' },
               { key: '{{event_location}}', label: 'Lokalizacja' },
-              { key: '{{total_price}}', label: 'Cena' },
+              { key: '{{total_price}}', label: 'Cena całkowita' },
+              { key: '{{deposit_amount}}', label: 'Zadatek' },
             ].map((p) => (
               <button
                 key={p.key}
