@@ -100,6 +100,11 @@ export default function EditTemplateWYSIWYGPage() {
         }
 
         setContentHtml(initialHtml);
+
+        if (data.page_settings) {
+          if (data.page_settings.logoSize) setLogoSize(data.page_settings.logoSize);
+          if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
+        }
       }
     } catch (err: any) {
       console.error('Error:', err);
@@ -128,6 +133,15 @@ export default function EditTemplateWYSIWYGPage() {
       const updateData = {
         content: plainText || 'Szablon umowy',
         content_html: contentHtml,
+        page_settings: {
+          logoSize,
+          lineHeight,
+          marginTop: 50,
+          marginBottom: 50,
+          marginLeft: 50,
+          marginRight: 50,
+          pageSize: 'A4'
+        },
         updated_at: new Date().toISOString(),
       };
 
@@ -490,49 +504,47 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-a4-page-wysiwyg {
           position: relative;
           width: 210mm;
-          min-height: 297mm;
+          height: 297mm;
           margin: 0 auto 20px auto;
-          padding: 20mm 25mm 20mm 25mm;
+          padding: 20mm 25mm;
           background: white;
           box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
           font-family: Arial, sans-serif;
           font-size: 12pt;
           line-height: 1.6;
           color: #000;
+          overflow: hidden;
+          page-break-after: always;
+          break-after: page;
         }
 
         .contract-header-logo-wysiwyg {
-          position: absolute;
-          top: 15mm;
-          left: 50%;
-          transform: translateX(-50%);
-          height: 40mm;
+          width: 100%;
           display: flex;
-          align-items: center;
           justify-content: center;
-          pointer-events: none;
-          transition: width 0.2s ease;
+          align-items: center;
+          margin-bottom: 10mm;
+          transition: all 0.2s ease;
         }
 
         .contract-header-logo-wysiwyg img {
-          width: 100%;
+          max-width: 100%;
           height: auto;
           object-fit: contain;
         }
 
         .contract-current-date-wysiwyg {
-          position: absolute;
-          top: 15mm;
-          right: 25mm;
+          text-align: right;
           font-size: 10pt;
           color: #333;
           font-weight: 500;
-          pointer-events: none;
+          margin-bottom: 10mm;
         }
 
         .contract-content-wysiwyg {
-          margin-top: 80mm;
-          min-height: 400px;
+          min-height: 180mm;
+          max-height: 220mm;
+          overflow: hidden;
           text-align: left;
           color: #000;
           font-family: Arial, sans-serif;
