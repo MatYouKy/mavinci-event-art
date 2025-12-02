@@ -27,6 +27,18 @@ export default function EditTemplateWYSIWYGPage() {
   }, [templateId]);
 
   useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.setAttribute('dir', 'ltr');
+      editorRef.current.style.direction = 'ltr';
+      editorRef.current.style.textAlign = 'left';
+      editorRef.current.style.unicodeBidi = 'embed';
+      if (contentHtml) {
+        editorRef.current.innerHTML = contentHtml;
+      }
+    }
+  }, [contentHtml]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
@@ -396,13 +408,22 @@ export default function EditTemplateWYSIWYGPage() {
 
             <div
               ref={editorRef}
-              contentEditable
+              contentEditable={true}
               suppressContentEditableWarning
-              onInput={(e) => setContentHtml(e.currentTarget.innerHTML)}
+              dir="ltr"
+              onInput={(e) => {
+                const target = e.currentTarget;
+                setContentHtml(target.innerHTML);
+                target.setAttribute('dir', 'ltr');
+                target.style.direction = 'ltr';
+              }}
               onBlur={(e) => setContentHtml(e.currentTarget.innerHTML)}
-              dangerouslySetInnerHTML={{ __html: contentHtml }}
+              onFocus={(e) => {
+                e.currentTarget.setAttribute('dir', 'ltr');
+                e.currentTarget.style.direction = 'ltr';
+              }}
               className="contract-content-wysiwyg"
-              style={{ outline: 'none', direction: 'ltr' }}
+              style={{ outline: 'none', direction: 'ltr', unicodeBidi: 'embed', textAlign: 'left' }}
             />
 
             <div className="contract-footer-wysiwyg">
