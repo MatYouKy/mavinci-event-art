@@ -23,6 +23,8 @@ export default function ContractTemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   useEffect(() => {
     fetchTemplates();
@@ -98,6 +100,39 @@ export default function ContractTemplatesPage() {
     }
   };
 
+  const handleStartEdit = (template: ContractTemplate) => {
+    setEditingId(template.id);
+    setEditingName(template.name);
+  };
+
+  const handleSaveEdit = async (id: string) => {
+    if (!editingName.trim()) {
+      showSnackbar('Nazwa nie może być pusta', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('contract_templates')
+        .update({ name: editingName.trim(), updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showSnackbar('Nazwa szablonu zaktualizowana', 'success');
+      setEditingId(null);
+      setEditingName('');
+      fetchTemplates();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd podczas zapisywania', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditingName('');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0d1a] flex items-center justify-center">
@@ -161,9 +196,41 @@ export default function ContractTemplatesPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-light text-[#e5e4e2]">
-                        {template.name}
-                      </h3>
+                      {editingId === template.id ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveEdit(template.id);
+                              if (e.key === 'Escape') handleCancelEdit();
+                            }}
+                            className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSaveEdit(template.id)}
+                            className="px-3 py-1 bg-[#d3bb73] text-[#1c1f33] rounded-lg text-sm hover:bg-[#d3bb73]/90"
+                          >
+                            Zapisz
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-3 py-1 border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg text-sm hover:bg-[#d3bb73]/10"
+                          >
+                            Anuluj
+                          </button>
+                        </div>
+                      ) : (
+                        <h3
+                          onClick={() => handleStartEdit(template)}
+                          className="text-lg font-light text-[#e5e4e2] cursor-pointer hover:text-[#d3bb73] transition-colors"
+                          title="Kliknij aby edytować nazwę"
+                        >
+                          {template.name}
+                        </h3>
+                      )}
                       <span
                         className={`text-xs px-2 py-1 rounded ${
                           template.is_active
