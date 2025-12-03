@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Calendar, MapPin, Building2, Tag, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+import { Plus, Search, Calendar, MapPin, Building2, Tag, SlidersHorizontal, ArrowUpDown, Trash2, AlertTriangle } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { Modal } from '@/components/UI/Modal';
 
 const statusColors = {
   offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
@@ -39,6 +40,8 @@ export default function EventsPage() {
   const [sortField, setSortField] = useState<SortField>('event_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<any>(null);
 
   useEffect(() => {
     fetchEvents();
@@ -52,7 +55,7 @@ export default function EventsPage() {
     try {
       const { data, error } = await supabase
         .from('events')
-        .select('*, organizations(name), contacts(first_name, last_name)')
+        .select('*, organizations(name), contacts(first_name, last_name), event_categories(name, color)')
         .order('event_date', { ascending: true });
 
       if (error) {
@@ -69,6 +72,33 @@ export default function EventsPage() {
     }
 
     setEvents([]);
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, event: any) => {
+    e.stopPropagation();
+    setEventToDelete(event);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!eventToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventToDelete.id);
+
+      if (error) throw error;
+
+      showSnackbar('Event został usunięty', 'success');
+      setDeleteModalOpen(false);
+      setEventToDelete(null);
+      fetchEvents();
+    } catch (err: any) {
+      console.error('Error deleting event:', err);
+      showSnackbar(err.message || 'Błąd podczas usuwania eventu', 'error');
+    }
   };
 
   const applyFiltersAndSort = () => {
@@ -317,45 +347,64 @@ export default function EventsPage() {
           return (
             <div
               key={event.id}
-              onClick={() => router.push(`/crm/events/${event.id}`)}
-              className={`bg-[#1c1f33] border rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer ${
+              className={`bg-[#1c1f33] border rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all relative ${
                 isPast ? 'border-[#e5e4e2]/5 opacity-60' : 'border-[#d3bb73]/10'
               }`}
             >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-lg font-medium text-[#e5e4e2]">
-                      {event.name}
-                    </h3>
-                    {isPast && (
-                      <span className="text-xs px-2 py-0.5 bg-[#e5e4e2]/10 text-[#e5e4e2]/50 rounded">
-                        Przeszły
-                      </span>
-                    )}
-                  </div>
-                <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/70">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4" />
-                    {event.organizations?.name || 'Brak klienta'}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {new Date(event.event_date).toLocaleDateString('pl-PL')}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    {event.location || 'Brak lokalizacji'}
+              <div onClick={() => router.push(`/crm/events/${event.id}`)} className="cursor-pointer">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-lg font-medium text-[#e5e4e2]">
+                        {event.name}
+                      </h3>
+                      {isPast && (
+                        <span className="text-xs px-2 py-0.5 bg-[#e5e4e2]/10 text-[#e5e4e2]/50 rounded">
+                          Przeszły
+                        </span>
+                      )}
+                    </div>
+                  <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/70">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4" />
+                      {event.organizations?.name || 'Brak klienta'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      {event.location || 'Brak lokalizacji'}
+                    </div>
                   </div>
                 </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs border ${
+                      statusColors[event.status]
+                    }`}
+                  >
+                    {statusLabels[event.status]}
+                  </span>
+                  {event.event_categories && (
+                    <span
+                      className="px-3 py-1 rounded-full text-xs border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73] flex items-center gap-1"
+                    >
+                      <Tag className="w-3 h-3" />
+                      {event.event_categories.name}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span
-                className={`px-3 py-1 rounded-full text-xs border ${
-                  statusColors[event.status]
-                }`}
+
+              <button
+                onClick={(e) => handleDeleteClick(e, event)}
+                className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                title="Usuń event"
               >
-                {statusLabels[event.status]}
-              </span>
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-[#d3bb73]/10">
@@ -373,6 +422,46 @@ export default function EventsPage() {
         onClose={() => setIsModalOpen(false)}
         onSuccess={fetchEvents}
       />
+
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Usuń event"
+      >
+        <div className="space-y-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-red-500/10 rounded-full">
+              <AlertTriangle className="w-6 h-6 text-red-500" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium text-[#e5e4e2] mb-2">
+                Czy na pewno chcesz usunąć ten event?
+              </h3>
+              <p className="text-[#e5e4e2]/70 mb-2">
+                Event: <strong className="text-[#d3bb73]">{eventToDelete?.name}</strong>
+              </p>
+              <p className="text-sm text-[#e5e4e2]/60">
+                Ta operacja jest nieodwracalna. Wszystkie powiązane dane (oferty, zadania, pliki) również zostaną usunięte.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#d3bb73]/20">
+            <button
+              onClick={() => setDeleteModalOpen(false)}
+              className="px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5 transition-colors"
+            >
+              Anuluj
+            </button>
+            <button
+              onClick={handleDeleteConfirm}
+              className="px-4 py-2 bg-red-500 rounded-lg text-white hover:bg-red-600 transition-colors"
+            >
+              Usuń event
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

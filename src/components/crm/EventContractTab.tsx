@@ -124,7 +124,19 @@ export function EventContractTab({ eventId }: Props) {
 
       const { data: offers } = await supabase
         .from('offers')
-        .select('description, total_price')
+        .select(`
+          id,
+          description,
+          total_price,
+          offer_products(
+            id,
+            product_name,
+            quantity,
+            unit_price,
+            total_price,
+            description
+          )
+        `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -186,6 +198,19 @@ export function EventContractTab({ eventId }: Props) {
       const locationString = event.location || '';
       const parsedLocation = parseLocationString(locationString);
 
+      const offerItems = offers?.offer_products || [];
+      const offerItemsHtml = offerItems.length > 0
+        ? `<ul style="margin: 0; padding-left: 20px; list-style-type: none;">
+            ${offerItems.map((item: any, index: number) => `
+              <li style="margin-bottom: 8px;">
+                <strong>${index + 1}. ${item.product_name || 'Produkt'}</strong>
+                ${item.description ? `<br/><span style="margin-left: 20px; font-size: 11pt; color: #333;">${item.description}</span>` : ''}
+                ${item.quantity ? `<br/><span style="margin-left: 20px; font-size: 11pt;">Ilość: ${item.quantity}</span>` : ''}
+              </li>
+            `).join('')}
+          </ul>`
+        : '<p style="font-style: italic; color: #666;">Brak pozycji w ofercie</p>';
+
       const varsMap: Record<string, string> = {
         contact_first_name: contact?.first_name || '',
         contact_last_name: contact?.last_name || '',
@@ -232,6 +257,8 @@ export function EventContractTab({ eventId }: Props) {
         executor_nip: '1234567890',
         executor_phone: '698-212-279',
         executor_email: 'biuro@eventrulers.pl',
+
+        offer_items: offerItemsHtml,
       };
 
       setVariables(varsMap);
@@ -411,7 +438,7 @@ export function EventContractTab({ eventId }: Props) {
 
             if (pages && Array.isArray(pages)) {
               return pages.map((pageContent: string, pageIndex: number) => (
-                <div key={pageIndex} className="contract-a4-page" style={{ marginBottom: pageIndex < pages.length - 1 ? '20px' : '0' }}>
+                <div key={pageIndex} className="contract-a4-page">
                   {pageIndex === 0 && (
                     <>
                       <div
