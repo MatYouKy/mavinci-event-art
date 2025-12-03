@@ -94,10 +94,43 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     if (params.id) {
-      fetchProduct();
+      if (params.id === 'new') {
+        setProduct({
+          id: '',
+          category_id: '',
+          name: '',
+          description: '',
+          base_price: 0,
+          cost_price: 0,
+          transport_cost: 0,
+          logistics_cost: 0,
+          vat_rate: 23,
+          price_net: 0,
+          price_gross: 0,
+          cost_net: 0,
+          cost_gross: 0,
+          transport_cost_net: 0,
+          transport_cost_gross: 0,
+          logistics_cost_net: 0,
+          logistics_cost_gross: 0,
+          setup_time_hours: 0,
+          teardown_time_hours: 0,
+          unit: 'szt',
+          min_quantity: 1,
+          max_quantity: null,
+          requires_vehicle: false,
+          requires_driver: false,
+          tags: [],
+          is_active: true,
+          display_order: 0,
+        });
+        setLoading(false);
+      } else {
+        fetchProduct();
+        fetchEquipment();
+        fetchStaff();
+      }
       fetchCategories();
-      fetchEquipment();
-      fetchStaff();
     }
   }, [params.id]);
 
@@ -173,37 +206,52 @@ export default function ProductDetailPage() {
 
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from('offer_products')
-        .update({
-          category_id: product.category_id,
-          name: product.name,
-          description: product.description,
-          vat_rate: product.vat_rate,
-          price_net: product.price_net,
-          price_gross: product.price_gross,
-          cost_net: product.cost_net,
-          cost_gross: product.cost_gross,
-          transport_cost_net: product.transport_cost_net,
-          transport_cost_gross: product.transport_cost_gross,
-          logistics_cost_net: product.logistics_cost_net,
-          logistics_cost_gross: product.logistics_cost_gross,
-          setup_time_hours: product.setup_time_hours,
-          teardown_time_hours: product.teardown_time_hours,
-          unit: product.unit,
-          min_quantity: product.min_quantity,
-          max_quantity: product.max_quantity,
-          requires_vehicle: product.requires_vehicle,
-          requires_driver: product.requires_driver,
-          tags: product.tags,
-          is_active: product.is_active,
-          display_order: product.display_order,
-        })
-        .eq('id', product.id);
 
-      if (error) throw error;
-      showSnackbar('Zapisano zmiany', 'success');
-      fetchProduct();
+      const productData = {
+        category_id: product.category_id,
+        name: product.name,
+        description: product.description,
+        vat_rate: product.vat_rate,
+        price_net: product.price_net,
+        price_gross: product.price_gross,
+        cost_net: product.cost_net,
+        cost_gross: product.cost_gross,
+        transport_cost_net: product.transport_cost_net,
+        transport_cost_gross: product.transport_cost_gross,
+        logistics_cost_net: product.logistics_cost_net,
+        logistics_cost_gross: product.logistics_cost_gross,
+        setup_time_hours: product.setup_time_hours,
+        teardown_time_hours: product.teardown_time_hours,
+        unit: product.unit,
+        min_quantity: product.min_quantity,
+        max_quantity: product.max_quantity,
+        requires_vehicle: product.requires_vehicle,
+        requires_driver: product.requires_driver,
+        tags: product.tags,
+        is_active: product.is_active,
+        display_order: product.display_order,
+      };
+
+      if (params.id === 'new') {
+        const { data, error } = await supabase
+          .from('offer_products')
+          .insert(productData)
+          .select()
+          .single();
+
+        if (error) throw error;
+        showSnackbar('Produkt został dodany', 'success');
+        router.push(`/crm/offers/products/${data.id}`);
+      } else {
+        const { error } = await supabase
+          .from('offer_products')
+          .update(productData)
+          .eq('id', product.id);
+
+        if (error) throw error;
+        showSnackbar('Zapisano zmiany', 'success');
+        fetchProduct();
+      }
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd zapisywania', 'error');
     } finally {
@@ -280,10 +328,14 @@ export default function ProductDetailPage() {
             <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
           </button>
           <div>
-            <h1 className="text-2xl font-light text-[#e5e4e2]">{product.name}</h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              {product.category?.name}
-            </p>
+            <h1 className="text-2xl font-light text-[#e5e4e2]">
+              {params.id === 'new' ? 'Nowy produkt' : product.name}
+            </h1>
+            {params.id !== 'new' && (
+              <p className="text-sm text-[#e5e4e2]/60 mt-1">
+                {product.category?.name}
+              </p>
+            )}
           </div>
         </div>
         {canEdit && (
@@ -293,7 +345,7 @@ export default function ProductDetailPage() {
             className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 transition-colors"
           >
             <Save className="w-4 h-4" />
-            {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
+            {saving ? 'Zapisywanie...' : params.id === 'new' ? 'Dodaj produkt' : 'Zapisz zmiany'}
           </button>
         )}
       </div>
@@ -677,6 +729,7 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Equipment */}
+      {params.id !== 'new' && (
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -744,8 +797,10 @@ export default function ProductDetailPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Staff */}
+      {params.id !== 'new' && (
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -793,6 +848,7 @@ export default function ProductDetailPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Add Equipment/Kit Modal */}
       {showAddEquipmentModal && (

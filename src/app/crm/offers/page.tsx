@@ -906,7 +906,7 @@ function CatalogTab({ products, categories, productSearch, setProductSearch, cat
           </button>
 
           <button
-            onClick={onRefresh}
+            onClick={() => router.push('/crm/offers/products/new')}
             className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors flex items-center space-x-2 whitespace-nowrap"
           >
             <Plus className="w-5 h-5" />
