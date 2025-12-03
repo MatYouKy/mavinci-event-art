@@ -236,11 +236,15 @@ export default function OrganizationDetailPage() {
       const entityType = fullData.entity_type;
       const entityData = fullData.entity_data;
 
+      console.log('Entity type:', entityType);
+      console.log('Entity data:', entityData);
+
       if (entityType === 'contact') {
         // To jest kontakt/osoba prywatna
         setEntityType('contact');
         setContact(entityData);
         setLoading(false);
+        return; // Ważne - zakończ tutaj!
       } else if (entityType === 'organization') {
         // To jest organizacja
         setEntityType('organization');

@@ -1769,12 +1769,6 @@ export default function EventDetailPage() {
                         ))}
                       </div>
                     )}
-
-                    {item.notes && (
-                      <div className="ml-9 mt-1 text-xs text-[#e5e4e2]/40 italic px-4">
-                        {item.notes}
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -1982,12 +1976,6 @@ export default function EventDetailPage() {
                             </span>
                           </div>
                         ))}
-                      </div>
-                    )}
-
-                    {item.notes && (
-                      <div className="ml-9 mt-1 text-xs text-[#e5e4e2]/40 italic px-4">
-                        {item.notes}
                       </div>
                     )}
                   </div>
