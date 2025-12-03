@@ -283,10 +283,15 @@ export default function OfferWizard({
     setLoading(true);
 
     try {
+      // Walidacja UUID
+      if (!eventId || eventId.trim() === '') {
+        throw new Error('Brak ID wydarzenia');
+      }
+
       // Utwórz ofertę
       const offerDataToInsert: any = {
         event_id: eventId,
-        organization_id: organizationId && organizationId.trim() !== '' ? organizationId : null,
+        organization_id: organizationId && typeof organizationId === 'string' && organizationId.trim() !== '' ? organizationId : null,
         valid_until: offerData.valid_until || null,
         notes: offerData.notes || null,
         status: 'draft',
@@ -301,13 +306,18 @@ export default function OfferWizard({
         offerDataToInsert.offer_number = null;
       }
 
+      console.log('Offer data to insert:', offerDataToInsert);
+
       const { data: offerResult, error: offerError } = await supabase
         .from('offers')
         .insert([offerDataToInsert])
         .select()
         .single();
 
-      if (offerError) throw offerError;
+      if (offerError) {
+        console.error('Offer insert error:', offerError);
+        throw offerError;
+      }
 
       // 2. Dodaj pozycje oferty
       const itemsToInsert = offerItems.map((item, index) => ({
@@ -328,11 +338,16 @@ export default function OfferWizard({
         notes: null,
       }));
 
+      console.log('Offer items to insert:', itemsToInsert);
+
       const { error: itemsError } = await supabase
         .from('offer_items')
         .insert(itemsToInsert);
 
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        console.error('Offer items insert error:', itemsError);
+        throw itemsError;
+      }
 
       alert(`Utworzono ofertę: ${offerResult.offer_number}`);
       onSuccess();
