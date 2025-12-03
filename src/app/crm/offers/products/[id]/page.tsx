@@ -201,6 +201,24 @@ export default function ProductDetailPage() {
     }
   };
 
+  const handleUpdateEquipmentQuantity = async (equipmentId: string, quantity: number) => {
+    if (quantity < 1) return;
+
+    try {
+      const { error } = await supabase
+        .from('offer_product_equipment')
+        .update({ quantity })
+        .eq('id', equipmentId);
+
+      if (error) throw error;
+
+      fetchEquipment();
+    } catch (error) {
+      console.error('Error updating quantity:', error);
+      showSnackbar('Błąd podczas aktualizacji ilości', 'error');
+    }
+  };
+
   const handleSave = async () => {
     if (!product || !canEdit) return;
 
@@ -778,7 +796,20 @@ export default function ProductDetailPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm text-[#e5e4e2]/80">Ilość: {item.quantity}</span>
+                    {canEdit ? (
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-[#e5e4e2]/60">Ilość:</label>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => handleUpdateEquipmentQuantity(item.id, parseInt(e.target.value) || 1)}
+                          min="1"
+                          className="w-20 px-2 py-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-sm text-[#e5e4e2]/80">Ilość: {item.quantity}</span>
+                    )}
                     {item.is_optional && (
                       <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">Opcjonalny</span>
                     )}
@@ -854,6 +885,7 @@ export default function ProductDetailPage() {
       {showAddEquipmentModal && (
         <AddEquipmentModal
           productId={params.id as string}
+          existingEquipment={equipment}
           onClose={() => setShowAddEquipmentModal(false)}
           onSuccess={() => {
             fetchEquipment();
@@ -877,7 +909,17 @@ export default function ProductDetailPage() {
   );
 }
 
-function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: string; onClose: () => void; onSuccess: () => void }) {
+function AddEquipmentModal({
+  productId,
+  existingEquipment,
+  onClose,
+  onSuccess
+}: {
+  productId: string;
+  existingEquipment: ProductEquipment[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const [mode, setMode] = useState<'item' | 'kit'>('kit');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedKitId, setSelectedKitId] = useState('');
@@ -926,8 +968,14 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
       .order('name');
 
     if (data) {
+      const existingItemIds = existingEquipment
+        .filter(e => e.equipment_item_id)
+        .map(e => e.equipment_item_id);
+
+      const availableItems = data.filter(item => !existingItemIds.includes(item.id));
+
       const itemsWithAvailability = await Promise.all(
-        data.map(async (item) => {
+        availableItems.map(async (item) => {
           const { data: availData } = await supabase.rpc('get_available_equipment_quantity', {
             p_equipment_id: item.id
           });
@@ -948,7 +996,15 @@ function AddEquipmentModal({ productId, onClose, onSuccess }: { productId: strin
       .select('id, name, description')
       .eq('is_active', true)
       .order('name');
-    if (data) setKits(data);
+
+    if (data) {
+      const existingKitIds = existingEquipment
+        .filter(e => e.equipment_kit_id)
+        .map(e => e.equipment_kit_id);
+
+      const availableKits = data.filter(kit => !existingKitIds.includes(kit.id));
+      setKits(availableKits);
+    }
   };
 
   const fetchKitDetails = async (kitId: string) => {
