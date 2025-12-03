@@ -127,20 +127,18 @@ export function EventContractTab({ eventId }: Props) {
         .select(`
           id,
           description,
-          total_price,
-          offer_products(
-            id,
-            product_name,
-            quantity,
-            unit_price,
-            total_price,
-            description
-          )
+          total_price
         `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      const { data: offerItems } = await supabase
+        .from('offer_items')
+        .select('*')
+        .eq('offer_id', offers?.id)
+        .order('display_order', { ascending: true });
 
       const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
       const totalPrice = event.budget || offers?.total_price || 0;
@@ -198,18 +196,21 @@ export function EventContractTab({ eventId }: Props) {
       const locationString = event.location || '';
       const parsedLocation = parseLocationString(locationString);
 
-      const offerItems = offers?.offer_products || [];
-      const offerItemsHtml = offerItems.length > 0
+      const offerItemsArray = offerItems || [];
+      const offerItemsHtml = offerItemsArray.length > 0
         ? `<ul style="margin: 0; padding-left: 20px; list-style-type: none;">
-            ${offerItems.map((item: any, index: number) => `
+            ${offerItemsArray.map((item: any, index: number) => `
               <li style="margin-bottom: 8px;">
-                <strong>${index + 1}. ${item.product_name || 'Produkt'}</strong>
+                <strong>${index + 1}. ${item.name || 'Produkt'}</strong>
                 ${item.description ? `<br/><span style="margin-left: 20px; font-size: 11pt; color: #333;">${item.description}</span>` : ''}
                 ${item.quantity ? `<br/><span style="margin-left: 20px; font-size: 11pt;">Ilość: ${item.quantity}</span>` : ''}
               </li>
             `).join('')}
           </ul>`
         : '<p style="font-style: italic; color: #666;">Brak pozycji w ofercie</p>';
+
+      const { generateOfferItemsTable, numberToWords } = await import('@/lib/offerTemplateHelpers');
+      const offerItemsTable = generateOfferItemsTable(offerItemsArray || []);
 
       const varsMap: Record<string, string> = {
         contact_first_name: contact?.first_name || '',
@@ -245,7 +246,9 @@ export function EventContractTab({ eventId }: Props) {
         location_full: location?.formatted_address || locationString || '',
 
         budget: totalPrice.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
+        budget_words: numberToWords(totalPrice),
         deposit_amount: depositAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
+        deposit_words: numberToWords(depositAmount),
 
         contract_number: contractNumber,
         contract_date: new Date().toLocaleDateString('pl-PL'),
@@ -259,6 +262,7 @@ export function EventContractTab({ eventId }: Props) {
         executor_email: 'biuro@eventrulers.pl',
 
         offer_items: offerItemsHtml,
+        OFFER_ITEMS_TABLE: offerItemsTable,
       };
 
       setVariables(varsMap);

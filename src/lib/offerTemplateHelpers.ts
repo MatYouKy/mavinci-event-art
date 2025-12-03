@@ -2,6 +2,126 @@
  * Helper functions for processing offer templates and generating documents
  */
 
+/**
+ * Converts a number to Polish words
+ * @param amount - Amount to convert
+ * @returns Amount in words (e.g., "pięć tysięcy złotych")
+ */
+export function numberToWords(amount: number): string {
+  if (!amount || amount === 0) return 'zero złotych';
+
+  const ones = [
+    '',
+    'jeden',
+    'dwa',
+    'trzy',
+    'cztery',
+    'pięć',
+    'sześć',
+    'siedem',
+    'osiem',
+    'dziewięć',
+  ];
+  const teens = [
+    'dziesięć',
+    'jedenaście',
+    'dwanaście',
+    'trzynaście',
+    'czternaście',
+    'piętnaście',
+    'szesnaście',
+    'siedemnaście',
+    'osiemnaście',
+    'dziewiętnaście',
+  ];
+  const tens = [
+    '',
+    '',
+    'dwadzieścia',
+    'trzydzieści',
+    'czterdzieści',
+    'pięćdziesiąt',
+    'sześćdziesiąt',
+    'siedemdziesiąt',
+    'osiemdziesiąt',
+    'dziewięćdziesiąt',
+  ];
+  const hundreds = [
+    '',
+    'sto',
+    'dwieście',
+    'trzysta',
+    'czterysta',
+    'pięćset',
+    'sześćset',
+    'siedemset',
+    'osiemset',
+    'dziewięćset',
+  ];
+
+  const convertGroup = (num: number): string => {
+    let result = '';
+
+    const h = Math.floor(num / 100);
+    const t = Math.floor((num % 100) / 10);
+    const o = num % 10;
+
+    if (h > 0) result += hundreds[h] + ' ';
+
+    if (t === 1) {
+      result += teens[o] + ' ';
+    } else {
+      if (t > 1) result += tens[t] + ' ';
+      if (o > 0) result += ones[o] + ' ';
+    }
+
+    return result.trim();
+  };
+
+  let intAmount = Math.floor(amount);
+  const cents = Math.round((amount - intAmount) * 100);
+
+  let result = '';
+
+  if (intAmount >= 1000000) {
+    const millions = Math.floor(intAmount / 1000000);
+    result += convertGroup(millions);
+    if (millions === 1) result += ' milion ';
+    else if (millions % 10 >= 2 && millions % 10 <= 4 && (millions % 100 < 10 || millions % 100 >= 20))
+      result += ' miliony ';
+    else result += ' milionów ';
+    intAmount %= 1000000;
+  }
+
+  if (intAmount >= 1000) {
+    const thousands = Math.floor(intAmount / 1000);
+    result += convertGroup(thousands);
+    if (thousands === 1) result += ' tysiąc ';
+    else if (thousands % 10 >= 2 && thousands % 10 <= 4 && (thousands % 100 < 10 || thousands % 100 >= 20))
+      result += ' tysiące ';
+    else result += ' tysięcy ';
+    intAmount %= 1000;
+  }
+
+  if (intAmount > 0) {
+    result += convertGroup(intAmount) + ' ';
+  }
+
+  if (intAmount === 1) {
+    result += 'złoty';
+  } else if (intAmount % 10 >= 2 && intAmount % 10 <= 4 && (intAmount % 100 < 10 || intAmount % 100 >= 20)) {
+    result += 'złote';
+  } else {
+    result += 'złotych';
+  }
+
+  if (cents > 0) {
+    result += ' ' + cents.toString().padStart(2, '0') + '/100';
+  }
+
+  return result.trim();
+}
+
 interface OfferItem {
   id: string;
   name: string;
@@ -14,7 +134,7 @@ interface OfferItem {
 }
 
 /**
- * Generates an HTML table from offer items
+ * Generates an HTML table from offer items (simplified - only names)
  * @param items - Array of offer items
  * @returns HTML string with formatted table
  */
@@ -23,73 +143,30 @@ export function generateOfferItemsTable(items: OfferItem[]): string {
     return '<p style="color: #888; font-style: italic;">Brak pozycji w ofercie</p>';
   }
 
-  const calculateSubtotal = (quantity: number, unitPrice: number): number => {
-    return quantity * unitPrice;
-  };
-
-  const calculateDiscountAmount = (subtotal: number, discountPercent: number | null): number => {
-    if (!discountPercent) return 0;
-    return subtotal * (discountPercent / 100);
-  };
-
-  const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('pl-PL', {
-      style: 'currency',
-      currency: 'PLN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  };
-
   let tableHTML = `
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-family: Arial, sans-serif;">
   <thead>
     <tr style="background-color: #d3bb73; color: #1c1f33;">
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: left; font-weight: 600;">Lp.</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: left; font-weight: 600;">Nazwa</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: left; font-weight: 600;">Opis</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: center; font-weight: 600;">Ilość</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: center; font-weight: 600;">Jedn.</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: right; font-weight: 600;">Cena jedn.</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: right; font-weight: 600;">Rabat</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: right; font-weight: 600;">Wartość</th>
+      <th style="border: 1px solid #999; padding: 10px 8px; text-align: left; font-weight: 600; width: 60px;">Lp.</th>
+      <th style="border: 1px solid #999; padding: 10px 8px; text-align: left; font-weight: 600;">Nazwa usługi</th>
     </tr>
   </thead>
   <tbody>
 `;
 
-  let totalSum = 0;
-
   items.forEach((item, index) => {
-    const subtotal = calculateSubtotal(item.quantity, item.unit_price);
-    const discountAmount = calculateDiscountAmount(subtotal, item.discount_percent);
-    const itemTotal = subtotal - discountAmount;
-    totalSum += itemTotal;
-
     const rowBg = index % 2 === 0 ? '#f9f9f9' : '#ffffff';
 
     tableHTML += `
     <tr style="background-color: ${rowBg};">
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">${index + 1}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: 500;">${item.name}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 0.9em; color: #555;">${item.description || '-'}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.unit}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatCurrency(item.unit_price)}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.discount_percent ? `${item.discount_percent}%` : '-'}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: 600;">${formatCurrency(itemTotal)}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${index + 1}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">${item.name}</td>
     </tr>
 `;
   });
 
   tableHTML += `
   </tbody>
-  <tfoot>
-    <tr style="background-color: #d3bb73; color: #1c1f33; font-weight: 700;">
-      <td colspan="7" style="border: 1px solid #999; padding: 10px 8px; text-align: right; font-size: 1.1em;">SUMA:</td>
-      <td style="border: 1px solid #999; padding: 10px 8px; text-align: right; font-size: 1.1em;">${formatCurrency(totalSum)}</td>
-    </tr>
-  </tfoot>
 </table>
 `;
 

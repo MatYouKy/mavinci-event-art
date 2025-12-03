@@ -691,7 +691,9 @@ export default function EditTemplateWYSIWYGPage() {
               { key: '{{location_postal_code}}', label: 'Kod pocztowy lok.' },
               { key: '{{location_full}}', label: 'Pełny adres lok.' },
               { key: '{{budget}}', label: 'Budżet' },
+              { key: '{{budget_words}}', label: 'Budżet słownie' },
               { key: '{{deposit_amount}}', label: 'Zadatek' },
+              { key: '{{deposit_words}}', label: 'Zadatek słownie' },
               { key: '{{offer_items}}', label: 'Pozycje z oferty' },
               { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji oferty' },
             ].map((p) => (
