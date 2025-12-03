@@ -236,9 +236,6 @@ export default function OrganizationDetailPage() {
       const entityType = fullData.entity_type;
       const entityData = fullData.entity_data;
 
-      console.log('Entity type:', entityType);
-      console.log('Entity data:', entityData);
-
       if (entityType === 'contact') {
         // To jest kontakt/osoba prywatna
         setEntityType('contact');
@@ -335,13 +332,13 @@ export default function OrganizationDetailPage() {
     try {
       setSaving(true);
 
-      const fullName = `${editedData.first_name || ''} ${editedData.last_name || ''}`.trim();
+      // Usuń full_name z editedData bo to kolumna generowana
+      const { full_name, ...dataToUpdate } = editedData;
 
       const { error } = await supabase
         .from('contacts')
         .update({
-          ...editedData,
-          full_name: fullName || editedData.full_name,
+          ...dataToUpdate,
           updated_at: new Date().toISOString(),
         })
         .eq('id', contact.id);
@@ -900,6 +897,9 @@ export default function OrganizationDetailPage() {
       </div>
     );
   }
+
+  // Definiuj displayName dla organizacji
+  const displayName = organization.alias || organization.name || 'Organizacja';
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
