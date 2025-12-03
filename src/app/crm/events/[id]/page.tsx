@@ -27,6 +27,8 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from '@/components/crm/LocationSelector';
 import EditEventClientModal from '@/components/crm/EditEventClientModal';
+import ClientSelectorTabs from '@/components/crm/ClientSelectorTabs';
+import EditEventModalNew from '@/components/crm/EditEventModalNew';
 
 interface Event {
   id: string;
@@ -2115,7 +2117,7 @@ export default function EventDetailPage() {
       )}
 
       {showEditEventModal && event && (
-        <EditEventModal
+        <EditEventModalNew
           isOpen={showEditEventModal}
           onClose={() => setShowEditEventModal(false)}
           event={event}
@@ -3368,21 +3370,14 @@ function EditEventModal({
   event: Event;
   onSave: (data: any) => void;
 }) {
-  const [organizations, setOrganizations] = useState<any[]>([]);
-  const [contacts, setContacts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [showNewClientForm, setShowNewClientForm] = useState(false);
-  const [sameAsOrganization, setSameAsOrganization] = useState(false);
-  const [newClientData, setNewClientData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
+  const [clientData, setClientData] = useState({
+    client_type: event.client_type || 'business',
+    organization_id: event.organization_id,
+    contact_person_id: event.contact_person_id,
   });
   const [formData, setFormData] = useState({
     name: event.name,
-    organization_id: event.organization_id || '',
-    contact_person_id: event.contact_person_id || '',
     category_id: event.category_id || '',
     event_date: event.event_date,
     event_end_date: event.event_end_date || '',
@@ -3394,48 +3389,9 @@ function EditEventModal({
 
   useEffect(() => {
     if (isOpen) {
-      fetchOrganizations();
-      fetchContacts();
       fetchCategories();
     }
   }, [isOpen]);
-
-  const fetchOrganizations = async () => {
-    const { data } = await supabase
-      .from('organizations')
-      .select('id, name, alias')
-      .eq('organization_type', 'client')
-      .order('name');
-    if (data) setOrganizations(data);
-  };
-
-  const fetchContacts = async () => {
-    const { data } = await supabase
-      .from('contacts')
-      .select(`
-        id,
-        full_name,
-        first_name,
-        last_name,
-        contact_type,
-        email,
-        phone,
-        contact_organizations(
-          organization_id,
-          organizations(name, alias)
-        )
-      `)
-      .in('contact_type', ['contact', 'individual'])
-      .order('full_name');
-    if (data) {
-      const formattedContacts = data.map(c => ({
-        ...c,
-        organization_id: c.contact_organizations?.[0]?.organization_id || null,
-        organization_name: c.contact_organizations?.[0]?.organizations?.alias || c.contact_organizations?.[0]?.organizations?.name || null
-      }));
-      setContacts(formattedContacts);
-    }
-  };
 
   const fetchCategories = async () => {
     const { data, error } = await supabase
@@ -3448,89 +3404,6 @@ function EditEventModal({
   };
 
   if (!isOpen) return null;
-
-  const handleContactChange = (contactId: string) => {
-    if (contactId === 'NEW_CLIENT') {
-      setShowNewClientForm(true);
-      setFormData(prev => ({ ...prev, contact_person_id: '' }));
-      return;
-    }
-
-    if (!contactId) {
-      setFormData(prev => ({ ...prev, contact_person_id: '' }));
-      setShowNewClientForm(false);
-      return;
-    }
-
-    const selectedContact = contacts.find(c => c.id === contactId);
-    setShowNewClientForm(false);
-
-    // Jeśli kontakt jest osobą kontaktową z organizacji, automatycznie ustaw organizację
-    if (selectedContact?.contact_type === 'contact' && selectedContact?.organization_id) {
-      setFormData(prev => ({
-        ...prev,
-        contact_person_id: contactId,
-        organization_id: selectedContact.organization_id
-      }));
-    } else {
-      // Jeśli kontakt jest indywidualny, tylko ustaw kontakt bez zmiany organizacji
-      setFormData(prev => ({
-        ...prev,
-        contact_person_id: contactId
-      }));
-    }
-  };
-
-  const handleSameAsOrganization = (checked: boolean) => {
-    setSameAsOrganization(checked);
-    if (checked && formData.organization_id) {
-      // Znajdź osobę kontaktową powiązaną z wybraną organizacją
-      const orgContact = contacts.find(c =>
-        c.contact_type === 'contact' && c.organization_id === formData.organization_id
-      );
-      if (orgContact) {
-        setFormData(prev => ({ ...prev, contact_person_id: orgContact.id }));
-      }
-    }
-  };
-
-  const handleCreateNewClient = async () => {
-    if (!newClientData.first_name.trim() || !newClientData.last_name.trim()) {
-      alert('Imię i nazwisko są wymagane');
-      return;
-    }
-
-    try {
-      const { data: newContact, error } = await supabase
-        .from('contacts')
-        .insert([{
-          first_name: newClientData.first_name,
-          last_name: newClientData.last_name,
-          email: newClientData.email || null,
-          phone: newClientData.phone || null,
-          contact_type: 'individual',
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Dodaj nowy kontakt do listy
-      setContacts(prev => [...prev, {
-        ...newContact,
-        organization_id: null,
-        organization_name: null
-      }]);
-
-      // Ustaw nowy kontakt jako wybrany
-      setFormData(prev => ({ ...prev, contact_person_id: newContact.id }));
-      setShowNewClientForm(false);
-      setNewClientData({ first_name: '', last_name: '', email: '', phone: '' });
-    } catch (error) {
-      console.error('Error creating contact:', error);
-      alert('Błąd podczas tworzenia klienta');
-    }
-  };
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
@@ -3548,8 +3421,9 @@ function EditEventModal({
 
     const dataToSave = {
       name: formData.name,
-      organization_id: formData.organization_id || null,
-      contact_person_id: formData.contact_person_id || null,
+      client_type: clientData.client_type,
+      organization_id: clientData.organization_id || null,
+      contact_person_id: clientData.contact_person_id || null,
       category_id: formData.category_id || null,
       event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
       event_end_date: formData.event_end_date ? new Date(formData.event_end_date).toISOString() : null,
