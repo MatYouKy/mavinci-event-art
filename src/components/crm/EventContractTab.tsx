@@ -511,11 +511,15 @@ export function EventContractTab({ eventId }: Props) {
       <style jsx global>{`
         @media print {
           @page {
-            size: A4;
+            size: A4 portrait;
             margin: 0;
           }
 
-          body {
+          html, body {
+            width: 210mm;
+            height: 297mm;
+            margin: 0;
+            padding: 0;
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
             background: white !important;
@@ -529,12 +533,31 @@ export function EventContractTab({ eventId }: Props) {
 
           .contract-a4-page {
             box-shadow: none !important;
-            page-break-after: always;
+            page-break-after: always !important;
+            break-after: page !important;
             margin: 0 !important;
+            padding: 20mm 25mm 15mm 25mm !important;
+            width: 210mm !important;
+            height: 297mm !important;
           }
 
           .contract-a4-page:last-child {
-            page-break-after: auto;
+            page-break-after: avoid !important;
+          }
+
+          .contract-content {
+            page-break-inside: auto !important;
+          }
+
+          .contract-content h1,
+          .contract-content h2,
+          .contract-content h3 {
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          .contract-footer {
+            page-break-inside: avoid !important;
           }
 
           nav, header, footer:not(.contract-footer), button, .no-print {
