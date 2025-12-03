@@ -208,7 +208,7 @@ export default function ProductDetailPage() {
       setSaving(true);
 
       const productData = {
-        category_id: product.category_id,
+        category_id: product.category_id || null,
         name: product.name,
         description: product.description,
         vat_rate: product.vat_rate,

@@ -692,6 +692,7 @@ export default function EditTemplateWYSIWYGPage() {
               { key: '{{location_full}}', label: 'Pełny adres lok.' },
               { key: '{{budget}}', label: 'Budżet' },
               { key: '{{deposit_amount}}', label: 'Zadatek' },
+              { key: '{{offer_items}}', label: 'Pozycje z oferty' },
             ].map((p) => (
               <button
                 key={p.key}
