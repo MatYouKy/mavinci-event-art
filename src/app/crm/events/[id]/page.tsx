@@ -85,10 +85,12 @@ interface Equipment {
   equipment_id: string;
   quantity: number;
   notes: string;
+  auto_added: boolean;
   equipment: {
     name: string;
     category: string;
   };
+  kit?: any;
 }
 
 interface Employee {
@@ -1096,10 +1098,12 @@ export default function EventDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4" />
-                {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
-              </div>
+              {event.client_type === 'business' && (
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
+                </div>
+              )}
               {event.contact_person && (
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4" />
@@ -1350,15 +1354,17 @@ export default function EventDetailPage() {
                         Edytuj
                       </button>
                     </div>
-                    <div className="flex items-start gap-3">
-                      <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
-                      <div>
-                        <p className="text-sm text-[#e5e4e2]/60">Klient</p>
-                        <p className="text-[#e5e4e2]">
-                          {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
-                        </p>
+                    {event.client_type === 'business' && (
+                      <div className="flex items-start gap-3">
+                        <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                        <div>
+                          <p className="text-sm text-[#e5e4e2]/60">Klient</p>
+                          <p className="text-[#e5e4e2]">
+                            {event.organization ? (event.organization.alias || event.organization.name) : 'Brak klienta'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {event.contact_person && (
                       <div className="flex items-start gap-3">
                         <User className="w-5 h-5 text-[#d3bb73] mt-0.5" />
@@ -1568,8 +1574,11 @@ export default function EventDetailPage() {
               <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {equipment.map((item) => {
+            <div className="space-y-4">
+              {/* Ręcznie dodany sprzęt */}
+              {equipment.filter(item => !item.auto_added).length > 0 && (
+                <div className="space-y-2">
+                  {equipment.filter(item => !item.auto_added).map((item) => {
                 const isExpanded = expandedKits.has(item.id);
                 const isKit = !!item.kit;
 
@@ -1769,6 +1778,223 @@ export default function EventDetailPage() {
                   </div>
                 );
               })}
+                </div>
+              )}
+
+              {/* Separator między ręcznie dodanym a automatycznym */}
+              {equipment.filter(item => !item.auto_added).length > 0 && equipment.filter(item => item.auto_added).length > 0 && (
+                <div className="flex items-center gap-4 my-6">
+                  <div className="flex-1 h-px bg-[#d3bb73]/10"></div>
+                  <span className="text-xs text-[#e5e4e2]/40 uppercase tracking-wider">Z produktów oferty</span>
+                  <div className="flex-1 h-px bg-[#d3bb73]/10"></div>
+                </div>
+              )}
+
+              {/* Automatycznie dodany sprzęt z oferty */}
+              {equipment.filter(item => item.auto_added).length > 0 && (
+                <div className="space-y-2">
+                  {equipment.filter(item => item.auto_added).map((item) => {
+                const isExpanded = expandedKits.has(item.id);
+                const isKit = !!item.kit;
+
+                return (
+                  <div key={item.id}>
+                    <div className="flex items-center gap-3 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2.5 hover:border-[#d3bb73]/20 transition-colors">
+                      {isKit && (
+                        <button
+                          onClick={() => {
+                            const newExpanded = new Set(expandedKits);
+                            if (isExpanded) {
+                              newExpanded.delete(item.id);
+                            } else {
+                              newExpanded.add(item.id);
+                            }
+                            setExpandedKits(newExpanded);
+                          }}
+                          className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                        >
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform ${
+                              isExpanded ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+                      )}
+
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {isKit ? (
+                          <span className="text-base">🎁</span>
+                        ) : item.equipment?.thumbnail_url ? (
+                          <img
+                            src={item.equipment.thumbnail_url}
+                            alt={item.equipment.name}
+                            className="w-10 h-10 rounded object-cover border border-[#d3bb73]/20"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-[#1c1f33] border border-[#d3bb73]/20 flex items-center justify-center">
+                            <Package className="w-5 h-5 text-[#e5e4e2]/30" />
+                          </div>
+                        )}
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[#e5e4e2] font-medium truncate">
+                            {item.kit ? item.kit.name : item.equipment?.name || 'Nieznany'}
+                          </span>
+                          {!isKit && item.equipment && (
+                            <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                              {item.equipment.brand && (
+                                <span>{item.equipment.brand}</span>
+                              )}
+                              {item.equipment.model && (
+                                <>
+                                  {item.equipment.brand && <span>•</span>}
+                                  <span>{item.equipment.model}</span>
+                                </>
+                              )}
+                              {item.equipment.cable_specs && (
+                                <>
+                                  {(item.equipment.brand || item.equipment.model) && <span>•</span>}
+                                  {item.equipment.cable_specs.connector_in && item.equipment.cable_specs.connector_out ? (
+                                    <span>{item.equipment.cable_specs.connector_in} → {item.equipment.cable_specs.connector_out}</span>
+                                  ) : item.equipment.cable_specs.type && (
+                                    <span>{item.equipment.cable_specs.type}</span>
+                                  )}
+                                  {item.equipment.cable_specs.length_meters && (
+                                    <span>{item.equipment.cable_specs.length_meters}m</span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+                        {!isKit && item.equipment?.category && (
+                          <span className="hidden md:inline">{item.equipment.category.name}</span>
+                        )}
+                        {!isKit && item.equipment_id && equipmentAvailability[item.equipment_id] && (
+                          <div className="hidden lg:flex flex-col items-end text-xs">
+                            <span className="text-[#d3bb73]">
+                              {equipmentAvailability[item.equipment_id].available + equipmentAvailability[item.equipment_id].reserved} dostępne
+                            </span>
+                          </div>
+                        )}
+                        {editingQuantity === item.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              defaultValue={item.quantity}
+                              className="w-16 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-[#e5e4e2] text-sm"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const newQuantity = parseInt((e.target as HTMLInputElement).value);
+                                  if (newQuantity > 0) {
+                                    handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  setEditingQuantity(null);
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const newQuantity = parseInt(e.target.value);
+                                if (newQuantity > 0 && newQuantity !== item.quantity) {
+                                  handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
+                                } else {
+                                  setEditingQuantity(null);
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <span className="text-[#e5e4e2]/60">szt.</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => !isKit && setEditingQuantity(item.id)}
+                            className={`font-medium text-[#e5e4e2] ${!isKit ? 'hover:text-[#d3bb73] cursor-pointer' : ''}`}
+                            disabled={isKit}
+                          >
+                            {item.quantity} szt.
+                          </button>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleRemoveEquipment(item.id)}
+                        className="text-red-400/60 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {isKit && isExpanded && item.kit?.items && (
+                      <div className="ml-9 mt-1 space-y-1">
+                        {item.kit.items.map((kitItem: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-3 bg-[#0f1119]/50 border border-[#d3bb73]/5 rounded px-4 py-2 text-sm"
+                          >
+                            {kitItem.equipment.thumbnail_url ? (
+                              <img
+                                src={kitItem.equipment.thumbnail_url}
+                                alt={kitItem.equipment.name}
+                                className="w-8 h-8 rounded object-cover border border-[#d3bb73]/10"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded bg-[#1c1f33] border border-[#d3bb73]/10 flex items-center justify-center">
+                                <Package className="w-4 h-4 text-[#e5e4e2]/30" />
+                              </div>
+                            )}
+                            <div className="flex flex-col flex-1 min-w-0">
+                              <span className="text-[#e5e4e2]/80">
+                                {kitItem.equipment.name}
+                              </span>
+                              <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/40">
+                                {kitItem.equipment.brand && (
+                                  <span>{kitItem.equipment.brand}</span>
+                                )}
+                                {kitItem.equipment.model && (
+                                  <>
+                                    {kitItem.equipment.brand && <span>•</span>}
+                                    <span>{kitItem.equipment.model}</span>
+                                  </>
+                                )}
+                                {kitItem.equipment.cable_specs && (
+                                  <>
+                                    {(kitItem.equipment.brand || kitItem.equipment.model) && <span>•</span>}
+                                    {kitItem.equipment.cable_specs.connector_in && kitItem.equipment.cable_specs.connector_out ? (
+                                      <span>{kitItem.equipment.cable_specs.connector_in} → {kitItem.equipment.cable_specs.connector_out}</span>
+                                    ) : kitItem.equipment.cable_specs.type && (
+                                      <span>{kitItem.equipment.cable_specs.type}</span>
+                                    )}
+                                    {kitItem.equipment.cable_specs.length_meters && (
+                                      <span>{kitItem.equipment.cable_specs.length_meters}m</span>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-[#e5e4e2]/50 text-xs hidden md:inline">
+                              {kitItem.equipment.category?.name}
+                            </span>
+                            <span className="text-[#e5e4e2]/60 font-medium">
+                              {kitItem.quantity * item.quantity} szt.
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.notes && (
+                      <div className="ml-9 mt-1 text-xs text-[#e5e4e2]/40 italic px-4">
+                        {item.notes}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+                </div>
+              )}
             </div>
           )}
         </div>
