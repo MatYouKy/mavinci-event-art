@@ -143,6 +143,18 @@ const statusColors = {
   archived: 'text-red-400 bg-red-900/30',
 };
 
+const renderRating = (rating: number | null) => {
+  if (!rating) return <span className="text-gray-400">Brak oceny</span>;
+  return (
+    <div className="flex items-center gap-1">
+      {Array.from({ length: rating }, (_, i) => (
+        <span key={i} className="text-yellow-400">⭐</span>
+      ))}
+      <span className="ml-2 text-gray-400">({rating}/5)</span>
+    </div>
+  );
+};
+
 export default function OrganizationDetailPage() {
   const params = useParams();
   const router = useRouter();
