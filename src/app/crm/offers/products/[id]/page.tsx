@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Save, Package, DollarSign, Truck, Users, Wrench, Tag, Settings, X } from 'lucide-react';
+import { ArrowLeft, Save, Package, DollarSign, Truck, Users, Wrench, Tag, Settings, X, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -277,6 +277,32 @@ export default function ProductDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!product || !canEdit || params.id === 'new') return;
+
+    if (!confirm(`Czy na pewno chcesz usunąć produkt "${product.name}"?\n\nTa operacja jest nieodwracalna.`)) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const { error } = await supabase
+        .from('offer_products')
+        .delete()
+        .eq('id', product.id);
+
+      if (error) throw error;
+
+      showSnackbar('Produkt został usunięty', 'success');
+      router.push('/crm/offers?tab=catalog');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd usuwania produktu', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateNetPrice = (net: number) => {
     if (!product) return;
     const gross = net * (1 + product.vat_rate / 100);
@@ -357,14 +383,26 @@ export default function ProductDetailPage() {
           </div>
         </div>
         {canEdit && (
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 transition-colors"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Zapisywanie...' : params.id === 'new' ? 'Dodaj produkt' : 'Zapisz zmiany'}
-          </button>
+          <div className="flex items-center gap-3">
+            {params.id !== 'new' && (
+              <button
+                onClick={handleDelete}
+                disabled={saving}
+                className="flex items-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-500/30 disabled:opacity-50 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Usuń
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              {saving ? 'Zapisywanie...' : params.id === 'new' ? 'Dodaj produkt' : 'Zapisz zmiany'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -723,23 +761,44 @@ export default function ProductDetailPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Tagi (oddzielone przecinkami)</label>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Tagi (oddzielone przecinkami)
+              <span className="text-xs text-[#e5e4e2]/40 ml-2">np: dj, wesele, premium</span>
+            </label>
             <input
               type="text"
-              value={product.tags?.join(', ') || ''}
-              onChange={(e) => setProduct({ ...product, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
+              value={(product.tags || []).join(', ')}
+              onChange={(e) => {
+                const value = e.target.value.trim();
+                const tags = value ? value.split(',').map(t => t.trim()).filter(Boolean) : [];
+                setProduct({ ...product, tags });
+              }}
               disabled={!canEdit}
-              placeholder="dj, wesele, premium"
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+              placeholder="Wpisz tagi oddzielone przecinkami..."
+              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50 placeholder:text-[#e5e4e2]/30"
             />
+            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+              Tagi pomagają w wyszukiwaniu produktów w ofercie
+            </p>
           </div>
 
           {product.tags && product.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-4">
               {product.tags.map((tag, idx) => (
-                <span key={idx} className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full text-sm">
-                  {tag}
-                </span>
+                <div key={idx} className="flex items-center gap-1 px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full text-sm">
+                  <span>{tag}</span>
+                  {canEdit && (
+                    <button
+                      onClick={() => setProduct({
+                        ...product,
+                        tags: product.tags.filter((_, i) => i !== idx)
+                      })}
+                      className="ml-1 text-[#d3bb73]/60 hover:text-[#d3bb73] transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
