@@ -368,9 +368,9 @@ export default function EventWizard({
         .insert([
           {
             name: eventData.name,
-            organization_id: eventData.organization_id || null,
-            contact_person_id: eventData.contact_person_id || null,
-            category_id: eventData.category_id || null,
+            organization_id: eventData.organization_id && eventData.organization_id.trim() !== '' ? eventData.organization_id : null,
+            contact_person_id: eventData.contact_person_id && eventData.contact_person_id.trim() !== '' ? eventData.contact_person_id : null,
+            category_id: eventData.category_id && eventData.category_id.trim() !== '' ? eventData.category_id : null,
             event_date: eventData.event_date,
             event_end_date: eventData.event_end_date || null,
             location: eventData.location,
@@ -417,9 +417,9 @@ export default function EventWizard({
         .from('events')
         .update({
           name: eventData.name,
-          organization_id: eventData.organization_id || null,
-          contact_person_id: eventData.contact_person_id || null,
-          category_id: eventData.category_id || null,
+          organization_id: eventData.organization_id && eventData.organization_id.trim() !== '' ? eventData.organization_id : null,
+          contact_person_id: eventData.contact_person_id && eventData.contact_person_id.trim() !== '' ? eventData.contact_person_id : null,
+          category_id: eventData.category_id && eventData.category_id.trim() !== '' ? eventData.category_id : null,
           event_date: eventData.event_date,
           event_end_date: eventData.event_end_date || null,
           location: eventData.location,

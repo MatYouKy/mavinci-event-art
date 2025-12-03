@@ -78,13 +78,13 @@ export default function EditEventModalNew({
     const dataToSave = {
       name: formData.name,
       client_type: clientData.client_type,
-      organization_id: clientData.organization_id || null,
-      contact_person_id: clientData.contact_person_id || null,
-      category_id: formData.category_id || null,
+      organization_id: clientData.organization_id && clientData.organization_id.trim() !== '' ? clientData.organization_id : null,
+      contact_person_id: clientData.contact_person_id && clientData.contact_person_id.trim() !== '' ? clientData.contact_person_id : null,
+      category_id: formData.category_id && formData.category_id.trim() !== '' ? formData.category_id : null,
       event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
       event_end_date: formData.event_end_date ? new Date(formData.event_end_date).toISOString() : null,
       location: formData.location,
-      location_id: formData.location_id || null,
+      location_id: formData.location_id && formData.location_id.trim() !== '' ? formData.location_id : null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
     };

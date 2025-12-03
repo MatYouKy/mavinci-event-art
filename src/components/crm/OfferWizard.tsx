@@ -312,7 +312,7 @@ export default function OfferWizard({
       // 2. Dodaj pozycje oferty
       const itemsToInsert = offerItems.map((item, index) => ({
         offer_id: offerResult.id,
-        product_id: item.product_id || null,
+        product_id: item.product_id && item.product_id.trim() !== '' ? item.product_id : null,
         name: item.name,
         description: item.description || null,
         quantity: item.quantity,

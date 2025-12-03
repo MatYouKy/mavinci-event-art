@@ -114,8 +114,8 @@ export default function ClientSelectorTabs({
       const primaryContact = eventContactPersons.find(p => p.is_primary);
       onChange({
         client_type: 'business',
-        organization_id: organizationId || null,
-        contact_person_id: primaryContact?.contact_id || null,
+        organization_id: organizationId && organizationId.trim() !== '' ? organizationId : null,
+        contact_person_id: primaryContact?.contact_id && primaryContact.contact_id.trim() !== '' ? primaryContact.contact_id : null,
       });
     }
   }, [activeTab, individualContactId, organizationId, eventContactPersons]);

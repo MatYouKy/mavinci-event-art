@@ -180,8 +180,8 @@ export default function EventsPage() {
         .insert([
           {
             name: eventData.name,
-            client_id: eventData.client_id || null,
-            category_id: eventData.category_id || null,
+            client_id: eventData.client_id && eventData.client_id.trim() !== '' ? eventData.client_id : null,
+            category_id: eventData.category_id && eventData.category_id.trim() !== '' ? eventData.category_id : null,
             event_date: eventData.event_date,
             event_end_date: eventData.event_end_date || null,
             location: eventData.location,

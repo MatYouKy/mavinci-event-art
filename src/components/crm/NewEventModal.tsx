@@ -243,9 +243,9 @@ export default function NewEventModal({
 
     const eventData = {
       name: formData.name,
-      organization_id: clientType === 'organization' ? (formData.organization_id || null) : null,
-      contact_person_id: contactPersonId || null,
-      category_id: formData.category_id || null,
+      organization_id: clientType === 'organization' ? (formData.organization_id && formData.organization_id.trim() !== '' ? formData.organization_id : null) : null,
+      contact_person_id: contactPersonId && contactPersonId.trim() !== '' ? contactPersonId : null,
+      category_id: formData.category_id && formData.category_id.trim() !== '' ? formData.category_id : null,
       event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
       event_end_date: formData.event_end_date ? new Date(formData.event_end_date).toISOString() : null,
       location: formData.location || null,

@@ -302,8 +302,8 @@ export default function KitsManagementModal({
       // Dodaj nowe pozycje
       const itemsToInsert = kitItems.map((item, index) => ({
         kit_id: kitId,
-        equipment_id: item.equipment_id || null,
-        cable_id: item.cable_id || null,
+        equipment_id: item.equipment_id && item.equipment_id.trim() !== '' ? item.equipment_id : null,
+        cable_id: item.cable_id && item.cable_id.trim() !== '' ? item.cable_id : null,
         quantity: item.quantity,
         notes: item.notes || null,
         order_index: index,
@@ -361,8 +361,8 @@ export default function KitsManagementModal({
 
       const itemsToInsert = kit.equipment_kit_items.map((item, index) => ({
         kit_id: newKit.id,
-        equipment_id: item.equipment_id || null,
-        cable_id: item.cable_id || null,
+        equipment_id: item.equipment_id && item.equipment_id.trim() !== '' ? item.equipment_id : null,
+        cable_id: item.cable_id && item.cable_id.trim() !== '' ? item.cable_id : null,
         quantity: item.quantity,
         notes: item.notes,
         order_index: index,
