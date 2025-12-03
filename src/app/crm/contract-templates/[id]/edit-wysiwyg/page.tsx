@@ -693,6 +693,7 @@ export default function EditTemplateWYSIWYGPage() {
               { key: '{{budget}}', label: 'Budżet' },
               { key: '{{deposit_amount}}', label: 'Zadatek' },
               { key: '{{offer_items}}', label: 'Pozycje z oferty' },
+              { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji oferty' },
             ].map((p) => (
               <button
                 key={p.key}
