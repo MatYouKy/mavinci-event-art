@@ -286,7 +286,7 @@ export default function OfferWizard({
       // Utwórz ofertę
       const offerDataToInsert: any = {
         event_id: eventId,
-        organization_id: organizationId || null, // Organizacja z eventu
+        organization_id: organizationId && organizationId.trim() !== '' ? organizationId : null,
         valid_until: offerData.valid_until || null,
         notes: offerData.notes || null,
         status: 'draft',
@@ -312,7 +312,7 @@ export default function OfferWizard({
       // 2. Dodaj pozycje oferty
       const itemsToInsert = offerItems.map((item, index) => ({
         offer_id: offerResult.id,
-        product_id: item.product_id && item.product_id.trim() !== '' ? item.product_id : null,
+        product_id: item.product_id && typeof item.product_id === 'string' && item.product_id.trim() !== '' ? item.product_id : null,
         name: item.name,
         description: item.description || null,
         quantity: item.quantity,
