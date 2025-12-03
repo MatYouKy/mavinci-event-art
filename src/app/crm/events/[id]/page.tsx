@@ -26,6 +26,7 @@ import { EventContractTab } from '@/components/crm/EventContractTab';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from '@/components/crm/LocationSelector';
+import EditEventClientModal from '@/components/crm/EditEventClientModal';
 
 interface Event {
   id: string;
@@ -41,6 +42,7 @@ interface Event {
   attachments: any[];
   organization_id: string | null;
   contact_person_id: string | null;
+  client_type: 'individual' | 'business';
   category_id: string;
   created_by: string;
   organization?: {
@@ -182,6 +184,7 @@ export default function EventDetailPage() {
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
+  const [showEditClientModal, setShowEditClientModal] = useState(false);
   const [offers, setOffers] = useState<any[]>([]);
   const [selectedOffer, setSelectedOffer] = useState<any>(null);
   const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
@@ -1334,7 +1337,17 @@ export default function EventDetailPage() {
 
                 {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
                 {!hasLimitedAccess && (
-                  <>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-medium text-[#e5e4e2]">Informacje o kliencie</h3>
+                      <button
+                        onClick={() => setShowEditClientModal(true)}
+                        className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 flex items-center gap-1"
+                      >
+                        <EditIcon className="w-3 h-3" />
+                        Edytuj
+                      </button>
+                    </div>
                     <div className="flex items-start gap-3">
                       <Building2 className="w-5 h-5 text-[#d3bb73] mt-0.5" />
                       <div>
@@ -1369,7 +1382,7 @@ export default function EventDetailPage() {
                         </div>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>
@@ -2142,6 +2155,21 @@ export default function EventDetailPage() {
             fetchOffers();
             setActiveTab('offer');
             fetchEventDetails(); // Odśwież dane eventu aby zaktualizować budżet
+          }}
+        />
+      )}
+
+      {showEditClientModal && event && (
+        <EditEventClientModal
+          isOpen={showEditClientModal}
+          onClose={() => setShowEditClientModal(false)}
+          eventId={eventId}
+          currentClientType={(event as any).client_type || 'business'}
+          currentOrganizationId={event.organization_id}
+          currentContactPersonId={event.contact_person_id}
+          onSuccess={() => {
+            setShowEditClientModal(false);
+            fetchEventDetails();
           }}
         />
       )}
