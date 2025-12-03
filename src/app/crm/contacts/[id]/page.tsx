@@ -595,27 +595,7 @@ export default function OrganizationDetailPage() {
     );
   }
 
-  if (!organization) {
-    return null;
-  }
 
-  const displayName = organization.alias || organization.name;
-
-  const renderRating = (rating: number | null) => {
-    if (!rating) return null;
-    return (
-      <div className="flex items-center space-x-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <Star
-            key={star}
-            className={`w-4 h-4 ${
-              star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-600'
-            }`}
-          />
-        ))}
-      </div>
-    );
-  };
 
   // Renderowanie dla kontaktu/osoby prywatnej
   if (entityType === 'contact' && contact) {
@@ -1848,4 +1828,6 @@ export default function OrganizationDetailPage() {
       )}
     </div>
   );
+
+  
 }
