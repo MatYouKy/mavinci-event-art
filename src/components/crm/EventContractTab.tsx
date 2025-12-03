@@ -107,8 +107,18 @@ export function EventContractTab({ eventId }: Props) {
       setTemplateExists(true);
 
       let templateToStore = template.content_html || template.content;
+      let pageSettingsToStore = template.page_settings;
+
       if (template.page_settings?.pages) {
-        templateToStore = JSON.stringify(template.page_settings);
+        templateToStore = JSON.stringify({
+          pages: template.page_settings.pages,
+          settings: {
+            logoScale: template.page_settings.logoScale || 80,
+            logoPositionX: template.page_settings.logoPositionX || 50,
+            logoPositionY: template.page_settings.logoPositionY || 0,
+            lineHeight: template.page_settings.lineHeight || 1.6,
+          }
+        });
       }
       setOriginalTemplate(templateToStore);
 
@@ -232,7 +242,15 @@ export function EventContractTab({ eventId }: Props) {
         const pages = template.page_settings.pages.map((page: string) =>
           replaceVariables(page, varsMap)
         );
-        contentToSet = JSON.stringify(pages);
+        contentToSet = JSON.stringify({
+          pages,
+          settings: {
+            logoScale: template.page_settings.logoScale || 80,
+            logoPositionX: template.page_settings.logoPositionX || 50,
+            logoPositionY: template.page_settings.logoPositionY || 0,
+            lineHeight: template.page_settings.lineHeight || 1.6,
+          }
+        });
       } else {
         const templateToUse = template.content_html || template.content;
         contentToSet = replaceVariables(templateToUse, varsMap);
@@ -252,7 +270,15 @@ export function EventContractTab({ eventId }: Props) {
 
     try {
       const parsed = JSON.parse(originalTemplate);
-      if (Array.isArray(parsed)) {
+      if (parsed.pages && Array.isArray(parsed.pages)) {
+        const pages = parsed.pages.map((page: string) =>
+          replaceVariables(page, editedVariables)
+        );
+        setContractContent(JSON.stringify({
+          pages,
+          settings: parsed.settings
+        }));
+      } else if (Array.isArray(parsed)) {
         const pages = parsed.map((page: string) =>
           replaceVariables(page, editedVariables)
         );
@@ -374,24 +400,55 @@ export function EventContractTab({ eventId }: Props) {
       <div className="contract-a4-container">
         {(() => {
           try {
-            const pages = JSON.parse(contractContent);
-            if (Array.isArray(pages)) {
+            const parsed = JSON.parse(contractContent);
+            const pages = parsed.pages || (Array.isArray(parsed) ? parsed : null);
+            const settings = parsed.settings || {
+              logoScale: 80,
+              logoPositionX: 50,
+              logoPositionY: 0,
+              lineHeight: 1.6,
+            };
+
+            if (pages && Array.isArray(pages)) {
               return pages.map((pageContent: string, pageIndex: number) => (
                 <div key={pageIndex} className="contract-a4-page" style={{ marginBottom: pageIndex < pages.length - 1 ? '20px' : '0' }}>
-                  <div className="contract-header-logo">
-                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
-                  </div>
+                  {pageIndex === 0 && (
+                    <>
+                      <div
+                        className="contract-header-logo"
+                        style={{
+                          justifyContent:
+                            settings.logoPositionX <= 33
+                              ? 'flex-start'
+                              : settings.logoPositionX >= 67
+                                ? 'flex-end'
+                                : 'center',
+                          marginTop: `${settings.logoPositionY}mm`,
+                        }}
+                      >
+                        <img
+                          src="/erulers_logo_vect.png"
+                          alt="EVENT RULERS"
+                          style={{
+                            maxWidth: `${settings.logoScale}%`,
+                            height: 'auto',
+                          }}
+                        />
+                      </div>
 
-                  <div className="contract-current-date">
-                    {new Date().toLocaleDateString('pl-PL', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </div>
+                      <div className="contract-current-date">
+                        Olsztyn, {new Date().toLocaleDateString('pl-PL', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </>
+                  )}
 
                   <div
                     className="contract-content"
+                    style={{ lineHeight: String(settings.lineHeight) }}
                     dangerouslySetInnerHTML={{ __html: pageContent }}
                   />
 
@@ -401,12 +458,16 @@ export function EventContractTab({ eventId }: Props) {
                     </div>
                     <div className="footer-info">
                       <p><strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em></p>
-                      <p>www.eventrulers.pl | biuro@eventrulers.pl | tel: 698-212-279</p>
+                      <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                      <p>tel: 698-212-279</p>
                     </div>
-                    {pageIndex > 0 && pages.length > 1 && (
-                      <div className="footer-page-number">Strona {pageIndex + 1}</div>
-                    )}
                   </div>
+
+                  {pages.length > 1 && (
+                    <div className="footer-page-number">
+                      Strona {pageIndex + 1} z {pages.length}
+                    </div>
+                  )}
                 </div>
               ));
             }
@@ -420,7 +481,7 @@ export function EventContractTab({ eventId }: Props) {
               </div>
 
               <div className="contract-current-date">
-                {new Date().toLocaleDateString('pl-PL', {
+                Olsztyn, {new Date().toLocaleDateString('pl-PL', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric'
@@ -438,7 +499,8 @@ export function EventContractTab({ eventId }: Props) {
                 </div>
                 <div className="footer-info">
                   <p><strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em></p>
-                  <p>www.eventrulers.pl | biuro@eventrulers.pl | tel: 698-212-279</p>
+                  <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                  <p>tel: 698-212-279</p>
                 </div>
               </div>
             </div>
