@@ -615,7 +615,10 @@ export function EventContractTab({ eventId }: Props) {
 
                   <div
                     className="contract-content"
-                    style={{ lineHeight: String(settings.lineHeight) }}
+                    style={{
+                      lineHeight: String(settings.lineHeight),
+                      minHeight: pageIndex === 0 ? '160mm' : '250mm'
+                    }}
                     dangerouslySetInnerHTML={{ __html: pageContent }}
                   />
 

@@ -767,6 +767,7 @@ export default function EditTemplateWYSIWYGPage() {
                   direction: 'ltr',
                   unicodeBidi: 'embed',
                   lineHeight: String(lineHeight),
+                  minHeight: pageIndex === 0 ? '160mm' : '250mm',
                 }}
               />
 
