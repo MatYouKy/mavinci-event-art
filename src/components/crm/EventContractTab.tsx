@@ -64,6 +64,7 @@ export function EventContractTab({ eventId }: Props) {
   const [templateExists, setTemplateExists] = useState(false);
   const [contractStatus, setContractStatus] = useState<ContractStatus>('draft');
   const [contractId, setContractId] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState<string | null>(null);
   const [statusDates, setStatusDates] = useState<{
     issued_at?: string;
     sent_at?: string;
@@ -136,6 +137,7 @@ export function EventContractTab({ eventId }: Props) {
       }
 
       setTemplateExists(true);
+      setTemplateId(template.id);
 
       let templateToStore = template.content_html || template.content;
       let pageSettingsToStore = template.page_settings;
@@ -155,24 +157,24 @@ export function EventContractTab({ eventId }: Props) {
 
       const { data: offers } = await supabase
         .from('offers')
-        .select(`
-          id,
-          description,
-          total_price
-        `)
+        .select('id, total_amount')
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      const { data: offerItems } = await supabase
-        .from('offer_items')
-        .select('*')
-        .eq('offer_id', offers?.id)
-        .order('display_order', { ascending: true });
+      let offerItems = null;
+      if (offers?.id) {
+        const { data: items } = await supabase
+          .from('offer_items')
+          .select('*')
+          .eq('offer_id', offers.id)
+          .order('display_order', { ascending: true });
+        offerItems = items;
+      }
 
       const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-      const totalPrice = event.budget || offers?.total_price || 0;
+      const totalPrice = event.budget || offers?.total_amount || 0;
       const depositAmount = Math.round(totalPrice * 0.5);
 
       const formatDate = (dateStr: string) => {
@@ -368,11 +370,10 @@ export function EventContractTab({ eventId }: Props) {
   const handleStatusChange = async (newStatus: ContractStatus) => {
     try {
       if (!contractId) {
-        const { data: template } = await supabase
-          .from('contract_templates')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
+        if (!templateId) {
+          showSnackbar('Brak szablonu umowy dla tej kategorii wydarzenia', 'error');
+          return;
+        }
 
         const { data: newContract, error: createError } = await supabase
           .from('contracts')
@@ -381,7 +382,7 @@ export function EventContractTab({ eventId }: Props) {
             title: `Umowa dla eventu ${eventId}`,
             content: contractContent,
             status: newStatus,
-            template_id: template?.id,
+            template_id: templateId,
           })
           .select('id')
           .single();
@@ -513,25 +514,31 @@ export function EventContractTab({ eventId }: Props) {
 
       <div className="no-print bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
         <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Status umowy</h3>
-        <div className="flex flex-wrap gap-2">
-          {(['draft', 'issued', 'sent', 'signed_by_client', 'signed_returned', 'cancelled'] as ContractStatus[]).map((status) => (
-            <button
-              key={status}
-              onClick={() => handleStatusChange(status)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                contractStatus === status
-                  ? 'bg-[#d3bb73] text-[#1c1f33]'
-                  : 'bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] hover:bg-[#d3bb73]/10'
-              }`}
+        <div className="flex items-center gap-6">
+          <div className="flex-1 max-w-md">
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Wybierz status
+            </label>
+            <select
+              value={contractStatus}
+              onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
+              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] text-base focus:outline-none focus:ring-2 focus:ring-[#d3bb73] transition-all cursor-pointer hover:border-[#d3bb73]/40"
             >
-              {getStatusLabel(status)}
-              {contractStatus === status && getStatusDate(status) && (
-                <div className="text-xs mt-1 opacity-80">
-                  {getStatusDate(status)}
-                </div>
-              )}
-            </button>
-          ))}
+              {(['draft', 'issued', 'sent', 'signed_by_client', 'signed_returned', 'cancelled'] as ContractStatus[]).map((status) => (
+                <option key={status} value={status} className="bg-[#1c1f33] text-[#e5e4e2]">
+                  {getStatusLabel(status)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {getStatusDate(contractStatus) && (
+            <div className="flex-1">
+              <div className="text-sm text-[#e5e4e2]/60 mb-1">Data zmiany statusu</div>
+              <div className="text-base text-[#d3bb73] font-medium">
+                {getStatusDate(contractStatus)}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
