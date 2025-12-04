@@ -789,7 +789,7 @@ export function EventContractTab({ eventId }: Props) {
         .contract-a4-page {
           position: relative;
           width: 210mm;
-          min-height: 297mm;
+          height: 297mm;
           margin: 0 auto 20px auto;
           padding: 20mm 25mm 30mm;
           background: white;
@@ -802,6 +802,7 @@ export function EventContractTab({ eventId }: Props) {
           break-after: page;
           display: flex;
           flex-direction: column;
+          box-sizing: border-box;
         }
 
         .contract-header-logo {
