@@ -1,4 +1,5 @@
 'use client';
+import '@/styles/contractA4.css';
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -15,6 +16,7 @@ import {
   List,
   ListOrdered,
   Type,
+  Trash2,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -263,14 +265,15 @@ export default function EditTemplateWYSIWYGPage() {
     const range = selection.getRangeAt(0);
     const container = range.commonAncestorContainer;
 
-    let editorElement = container.nodeType === 3 ? container.parentElement : container as HTMLElement;
-    while (editorElement && !editorElement.classList.contains('contract-content-wysiwyg')) {
+    let editorElement =
+      container.nodeType === 3 ? container.parentElement : (container as HTMLElement);
+    while (editorElement && !editorElement.classList.contains('contract-content')) {
       editorElement = editorElement.parentElement;
     }
 
     if (!editorElement) return;
 
-    const pageIndex = pageRefs.current.findIndex(ref => ref === editorElement);
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
     if (pageIndex === -1) return;
 
     const textNode = document.createTextNode(placeholder);
@@ -290,14 +293,15 @@ export default function EditTemplateWYSIWYGPage() {
     const range = selection.getRangeAt(0);
     const container = range.commonAncestorContainer;
 
-    let editorElement = container.nodeType === 3 ? container.parentElement : container as HTMLElement;
-    while (editorElement && !editorElement.classList.contains('contract-content-wysiwyg')) {
+    let editorElement =
+      container.nodeType === 3 ? container.parentElement : (container as HTMLElement);
+    while (editorElement && !editorElement.classList.contains('contract-content')) {
       editorElement = editorElement.parentElement;
     }
 
     if (!editorElement) return;
 
-    const pageIndex = pageRefs.current.findIndex(ref => ref === editorElement);
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
     if (pageIndex === -1) return;
 
     const img = document.createElement('img');
@@ -323,14 +327,15 @@ export default function EditTemplateWYSIWYGPage() {
     const range = selection.getRangeAt(0);
     const container = range.commonAncestorContainer;
 
-    let editorElement = container.nodeType === 3 ? container.parentElement : container as HTMLElement;
-    while (editorElement && !editorElement.classList.contains('contract-content-wysiwyg')) {
+    let editorElement =
+      container.nodeType === 3 ? container.parentElement : (container as HTMLElement);
+    while (editorElement && !editorElement.classList.contains('contract-content')) {
       editorElement = editorElement.parentElement;
     }
 
     if (!editorElement) return;
 
-    const pageIndex = pageRefs.current.findIndex(ref => ref === editorElement);
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
     if (pageIndex === -1) return;
 
     const existingParagraphs = editorElement.querySelectorAll('p[data-paragraph-number]');
@@ -714,11 +719,11 @@ export default function EditTemplateWYSIWYGPage() {
       <div className="min-h-screen bg-[#f5f5f5] py-8">
         <div className="mx-auto max-w-[230mm] px-4">
           {pages.map((pageContent, pageIndex) => (
-            <div key={pageIndex} className="contract-a4-page-wysiwyg">
+            <div key={pageIndex} className="contract-a4-page">
               {pageIndex === 0 && (
                 <>
                   <div
-                    className="contract-header-logo-wysiwyg"
+                    className="contract-header-logo"
                     style={{
                       justifyContent:
                         logoPositionX <= 33
@@ -739,8 +744,9 @@ export default function EditTemplateWYSIWYGPage() {
                     />
                   </div>
 
-                  <div className="contract-current-date-wysiwyg">
-                    Olsztyn, {new Date().toLocaleDateString('pl-PL', {
+                  <div className="contract-current-date">
+                    Olsztyn,{' '}
+                    {new Date().toLocaleDateString('pl-PL', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
@@ -761,7 +767,7 @@ export default function EditTemplateWYSIWYGPage() {
                 dir="ltr"
                 onInput={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
                 onBlur={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
-                className="contract-content-wysiwyg"
+                className="contract-content"
                 style={{
                   outline: 'none',
                   direction: 'ltr',
@@ -771,12 +777,15 @@ export default function EditTemplateWYSIWYGPage() {
                 }}
               />
 
-              <div className="contract-footer-wysiwyg">
-                <div className="footer-logo-wysiwyg">
+              <div className="contract-footer">
+                <div className="footer-logo">
                   <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
                 </div>
-                <div className="footer-info-wysiwyg">
-                  <p><span className="font-bold">EVENT RULERS</span> – <span className="italic">Więcej niż Wodzireje!</span></p>
+                <div className="footer-info">
+                  <p>
+                    <span className="font-bold">EVENT RULERS</span> –{' '}
+                    <span className="italic">Więcej niż Wodzireje!</span>
+                  </p>
                   <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
                   <p>tel: 698-212-279</p>
                 </div>
@@ -788,19 +797,21 @@ export default function EditTemplateWYSIWYGPage() {
                   className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
                   title="Usuń stronę"
                 >
-                  🗑️
+                  <Trash2 className="w-4 h-4" />
                 </button>
               )}
 
-              <div className="absolute bottom-8 right-20 text-xs text-[#000]/50">
-                Strona {pageIndex + 1} z {pages.length}
-              </div>
+              {pages.length > 1 && (
+                <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
+                  {pageIndex + 1} z {pages.length}
+                </div>
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Custom Styles */}
+      {/* Custom Styles
       <style jsx global>{`
         .contract-a4-page-wysiwyg {
           position: relative;
@@ -964,10 +975,8 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-footer-wysiwyg {
           margin-top: auto;
           width: 100%;
-          min-height: 25mm;
+          min-height: 15mm;
           display: flex;
-          flex-direction: column;
-          align-items: center;
           justify-content: flex-end;
           padding: 10px 0;
           background: white;
@@ -1000,7 +1009,7 @@ export default function EditTemplateWYSIWYGPage() {
         }
 
         .footer-info-wysiwyg {
-          text-align: center;
+          text-align: right;
           font-size: 10pt;
           color: #333;
           line-height: 1.2;
@@ -1010,7 +1019,7 @@ export default function EditTemplateWYSIWYGPage() {
           margin: 4px 0;
           color: #333;
         }
-      `}</style>
+      `}</style> */}
     </div>
   );
 }

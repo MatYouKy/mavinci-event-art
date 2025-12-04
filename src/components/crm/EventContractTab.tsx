@@ -1,20 +1,65 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { FileText, Download, Edit, Save, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import '@/styles/contractA4.css';
+import ResponsiveActionBar from './ResponsiveActionBar';
 
 interface Props {
   eventId: string;
 }
 
 const numberToWords = (num: number): string => {
-  const units = ['', 'jeden', 'dwa', 'trzy', 'cztery', 'pięć', 'sześć', 'siedem', 'osiem', 'dziewięć'];
-  const teens = ['dziesięć', 'jedenaście', 'dwanaście', 'trzynaście', 'czternaście', 'piętnaście', 'szesnaście', 'siedemnaście', 'osiemnaście', 'dziewiętnaście'];
-  const tens = ['', '', 'dwadzieścia', 'trzydzieści', 'czterdzieści', 'pięćdziesiąt', 'sześćdziesiąt', 'siedemdziesiąt', 'osiemdziesiąt', 'dziewięćdziesiąt'];
-  const hundreds = ['', 'sto', 'dwieście', 'trzysta', 'czterysta', 'pięćset', 'sześćset', 'siedemset', 'osiemset', 'dziewięćset'];
+  const units = [
+    '',
+    'jeden',
+    'dwa',
+    'trzy',
+    'cztery',
+    'pięć',
+    'sześć',
+    'siedem',
+    'osiem',
+    'dziewięć',
+  ];
+  const teens = [
+    'dziesięć',
+    'jedenaście',
+    'dwanaście',
+    'trzynaście',
+    'czternaście',
+    'piętnaście',
+    'szesnaście',
+    'siedemnaście',
+    'osiemnaście',
+    'dziewiętnaście',
+  ];
+  const tens = [
+    '',
+    '',
+    'dwadzieścia',
+    'trzydzieści',
+    'czterdzieści',
+    'pięćdziesiąt',
+    'sześćdziesiąt',
+    'siedemdziesiąt',
+    'osiemdziesiąt',
+    'dziewięćdziesiąt',
+  ];
+  const hundreds = [
+    '',
+    'sto',
+    'dwieście',
+    'trzysta',
+    'czterysta',
+    'pięćset',
+    'sześćset',
+    'siedemset',
+    'osiemset',
+    'dziewięćset',
+  ];
 
   if (num === 0) return 'zero';
   if (num < 0) return 'minus ' + numberToWords(-num);
@@ -52,7 +97,13 @@ const replaceVariables = (template: string, variables: Record<string, string>): 
   return result;
 };
 
-type ContractStatus = 'draft' | 'issued' | 'sent' | 'signed_by_client' | 'signed_returned' | 'cancelled';
+type ContractStatus =
+  | 'draft'
+  | 'issued'
+  | 'sent'
+  | 'signed_by_client'
+  | 'signed_returned'
+  | 'cancelled';
 
 export function EventContractTab({ eventId }: Props) {
   const { showSnackbar } = useSnackbar();
@@ -84,7 +135,8 @@ export function EventContractTab({ eventId }: Props) {
 
       const { data: event, error: eventError } = await supabase
         .from('events')
-        .select(`
+        .select(
+          `
           id,
           name,
           event_date,
@@ -103,7 +155,8 @@ export function EventContractTab({ eventId }: Props) {
             contract_template_id,
             contract_templates:contract_template_id(id, name, content, content_html, page_settings)
           )
-        `)
+        `,
+        )
         .eq('id', eventId)
         .single();
 
@@ -111,7 +164,9 @@ export function EventContractTab({ eventId }: Props) {
 
       const { data: existingContract } = await supabase
         .from('contracts')
-        .select('id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at')
+        .select(
+          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at',
+        )
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -151,7 +206,7 @@ export function EventContractTab({ eventId }: Props) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
-          }
+          },
         });
       }
       setOriginalTemplate(templateToStore);
@@ -174,7 +229,9 @@ export function EventContractTab({ eventId }: Props) {
         offerItems = items;
       }
 
-      const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000)
+        .toString()
+        .padStart(3, '0')}`;
       const totalPrice = event.budget || offers?.total_amount || 0;
       const depositAmount = Math.round(totalPrice * 0.5);
 
@@ -186,7 +243,7 @@ export function EventContractTab({ eventId }: Props) {
           month: 'long',
           day: 'numeric',
           hour: '2-digit',
-          minute: '2-digit'
+          minute: '2-digit',
         });
       };
 
@@ -196,7 +253,7 @@ export function EventContractTab({ eventId }: Props) {
         return date.toLocaleDateString('pl-PL', {
           year: 'numeric',
           month: '2-digit',
-          day: '2-digit'
+          day: '2-digit',
         });
       };
 
@@ -205,7 +262,7 @@ export function EventContractTab({ eventId }: Props) {
         const date = new Date(dateStr);
         return date.toLocaleTimeString('pl-PL', {
           hour: '2-digit',
-          minute: '2-digit'
+          minute: '2-digit',
         });
       };
 
@@ -215,7 +272,7 @@ export function EventContractTab({ eventId }: Props) {
 
       const parseLocationString = (locationStr: string) => {
         if (!locationStr) return { address: '', city: '', postal: '' };
-        const parts = locationStr.split(',').map(s => s.trim());
+        const parts = locationStr.split(',').map((s) => s.trim());
         if (parts.length >= 3) {
           const postalCity = parts[1].trim().split(' ');
           return {
@@ -231,17 +288,21 @@ export function EventContractTab({ eventId }: Props) {
       const parsedLocation = parseLocationString(locationString);
 
       const offerItemsArray = offerItems || [];
-      const offerItemsHtml = offerItemsArray.length > 0
-        ? `<ul style="margin: 0; padding-left: 20px; list-style-type: none;">
-            ${offerItemsArray.map((item: any, index: number) => `
+      const offerItemsHtml =
+        offerItemsArray.length > 0
+          ? `<ul style="margin: 0; padding-left: 20px; list-style-type: none;">
+            ${offerItemsArray
+              .map(
+                (item: any, index: number) => `
               <li style="margin-bottom: 8px;">
                 <strong>${index + 1}. ${item.name || 'Produkt'}</strong>
-                ${item.description ? `<br/><span style="margin-left: 20px; font-size: 11pt; color: #333;">${item.description}</span>` : ''}
                 ${item.quantity ? `<br/><span style="margin-left: 20px; font-size: 11pt;">Ilość: ${item.quantity}</span>` : ''}
               </li>
-            `).join('')}
+            `,
+              )
+              .join('')}
           </ul>`
-        : '<p style="font-style: italic; color: #666;">Brak pozycji w ofercie</p>';
+          : '<p style="font-style: italic; color: #666;">Brak pozycji w ofercie</p>';
 
       const { generateOfferItemsTable, numberToWords } = await import('@/lib/offerTemplateHelpers');
       const offerItemsTable = generateOfferItemsTable(offerItemsArray || []);
@@ -266,7 +327,7 @@ export function EventContractTab({ eventId }: Props) {
         organization_email: organization?.email || '',
 
         event_name: event.name || '',
-        event_date: formatDate(event.event_date),
+        event_date: formatDateOnly(event.event_date),
         event_end_date: formatDate(event.event_end_date),
         event_date_only: formatDateOnly(event.event_date),
         event_end_date_only: formatDateOnly(event.event_end_date),
@@ -279,9 +340,17 @@ export function EventContractTab({ eventId }: Props) {
         location_postal_code: location?.postal_code || parsedLocation.postal || '',
         location_full: location?.formatted_address || locationString || '',
 
-        budget: totalPrice.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
+        budget:
+          totalPrice.toLocaleString('pl-PL', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }) + ' zł',
         budget_words: numberToWords(totalPrice),
-        deposit_amount: depositAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł',
+        deposit_amount:
+          depositAmount.toLocaleString('pl-PL', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }) + ' zł',
         deposit_words: numberToWords(depositAmount),
 
         contract_number: contractNumber,
@@ -305,7 +374,7 @@ export function EventContractTab({ eventId }: Props) {
       let contentToSet = '';
       if (template.page_settings?.pages) {
         const pages = template.page_settings.pages.map((page: string) =>
-          replaceVariables(page, varsMap)
+          replaceVariables(page, varsMap),
         );
         contentToSet = JSON.stringify({
           pages,
@@ -314,14 +383,13 @@ export function EventContractTab({ eventId }: Props) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
-          }
+          },
         });
       } else {
         const templateToUse = template.content_html || template.content;
         contentToSet = replaceVariables(templateToUse, varsMap);
       }
       setContractContent(contentToSet);
-
     } catch (err) {
       console.error('Error fetching contract data:', err);
       showSnackbar('Błąd podczas ładowania danych umowy', 'error');
@@ -336,17 +404,15 @@ export function EventContractTab({ eventId }: Props) {
     try {
       const parsed = JSON.parse(originalTemplate);
       if (parsed.pages && Array.isArray(parsed.pages)) {
-        const pages = parsed.pages.map((page: string) =>
-          replaceVariables(page, editedVariables)
+        const pages = parsed.pages.map((page: string) => replaceVariables(page, editedVariables));
+        setContractContent(
+          JSON.stringify({
+            pages,
+            settings: parsed.settings,
+          }),
         );
-        setContractContent(JSON.stringify({
-          pages,
-          settings: parsed.settings
-        }));
       } else if (Array.isArray(parsed)) {
-        const pages = parsed.map((page: string) =>
-          replaceVariables(page, editedVariables)
-        );
+        const pages = parsed.map((page: string) => replaceVariables(page, editedVariables));
         setContractContent(JSON.stringify(pages));
       } else {
         setContractContent(replaceVariables(originalTemplate, editedVariables));
@@ -440,9 +506,43 @@ export function EventContractTab({ eventId }: Props) {
     });
   };
 
+  const actions = useMemo(() => {
+    if (editMode) {
+      return [
+        {
+          label: 'Anuluj',
+          onClick: handleCancel,
+          icon: <X className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+        {
+          label: 'Zapisz',
+          onClick: handleSave,
+          icon: <Save className="h-4 w-4" />,
+          variant: 'primary' as const,
+        },
+      ];
+    }
+
+    return [
+      {
+        label: 'Edytuj zmienne',
+        onClick: () => setEditMode(true),
+        icon: <Edit className="h-4 w-4" />,
+        variant: 'default' as const,
+      },
+      {
+        label: 'Pobierz PDF',
+        onClick: handlePrint,
+        icon: <Download className="h-4 w-4" />,
+        variant: 'primary' as const,
+      },
+    ];
+  }, [editMode, handleCancel, handleSave, handlePrint]);
+
   if (loading) {
     return (
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
         <div className="text-center text-[#e5e4e2]/60">Ładowanie danych umowy...</div>
       </div>
     );
@@ -450,15 +550,19 @@ export function EventContractTab({ eventId }: Props) {
 
   if (!templateExists) {
     return (
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
         <div className="text-center">
-          <FileText className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <h3 className="text-xl text-[#e5e4e2] mb-2">Brak szablonu umowy</h3>
-          <p className="text-[#e5e4e2]/60 mb-4">
+          <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <h3 className="mb-2 text-xl text-[#e5e4e2]">Brak szablonu umowy</h3>
+          <p className="mb-4 text-[#e5e4e2]/60">
             Dla tej kategorii wydarzenia nie został przypisany szablon umowy.
           </p>
           <p className="text-sm text-[#e5e4e2]/40">
-            Przejdź do <a href="/crm/event-categories" className="text-[#d3bb73] hover:underline">kategorii wydarzeń</a> aby przypisać szablon.
+            Przejdź do{' '}
+            <a href="/crm/event-categories" className="text-[#d3bb73] hover:underline">
+              kategorii wydarzeń
+            </a>{' '}
+            aby przypisać szablon.
           </p>
         </div>
       </div>
@@ -467,96 +571,70 @@ export function EventContractTab({ eventId }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="no-print flex items-center justify-between bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+      <div className="no-print flex items-center justify-between rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
         <div>
-          <h2 className="text-2xl font-light text-[#e5e4e2] mb-1">Umowa na realizację wydarzenia</h2>
+          <h2 className="mb-1 text-2xl font-light text-[#e5e4e2]">
+            Umowa na realizację wydarzenia
+          </h2>
           <p className="text-sm text-[#e5e4e2]/60">
             Automatycznie wygenerowana z danych wydarzenia
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {editMode ? (
-            <>
-              <button
-                onClick={handleCancel}
-                className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5"
+          <div className="flex items-center gap-6">
+            <div className="max-w-md flex-1">
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz status</label>
+              <select
+                value={contractStatus}
+                onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
+                className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"
               >
-                <X className="w-4 h-4" />
-                Anuluj
-              </button>
-              <button
-                onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
-              >
-                <Save className="w-4 h-4" />
-                Zapisz
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setEditMode(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5"
-              >
-                <Edit className="w-4 h-4" />
-                Edytuj zmienne
-              </button>
-              <button
-                onClick={handlePrint}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90"
-              >
-                <Download className="w-4 h-4" />
-                Pobierz PDF
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="no-print bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Status umowy</h3>
-        <div className="flex items-center gap-6">
-          <div className="flex-1 max-w-md">
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Wybierz status
-            </label>
-            <select
-              value={contractStatus}
-              onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] text-base focus:outline-none focus:ring-2 focus:ring-[#d3bb73] transition-all cursor-pointer hover:border-[#d3bb73]/40"
-            >
-              {(['draft', 'issued', 'sent', 'signed_by_client', 'signed_returned', 'cancelled'] as ContractStatus[]).map((status) => (
-                <option key={status} value={status} className="bg-[#1c1f33] text-[#e5e4e2]">
-                  {getStatusLabel(status)}
-                </option>
-              ))}
-            </select>
-          </div>
-          {getStatusDate(contractStatus) && (
-            <div className="flex-1">
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Data zmiany statusu</div>
-              <div className="text-base text-[#d3bb73] font-medium">
-                {getStatusDate(contractStatus)}
-              </div>
+                {(
+                  [
+                    'draft',
+                    'issued',
+                    'sent',
+                    'signed_by_client',
+                    'signed_returned',
+                    'cancelled',
+                  ] as ContractStatus[]
+                ).map((status) => (
+                  <option key={status} value={status} className="bg-[#1c1f33] text-[#e5e4e2]">
+                    {getStatusLabel(status)}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+            {getStatusDate(contractStatus) && (
+              <div className="flex-1">
+                <div className="mb-1 text-sm text-[#e5e4e2]/60">Data zmiany statusu</div>
+                <div className="text-base font-medium text-[#d3bb73]">
+                  {getStatusDate(contractStatus)}
+                </div>
+              </div>
+            )}
+          </div>
+
+        <div className="flex items-center gap-3">
+          <ResponsiveActionBar actions={actions} />
         </div>
       </div>
 
       {editMode && (
-        <div className="no-print bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Edycja zmiennych</h3>
-          <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+        <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Edycja zmiennych</h3>
+          <div className="grid max-h-96 grid-cols-2 gap-4 overflow-y-auto">
             {Object.entries(editedVariables).map(([key, value]) => (
               <div key={key}>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-1">
+                <label className="mb-1 block text-sm text-[#e5e4e2]/60">
                   {key.replace(/_/g, ' ')}
                 </label>
                 <input
                   type="text"
                   value={value}
-                  onChange={(e) => setEditedVariables({ ...editedVariables, [key]: e.target.value })}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                  onChange={(e) =>
+                    setEditedVariables({ ...editedVariables, [key]: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
                 />
               </div>
             ))}
@@ -604,10 +682,11 @@ export function EventContractTab({ eventId }: Props) {
                       </div>
 
                       <div className="contract-current-date">
-                        Olsztyn, {new Date().toLocaleDateString('pl-PL', {
+                        Olsztyn,{' '}
+                        {new Date().toLocaleDateString('pl-PL', {
                           year: 'numeric',
                           month: 'long',
-                          day: 'numeric'
+                          day: 'numeric',
                         })}
                       </div>
                     </>
@@ -617,7 +696,7 @@ export function EventContractTab({ eventId }: Props) {
                     className="contract-content"
                     style={{
                       lineHeight: String(settings.lineHeight),
-                      minHeight: pageIndex === 0 ? '160mm' : '250mm'
+                      minHeight: pageIndex === 0 ? '160mm' : '250mm',
                     }}
                     dangerouslySetInnerHTML={{ __html: pageContent }}
                   />
@@ -627,15 +706,18 @@ export function EventContractTab({ eventId }: Props) {
                       <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
                     </div>
                     <div className="footer-info">
-                      <p><strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em></p>
+                      <p>
+                        <span className="font-bold">EVENT RULERS</span> –{' '}
+                        <span className="italic">Więcej niż Wodzireje!</span>
+                      </p>
                       <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
                       <p>tel: 698-212-279</p>
                     </div>
                   </div>
 
                   {pages.length > 1 && (
-                    <div className="footer-page-number">
-                      Strona {pageIndex + 1} z {pages.length}
+                    <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
+                      {pageIndex + 1} z {pages.length}
                     </div>
                   )}
                 </div>
@@ -651,10 +733,11 @@ export function EventContractTab({ eventId }: Props) {
               </div>
 
               <div className="contract-current-date">
-                Olsztyn, {new Date().toLocaleDateString('pl-PL', {
+                Olsztyn,{' '}
+                {new Date().toLocaleDateString('pl-PL', {
                   year: 'numeric',
                   month: 'long',
-                  day: 'numeric'
+                  day: 'numeric',
                 })}
               </div>
 
@@ -668,7 +751,9 @@ export function EventContractTab({ eventId }: Props) {
                   <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
                 </div>
                 <div className="footer-info">
-                  <p><strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em></p>
+                  <p>
+                    <strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em>
+                  </p>
                   <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
                   <p>tel: 698-212-279</p>
                 </div>

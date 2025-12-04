@@ -31,6 +31,8 @@ import ClientSelectorTabs from '@/components/crm/ClientSelectorTabs';
 import EditEventModalNew from '@/components/crm/EditEventModalNew';
 
 interface Event {
+  expected_revenue: any;
+  location_details: any;
   id: string;
   name: string;
   description: string;
@@ -81,12 +83,17 @@ interface Event {
 }
 
 interface Equipment {
+  kit_id: unknown;
   id: string;
   equipment_id: string;
   quantity: number;
   notes: string;
   auto_added: boolean;
   equipment: {
+    model: any;
+    cable_specs: any;
+    brand: any;
+    thumbnail_url: any;
     name: string;
     category: string;
   };

@@ -144,17 +144,17 @@ export function generateOfferItemsTable(items: OfferItem[]): string {
   }
 
   const listItems = items.map((item) => {
-    let itemHTML = `<li style="margin-bottom: 8px;"><strong>${item.name}</strong>`;
+    let itemHTML = `<li><strong>${item.name}</strong>`;
 
-    if (item.description) {
-      itemHTML += `<br/><span style="margin-left: 0; font-size: 10pt; color: #333;">${item.description}</span>`;
-    }
+    // if (item.description) {
+    //   itemHTML += `<br/><span style="margin-left: 0; font-size: 10pt; color: #333;">${item.description}</span>`;
+    // }
 
     itemHTML += '</li>';
     return itemHTML;
   }).join('\n');
 
-  return `<ul style="margin: 10px 0; padding-left: 20px; list-style-type: disc; font-family: Arial, sans-serif; font-size: 10pt;">
+  return `<ul style="padding-left: 10mm; list-style-type: disc; font-family: Arial, sans-serif; font-size: 10pt;">
 ${listItems}
 </ul>`;
 }
