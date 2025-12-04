@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Send, Mail, Loader } from 'lucide-react';
+import { X, Send, Mail, Loader, Eye, Code } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { generateEmailSignature } from './EmailSignatureGenerator';
 
 interface SendContractEmailModalProps {
   contractId: string;
@@ -44,9 +45,17 @@ Proszę o zapoznanie się z treścią i odesłanie podpisanego egzemplarza.
 W razie pytań proszę o kontakt.`,
     fromAccountId: '',
   });
+  const [signature, setSignature] = useState<any>(null);
+  const [template, setTemplate] = useState<any>(null);
+  const [employee, setEmployee] = useState<any>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [contract, setContract] = useState<any>(null);
 
   useEffect(() => {
     fetchEmailAccounts();
+    fetchSignatureAndTemplate();
+    fetchContract();
   }, []);
 
   useEffect(() => {
@@ -54,6 +63,128 @@ W razie pytań proszę o kontakt.`,
       setFormData((prev) => ({ ...prev, to: clientEmail }));
     }
   }, [clientEmail]);
+
+  useEffect(() => {
+    generatePreview();
+  }, [formData.message, signature, template]);
+
+  const fetchContract = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contracts')
+        .select('*')
+        .eq('id', contractId)
+        .maybeSingle();
+
+      if (error) throw error;
+      setContract(data);
+    } catch (error) {
+      console.error('Error fetching contract:', error);
+    }
+  };
+
+  const fetchSignatureAndTemplate = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const [empResult, sigResult, templateResult] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('employee_signatures')
+          .select('*')
+          .eq('employee_id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('email_templates')
+          .select('*')
+          .eq('is_default', true)
+          .maybeSingle(),
+      ]);
+
+      setEmployee(empResult.data);
+      setSignature(sigResult.data);
+      setTemplate(templateResult.data);
+    } catch (error) {
+      console.error('Error fetching signature/template:', error);
+    }
+  };
+
+  const generateSignatureHtml = () => {
+    if (!signature && !employee) return '';
+
+    const sig = signature || {
+      full_name: employee ? (employee.nickname || `${employee.name} ${employee.surname}`) : '',
+      position: employee?.occupation || '',
+      phone: employee?.phone_number || '',
+      email: employee?.email || '',
+      website: 'https://mavinci.pl',
+      avatar_url: employee?.avatar_url || '',
+    };
+
+    if (signature && signature.use_custom_html && signature.custom_html) {
+      return signature.custom_html;
+    }
+
+    return generateEmailSignature(sig);
+  };
+
+  const generatePreview = () => {
+    const signatureHtml = generateSignatureHtml();
+    const contentHtml = formData.message.replace(/\n/g, '<br>');
+
+    if (template && template.body_template) {
+      const logoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/logo-mavinci.svg`;
+
+      let html = template.body_template
+        .replace('{{LOGO_URL}}', logoUrl || '')
+        .replace('{{CONTENT}}', contentHtml)
+        .replace('{{SIGNATURE}}', signatureHtml);
+
+      setPreviewHtml(html);
+    } else {
+      setPreviewHtml(`
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <div style="white-space: pre-wrap;">${contentHtml}</div>
+          ${signatureHtml}
+        </div>
+      `);
+    }
+  };
+
+  const generateContractPDF = async (): Promise<string> => {
+    if (!contract) throw new Error('Brak danych umowy');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; }
+          h1 { text-align: center; margin-bottom: 30px; color: #333; }
+          .content { white-space: pre-wrap; }
+        </style>
+      </head>
+      <body>
+        <h1>${contract.title || 'Umowa'}</h1>
+        <div class="content">${contract.content}</div>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const arrayBuffer = await blob.arrayBuffer();
+    const base64 = btoa(
+      new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+
+    return base64;
+  };
 
   const fetchEmailAccounts = async () => {
     try {
@@ -118,7 +249,8 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
-      const htmlBody = formData.message.replace(/\n/g, '<br>');
+      const contractPdfBase64 = await generateContractPDF();
+      const contractFilename = `${contract?.contract_number || 'umowa'}.html`;
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
@@ -132,7 +264,14 @@ W razie pytań proszę o kontakt.`,
             emailAccountId: formData.fromAccountId,
             to: formData.to,
             subject: formData.subject,
-            body: htmlBody,
+            body: previewHtml,
+            attachments: [
+              {
+                filename: contractFilename,
+                content: contractPdfBase64,
+                contentType: 'text/html',
+              },
+            ],
           }),
         }
       );
@@ -169,17 +308,37 @@ W razie pytań proszę o kontakt.`,
             <Mail className="w-6 h-6 text-[#d3bb73]" />
             <h2 className="text-xl font-light text-[#e5e4e2]">Wyślij umowę przez email</h2>
           </div>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="flex items-center gap-2 px-3 py-2 bg-[#0f1119] text-[#d3bb73] rounded-lg hover:bg-[#1a1d2e] transition-colors"
+            >
+              {showPreview ? <Code className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {showPreview ? 'Edycja' : 'Podgląd'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-4">
-          {loadingAccounts ? (
+          {showPreview ? (
+            <div>
+              <div className="mb-4 p-4 bg-[#0f1119] rounded-lg border border-[#d3bb73]/20">
+                <p className="text-sm text-[#e5e4e2]/70">
+                  <strong>Podgląd:</strong> Tak będzie wyglądać Twoja wiadomość u odbiorcy
+                </p>
+              </div>
+              <div className="bg-white rounded-lg p-4">
+                <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              </div>
+            </div>
+          ) : loadingAccounts ? (
             <div className="text-center py-8 text-[#e5e4e2]/60">
               Ładowanie kont email...
             </div>
@@ -264,11 +423,26 @@ W razie pytań proszę o kontakt.`,
                   placeholder="Wpisz treść wiadomości..."
                   className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-none disabled:opacity-50"
                 />
+                {!signature ? (
+                  <div className="mt-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                    <p className="text-xs text-yellow-400">
+                      ⚠️ Nie masz skonfigurowanej stopki. Użyjemy podstawowych danych z profilu pracownika.
+                      <br />
+                      <a href="/crm/employees/signature" target="_blank" className="underline hover:text-yellow-300">
+                        Kliknij tutaj aby stworzyć profesjonalną stopkę
+                      </a>
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#e5e4e2]/50 mt-2">
+                    ✓ Stopka zostanie dodana automatycznie
+                  </p>
+                )}
               </div>
 
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
                 <p className="text-xs text-amber-400">
-                  <strong>Wskazówka:</strong> Po wysłaniu umowy status zostanie automatycznie zmieniony na "Wysłana".
+                  <strong>Wskazówka:</strong> Po wysłaniu umowy status zostanie automatycznie zmieniony na "Wysłana", a umowa zostanie załączona jako plik HTML.
                 </p>
               </div>
             </>

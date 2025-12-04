@@ -25,6 +25,11 @@ interface EmailRequest {
   messageId?: string;
   emailAccountId?: string;
   smtpConfig?: SmtpConfig;
+  attachments?: Array<{
+    filename: string;
+    content: string;
+    contentType?: string;
+  }>;
 }
 
 interface EmailAccount {
@@ -46,7 +51,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig }: EmailRequest = await req.json();
+    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig, attachments }: EmailRequest = await req.json();
 
     if (!to || !subject || !body) {
       throw new Error("Missing required fields: to, subject, body");
@@ -117,6 +122,15 @@ Deno.serve(async (req: Request) => {
 
     if (replyTo) {
       mailOptions.replyTo = replyTo;
+    }
+
+    if (attachments && attachments.length > 0) {
+      mailOptions.attachments = attachments.map((att) => ({
+        filename: att.filename,
+        content: att.content,
+        encoding: 'base64',
+        contentType: att.contentType || 'application/octet-stream',
+      }));
     }
 
     const info = await transporter.sendMail(mailOptions);
