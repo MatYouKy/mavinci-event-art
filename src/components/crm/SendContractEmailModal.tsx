@@ -16,8 +16,8 @@ interface SendContractEmailModalProps {
 
 interface EmailAccount {
   id: string;
-  email: string;
-  display_name: string;
+  email_address: string;
+  from_name: string;
 }
 
 export default function SendContractEmailModal({
@@ -67,10 +67,10 @@ W razie pytań proszę o kontakt.`,
 
       const { data: accounts, error } = await supabase
         .from('employee_email_accounts')
-        .select('id, email, display_name')
+        .select('id, email_address, from_name')
         .eq('employee_id', user.id)
         .eq('is_active', true)
-        .order('is_primary', { ascending: false });
+        .order('is_default', { ascending: false });
 
       if (error) throw error;
 
@@ -206,7 +206,7 @@ W razie pytań proszę o kontakt.`,
                   >
                     {emailAccounts.map((account) => (
                       <option key={account.id} value={account.id}>
-                        {account.display_name} ({account.email})
+                        {account.from_name} ({account.email_address})
                       </option>
                     ))}
                   </select>
@@ -216,7 +216,7 @@ W razie pytań proszę o kontakt.`,
               {emailAccounts.length === 1 && (
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
                   <p className="text-sm text-blue-400">
-                    <strong>Wysyła z konta:</strong> {emailAccounts[0].display_name} ({emailAccounts[0].email})
+                    <strong>Wysyła z konta:</strong> {emailAccounts[0].from_name} ({emailAccounts[0].email_address})
                   </p>
                 </div>
               )}
