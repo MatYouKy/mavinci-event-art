@@ -72,7 +72,7 @@ W razie pytań proszę o kontakt.`,
     try {
       const { data, error } = await supabase
         .from('contracts')
-        .select('*')
+        .select('contract_number')
         .eq('id', contractId)
         .maybeSingle();
 
@@ -159,100 +159,39 @@ W razie pytań proszę o kontakt.`,
   const generateContractPDF = async (): Promise<{ base64: string; filename: string }> => {
     if (!contract) throw new Error('Brak danych umowy');
 
-    const html2pdf = (await import('html2pdf.js')).default;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Brak sesji użytkownika');
+    }
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          @page {
-            size: A4;
-            margin: 20mm 25mm;
-          }
-          body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #000;
-            font-size: 12pt;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #d3bb73;
-          }
-          h1 {
-            font-size: 20pt;
-            margin-bottom: 10px;
-            color: #1a1a1a;
-          }
-          .contract-number {
-            color: #d3bb73;
-            font-size: 11pt;
-            font-weight: bold;
-          }
-          .content {
-            white-space: pre-wrap;
-            margin: 20px 0;
-          }
-          .footer {
-            margin-top: 40px;
-            padding-top: 15px;
-            border-top: 1px solid #ccc;
-            font-size: 9pt;
-            color: #666;
-            text-align: center;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>${contract.title || 'Umowa'}</h1>
-          <div class="contract-number">Numer: ${contract.contract_number}</div>
-        </div>
-        <div class="content">${contract.content}</div>
-        <div class="footer">
-          Wygenerowano: ${new Date().toLocaleString('pl-PL')}
-        </div>
-      </body>
-      </html>
-    `;
-
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = htmlContent;
-    tempDiv.style.position = 'absolute';
-    tempDiv.style.left = '-9999px';
-    document.body.appendChild(tempDiv);
-
-    const opt = {
-      margin: [20, 25, 20, 25],
-      filename: `${contract.contract_number}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        letterRendering: true
-      },
-      jsPDF: {
-        unit: 'mm',
-        format: 'a4',
-        orientation: 'portrait'
-      },
-    };
-
-    const pdfBlob = await html2pdf().set(opt).from(tempDiv).output('blob');
-    document.body.removeChild(tempDiv);
-
-    const arrayBuffer = await pdfBlob.arrayBuffer();
-    const base64 = btoa(
-      new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-contract-pdf`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          contractId: contractId,
+        }),
+      }
     );
 
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Błąd podczas generowania PDF');
+    }
+
+    const result = await response.json();
+
+    if (!result.success || !result.pdf) {
+      throw new Error('Nie udało się wygenerować PDF');
+    }
+
     return {
-      base64: base64,
-      filename: `${contract.contract_number}.pdf`,
+      base64: result.pdf,
+      filename: result.filename,
     };
   };
 

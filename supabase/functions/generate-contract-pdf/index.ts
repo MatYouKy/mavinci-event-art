@@ -32,13 +32,44 @@ Deno.serve(async (req: Request) => {
 
     const { data: contract, error } = await supabase
       .from("contracts")
-      .select("*")
+      .select(`
+        *,
+        template:contract_templates!template_id(
+          show_header_logo,
+          header_logo_url,
+          header_logo_height,
+          header_logo_align,
+          show_center_logo,
+          center_logo_url,
+          center_logo_height,
+          show_footer,
+          footer_content
+        )
+      `)
       .eq("id", contractId)
       .maybeSingle();
 
     if (error || !contract) {
       throw new Error("Contract not found");
     }
+
+    const template = contract.template || {};
+
+    const headerLogoHtml = template.show_header_logo && template.header_logo_url
+      ? `<div class="contract-header-logo justify-${template.header_logo_align || 'start'}">
+          <img src="${template.header_logo_url}" alt="Logo" style="height: ${template.header_logo_height || 50}px;" />
+        </div>`
+      : '';
+
+    const centerLogoHtml = template.show_center_logo && template.center_logo_url
+      ? `<div class="contract-center-logo">
+          <img src="${template.center_logo_url}" alt="Logo" style="height: ${template.center_logo_height || 100}px;" />
+        </div>`
+      : '';
+
+    const footerHtml = template.show_footer && template.footer_content
+      ? `<div class="contract-footer">${template.footer_content}</div>`
+      : '';
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -47,53 +78,147 @@ Deno.serve(async (req: Request) => {
         <meta charset="UTF-8">
         <style>
           @page {
-            size: A4;
-            margin: 2cm;
+            size: A4 portrait;
+            margin: 0;
           }
           body {
+            margin: 0;
+            padding: 0;
+            background: white;
+          }
+          .contract-a4-page {
+            position: relative;
+            width: 210mm;
+            padding: 20mm 25mm 30mm;
+            min-height: 297mm;
+            background: white;
             font-family: Arial, sans-serif;
+            font-size: 12pt;
             line-height: 1.6;
-            color: #333;
+            color: #000;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
           }
-          h1 {
+          .contract-header-logo {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            margin-bottom: 4mm;
+            flex-shrink: 0;
+          }
+          .contract-header-logo.justify-start {
+            justify-content: flex-start;
+          }
+          .contract-header-logo.justify-center {
+            justify-content: center;
+          }
+          .contract-header-logo.justify-end {
+            justify-content: flex-end;
+          }
+          .contract-header-logo img {
+            height: auto;
+            object-fit: contain;
+            max-width: 80%;
+          }
+          .contract-center-logo {
             text-align: center;
-            margin-bottom: 30px;
-            color: #1a1a1a;
-            font-size: 24px;
+            margin-bottom: 10mm;
+            flex-shrink: 0;
           }
-          .header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #d3bb73;
+          .contract-center-logo img {
+            height: auto;
+            object-fit: contain;
+            max-width: 80%;
           }
-          .contract-number {
-            color: #d3bb73;
-            font-size: 14px;
-            font-weight: bold;
+          .contract-content {
+            flex: 1;
+            text-align: justify;
+            color: #000;
+            font-family: Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
           }
-          .content {
+          .contract-content p, .contract-content pre {
+            margin: 0;
+            padding: 0;
+            text-align: justify;
             white-space: pre-wrap;
-            font-size: 12px;
+            font-family: Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            background: transparent;
+            color: #000;
           }
-          .footer {
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid #ccc;
-            font-size: 10px;
-            color: #666;
+          .contract-content h1, .contract-content h2, .contract-content h3, .contract-content h4 {
+            margin-top: 1.5em;
+            margin-bottom: 0.75em;
+            font-weight: bold;
+            white-space: pre-wrap;
+            color: #000;
+          }
+          .contract-content h1 {
+            font-size: 18pt;
             text-align: center;
+          }
+          .contract-content h2 {
+            font-size: 16pt;
+          }
+          .contract-content h3 {
+            font-size: 14pt;
+          }
+          .contract-content strong, .contract-content b {
+            font-weight: bold;
+            color: #000;
+          }
+          .contract-content em, .contract-content i {
+            font-style: italic;
+            color: #000;
+          }
+          .contract-footer {
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #d3bb73;
+            margin-top: auto;
+            width: 100%;
+            min-height: 15mm;
+            padding-top: 5px;
+            background: white;
+            flex-shrink: 0;
+            opacity: 0.7;
+          }
+          .footer-logo {
+            width: 100%;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+          }
+          .footer-logo img {
+            height: 50px;
+            width: auto;
+            object-fit: contain;
+          }
+          .footer-info {
+            width: 100%;
+            text-align: right;
+            font-size: 10pt;
+            color: #333;
+            line-height: 1.2;
+          }
+          .footer-info p {
+            margin: 4px 0;
+            color: #333;
           }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>${contract.title || 'Umowa'}</h1>
-          <div class="contract-number">Numer: ${contract.contract_number}</div>
-        </div>
-        <div class="content">${contract.content}</div>
-        <div class="footer">
-          Wygenerowano: ${new Date().toLocaleString('pl-PL')}
+        <div class="contract-a4-page">
+          ${headerLogoHtml}
+          ${centerLogoHtml}
+          <div class="contract-content">${contract.content}</div>
+          ${footerHtml}
         </div>
       </body>
       </html>
