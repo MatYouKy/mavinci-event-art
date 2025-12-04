@@ -581,14 +581,14 @@ export function EventContractTab({ eventId }: Props) {
                   {pageIndex === 0 && (
                     <>
                       <div
-                        className="contract-header-logo"
+                        className={`contract-header-logo ${
+                          settings.logoPositionX <= 33
+                            ? 'justify-start'
+                            : settings.logoPositionX >= 67
+                              ? 'justify-end'
+                              : 'justify-center'
+                        }`}
                         style={{
-                          justifyContent:
-                            settings.logoPositionX <= 33
-                              ? 'flex-start'
-                              : settings.logoPositionX >= 67
-                                ? 'flex-end'
-                                : 'center',
                           marginTop: `${settings.logoPositionY}mm`,
                         }}
                       >
@@ -800,15 +800,28 @@ export function EventContractTab({ eventId }: Props) {
           color: #000;
           page-break-after: always;
           break-after: page;
+          display: flex;
+          flex-direction: column;
         }
 
         .contract-header-logo {
           width: 100%;
           display: flex;
-          justify-content: center;
           align-items: center;
           margin-bottom: 4mm;
           transition: all 0.2s ease;
+        }
+
+        .contract-header-logo.justify-start {
+          justify-content: flex-start;
+        }
+
+        .contract-header-logo.justify-center {
+          justify-content: center;
+        }
+
+        .contract-header-logo.justify-end {
+          justify-content: flex-end;
         }
 
         .contract-header-logo img {
@@ -828,7 +841,7 @@ export function EventContractTab({ eventId }: Props) {
         }
 
         .contract-content {
-          min-height: 200mm;
+          flex: 1;
           text-align: justify;
           color: #000;
           font-family: Arial, sans-serif;
@@ -898,12 +911,8 @@ export function EventContractTab({ eventId }: Props) {
         }
 
         .contract-footer {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
           width: 100%;
-          height: 25mm;
+          min-height: 25mm;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -911,6 +920,7 @@ export function EventContractTab({ eventId }: Props) {
           padding: 10px 0;
           background: white;
           flex-shrink: 0;
+          margin-top: auto;
         }
 
         .contract-footer::before {
