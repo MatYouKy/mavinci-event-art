@@ -579,7 +579,7 @@ export function EventContractTab({ eventId }: Props) {
             if (pages && Array.isArray(pages)) {
               return pages.map((pageContent: string, pageIndex: number) => (
                 <div key={pageIndex} className="contract-a4-page">
-                  {pageIndex === 0 && (
+                  {pageIndex === 0 ? (
                     <>
                       <div
                         className={`contract-header-logo ${
@@ -611,6 +611,13 @@ export function EventContractTab({ eventId }: Props) {
                         })}
                       </div>
                     </>
+                  ) : (
+                    <div
+                      className="contract-header-spacer"
+                      style={{
+                        marginTop: `${settings.logoPositionY}mm`,
+                      }}
+                    />
                   )}
 
                   <div
