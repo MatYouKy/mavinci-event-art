@@ -10,6 +10,8 @@
   position: relative;
   width: 210mm;
   height: 297mm;
+  min-height: 297mm;
+  max-height: 297mm;
   margin: 0 auto 20px auto;
   padding: 20mm 25mm 30mm;
   background: white;
@@ -24,6 +26,10 @@
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.contract-a4-page:last-of-type {
+  margin-bottom: 0;
 }
 
 .contract-header-logo {
@@ -65,7 +71,8 @@
 }
 
 .contract-content {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   text-align: justify;
   color: #000;
   font-family: Arial, sans-serif;
@@ -75,7 +82,7 @@
   unicode-bidi: embed !important;
   overflow-wrap: break-word;
   word-wrap: break-word;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .contract-content > * {
@@ -253,6 +260,8 @@
     padding: 20mm 25mm 30mm 25mm !important;
     width: 210mm !important;
     height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
     background: white !important;
     display: flex !important;
     flex-direction: column !important;
@@ -260,7 +269,8 @@
     overflow: hidden !important;
   }
 
-  .contract-a4-page:last-child {
+  .contract-a4-page:last-child,
+  .contract-a4-page:last-of-type {
     page-break-after: avoid !important;
   }
 
@@ -276,7 +286,9 @@
 
   .contract-content {
     page-break-inside: auto !important;
-    overflow: visible !important;
+    overflow: hidden !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
   }
 
   .contract-content p,
@@ -287,6 +299,14 @@
     page-break-inside: avoid !important;
     orphans: 3 !important;
     widows: 3 !important;
+  }
+
+  .contract-header-logo {
+    flex-shrink: 0 !important;
+  }
+
+  .contract-current-date {
+    flex-shrink: 0 !important;
   }
 
   .contract-footer {
