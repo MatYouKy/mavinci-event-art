@@ -14,7 +14,7 @@ interface Contract {
   valid_until: string;
   created_at: string;
   client?: {
-    company_name: string;
+    full_name: string;
     first_name: string;
     last_name: string;
   };
@@ -47,7 +47,7 @@ export default function ContractsPage() {
         .from('contracts')
         .select(`
           *,
-          client:clients!client_id(company_name, first_name, last_name),
+          client:contacts!client_id(full_name, first_name, last_name),
           event:events!event_id(name)
         `)
         .order('created_at', { ascending: false });
@@ -96,7 +96,7 @@ export default function ContractsPage() {
   };
 
   const getClientName = (contract: Contract) => {
-    if (contract.client?.company_name) return contract.client.company_name;
+    if (contract.client?.full_name) return contract.client.full_name;
     if (contract.client?.first_name || contract.client?.last_name) {
       return `${contract.client.first_name || ''} ${contract.client.last_name || ''}`.trim();
     }
