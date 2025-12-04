@@ -23,6 +23,7 @@ interface AccessLevel {
     manage_equipment: boolean;
   };
   default_permissions: string[];
+  event_tabs: string[];
   order_index: number;
 }
 
@@ -50,6 +51,7 @@ export default function AccessLevelsPage() {
       manage_equipment: false,
     },
     default_permissions: [] as string[],
+    event_tabs: ['overview'] as string[],
   });
 
   const availablePermissions = [
@@ -62,6 +64,20 @@ export default function AccessLevelsPage() {
     { value: 'messages_manage', label: 'Zarządzanie wiadomościami' },
     { value: 'attractions_manage', label: 'Zarządzanie atrakcjami' },
     { value: 'event_categories_manage', label: 'Zarządzanie kategoriami wydarzeń' },
+  ];
+
+  const availableEventTabs = [
+    { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu' },
+    { value: 'offer', label: 'Oferta', description: 'Tworzenie i zarządzanie ofertami' },
+    { value: 'finances', label: 'Finanse', description: 'Budżet i koszty wydarzenia' },
+    { value: 'contract', label: 'Umowa', description: 'Zarządzanie umowami' },
+    { value: 'equipment', label: 'Sprzęt', description: 'Lista sprzętu przypisanego do wydarzenia' },
+    { value: 'team', label: 'Zespół', description: 'Pracownicy przypisani do wydarzenia' },
+    { value: 'logistics', label: 'Logistyka', description: 'Pojazdy i transport' },
+    { value: 'subcontractors', label: 'Podwykonawcy', description: 'Zewnętrzni wykonawcy' },
+    { value: 'files', label: 'Pliki', description: 'Dokumenty i załączniki' },
+    { value: 'tasks', label: 'Zadania', description: 'Zarządzanie zadaniami' },
+    { value: 'history', label: 'Historia', description: 'Dziennik zmian wydarzenia' },
   ];
 
   useEffect(() => {
@@ -95,6 +111,7 @@ export default function AccessLevelsPage() {
         description: level.description || '',
         config: level.config,
         default_permissions: level.default_permissions || [],
+        event_tabs: level.event_tabs || ['overview'],
       });
     } else {
       setEditingLevel(null);
@@ -114,6 +131,7 @@ export default function AccessLevelsPage() {
           manage_equipment: false,
         },
         default_permissions: [],
+        event_tabs: ['overview'],
       });
     }
     setShowModal(true);
@@ -130,6 +148,7 @@ export default function AccessLevelsPage() {
             description: formData.description,
             config: formData.config,
             default_permissions: formData.default_permissions,
+            event_tabs: formData.event_tabs,
           })
           .eq('id', editingLevel.id);
 
@@ -144,6 +163,7 @@ export default function AccessLevelsPage() {
             description: formData.description,
             config: formData.config,
             default_permissions: formData.default_permissions,
+            event_tabs: formData.event_tabs,
             order_index: accessLevels.length + 1,
           }]);
 
@@ -266,6 +286,26 @@ export default function AccessLevelsPage() {
                 </div>
               </div>
             )}
+
+            {level.event_tabs && level.event_tabs.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs text-[#e5e4e2]/60 mb-2">Dostępne zakładki wydarzeń:</div>
+                <div className="flex flex-wrap gap-2">
+                  {level.event_tabs.map((tab) => {
+                    const tabInfo = availableEventTabs.find((t) => t.value === tab);
+                    return (
+                      <span
+                        key={tab}
+                        className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded"
+                        title={tabInfo?.description}
+                      >
+                        {tabInfo?.label || tab}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -367,6 +407,46 @@ export default function AccessLevelsPage() {
                           className="rounded text-[#d3bb73]"
                         />
                         <span className="text-sm text-[#e5e4e2]">{perm.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-[#d3bb73]/20 pt-6">
+                  <label className="block text-sm text-[#e5e4e2]/80 mb-3">
+                    Dostępne zakładki w wydarzeniach
+                    <span className="block text-xs text-[#e5e4e2]/50 mt-1">
+                      Wybierz zakładki, które będą widoczne dla pracowników z tym poziomem dostępu
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {availableEventTabs.map((tab) => (
+                      <label
+                        key={tab.value}
+                        className="flex items-start gap-3 p-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded hover:border-[#d3bb73]/40 transition-colors cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.event_tabs.includes(tab.value)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormData({
+                                ...formData,
+                                event_tabs: [...formData.event_tabs, tab.value],
+                              });
+                            } else {
+                              setFormData({
+                                ...formData,
+                                event_tabs: formData.event_tabs.filter((t) => t !== tab.value),
+                              });
+                            }
+                          }}
+                          className="mt-0.5 rounded text-[#d3bb73]"
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-[#e5e4e2]">{tab.label}</div>
+                          <div className="text-xs text-[#e5e4e2]/50 mt-0.5">{tab.description}</div>
+                        </div>
                       </label>
                     ))}
                   </div>

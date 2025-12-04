@@ -183,6 +183,7 @@ export default function EventDetailPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAssignmentStatus, setUserAssignmentStatus] = useState<'pending' | 'accepted' | 'rejected' | null>(null);
   const [hasLimitedAccess, setHasLimitedAccess] = useState(false);
+  const [allowedEventTabs, setAllowedEventTabs] = useState<string[]>([]);
 
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
@@ -225,26 +226,32 @@ export default function EventDetailPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) {
         setCanManageTeam(false);
+        setAllowedEventTabs([]);
         return;
       }
 
       setCurrentUserId(session.user.id);
 
-      // Sprawdź czy użytkownik jest adminem
+      // Sprawdź czy użytkownik jest adminem oraz pobierz access_level
       const { data: employee } = await supabase
         .from('employees')
-        .select('permissions, role')
+        .select('permissions, role, access_level_id, access_levels(event_tabs)')
         .eq('id', session.user.id)
         .single();
 
       const userIsAdmin = employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
       setIsAdmin(userIsAdmin);
 
-      // Jeśli admin, może zarządzać
+      // Admin widzi wszystkie zakładki
       if (userIsAdmin) {
         setCanManageTeam(true);
+        setAllowedEventTabs(['overview', 'offer', 'finances', 'contract', 'equipment', 'team', 'logistics', 'subcontractors', 'files', 'tasks', 'history']);
         return;
       }
+
+      // Ustaw dozwolone zakładki na podstawie poziomu dostępu
+      const eventTabs = (employee?.access_levels as any)?.event_tabs || ['overview'];
+      setAllowedEventTabs(eventTabs);
 
       // Sprawdź czy jest creatorem lub ma uprawnienia
       const { data: eventData } = await supabase
@@ -1176,15 +1183,19 @@ export default function EventDetailPage() {
             return tab.id === 'overview';
           }
 
-          // Oferta, Finanse i Umowa widoczne tylko dla autora eventu lub admina
-          if (['offer', 'finances', 'contract'].includes(tab.id)) {
-            const isAuthor = event?.created_by === currentUserId;
-            if (!isUserAdmin && !isAuthor) {
-              return false;
-            }
+          // Admin widzi wszystko
+          if (isUserAdmin) {
+            return true;
           }
 
-          return true;
+          // Autor eventu widzi wszystko
+          const isAuthor = event?.created_by === currentUserId;
+          if (isAuthor) {
+            return true;
+          }
+
+          // Dla pozostałych użytkowników sprawdź uprawnienia z access_level
+          return allowedEventTabs.includes(tab.id);
         })
         .map((tab) => {
           const Icon = tab.icon;
