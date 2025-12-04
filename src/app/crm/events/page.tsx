@@ -45,6 +45,25 @@ export default function EventsPage() {
 
   useEffect(() => {
     fetchEvents();
+
+    const channel = supabase
+      .channel('events-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'events'
+        },
+        () => {
+          fetchEvents();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -55,7 +74,13 @@ export default function EventsPage() {
     try {
       const { data, error } = await supabase
         .from('events')
-        .select('*, organizations(name), contacts(first_name, last_name), event_categories(name, color)')
+        .select(`
+          *,
+          organizations(name),
+          contacts(first_name, last_name),
+          event_categories(name, color),
+          locations(name, formatted_address, address, city, postal_code)
+        `)
         .order('event_date', { ascending: true });
 
       if (error) {
@@ -112,6 +137,9 @@ export default function EventsPage() {
       result = result.filter(event =>
         event.name?.toLowerCase().includes(query) ||
         event.location?.toLowerCase().includes(query) ||
+        event.locations?.name?.toLowerCase().includes(query) ||
+        event.locations?.address?.toLowerCase().includes(query) ||
+        event.locations?.city?.toLowerCase().includes(query) ||
         event.organizations?.name?.toLowerCase().includes(query) ||
         event.description?.toLowerCase().includes(query)
       );
@@ -375,7 +403,16 @@ export default function EventsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4" />
-                      {event.location || 'Brak lokalizacji'}
+                      {event.locations ? (
+                        <span>
+                          <span className="font-medium">{event.locations.name}</span>
+                          {(event.locations.formatted_address || event.locations.address) && (
+                            <span className="text-[#e5e4e2]/50"> - {event.locations.formatted_address || event.locations.address}</span>
+                          )}
+                        </span>
+                      ) : (
+                        event.location || 'Brak lokalizacji'
+                      )}
                     </div>
                   </div>
                 </div>
