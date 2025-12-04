@@ -2,7 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Calendar, MapPin, Building2, Tag, SlidersHorizontal, ArrowUpDown, Trash2, AlertTriangle } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Calendar,
+  MapPin,
+  Building2,
+  Tag,
+  SlidersHorizontal,
+  ArrowUpDown,
+  Trash2,
+  AlertTriangle,
+} from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -53,11 +64,11 @@ export default function EventsPage() {
         {
           event: '*',
           schema: 'public',
-          table: 'events'
+          table: 'events',
         },
         () => {
           fetchEvents();
-        }
+        },
       )
       .subscribe();
 
@@ -74,13 +85,15 @@ export default function EventsPage() {
     try {
       const { data, error } = await supabase
         .from('events')
-        .select(`
+        .select(
+          `
           *,
           organizations(name),
           contacts(first_name, last_name),
           event_categories(name, color),
           locations(name, formatted_address, address, city, postal_code)
-        `)
+        `,
+        )
         .order('event_date', { ascending: true });
 
       if (error) {
@@ -109,10 +122,7 @@ export default function EventsPage() {
     if (!eventToDelete) return;
 
     try {
-      const { error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', eventToDelete.id);
+      const { error } = await supabase.from('events').delete().eq('id', eventToDelete.id);
 
       if (error) throw error;
 
@@ -134,25 +144,26 @@ export default function EventsPage() {
     // Filtrowanie po wyszukiwaniu
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(event =>
-        event.name?.toLowerCase().includes(query) ||
-        event.location?.toLowerCase().includes(query) ||
-        event.locations?.name?.toLowerCase().includes(query) ||
-        event.locations?.address?.toLowerCase().includes(query) ||
-        event.locations?.city?.toLowerCase().includes(query) ||
-        event.organizations?.name?.toLowerCase().includes(query) ||
-        event.description?.toLowerCase().includes(query)
+      result = result.filter(
+        (event) =>
+          event.name?.toLowerCase().includes(query) ||
+          event.location?.toLowerCase().includes(query) ||
+          event.locations?.name?.toLowerCase().includes(query) ||
+          event.locations?.address?.toLowerCase().includes(query) ||
+          event.locations?.city?.toLowerCase().includes(query) ||
+          event.organizations?.name?.toLowerCase().includes(query) ||
+          event.description?.toLowerCase().includes(query),
       );
     }
 
     // Filtrowanie po statusie
     if (statusFilter !== 'all') {
-      result = result.filter(event => event.status === statusFilter);
+      result = result.filter((event) => event.status === statusFilter);
     }
 
     // Filtrowanie przeszłych eventów (tylko jeśli showPastEvents jest false)
     if (!showPastEvents) {
-      result = result.filter(event => {
+      result = result.filter((event) => {
         const eventDate = new Date(event.event_date);
         eventDate.setHours(0, 0, 0, 0);
         return eventDate >= today;
@@ -201,15 +212,21 @@ export default function EventsPage() {
 
   const handleSaveEvent = async (eventData: any) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       const { data, error } = await supabase
         .from('events')
         .insert([
           {
             name: eventData.name,
-            client_id: eventData.client_id && eventData.client_id.trim() !== '' ? eventData.client_id : null,
-            category_id: eventData.category_id && eventData.category_id.trim() !== '' ? eventData.category_id : null,
+            client_id:
+              eventData.client_id && eventData.client_id.trim() !== '' ? eventData.client_id : null,
+            category_id:
+              eventData.category_id && eventData.category_id.trim() !== ''
+                ? eventData.category_id
+                : null,
             event_date: eventData.event_date,
             event_end_date: eventData.event_end_date || null,
             location: eventData.location,
@@ -230,13 +247,13 @@ export default function EventsPage() {
 
       // Automatycznie dodaj autora do zespołu wydarzenia
       if (data && data[0] && session?.user?.id) {
-        const { error: assignmentError } = await supabase
-          .from('employee_assignments')
-          .insert([{
+        const { error: assignmentError } = await supabase.from('employee_assignments').insert([
+          {
             event_id: data[0].id,
             employee_id: session.user.id,
-            role: 'Autor/Koordynator'
-          }]);
+            role: 'Autor/Koordynator',
+          },
+        ]);
 
         if (assignmentError) {
           console.error('Error adding creator to team:', assignmentError);
@@ -260,34 +277,34 @@ export default function EventsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/crm/event-categories')}
-            className="flex items-center gap-2 bg-[#1c1f33] text-[#e5e4e2] border border-[#d3bb73]/20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
           >
-            <Tag className="w-4 h-4" />
+            <Tag className="h-4 w-4" />
             Kategorie
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Nowy event
           </button>
         </div>
       </div>
 
       {/* Filtry i sortowanie */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 space-y-4">
-        <div className="flex items-center gap-4 flex-wrap">
+      <div className="space-y-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+        <div className="flex flex-wrap items-center gap-4">
           {/* Wyszukiwanie */}
-          <div className="flex-1 min-w-[250px]">
+          <div className="min-w-[250px] flex-1">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e4e2]/50" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/50" />
               <input
                 type="text"
                 placeholder="Szukaj po nazwie, lokalizacji, kliencie..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] py-2 pl-10 pr-4 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
               />
             </div>
           </div>
@@ -296,7 +313,7 @@ export default function EventsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
           >
             <option value="all">Wszystkie statusy</option>
             <option value="offer_sent">Oferta wysłana</option>
@@ -309,11 +326,11 @@ export default function EventsPage() {
 
           {/* Sortowanie */}
           <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-[#e5e4e2]/50" />
+            <SlidersHorizontal className="h-4 w-4 text-[#e5e4e2]/50" />
             <select
               value={sortField}
               onChange={(e) => setSortField(e.target.value as SortField)}
-              className="px-4 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
             >
               <option value="event_date">Data eventu</option>
               <option value="created_at">Data utworzenia</option>
@@ -322,44 +339,54 @@ export default function EventsPage() {
             </select>
             <button
               onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-              className="p-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] p-2 transition-colors hover:bg-[#d3bb73]/10"
               title={sortDirection === 'asc' ? 'Rosnąco' : 'Malejąco'}
             >
-              <ArrowUpDown className={`w-4 h-4 text-[#e5e4e2] transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+              <ArrowUpDown
+                className={`h-4 w-4 text-[#e5e4e2] transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`}
+              />
             </button>
           </div>
         </div>
 
         {/* Dodatkowe opcje i podsumowanie */}
-        <div className="flex items-center justify-between pt-4 border-t border-[#d3bb73]/10">
+        <div className="flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
           <button
             onClick={() => setShowPastEvents(!showPastEvents)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               showPastEvents
-                ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30'
-                : 'bg-[#0f1117] text-[#e5e4e2]/70 border border-[#d3bb73]/20 hover:bg-[#d3bb73]/10'
+                ? 'border border-[#d3bb73]/30 bg-[#d3bb73]/20 text-[#d3bb73]'
+                : 'border border-[#d3bb73]/20 bg-[#0f1117] text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10'
             }`}
           >
-            <Calendar className="w-4 h-4" />
+            <Calendar className="h-4 w-4" />
             {showPastEvents ? 'Ukryj przeszłe eventy' : 'Pokaż przeszłe eventy'}
           </button>
 
           <div className="text-sm text-[#e5e4e2]/50">
-            Znaleziono: <span className="text-[#d3bb73] font-medium">{filteredEvents.length}</span> z {events.length} eventów
-            {!showPastEvents && (() => {
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const pastEventsCount = events.filter(event => {
-                const eventDate = new Date(event.event_date);
-                eventDate.setHours(0, 0, 0, 0);
-                return eventDate < today;
-              }).length;
-              return pastEventsCount > 0 ? (
-                <span className="ml-2 text-[#e5e4e2]/40">
-                  (ukryto {pastEventsCount} {pastEventsCount === 1 ? 'przeszły' : pastEventsCount < 5 ? 'przeszłe' : 'przeszłych'})
-                </span>
-              ) : null;
-            })()}
+            Znaleziono: <span className="font-medium text-[#d3bb73]">{filteredEvents.length}</span>{' '}
+            z {events.length} eventów
+            {!showPastEvents &&
+              (() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const pastEventsCount = events.filter((event) => {
+                  const eventDate = new Date(event.event_date);
+                  eventDate.setHours(0, 0, 0, 0);
+                  return eventDate < today;
+                }).length;
+                return pastEventsCount > 0 ? (
+                  <span className="ml-2 text-[#e5e4e2]/40">
+                    (ukryto {pastEventsCount}{' '}
+                    {pastEventsCount === 1
+                      ? 'przeszły'
+                      : pastEventsCount < 5
+                        ? 'przeszłe'
+                        : 'przeszłych'}
+                    )
+                  </span>
+                ) : null;
+              })()}
           </div>
         </div>
       </div>
@@ -375,81 +402,87 @@ export default function EventsPage() {
           return (
             <div
               key={event.id}
-              className={`bg-[#1c1f33] border rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all relative ${
+              className={`relative rounded-xl border bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30 ${
                 isPast ? 'border-[#e5e4e2]/5 opacity-60' : 'border-[#d3bb73]/10'
               }`}
             >
-              <div onClick={() => router.push(`/crm/events/${event.id}`)} className="cursor-pointer">
-                <div className="flex items-start justify-between mb-4">
+              <div
+                onClick={() => router.push(`/crm/events/${event.id}`)}
+                className="cursor-pointer"
+              >
+                <div className="mb-4 flex items-start justify-between">
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-lg font-medium text-[#e5e4e2]">
-                        {event.name}
-                      </h3>
+                    <div className="mb-2 flex items-center gap-2">
+                      <h3 className="text-lg font-medium text-[#e5e4e2]">{event.name}</h3>
                       {isPast && (
-                        <span className="text-xs px-2 py-0.5 bg-[#e5e4e2]/10 text-[#e5e4e2]/50 rounded">
+                        <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/50">
                           Przeszły
                         </span>
                       )}
                     </div>
-                  <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/70">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4" />
-                      {event.organizations?.name || 'Brak klienta'}
+                    <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]/70">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        {event.organizations?.name || 'Brak klienta'}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        {event.locations ? (
+                          <span>
+                            <span className="font-medium">{event.locations.name}</span>
+                            {(event.locations.formatted_address || event.locations.address) && (
+                              <span className="text-[#e5e4e2]/50">
+                                {' '}
+                                - {event.locations.formatted_address || event.locations.address}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          event.location || 'Brak lokalizacji'
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                  </div>
+                  <div className="flex items-center justify-end gap-2 rounded-lg p-2 min-w-fit">
+                    <div
+                      className={`rounded-full border px-3 py-1 text-xs ${
+                        statusColors[event.status]
+                      }`}
+                    >
+                      {statusLabels[event.status]}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4" />
-                      {event.locations ? (
-                        <span>
-                          <span className="font-medium">{event.locations.name}</span>
-                          {(event.locations.formatted_address || event.locations.address) && (
-                            <span className="text-[#e5e4e2]/50"> - {event.locations.formatted_address || event.locations.address}</span>
-                          )}
-                        </span>
-                      ) : (
-                        event.location || 'Brak lokalizacji'
-                      )}
+                    {event.event_categories && (
+                      <div className="flex items-center gap-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
+                        <Tag className="h-3 w-3" />
+                        {event.event_categories.name}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-end">
+                    <button
+                      onClick={(e) => handleDeleteClick(e, event)}
+                      className="top-4 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
+                      title="Usuń event"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs border ${
-                      statusColors[event.status]
-                    }`}
-                  >
-                    {statusLabels[event.status]}
+              </div>
+
+              <div className="flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
+                <div className="text-sm text-[#e5e4e2]/70">
+                  Budżet:{' '}
+                  <span className="font-medium text-[#d3bb73]">
+                    {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
                   </span>
-                  {event.event_categories && (
-                    <span
-                      className="px-3 py-1 rounded-full text-xs border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73] flex items-center gap-1"
-                    >
-                      <Tag className="w-3 h-3" />
-                      {event.event_categories.name}
-                    </span>
-                  )}
                 </div>
               </div>
-
-              <button
-                onClick={(e) => handleDeleteClick(e, event)}
-                className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
-                title="Usuń event"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
             </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-[#d3bb73]/10">
-              <div className="text-sm text-[#e5e4e2]/70">
-                Budżet: <span className="text-[#d3bb73] font-medium">{event.budget ? event.budget.toLocaleString() : '0'} zł</span>
-              </div>
-            </div>
-          </div>
           );
         })}
       </div>
@@ -460,39 +493,36 @@ export default function EventsPage() {
         onSuccess={fetchEvents}
       />
 
-      <Modal
-        open={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        title="Usuń event"
-      >
+      <Modal open={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Usuń event">
         <div className="space-y-6">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-red-500/10 rounded-full">
-              <AlertTriangle className="w-6 h-6 text-red-500" />
+            <div className="rounded-full bg-red-500/10 p-3">
+              <AlertTriangle className="h-6 w-6 text-red-500" />
             </div>
             <div>
-              <h3 className="text-lg font-medium text-[#e5e4e2] mb-2">
+              <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">
                 Czy na pewno chcesz usunąć ten event?
               </h3>
-              <p className="text-[#e5e4e2]/70 mb-2">
+              <p className="mb-2 text-[#e5e4e2]/70">
                 Event: <strong className="text-[#d3bb73]">{eventToDelete?.name}</strong>
               </p>
               <p className="text-sm text-[#e5e4e2]/60">
-                Ta operacja jest nieodwracalna. Wszystkie powiązane dane (oferty, zadania, pliki) również zostaną usunięte.
+                Ta operacja jest nieodwracalna. Wszystkie powiązane dane (oferty, zadania, pliki)
+                również zostaną usunięte.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#d3bb73]/20">
+          <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 pt-4">
             <button
               onClick={() => setDeleteModalOpen(false)}
-              className="px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#d3bb73]/5 transition-colors"
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/5"
             >
               Anuluj
             </button>
             <button
               onClick={handleDeleteConfirm}
-              className="px-4 py-2 bg-red-500 rounded-lg text-white hover:bg-red-600 transition-colors"
+              className="rounded-lg bg-red-500 px-4 py-2 text-white transition-colors hover:bg-red-600"
             >
               Usuń event
             </button>
