@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, FileText, Building2, Calendar, User, Download, CreditCard as Edit, Send, CheckCircle } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import '@/styles/contractA4.css';
 
 export default function ContractDetailsPage() {
   const params = useParams();
@@ -50,43 +51,142 @@ export default function ContractDetailsPage() {
         return;
       }
 
-      const clientName = contract.client?.company_name ||
-        `${contract.client?.first_name} ${contract.client?.last_name}`;
+      const contractContent = `
+        <link rel="stylesheet" href="/styles/contractA4.css" />
+        <div class="contract-a4-container">
+          <div class="contract-a4-page">
+            ${contract.show_header_logo && contract.header_logo_url ? `
+              <div class="contract-header-logo justify-${contract.header_logo_align || 'start'}">
+                <img src="${contract.header_logo_url}" alt="Logo" style="height: ${contract.header_logo_height || 50}px" />
+              </div>
+            ` : ''}
+
+            ${contract.show_center_logo && contract.center_logo_url ? `
+              <div class="contract-center-logo">
+                <img src="${contract.center_logo_url}" alt="Logo" style="height: ${contract.center_logo_height || 100}px" />
+              </div>
+            ` : ''}
+
+            <div class="contract-content">
+              ${contract.content || 'Brak treści umowy'}
+            </div>
+
+            ${contract.show_footer && contract.footer_content ? `
+              <div class="contract-footer">
+                ${contract.footer_content}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
 
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
           <head>
             <title>Umowa ${contract.contract_number}</title>
+            <meta charset="UTF-8">
             <style>
-              body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-              h1 { color: #1c1f33; border-bottom: 2px solid #d3bb73; padding-bottom: 10px; }
-              .section { margin: 20px 0; }
-              .label { font-weight: bold; color: #666; }
-              .value { margin-bottom: 10px; }
-              .content { white-space: pre-wrap; line-height: 1.6; margin-top: 20px; font-family: monospace; }
+              @import url('/styles/contractA4.css');
+
+              body { margin: 0; padding: 0; }
+
+              .contract-a4-container {
+                background: #f5f5f5;
+                padding: 20px;
+                min-height: 100vh;
+              }
+
+              .contract-a4-page {
+                position: relative;
+                width: 210mm;
+                height: 297mm;
+                margin: 0 auto;
+                padding: 20mm 25mm 30mm;
+                background: white;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                font-family: Arial, sans-serif;
+                font-size: 12pt;
+                line-height: 1.6;
+                color: #000;
+                display: flex;
+                flex-direction: column;
+                box-sizing: border-box;
+              }
+
+              .contract-header-logo {
+                width: 100%;
+                display: flex;
+                align-items: center;
+                margin-bottom: 4mm;
+                flex-shrink: 0;
+              }
+
+              .contract-header-logo.justify-start { justify-content: flex-start; }
+              .contract-header-logo.justify-center { justify-content: center; }
+              .contract-header-logo.justify-end { justify-content: flex-end; }
+
+              .contract-header-logo img,
+              .contract-center-logo img {
+                height: auto;
+                object-fit: contain;
+              }
+
+              .contract-center-logo {
+                width: 100%;
+                text-align: center;
+                margin-bottom: 8mm;
+                flex-shrink: 0;
+              }
+
+              .contract-content {
+                flex: 1;
+                text-align: justify;
+                color: #000;
+                font-family: Arial, sans-serif;
+                font-size: 12pt;
+                line-height: 1.6;
+                white-space: pre-wrap;
+              }
+
+              .contract-footer {
+                margin-top: auto;
+                padding-top: 5mm;
+                border-top: 1px solid #d3bb73;
+                text-align: center;
+                font-size: 10pt;
+                color: #666;
+                flex-shrink: 0;
+              }
+
+              @media print {
+                @page { size: A4 portrait; margin: 0; }
+                body { margin: 0; padding: 0; }
+                .contract-a4-container { background: white; padding: 0; }
+                .contract-a4-page {
+                  width: 210mm;
+                  height: 297mm;
+                  margin: 0;
+                  box-shadow: none;
+                  page-break-after: always;
+                }
+              }
             </style>
           </head>
           <body>
-            <h1>Umowa nr ${contract.contract_number}</h1>
-            <div class="section">
-              <div class="value"><span class="label">Klient:</span> ${clientName}</div>
-              <div class="value"><span class="label">Event:</span> ${contract.event?.name || 'Brak'}</div>
-              <div class="value"><span class="label">Data utworzenia:</span> ${new Date(contract.created_at).toLocaleDateString('pl-PL')}</div>
-              <div class="value"><span class="label">Wartość:</span> ${contract.total_amount ? contract.total_amount.toLocaleString('pl-PL') + ' PLN' : 'N/A'}</div>
-            </div>
-            <div class="content">
-              ${contract.content || 'Brak treści umowy'}
-            </div>
+            ${contractContent}
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                }, 500);
+              };
+            </script>
           </body>
         </html>
       `);
 
       printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-
       showSnackbar('Otwarto okno drukowania', 'info');
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -243,34 +343,36 @@ export default function ContractDetailsPage() {
 
             <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
               <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
-                Treść umowy
+                Podgląd umowy
               </h2>
 
-              <div className="bg-white text-black rounded-lg p-8 max-h-[600px] overflow-y-auto">
-                {contract.show_header_logo && contract.header_logo_url && (
-                  <div className="mb-6 pb-4 border-b border-gray-300">
-                    <img
-                      src={contract.header_logo_url}
-                      alt="Logo"
-                      style={{ height: `${contract.header_logo_height || 50}px` }}
-                      className="object-contain"
-                    />
-                  </div>
-                )}
+              <div className="bg-white rounded-lg overflow-hidden">
+                <div className="contract-a4-page">
+                  {contract.show_header_logo && contract.header_logo_url && (
+                    <div className={`contract-header-logo justify-${contract.header_logo_align || 'start'}`}>
+                      <img
+                        src={contract.header_logo_url}
+                        alt="Logo"
+                        style={{ height: `${contract.header_logo_height || 50}px` }}
+                      />
+                    </div>
+                  )}
 
-                {contract.show_center_logo && contract.center_logo_url && (
-                  <div className="mb-12 text-center">
-                    <img
-                      src={contract.center_logo_url}
-                      alt="Logo"
-                      style={{ height: `${contract.center_logo_height || 100}px` }}
-                      className="object-contain mx-auto"
-                    />
-                  </div>
-                )}
+                  {contract.show_center_logo && contract.center_logo_url && (
+                    <div className="contract-center-logo">
+                      <img
+                        src={contract.center_logo_url}
+                        alt="Logo"
+                        style={{ height: `${contract.center_logo_height || 100}px` }}
+                      />
+                    </div>
+                  )}
 
-                <div className="whitespace-pre-wrap font-mono text-sm" style={{ whiteSpace: 'pre-wrap' }}>
-                  {contract.content}
+                  <div className="contract-content" dangerouslySetInnerHTML={{ __html: contract.content }} />
+
+                  {contract.show_footer && contract.footer_content && (
+                    <div className="contract-footer" dangerouslySetInnerHTML={{ __html: contract.footer_content }} />
+                  )}
                 </div>
               </div>
             </div>
