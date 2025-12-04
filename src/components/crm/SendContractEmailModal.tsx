@@ -156,34 +156,104 @@ W razie pytań proszę o kontakt.`,
     }
   };
 
-  const generateContractPDF = async (): Promise<string> => {
+  const generateContractPDF = async (): Promise<{ base64: string; filename: string }> => {
     if (!contract) throw new Error('Brak danych umowy');
 
-    const html = `
+    const html2pdf = (await import('html2pdf.js')).default;
+
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="UTF-8">
         <style>
-          body { font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; }
-          h1 { text-align: center; margin-bottom: 30px; color: #333; }
-          .content { white-space: pre-wrap; }
+          @page {
+            size: A4;
+            margin: 20mm 25mm;
+          }
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #000;
+            font-size: 12pt;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #d3bb73;
+          }
+          h1 {
+            font-size: 20pt;
+            margin-bottom: 10px;
+            color: #1a1a1a;
+          }
+          .contract-number {
+            color: #d3bb73;
+            font-size: 11pt;
+            font-weight: bold;
+          }
+          .content {
+            white-space: pre-wrap;
+            margin: 20px 0;
+          }
+          .footer {
+            margin-top: 40px;
+            padding-top: 15px;
+            border-top: 1px solid #ccc;
+            font-size: 9pt;
+            color: #666;
+            text-align: center;
+          }
         </style>
       </head>
       <body>
-        <h1>${contract.title || 'Umowa'}</h1>
+        <div class="header">
+          <h1>${contract.title || 'Umowa'}</h1>
+          <div class="contract-number">Numer: ${contract.contract_number}</div>
+        </div>
         <div class="content">${contract.content}</div>
+        <div class="footer">
+          Wygenerowano: ${new Date().toLocaleString('pl-PL')}
+        </div>
       </body>
       </html>
     `;
 
-    const blob = new Blob([html], { type: 'text/html' });
-    const arrayBuffer = await blob.arrayBuffer();
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    tempDiv.style.position = 'absolute';
+    tempDiv.style.left = '-9999px';
+    document.body.appendChild(tempDiv);
+
+    const opt = {
+      margin: [20, 25, 20, 25],
+      filename: `${contract.contract_number}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        letterRendering: true
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait'
+      },
+    };
+
+    const pdfBlob = await html2pdf().set(opt).from(tempDiv).output('blob');
+    document.body.removeChild(tempDiv);
+
+    const arrayBuffer = await pdfBlob.arrayBuffer();
     const base64 = btoa(
       new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
     );
 
-    return base64;
+    return {
+      base64: base64,
+      filename: `${contract.contract_number}.pdf`,
+    };
   };
 
   const fetchEmailAccounts = async () => {
@@ -249,8 +319,7 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
-      const contractPdfBase64 = await generateContractPDF();
-      const contractFilename = `${contract?.contract_number || 'umowa'}.html`;
+      const { base64: contractPdfBase64, filename: contractFilename } = await generateContractPDF();
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
@@ -269,7 +338,7 @@ W razie pytań proszę o kontakt.`,
               {
                 filename: contractFilename,
                 content: contractPdfBase64,
-                contentType: 'text/html',
+                contentType: 'application/pdf',
               },
             ],
           }),
@@ -442,7 +511,7 @@ W razie pytań proszę o kontakt.`,
 
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
                 <p className="text-xs text-amber-400">
-                  <strong>Wskazówka:</strong> Po wysłaniu umowy status zostanie automatycznie zmieniony na "Wysłana", a umowa zostanie załączona jako plik HTML.
+                  <strong>Wskazówka:</strong> Po wysłaniu umowy status zostanie automatycznie zmieniony na "Wysłana", a umowa zostanie załączona jako plik PDF.
                 </p>
               </div>
             </>
