@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FileText, Download, Edit, Save, X } from 'lucide-react';
+import { FileText, Download, Edit, Save, X, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import '@/styles/contractA4.css';
 import ResponsiveActionBar from './ResponsiveActionBar';
+import SendContractEmailModal from './SendContractEmailModal';
 
 interface Props {
   eventId: string;
@@ -108,7 +109,7 @@ type ContractStatus =
 
 export function EventContractTab({ eventId }: Props) {
   const { showSnackbar } = useSnackbar();
-  const { isAdmin } = useCurrentEmployee();
+  const { isAdmin, employee } = useCurrentEmployee();
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [contractContent, setContractContent] = useState('');
@@ -119,6 +120,10 @@ export function EventContractTab({ eventId }: Props) {
   const [contractStatus, setContractStatus] = useState<ContractStatus>('draft');
   const [contractId, setContractId] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<string | null>(null);
+  const [contractCreatedBy, setContractCreatedBy] = useState<string | null>(null);
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [clientEmail, setClientEmail] = useState('');
+  const [clientName, setClientName] = useState('');
   const [statusDates, setStatusDates] = useState<{
     issued_at?: string;
     sent_at?: string;
@@ -167,16 +172,23 @@ export function EventContractTab({ eventId }: Props) {
       const { data: existingContract } = await supabase
         .from('contracts')
         .select(
-          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at',
+          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by',
         )
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
+      const contact = event.contacts;
+      const organization = event.organizations;
+
+      setClientEmail(contact?.email || organization?.email || '');
+      setClientName(contact?.full_name || organization?.name || '');
+
       if (existingContract) {
         setContractId(existingContract.id);
         setContractStatus(existingContract.status as ContractStatus);
+        setContractCreatedBy(existingContract.created_by);
         setStatusDates({
           issued_at: existingContract.issued_at,
           sent_at: existingContract.sent_at,
@@ -268,8 +280,6 @@ export function EventContractTab({ eventId }: Props) {
         });
       };
 
-      const contact = event.contacts;
-      const organization = event.organizations;
       const location = event.locations;
 
       const parseLocationString = (locationStr: string) => {
@@ -539,6 +549,13 @@ export function EventContractTab({ eventId }: Props) {
     return contractStatus === 'draft' || contractStatus === 'cancelled';
   }, [isAdmin, contractStatus]);
 
+  const canSendEmail = useMemo(() => {
+    if (!contractId) return false;
+    if (isAdmin) return true;
+    if (employee?.id && contractCreatedBy === employee.id) return true;
+    return false;
+  }, [isAdmin, employee, contractId, contractCreatedBy]);
+
   const actions = useMemo(() => {
     if (editMode) {
       return [
@@ -566,6 +583,15 @@ export function EventContractTab({ eventId }: Props) {
       },
     ];
 
+    if (canSendEmail) {
+      baseActions.unshift({
+        label: 'Wyślij umowę',
+        onClick: () => setShowSendEmailModal(true),
+        icon: <Mail className="h-4 w-4" />,
+        variant: 'default' as const,
+      });
+    }
+
     if (canEdit) {
       baseActions.unshift({
         label: 'Edytuj zmienne',
@@ -576,7 +602,7 @@ export function EventContractTab({ eventId }: Props) {
     }
 
     return baseActions;
-  }, [editMode, canEdit, handleCancel, handleSave, handlePrint]);
+  }, [editMode, canEdit, canSendEmail, handleCancel, handleSave, handlePrint]);
 
   if (loading) {
     return (
@@ -608,16 +634,23 @@ export function EventContractTab({ eventId }: Props) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="no-print flex items-center justify-between rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-        <div>
-          <h2 className="mb-1 text-2xl font-light text-[#e5e4e2]">
-            Umowa na realizację wydarzenia
-          </h2>
-          <p className="text-sm text-[#e5e4e2]/60">
-            Automatycznie wygenerowana z danych wydarzenia
-          </p>
-        </div>
+    <>
+      <div className="space-y-6">
+        <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="mb-1 text-2xl font-light text-[#e5e4e2]">
+                Umowa na realizację wydarzenia
+              </h2>
+              <p className="text-sm text-[#e5e4e2]/60">
+                Automatycznie wygenerowana z danych wydarzenia
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <ResponsiveActionBar actions={actions} />
+            </div>
+          </div>
+
           <div className="flex items-center gap-6">
             <div className="max-w-md flex-1">
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">
@@ -672,11 +705,7 @@ export function EventContractTab({ eventId }: Props) {
               </div>
             )}
           </div>
-
-        <div className="flex items-center gap-3">
-          <ResponsiveActionBar actions={actions} />
         </div>
-      </div>
 
       {editMode && (
         <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -822,5 +851,19 @@ export function EventContractTab({ eventId }: Props) {
         })()}
       </div>
     </div>
+
+      {showSendEmailModal && contractId && (
+        <SendContractEmailModal
+          contractId={contractId}
+          eventId={eventId}
+          clientEmail={clientEmail}
+          clientName={clientName}
+          onClose={() => setShowSendEmailModal(false)}
+          onSent={() => {
+            fetchContractData();
+          }}
+        />
+      )}
+    </>
   );
 }
