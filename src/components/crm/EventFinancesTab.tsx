@@ -386,9 +386,11 @@ export default function EventFinancesTab({ eventId }: Props) {
               <Receipt className="w-5 h-5 text-purple-400" />
               <span className="text-sm text-[#e5e4e2]/60">Bilans</span>
             </div>
-            <div className="text-sm text-[#e5e4e2]/80">
-              Faktury: {summary.invoices_count} ({summary.invoices_paid_count} opłacone)
-            </div>
+            {clientInfo?.can_invoice && (
+              <div className="text-sm text-[#e5e4e2]/80">
+                Faktury: {summary.invoices_count} ({summary.invoices_paid_count} opłacone)
+              </div>
+            )}
             <div className="text-sm text-[#e5e4e2]/80">
               Koszty: {summary.costs_count} ({summary.costs_paid_count} zapłacone)
             </div>
@@ -396,84 +398,74 @@ export default function EventFinancesTab({ eventId }: Props) {
         </div>
       )}
 
-      {/* Invoices Section */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-medium text-[#e5e4e2] flex items-center gap-2">
-            <FileText className="w-5 h-5 text-[#d3bb73]" />
-            Faktury ({invoices.length})
-          </h3>
-          <button
-            onClick={() => {
-              if (clientInfo?.can_invoice) {
-                router.push(`/crm/invoices/new?event=${eventId}`);
-              } else {
-                showSnackbar('Nie można wystawiać faktur dla tego klienta. Wymagany jest klient businessowy z NIP.', 'error');
-              }
-            }}
-            disabled={!clientInfo?.can_invoice}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
-              clientInfo?.can_invoice
-                ? 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#d3bb73]/90 cursor-pointer'
-                : 'bg-[#d3bb73]/20 text-[#e5e4e2]/40 cursor-not-allowed'
-            }`}
-            title={!clientInfo?.can_invoice ? 'Wymagany klient businessowy z NIP' : ''}
-          >
-            <Plus className="w-4 h-4" />
-            Wystaw fakturę
-          </button>
-        </div>
+      {/* Invoices Section - Only show for business clients */}
+      {clientInfo?.can_invoice && (
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-[#e5e4e2] flex items-center gap-2">
+              <FileText className="w-5 h-5 text-[#d3bb73]" />
+              Faktury ({invoices.length})
+            </h3>
+            <button
+              onClick={() => router.push(`/crm/invoices/new?event=${eventId}`)}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="w-4 h-4" />
+              Wystaw fakturę
+            </button>
+          </div>
 
-        {invoices.length === 0 ? (
-          <div className="text-center py-8 text-[#e5e4e2]/40">
-            Brak faktur dla tego eventu
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-[#0f1119] border-b border-[#d3bb73]/10">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Numer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Typ</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Nabywca</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Data</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-[#e5e4e2]/60">Kwota</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-[#e5e4e2]/60">Akcje</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#d3bb73]/10">
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id} className="hover:bg-[#0f1119] transition-colors">
-                    <td className="px-4 py-3 text-[#e5e4e2]">{invoice.invoice_number}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-[#e5e4e2]/60 bg-[#0a0d1a] px-2 py-1 rounded">
-                        {invoice.invoice_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[#e5e4e2]/80">{invoice.buyer_name}</td>
-                    <td className="px-4 py-3 text-[#e5e4e2]/80">
-                      {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-[#d3bb73]">
-                      {invoice.total_gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-                    </td>
-                    <td className="px-4 py-3">{getStatusBadge(invoice.status)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => router.push(`/crm/invoices/${invoice.id}`)}
-                        className="p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
+          {invoices.length === 0 ? (
+            <div className="text-center py-8 text-[#e5e4e2]/40">
+              Brak faktur dla tego eventu
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[#0f1119] border-b border-[#d3bb73]/10">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Numer</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Typ</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Nabywca</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Data</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-[#e5e4e2]/60">Kwota</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">Status</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-[#e5e4e2]/60">Akcje</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody className="divide-y divide-[#d3bb73]/10">
+                  {invoices.map((invoice) => (
+                    <tr key={invoice.id} className="hover:bg-[#0f1119] transition-colors">
+                      <td className="px-4 py-3 text-[#e5e4e2]">{invoice.invoice_number}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-[#e5e4e2]/60 bg-[#0a0d1a] px-2 py-1 rounded">
+                          {invoice.invoice_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[#e5e4e2]/80">{invoice.buyer_name}</td>
+                      <td className="px-4 py-3 text-[#e5e4e2]/80">
+                        {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-[#d3bb73]">
+                        {invoice.total_gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                      </td>
+                      <td className="px-4 py-3">{getStatusBadge(invoice.status)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => router.push(`/crm/invoices/${invoice.id}`)}
+                          className="p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Costs Section */}
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
