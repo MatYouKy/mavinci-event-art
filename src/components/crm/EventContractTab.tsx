@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { FileText, Download, Edit, Save, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import '@/styles/contractA4.css';
 import ResponsiveActionBar from './ResponsiveActionBar';
 
@@ -107,6 +108,7 @@ type ContractStatus =
 
 export function EventContractTab({ eventId }: Props) {
   const { showSnackbar } = useSnackbar();
+  const { isAdmin } = useCurrentEmployee();
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [contractContent, setContractContent] = useState('');
@@ -232,7 +234,7 @@ export function EventContractTab({ eventId }: Props) {
       const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000)
         .toString()
         .padStart(3, '0')}`;
-      const totalPrice = event.budget || offers?.total_amount || 0;
+      const totalPrice = offers?.total_amount || event.budget || 0;
       const depositAmount = Math.round(totalPrice * 0.5);
 
       const formatDate = (dateStr: string) => {
@@ -442,24 +444,50 @@ export function EventContractTab({ eventId }: Props) {
           return;
         }
 
+        const { data: eventData } = await supabase
+          .from('events')
+          .select('contact_person_id, organization_id')
+          .eq('id', eventId)
+          .single();
+
+        const clientId = eventData?.contact_person_id || eventData?.organization_id || null;
+
+        const statusDateField = `${newStatus}_at`;
+        const insertData: any = {
+          event_id: eventId,
+          client_id: clientId,
+          title: `Umowa dla eventu ${eventId}`,
+          content: contractContent,
+          status: newStatus,
+          template_id: templateId,
+        };
+
+        if (newStatus !== 'draft') {
+          insertData[statusDateField] = new Date().toISOString();
+        }
+
         const { data: newContract, error: createError } = await supabase
           .from('contracts')
-          .insert({
-            event_id: eventId,
-            title: `Umowa dla eventu ${eventId}`,
-            content: contractContent,
-            status: newStatus,
-            template_id: templateId,
-          })
+          .insert(insertData)
           .select('id')
           .single();
 
         if (createError) throw createError;
         setContractId(newContract.id);
       } else {
+        const statusDateField = `${newStatus}_at`;
+        const updateData: any = {
+          status: newStatus,
+          content: contractContent
+        };
+
+        if (newStatus !== 'draft') {
+          updateData[statusDateField] = new Date().toISOString();
+        }
+
         const { error: updateError } = await supabase
           .from('contracts')
-          .update({ status: newStatus })
+          .update(updateData)
           .eq('id', contractId);
 
         if (updateError) throw updateError;
@@ -506,6 +534,11 @@ export function EventContractTab({ eventId }: Props) {
     });
   };
 
+  const canEdit = useMemo(() => {
+    if (isAdmin) return true;
+    return contractStatus === 'draft' || contractStatus === 'cancelled';
+  }, [isAdmin, contractStatus]);
+
   const actions = useMemo(() => {
     if (editMode) {
       return [
@@ -524,13 +557,7 @@ export function EventContractTab({ eventId }: Props) {
       ];
     }
 
-    return [
-      {
-        label: 'Edytuj zmienne',
-        onClick: () => setEditMode(true),
-        icon: <Edit className="h-4 w-4" />,
-        variant: 'default' as const,
-      },
+    const baseActions = [
       {
         label: 'Pobierz PDF',
         onClick: handlePrint,
@@ -538,7 +565,18 @@ export function EventContractTab({ eventId }: Props) {
         variant: 'primary' as const,
       },
     ];
-  }, [editMode, handleCancel, handleSave, handlePrint]);
+
+    if (canEdit) {
+      baseActions.unshift({
+        label: 'Edytuj zmienne',
+        onClick: () => setEditMode(true),
+        icon: <Edit className="h-4 w-4" />,
+        variant: 'default' as const,
+      });
+    }
+
+    return baseActions;
+  }, [editMode, canEdit, handleCancel, handleSave, handlePrint]);
 
   if (loading) {
     return (
@@ -582,11 +620,19 @@ export function EventContractTab({ eventId }: Props) {
         </div>
           <div className="flex items-center gap-6">
             <div className="max-w-md flex-1">
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz status</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                Wybierz status
+                {!canEdit && contractStatus === 'issued' && (
+                  <span className="ml-2 text-xs text-amber-400">
+                    (🔒 Tylko admin może anulować)
+                  </span>
+                )}
+              </label>
               <select
                 value={contractStatus}
                 onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
-                className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"
+                disabled={!canEdit && contractStatus !== 'draft'}
+                className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {(
                   [
@@ -597,11 +643,24 @@ export function EventContractTab({ eventId }: Props) {
                     'signed_returned',
                     'cancelled',
                   ] as ContractStatus[]
-                ).map((status) => (
-                  <option key={status} value={status} className="bg-[#1c1f33] text-[#e5e4e2]">
-                    {getStatusLabel(status)}
-                  </option>
-                ))}
+                ).map((status) => {
+                  const isDisabled =
+                    !isAdmin &&
+                    ((contractStatus === 'issued' && status !== 'issued') ||
+                      (status === 'cancelled' && contractStatus !== 'cancelled') ||
+                      (status === 'draft' && contractStatus !== 'draft'));
+
+                  return (
+                    <option
+                      key={status}
+                      value={status}
+                      disabled={isDisabled}
+                      className="bg-[#1c1f33] text-[#e5e4e2]"
+                    >
+                      {getStatusLabel(status)}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             {getStatusDate(contractStatus) && (
