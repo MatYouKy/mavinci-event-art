@@ -111,6 +111,7 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [showAddCashModal, setShowAddCashModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddCost, setShowAddCost] = useState(false);
+  const [importingCosts, setImportingCosts] = useState(false);
 
   // Formularz kosztu
   const [costForm, setCostForm] = useState({
@@ -256,6 +257,148 @@ export default function EventFinancesTab({ eventId }: Props) {
     } catch (err: any) {
       console.error('Error updating cost status:', err);
       showSnackbar(err.message || 'Błąd podczas aktualizacji statusu', 'error');
+    }
+  };
+
+  const handleImportCostsFromOffer = async () => {
+    if (!confirm('Czy na pewno chcesz zaimportować koszty z oferty? Zostaną dodane jako edytowalne pozycje.')) return;
+
+    try {
+      setImportingCosts(true);
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Pobierz ofertę powiązaną z eventem
+      const { data: offers, error: offersError } = await supabase
+        .from('offers')
+        .select('id')
+        .eq('event_id', eventId)
+        .maybeSingle();
+
+      if (offersError) throw offersError;
+      if (!offers) {
+        showSnackbar('Brak powiązanej oferty z tym eventem', 'error');
+        return;
+      }
+
+      // Pobierz produkty z oferty wraz z ich szczegółami
+      const { data: offerItems, error: itemsError } = await supabase
+        .from('offer_items')
+        .select(`
+          *,
+          product:product_id(
+            cost_price,
+            transport_cost,
+            logistics_cost,
+            cost_net,
+            cost_gross,
+            transport_cost_net,
+            transport_cost_gross,
+            logistics_cost_net,
+            logistics_cost_gross
+          )
+        `)
+        .eq('offer_id', offers.id);
+
+      if (itemsError) throw itemsError;
+      if (!offerItems || offerItems.length === 0) {
+        showSnackbar('Brak produktów w ofercie', 'error');
+        return;
+      }
+
+      // Znajdź kategorię "Produkty" lub stwórz domyślną
+      let productCategoryId = categories.find(c => c.name.toLowerCase().includes('produkt'))?.id;
+      let transportCategoryId = categories.find(c => c.name.toLowerCase().includes('transport'))?.id;
+      let logisticsCategoryId = categories.find(c => c.name.toLowerCase().includes('logistyk'))?.id;
+
+      // Jeśli nie ma kategorii, użyj pierwszej dostępnej
+      const defaultCategoryId = productCategoryId || categories[0]?.id;
+
+      const costsToAdd = [];
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('email', user?.email)
+        .maybeSingle();
+
+      // Dla każdego produktu dodaj koszty
+      for (const item of offerItems) {
+        const product = item.product;
+        if (!product) continue;
+
+        // Koszt podstawowy produktu
+        if (product.cost_net > 0 || product.cost_gross > 0) {
+          const costAmount = product.cost_net || product.cost_gross || product.cost_price || 0;
+          if (costAmount > 0) {
+            costsToAdd.push({
+              event_id: eventId,
+              name: `${item.name} (koszt produktu)`,
+              description: `Koszt jednostkowy: ${costAmount.toFixed(2)} PLN, Ilość: ${item.quantity}`,
+              amount: costAmount * item.quantity,
+              cost_date: new Date().toISOString().split('T')[0],
+              category_id: productCategoryId || defaultCategoryId,
+              status: 'pending',
+              payment_method: 'transfer',
+              created_by: employee?.id
+            });
+          }
+        }
+
+        // Koszt transportu
+        if (product.transport_cost_net > 0 || product.transport_cost_gross > 0 || product.transport_cost > 0) {
+          const transportAmount = product.transport_cost_net || product.transport_cost_gross || product.transport_cost || 0;
+          if (transportAmount > 0) {
+            costsToAdd.push({
+              event_id: eventId,
+              name: `${item.name} (transport)`,
+              description: `Koszt transportu dla ${item.quantity} szt.`,
+              amount: transportAmount * item.quantity,
+              cost_date: new Date().toISOString().split('T')[0],
+              category_id: transportCategoryId || defaultCategoryId,
+              status: 'pending',
+              payment_method: 'transfer',
+              created_by: employee?.id
+            });
+          }
+        }
+
+        // Koszt logistyki
+        if (product.logistics_cost_net > 0 || product.logistics_cost_gross > 0 || product.logistics_cost > 0) {
+          const logisticsAmount = product.logistics_cost_net || product.logistics_cost_gross || product.logistics_cost || 0;
+          if (logisticsAmount > 0) {
+            costsToAdd.push({
+              event_id: eventId,
+              name: `${item.name} (logistyka)`,
+              description: `Koszt logistyki dla ${item.quantity} szt.`,
+              amount: logisticsAmount * item.quantity,
+              cost_date: new Date().toISOString().split('T')[0],
+              category_id: logisticsCategoryId || defaultCategoryId,
+              status: 'pending',
+              payment_method: 'transfer',
+              created_by: employee?.id
+            });
+          }
+        }
+      }
+
+      if (costsToAdd.length === 0) {
+        showSnackbar('Brak kosztów do zaimportowania z produktów oferty', 'info');
+        return;
+      }
+
+      // Dodaj wszystkie koszty
+      const { error: insertError } = await supabase
+        .from('event_costs')
+        .insert(costsToAdd);
+
+      if (insertError) throw insertError;
+
+      showSnackbar(`Zaimportowano ${costsToAdd.length} kosztów z oferty`, 'success');
+      fetchFinancialData();
+    } catch (err: any) {
+      console.error('Error importing costs from offer:', err);
+      showSnackbar(err.message || 'Błąd podczas importowania kosztów', 'error');
+    } finally {
+      setImportingCosts(false);
     }
   };
 
@@ -482,13 +625,24 @@ export default function EventFinancesTab({ eventId }: Props) {
             <Receipt className="w-5 h-5 text-red-400" />
             Koszty ({costs.length})
           </h3>
-          <button
-            onClick={() => setShowAddCost(!showAddCost)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/90"
-          >
-            <Plus className="w-4 h-4" />
-            Dodaj koszt
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleImportCostsFromOffer}
+              disabled={importingCosts}
+              className="flex items-center gap-2 border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73] px-4 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Importuj koszty z produktów oferty"
+            >
+              <Package className="w-4 h-4" />
+              {importingCosts ? 'Importowanie...' : 'Import z oferty'}
+            </button>
+            <button
+              onClick={() => setShowAddCost(!showAddCost)}
+              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj koszt
+            </button>
+          </div>
         </div>
 
         {/* Add Cost Form */}

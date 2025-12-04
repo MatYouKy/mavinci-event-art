@@ -40,7 +40,7 @@ const statusLabels = {
   invoiced: 'Rozliczony',
 };
 
-type SortField = 'event_date' | 'name' | 'budget' | 'created_at';
+type SortField = 'event_date' | 'name' | 'budget' | 'created_at' | 'category';
 type SortDirection = 'asc' | 'desc';
 
 export default function EventsPage() {
@@ -231,6 +231,12 @@ export default function EventsPage() {
       let aVal = a[sortField];
       let bVal = b[sortField];
 
+      // Sortowanie po kategorii
+      if (sortField === 'category') {
+        aVal = a.event_categories?.name?.toLowerCase() || 'zzz';
+        bVal = b.event_categories?.name?.toLowerCase() || 'zzz';
+      }
+
       // Konwersja dat
       if (sortField === 'event_date' || sortField === 'created_at') {
         aVal = new Date(aVal || 0).getTime();
@@ -391,6 +397,7 @@ export default function EventsPage() {
               <option value="event_date">Data eventu</option>
               <option value="created_at">Data utworzenia</option>
               <option value="name">Nazwa</option>
+              <option value="category">Kategoria</option>
               <option value="budget">Budżet</option>
             </select>
             <button
