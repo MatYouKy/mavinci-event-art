@@ -40,7 +40,7 @@ const statusLabels = {
   invoiced: 'Rozliczony',
 };
 
-type SortField = 'event_date' | 'name' | 'budget' | 'created_at' | 'category';
+type SortField = 'event_date' | 'name' | 'budget' | 'created_at';
 type SortDirection = 'asc' | 'desc';
 
 export default function EventsPage() {
@@ -49,9 +49,11 @@ export default function EventsPage() {
   const { getViewMode, setViewMode } = useUserPreferences();
   const [events, setEvents] = useState<any[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('event_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
@@ -68,6 +70,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     fetchEvents();
+    fetchCategories();
 
     const channel = supabase
       .channel('events-changes')
@@ -91,7 +94,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     applyFiltersAndSort();
-  }, [events, searchQuery, statusFilter, sortField, sortDirection, showPastEvents]);
+  }, [events, searchQuery, statusFilter, categoryFilter, sortField, sortDirection, showPastEvents]);
 
   const fetchEvents = async () => {
     try {
@@ -168,6 +171,20 @@ export default function EventsPage() {
     setEvents([]);
   };
 
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('event_categories')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      if (data) setCategories(data);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    }
+  };
+
   const handleDeleteClick = (e: React.MouseEvent, event: any) => {
     e.stopPropagation();
     setEventToDelete(event);
@@ -217,6 +234,11 @@ export default function EventsPage() {
       result = result.filter((event) => event.status === statusFilter);
     }
 
+    // Filtrowanie po kategorii
+    if (categoryFilter !== 'all') {
+      result = result.filter((event) => event.category_id === categoryFilter);
+    }
+
     // Filtrowanie przeszłych eventów (tylko jeśli showPastEvents jest false)
     if (!showPastEvents) {
       result = result.filter((event) => {
@@ -230,12 +252,6 @@ export default function EventsPage() {
     result.sort((a, b) => {
       let aVal = a[sortField];
       let bVal = b[sortField];
-
-      // Sortowanie po kategorii
-      if (sortField === 'category') {
-        aVal = a.event_categories?.name?.toLowerCase() || 'zzz';
-        bVal = b.event_categories?.name?.toLowerCase() || 'zzz';
-      }
 
       // Konwersja dat
       if (sortField === 'event_date' || sortField === 'created_at') {
@@ -386,6 +402,20 @@ export default function EventsPage() {
             <option value="invoiced">Rozliczony</option>
           </select>
 
+          {/* Filtr kategorii */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+          >
+            <option value="all">Wszystkie kategorie</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+
           {/* Sortowanie */}
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-[#e5e4e2]/50" />
@@ -397,7 +427,6 @@ export default function EventsPage() {
               <option value="event_date">Data eventu</option>
               <option value="created_at">Data utworzenia</option>
               <option value="name">Nazwa</option>
-              <option value="category">Kategoria</option>
               <option value="budget">Budżet</option>
             </select>
             <button
