@@ -223,6 +223,11 @@
     visibility: hidden;
   }
 
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
   .contract-a4-container,
   .contract-a4-container * {
     visibility: visible !important;
