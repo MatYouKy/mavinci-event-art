@@ -13,11 +13,14 @@ import {
   ArrowUpDown,
   Trash2,
   AlertTriangle,
+  Grid,
+  List,
 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { Modal } from '@/components/UI/Modal';
+import { useUserPreferences } from '@/hooks/useUserPreferences';
 
 const statusColors = {
   offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
@@ -43,6 +46,7 @@ type SortDirection = 'asc' | 'desc';
 export default function EventsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const { getViewMode, setViewMode } = useUserPreferences();
   const [events, setEvents] = useState<any[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -53,6 +57,14 @@ export default function EventsPage() {
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
+  const [viewMode, setLocalViewMode] = useState<'list' | 'grid'>(
+    getViewMode('events') === 'grid' ? 'grid' : 'list'
+  );
+
+  const handleViewModeChange = async (mode: 'list' | 'grid') => {
+    setLocalViewMode(mode);
+    await setViewMode('events', mode);
+  };
 
   useEffect(() => {
     fetchEvents();
@@ -391,6 +403,32 @@ export default function EventsPage() {
               />
             </button>
           </div>
+
+          {/* Przełącznik widoku */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleViewModeChange('list')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#0f1117] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+              title="Widok listy"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleViewModeChange('grid')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#0f1117] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+              title="Widok siatki"
+            >
+              <Grid className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Dodatkowe opcje i podsumowanie */}
@@ -435,13 +473,86 @@ export default function EventsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4">
+      <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
         {filteredEvents.map((event) => {
           const eventDate = new Date(event.event_date);
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           eventDate.setHours(0, 0, 0, 0);
           const isPast = eventDate < today;
+
+          if (viewMode === 'grid') {
+            return (
+              <div
+                key={event.id}
+                className={`relative rounded-xl border bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30 cursor-pointer flex flex-col ${
+                  isPast ? 'border-[#e5e4e2]/5 opacity-60' : 'border-[#d3bb73]/10'
+                }`}
+                onClick={() => router.push(`/crm/events/${event.id}`)}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-medium text-[#e5e4e2] line-clamp-2">{event.name}</h3>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteClick(e, event)}
+                    className="rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20 flex-shrink-0"
+                    title="Usuń event"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-sm text-[#e5e4e2]/70 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{event.organizations?.name || 'Brak klienta'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 flex-shrink-0" />
+                    <span>{new Date(event.event_date).toLocaleDateString('pl-PL')}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <span className="line-clamp-2">
+                      {event.locations ? (
+                        <>
+                          <span className="font-medium">{event.locations.name}</span>
+                          {event.locations.city && (
+                            <span className="text-[#e5e4e2]/50"> - {event.locations.city}</span>
+                          )}
+                        </>
+                      ) : (
+                        event.location || 'Brak lokalizacji'
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-4 border-t border-[#d3bb73]/10 mt-4">
+                  <div
+                    className={`text-xs px-2 py-1 rounded-full border ${
+                      statusColors[event.status]
+                    }`}
+                  >
+                    {statusLabels[event.status]}
+                  </div>
+                  {event.event_categories && (
+                    <div className="text-xs px-2 py-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73]">
+                      {event.event_categories.name}
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-sm text-[#e5e4e2]/70 mt-3">
+                  Budżet:{' '}
+                  <span className="font-medium text-[#d3bb73]">
+                    {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+                  </span>
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div

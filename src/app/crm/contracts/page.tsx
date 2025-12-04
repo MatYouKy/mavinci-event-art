@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { FileText, Plus, Search, Eye, Download, Trash2, FileType } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Download, Trash2, FileType, Grid, List } from 'lucide-react';
+import { useUserPreferences } from '@/hooks/useUserPreferences';
 
 interface Contract {
   id: string;
@@ -25,12 +26,21 @@ interface Contract {
 
 export default function ContractsPage() {
   const router = useRouter();
+  const { getViewMode, setViewMode } = useUserPreferences();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [filteredContracts, setFilteredContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [viewMode, setLocalViewMode] = useState<'list' | 'grid'>(
+    getViewMode('contracts') === 'grid' ? 'grid' : 'list'
+  );
+
+  const handleViewModeChange = async (mode: 'list' | 'grid') => {
+    setLocalViewMode(mode);
+    await setViewMode('contracts', mode);
+  };
 
   useEffect(() => {
     fetchContracts();
@@ -152,7 +162,7 @@ export default function ContractsPage() {
         </div>
 
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
               <input
@@ -175,6 +185,31 @@ export default function ContractsPage() {
               <option value="signed">Podpisana</option>
               <option value="cancelled">Anulowana</option>
             </select>
+
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => handleViewModeChange('list')}
+                className={`p-2 rounded-lg transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#0f1119] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                }`}
+                title="Widok listy"
+              >
+                <List className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => handleViewModeChange('grid')}
+                className={`p-2 rounded-lg transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#0f1119] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                }`}
+                title="Widok siatki"
+              >
+                <Grid className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -190,6 +225,92 @@ export default function ContractsPage() {
               <Plus className="w-5 h-5" />
               Nowa umowa
             </button>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredContracts.map((contract) => (
+              <div
+                key={contract.id}
+                className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-colors cursor-pointer flex flex-col"
+                onClick={() => router.push(`/crm/contracts/${contract.id}`)}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <FileText className="w-8 h-8 text-[#d3bb73]" />
+                  <span
+                    className={`text-xs px-2 py-1 rounded ${
+                      statusColors[contract.status]
+                    }`}
+                  >
+                    {statusLabels[contract.status]}
+                  </span>
+                </div>
+
+                <h3 className="text-base font-medium text-[#e5e4e2] mb-1">
+                  {contract.contract_number}
+                </h3>
+                <p className="text-sm text-[#e5e4e2]/80 mb-3 line-clamp-2 flex-1">
+                  {contract.title}
+                </p>
+
+                <div className="space-y-2 text-xs text-[#e5e4e2]/60 mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Klient:</span>
+                    <span className="truncate">{getClientName(contract)}</span>
+                  </div>
+                  {contract.event && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Event:</span>
+                      <span className="truncate">{contract.event.name}</span>
+                    </div>
+                  )}
+                  {contract.valid_from && (
+                    <div className="text-xs">
+                      <span className="font-medium">Ważna: </span>
+                      {new Date(contract.valid_from).toLocaleDateString('pl-PL')}
+                      {' - '}
+                      {contract.valid_until
+                        ? new Date(contract.valid_until).toLocaleDateString('pl-PL')
+                        : 'bezterminowo'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-3 border-t border-[#d3bb73]/10">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/crm/contracts/${contract.id}`);
+                    }}
+                    className="flex-1 p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors text-center"
+                    title="Szczegóły"
+                  >
+                    <Eye className="w-4 h-4 mx-auto" />
+                  </button>
+                  {contract.pdf_url && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(contract.pdf_url, '_blank');
+                      }}
+                      className="flex-1 p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors text-center"
+                      title="Pobierz PDF"
+                    >
+                      <Download className="w-4 h-4 mx-auto" />
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(contract.id);
+                    }}
+                    className="flex-1 p-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors text-center"
+                    title="Usuń"
+                  >
+                    <Trash2 className="w-4 h-4 mx-auto" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
