@@ -845,7 +845,6 @@ export default function EditTemplateWYSIWYGPage() {
 
         .contract-content-wysiwyg {
           flex: 1;
-          min-height: 160mm;
           text-align: justify;
           color: #000;
           font-family: Arial, sans-serif;
@@ -855,6 +854,7 @@ export default function EditTemplateWYSIWYGPage() {
           unicode-bidi: embed !important;
           overflow-wrap: break-word;
           word-wrap: break-word;
+          overflow: hidden;
         }
 
         .contract-content-wysiwyg * {
