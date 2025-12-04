@@ -134,43 +134,29 @@ interface OfferItem {
 }
 
 /**
- * Generates an HTML table from offer items (simplified - only names)
+ * Generates an HTML bullet list from offer items
  * @param items - Array of offer items
- * @returns HTML string with formatted table
+ * @returns HTML string with formatted list
  */
 export function generateOfferItemsTable(items: OfferItem[]): string {
   if (!items || items.length === 0) {
     return '<p style="color: #888; font-style: italic;">Brak pozycji w ofercie</p>';
   }
 
-  let tableHTML = `
-<table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-family: Arial, sans-serif;">
-  <thead>
-    <tr style="background-color: #d3bb73; color: #1c1f33;">
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: left; font-weight: 600; width: 60px;">Lp.</th>
-      <th style="border: 1px solid #999; padding: 10px 8px; text-align: left; font-weight: 600;">Nazwa usługi</th>
-    </tr>
-  </thead>
-  <tbody>
-`;
+  const listItems = items.map((item) => {
+    let itemHTML = `<li style="margin-bottom: 8px;"><strong>${item.name}</strong>`;
 
-  items.forEach((item, index) => {
-    const rowBg = index % 2 === 0 ? '#f9f9f9' : '#ffffff';
+    if (item.description) {
+      itemHTML += `<br/><span style="margin-left: 0; font-size: 10pt; color: #333;">${item.description}</span>`;
+    }
 
-    tableHTML += `
-    <tr style="background-color: ${rowBg};">
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${index + 1}</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">${item.name}</td>
-    </tr>
-`;
-  });
+    itemHTML += '</li>';
+    return itemHTML;
+  }).join('\n');
 
-  tableHTML += `
-  </tbody>
-</table>
-`;
-
-  return tableHTML;
+  return `<ul style="margin: 10px 0; padding-left: 20px; list-style-type: disc; font-family: Arial, sans-serif; font-size: 10pt;">
+${listItems}
+</ul>`;
 }
 
 /**

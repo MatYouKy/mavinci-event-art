@@ -722,10 +722,10 @@ export function EventContractTab({ eventId }: Props) {
             page-break-after: always !important;
             break-after: page !important;
             margin: 0 !important;
-            padding: 20mm 25mm 20mm 25mm !important;
+            padding: 20mm 25mm 30mm 25mm !important;
             width: 210mm !important;
-            min-height: 257mm !important;
-            max-height: 297mm !important;
+            min-height: 297mm !important;
+            height: 297mm !important;
             background: white !important;
             display: block !important;
             overflow: visible !important;
@@ -764,6 +764,13 @@ export function EventContractTab({ eventId }: Props) {
           }
 
           .contract-footer {
+            position: absolute !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 25mm !important;
+            margin: 0 !important;
+            padding: 10px 0 !important;
             page-break-inside: avoid !important;
           }
 
@@ -782,8 +789,9 @@ export function EventContractTab({ eventId }: Props) {
         .contract-a4-page {
           position: relative;
           width: 210mm;
+          min-height: 297mm;
           margin: 0 auto 20px auto;
-          padding: 20mm 25mm 5mm;
+          padding: 20mm 25mm 30mm;
           background: white;
           box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
           font-family: Arial, sans-serif;
@@ -792,8 +800,6 @@ export function EventContractTab({ eventId }: Props) {
           color: #000;
           page-break-after: always;
           break-after: page;
-          display: flex;
-          flex-direction: column;
         }
 
         .contract-header-logo {
@@ -822,8 +828,7 @@ export function EventContractTab({ eventId }: Props) {
         }
 
         .contract-content {
-          flex: 1;
-          min-height: 160mm;
+          min-height: 200mm;
           text-align: justify;
           color: #000;
           font-family: Arial, sans-serif;
@@ -893,17 +898,19 @@ export function EventContractTab({ eventId }: Props) {
         }
 
         .contract-footer {
-          margin-top: auto;
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
           width: 100%;
-          min-height: 25mm;
+          height: 25mm;
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: flex-end;
+          justify-content: center;
           padding: 10px 0;
           background: white;
           flex-shrink: 0;
-          position: relative;
         }
 
         .contract-footer::before {
