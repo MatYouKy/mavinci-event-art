@@ -49,6 +49,7 @@ interface Event {
   client_type: 'individual' | 'business';
   category_id: string;
   created_by: string;
+  requires_subcontractors: boolean;
   organization?: {
     id: string;
     name: string;
@@ -184,6 +185,7 @@ export default function EventDetailPage() {
   const [userAssignmentStatus, setUserAssignmentStatus] = useState<'pending' | 'accepted' | 'rejected' | null>(null);
   const [hasLimitedAccess, setHasLimitedAccess] = useState(false);
   const [allowedEventTabs, setAllowedEventTabs] = useState<string[]>([]);
+  const [hasSubcontractors, setHasSubcontractors] = useState(false);
 
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
@@ -373,6 +375,9 @@ export default function EventDetailPage() {
       }
 
       setEvent(eventData);
+
+      // Ustaw czy pokazać zakładkę podwykonawców na podstawie pola requires_subcontractors
+      setHasSubcontractors(eventData?.requires_subcontractors || false);
 
       // Jeśli użytkownik ma ograniczony dostęp (pending), nie pobieraj szczegółów
       if (limitedAccess) {
@@ -1191,6 +1196,11 @@ export default function EventDetailPage() {
             return tab.id === 'overview';
           }
 
+          // Zakładka "Podwykonawcy" pokazuje się tylko gdy jest wskazane zapotrzebowanie
+          if (tab.id === 'subcontractors' && !hasSubcontractors) {
+            return false;
+          }
+
           // Admin widzi wszystko
           if (isUserAdmin) {
             return true;
@@ -1371,6 +1381,55 @@ export default function EventDetailPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Zapotrzebowanie na podwykonawców */}
+                {!hasLimitedAccess && (canManageTeam || isUserAdmin) && (
+                  <div className="flex items-start gap-3">
+                    <UserCheck className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                    <div className="flex-1">
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={event.requires_subcontractors}
+                          onChange={async (e) => {
+                            const newValue = e.target.checked;
+                            try {
+                              const { error } = await supabase
+                                .from('events')
+                                .update({ requires_subcontractors: newValue })
+                                .eq('id', eventId);
+
+                              if (error) throw error;
+
+                              setEvent({ ...event, requires_subcontractors: newValue });
+                              setHasSubcontractors(newValue);
+
+                              await logChange(
+                                'updated',
+                                newValue ? 'Włączono zapotrzebowanie na podwykonawców' : 'Wyłączono zapotrzebowanie na podwykonawców',
+                                'requires_subcontractors',
+                                String(!newValue),
+                                String(newValue)
+                              );
+                            } catch (err) {
+                              console.error('Error updating requires_subcontractors:', err);
+                              alert('Błąd podczas aktualizacji');
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-0"
+                        />
+                        <div>
+                          <p className="text-sm text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
+                            Wymaga podwykonawców
+                          </p>
+                          <p className="text-xs text-[#e5e4e2]/60">
+                            Pokaż zakładkę "Podwykonawcy" w tym wydarzeniu
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
                 {!hasLimitedAccess && (
