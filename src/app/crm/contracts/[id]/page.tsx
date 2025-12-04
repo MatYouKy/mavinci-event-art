@@ -27,7 +27,7 @@ export default function ContractDetailsPage() {
         .from('contracts')
         .select(`
           *,
-          client:clients!client_id(company_name, first_name, last_name),
+          client:contacts!client_id(full_name, first_name, last_name),
           event:events!event_id(name, event_date),
           template:contract_templates!template_id(name)
         `)
@@ -216,7 +216,7 @@ export default function ContractDetailsPage() {
 
   const getClientName = () => {
     if (!contract?.client) return 'Brak klienta';
-    if (contract.client.company_name) return contract.client.company_name;
+    if (contract.client.full_name) return contract.client.full_name;
     return `${contract.client.first_name || ''} ${contract.client.last_name || ''}`.trim();
   };
 
