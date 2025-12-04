@@ -715,7 +715,7 @@ export default function EditTemplateWYSIWYGPage() {
         <div className="mx-auto max-w-[230mm] px-4">
           {pages.map((pageContent, pageIndex) => (
             <div key={pageIndex} className="contract-a4-page-wysiwyg">
-              {pageIndex === 0 ? (
+              {pageIndex === 0 && (
                 <>
                   <div
                     className="contract-header-logo-wysiwyg"
@@ -747,13 +747,6 @@ export default function EditTemplateWYSIWYGPage() {
                     })}
                   </div>
                 </>
-              ) : (
-                <div
-                  className="contract-header-spacer-wysiwyg"
-                  style={{
-                    marginTop: `${logoPositionY}mm`,
-                  }}
-                />
               )}
 
               <div
@@ -832,20 +825,11 @@ export default function EditTemplateWYSIWYGPage() {
           align-items: center;
           margin-bottom: 4mm;
           transition: all 0.2s ease;
-          min-height: 90mm;
         }
 
         .contract-header-logo-wysiwyg img {
           height: auto;
           object-fit: contain;
-        }
-
-        .contract-header-spacer-wysiwyg {
-          width: 100%;
-          flex-shrink: 0;
-          margin-bottom: 4mm;
-          min-height: 90mm;
-          height: 90mm;
         }
 
         .contract-current-date-wysiwyg {
