@@ -671,25 +671,31 @@ export default function EventFinancesTab({ eventId }: Props) {
           {/* Cash Summary */}
           {summary && (
             <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-[#0a0d1a] border border-green-500/20 rounded-lg p-4">
-                <div className="text-xs text-[#e5e4e2]/60 mb-1">Wpłaty gotówkowe</div>
-                <div className="text-xl font-light text-green-400">
-                  {summary.actual_cash_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              <div className="bg-[#0a0d1a] border border-blue-500/20 rounded-lg p-4">
+                <div className="text-xs text-[#e5e4e2]/60 mb-1">Budżet z oferty</div>
+                <div className="text-xl font-light text-blue-400">
+                  {summary.expected_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                </div>
+                <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                  Planowany przychód
                 </div>
               </div>
-              <div className="bg-[#0a0d1a] border border-blue-500/20 rounded-lg p-4">
-                <div className="text-xs text-[#e5e4e2]/60 mb-1">Plan gotówkowy</div>
-                <div className="text-xl font-light text-blue-400">
-                  {summary.cash_budget.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              <div className="bg-[#0a0d1a] border border-red-500/20 rounded-lg p-4">
+                <div className="text-xs text-[#e5e4e2]/60 mb-1">Koszty</div>
+                <div className="text-xl font-light text-red-400">
+                  {summary.actual_costs.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                </div>
+                <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                  Poniesione wydatki
                 </div>
               </div>
               <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
                 <div className="text-xs text-[#e5e4e2]/60 mb-1">Łączny przychód</div>
-                <div className="text-xl font-light text-[#d3bb73]">
-                  {summary.total_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                <div className={`text-xl font-light ${(summary.expected_revenue - summary.actual_costs) >= 0 ? 'text-[#d3bb73]' : 'text-red-400'}`}>
+                  {(summary.expected_revenue - summary.actual_costs).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                 </div>
                 <div className="text-xs text-[#e5e4e2]/40 mt-1">
-                  Faktury + Gotówka
+                  Budżet - Koszty
                 </div>
               </div>
             </div>
