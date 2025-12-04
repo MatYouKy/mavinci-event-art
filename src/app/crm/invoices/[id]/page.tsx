@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Download, Edit, Printer, Send, CheckCircle, XCircle, Building2, Calendar, FileText, Link as LinkIcon } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
 
 interface Invoice {
   id: string;
@@ -38,7 +39,7 @@ interface Invoice {
 
 interface RelatedData {
   event?: { id: string; name: string; event_date: string } | null;
-  organization?: { id: string; name: string; nip: string } | null;
+  organization?: { id: string; name: string; nip: string; email?: string } | null;
   relatedInvoice?: { id: string; invoice_number: string; invoice_type: string } | null;
   relatedInvoices?: Array<{ id: string; invoice_number: string; invoice_type: string; relation_type: string }>;
 }
@@ -63,6 +64,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [relatedData, setRelatedData] = useState<RelatedData>({});
   const [loading, setLoading] = useState(true);
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
 
   useEffect(() => {
     fetchInvoice();
@@ -88,7 +90,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
         if (invoiceRes.data.organization_id) {
           promises.push(
-            supabase.from('organizations').select('id, name, nip').eq('id', invoiceRes.data.organization_id).maybeSingle()
+            supabase.from('organizations').select('id, name, nip, email').eq('id', invoiceRes.data.organization_id).maybeSingle()
           );
         }
 
@@ -143,54 +145,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   const handleSendEmail = async () => {
-    try {
-      // Pobierz email kontaktu z organizacji
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('email, name')
-        .eq('id', invoice.organization_id)
-        .maybeSingle();
-
-      if (!orgData || !orgData.email) {
-        showSnackbar('Brak adresu email dla tej organizacji', 'error');
-        return;
-      }
-
-      // Pobierz konto email systemowe
-      const { data: emailAccounts } = await supabase
-        .from('employee_email_accounts')
-        .select('id, email_address, smtp_host, smtp_port, smtp_user')
-        .eq('is_system_account', true)
-        .limit(1);
-
-      if (!emailAccounts || emailAccounts.length === 0) {
-        showSnackbar('Brak skonfigurowanego konta systemowego', 'error');
-        return;
-      }
-
-      const systemAccount = emailAccounts[0];
-
-      // Utwórz wpis w sent_emails
-      const { data: sentEmail, error } = await supabase
-        .from('sent_emails')
-        .insert({
-          account_id: systemAccount.id,
-          to_email: orgData.email,
-          subject: `Faktura ${invoice.invoice_number} - ${invoice.seller_name}`,
-          body_text: `Szanowni Państwo,\n\nW załączniku przesyłamy fakturę ${invoice.invoice_number}.\n\nPozdrawiamy,\n${invoice.seller_name}`,
-          body_html: `<p>Szanowni Państwo,</p><p>W załączniku przesyłamy fakturę <strong>${invoice.invoice_number}</strong>.</p><p>Pozdrawiamy,<br/>${invoice.seller_name}</p>`,
-          status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      showSnackbar('Faktura została dodana do kolejki wysyłki', 'success');
-    } catch (err) {
-      console.error('Error sending email:', err);
-      showSnackbar('Błąd podczas wysyłania email', 'error');
-    }
+    setShowSendEmailModal(true);
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -593,6 +548,20 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           }
         }
       `}</style>
+
+      {/* Modal wysyłania faktury */}
+      {showSendEmailModal && invoice && relatedData.organization && (
+        <SendInvoiceEmailModal
+          invoiceId={invoice.id}
+          invoiceNumber={invoice.invoice_number}
+          clientEmail={relatedData.organization.email}
+          clientName={relatedData.organization.name}
+          onClose={() => setShowSendEmailModal(false)}
+          onSent={() => {
+            showSnackbar('Faktura wysłana', 'success');
+          }}
+        />
+      )}
     </div>
   );
 }

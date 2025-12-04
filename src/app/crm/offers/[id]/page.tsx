@@ -2,16 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, CreditCard as Edit, Save, X, Pencil, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, CreditCard as Edit, Save, X, Pencil, AlertTriangle, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 
 interface Offer {
   id: string;
   offer_number: string;
   event_id: string;
   organization_id: string;
+  created_by: string;
   total_amount: number;
   valid_until: string;
   status: string;
@@ -19,10 +21,16 @@ interface Offer {
   created_at: string;
   organization?: {
     name?: string;
+    email?: string;
   };
   event?: {
     name: string;
     event_date: string;
+  };
+  contact?: {
+    email?: string;
+    first_name?: string;
+    last_name?: string;
   };
 }
 
@@ -56,6 +64,9 @@ export default function OfferDetailPage() {
   const [isEditingNumber, setIsEditingNumber] = useState(false);
   const [editedNumber, setEditedNumber] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [canSendEmail, setCanSendEmail] = useState(false);
   const [editFormData, setEditFormData] = useState({
     valid_until: '',
     notes: '',
@@ -64,8 +75,34 @@ export default function OfferDetailPage() {
   useEffect(() => {
     if (offerId) {
       fetchOfferDetails();
+      fetchCurrentUser();
     }
   }, [offerId]);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('id, permissions')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      setCurrentUser(employee);
+    } catch (err) {
+      console.error('Error fetching user:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (offer && currentUser) {
+      const isAdmin = currentUser.permissions?.includes('admin');
+      const isCreator = offer.created_by === currentUser.id;
+      setCanSendEmail(isAdmin || isCreator);
+    }
+  }, [offer, currentUser]);
 
   const fetchOfferDetails = async () => {
     try {
@@ -75,8 +112,9 @@ export default function OfferDetailPage() {
         .from('offers')
         .select(`
           *,
-          organization:organizations!organization_id(name),
-          event:events!event_id(name, event_date, location)
+          organization:organizations!organization_id(name, email),
+          event:events!event_id(name, event_date, location, contact_id),
+          contact:contacts(email, first_name, last_name)
         `)
         .eq('id', offerId)
         .maybeSingle();
@@ -308,6 +346,15 @@ export default function OfferDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {canSendEmail && (
+            <button
+              onClick={() => setShowSendEmailModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors"
+            >
+              <Send className="w-4 h-4" />
+              Wyślij
+            </button>
+          )}
           <button
             onClick={handleEditOffer}
             className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
@@ -624,6 +671,24 @@ export default function OfferDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal wysyłania oferty */}
+      {showSendEmailModal && offer && (
+        <SendOfferEmailModal
+          offerId={offer.id}
+          offerNumber={offer.offer_number}
+          clientEmail={offer.contact?.email || offer.organization?.email || ''}
+          clientName={
+            offer.contact
+              ? `${offer.contact.first_name || ''} ${offer.contact.last_name || ''}`.trim()
+              : offer.organization?.name || ''
+          }
+          onClose={() => setShowSendEmailModal(false)}
+          onSent={() => {
+            fetchOfferDetails();
+          }}
+        />
       )}
     </div>
   );
