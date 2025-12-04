@@ -26,11 +26,11 @@ interface Offer {
   event?: {
     name: string;
     event_date: string;
-  };
-  contact?: {
-    email?: string;
-    first_name?: string;
-    last_name?: string;
+    contact?: {
+      email?: string;
+      first_name?: string;
+      last_name?: string;
+    };
   };
 }
 
@@ -113,8 +113,12 @@ export default function OfferDetailPage() {
         .select(`
           *,
           organization:organizations!organization_id(name, email),
-          event:events!event_id(name, event_date, location, contact_id),
-          contact:contacts(email, first_name, last_name)
+          event:events!event_id(
+            name,
+            event_date,
+            location,
+            contact:contacts(email, first_name, last_name)
+          )
         `)
         .eq('id', offerId)
         .maybeSingle();
@@ -678,10 +682,10 @@ export default function OfferDetailPage() {
         <SendOfferEmailModal
           offerId={offer.id}
           offerNumber={offer.offer_number}
-          clientEmail={offer.contact?.email || offer.organization?.email || ''}
+          clientEmail={offer.event?.contact?.email || offer.organization?.email || ''}
           clientName={
-            offer.contact
-              ? `${offer.contact.first_name || ''} ${offer.contact.last_name || ''}`.trim()
+            offer.event?.contact
+              ? `${offer.event.contact.first_name || ''} ${offer.event.contact.last_name || ''}`.trim()
               : offer.organization?.name || ''
           }
           onClose={() => setShowSendEmailModal(false)}
