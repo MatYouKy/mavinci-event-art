@@ -51,6 +51,8 @@ const replaceVariables = (template: string, variables: Record<string, string>): 
   return result;
 };
 
+type ContractStatus = 'draft' | 'issued' | 'sent' | 'signed_by_client' | 'signed_returned' | 'cancelled';
+
 export function EventContractTab({ eventId }: Props) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
@@ -60,6 +62,15 @@ export function EventContractTab({ eventId }: Props) {
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [editedVariables, setEditedVariables] = useState<Record<string, string>>({});
   const [templateExists, setTemplateExists] = useState(false);
+  const [contractStatus, setContractStatus] = useState<ContractStatus>('draft');
+  const [contractId, setContractId] = useState<string | null>(null);
+  const [statusDates, setStatusDates] = useState<{
+    issued_at?: string;
+    sent_at?: string;
+    signed_by_client_at?: string;
+    signed_returned_at?: string;
+    cancelled_at?: string;
+  }>({});
 
   useEffect(() => {
     fetchContractData();
@@ -95,6 +106,26 @@ export function EventContractTab({ eventId }: Props) {
         .single();
 
       if (eventError) throw eventError;
+
+      const { data: existingContract } = await supabase
+        .from('contracts')
+        .select('id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at')
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingContract) {
+        setContractId(existingContract.id);
+        setContractStatus(existingContract.status as ContractStatus);
+        setStatusDates({
+          issued_at: existingContract.issued_at,
+          sent_at: existingContract.sent_at,
+          signed_by_client_at: existingContract.signed_by_client_at,
+          signed_returned_at: existingContract.signed_returned_at,
+          cancelled_at: existingContract.cancelled_at,
+        });
+      }
 
       const template = event.event_categories?.contract_templates;
 
@@ -334,6 +365,79 @@ export function EventContractTab({ eventId }: Props) {
     window.print();
   };
 
+  const handleStatusChange = async (newStatus: ContractStatus) => {
+    try {
+      if (!contractId) {
+        const { data: template } = await supabase
+          .from('contract_templates')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+
+        const { data: newContract, error: createError } = await supabase
+          .from('contracts')
+          .insert({
+            event_id: eventId,
+            title: `Umowa dla eventu ${eventId}`,
+            content: contractContent,
+            status: newStatus,
+            template_id: template?.id,
+          })
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+        setContractId(newContract.id);
+      } else {
+        const { error: updateError } = await supabase
+          .from('contracts')
+          .update({ status: newStatus })
+          .eq('id', contractId);
+
+        if (updateError) throw updateError;
+      }
+
+      setContractStatus(newStatus);
+      await fetchContractData();
+      showSnackbar('Status umowy został zaktualizowany', 'success');
+    } catch (err) {
+      console.error('Error updating contract status:', err);
+      showSnackbar('Błąd podczas aktualizacji statusu', 'error');
+    }
+  };
+
+  const getStatusLabel = (status: ContractStatus) => {
+    const labels: Record<ContractStatus, string> = {
+      draft: '🟡 Szkic',
+      issued: '🟢 Wystawiona',
+      sent: '📤 Wysłana',
+      signed_by_client: '✍️ Podpisana przez klienta',
+      signed_returned: '✅ Podpisana odesłana',
+      cancelled: '❌ Anulowana',
+    };
+    return labels[status];
+  };
+
+  const getStatusDate = (status: ContractStatus) => {
+    const dateMap: Record<ContractStatus, string | undefined> = {
+      draft: undefined,
+      issued: statusDates.issued_at,
+      sent: statusDates.sent_at,
+      signed_by_client: statusDates.signed_by_client_at,
+      signed_returned: statusDates.signed_returned_at,
+      cancelled: statusDates.cancelled_at,
+    };
+    const date = dateMap[status];
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('pl-PL', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   if (loading) {
     return (
       <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
@@ -404,6 +508,30 @@ export function EventContractTab({ eventId }: Props) {
               </button>
             </>
           )}
+        </div>
+      </div>
+
+      <div className="no-print bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+        <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Status umowy</h3>
+        <div className="flex flex-wrap gap-2">
+          {(['draft', 'issued', 'sent', 'signed_by_client', 'signed_returned', 'cancelled'] as ContractStatus[]).map((status) => (
+            <button
+              key={status}
+              onClick={() => handleStatusChange(status)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                contractStatus === status
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#0f1119] border border-[#d3bb73]/20 text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+              }`}
+            >
+              {getStatusLabel(status)}
+              {contractStatus === status && getStatusDate(status) && (
+                <div className="text-xs mt-1 opacity-80">
+                  {getStatusDate(status)}
+                </div>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -546,38 +674,79 @@ export function EventContractTab({ eventId }: Props) {
             margin: 0;
           }
 
+          * {
+            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+
           html, body {
             width: 210mm;
-            height: 297mm;
-            margin: 0;
-            padding: 0;
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
+            height: auto;
+            margin: 0 !important;
+            padding: 0 !important;
             background: white !important;
+            overflow: visible !important;
+          }
+
+          body * {
+            visibility: hidden;
+          }
+
+          .contract-a4-container,
+          .contract-a4-container * {
+            visibility: visible !important;
           }
 
           .contract-a4-container {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 210mm !important;
             background: white !important;
             padding: 0 !important;
             margin: 0 !important;
+            box-shadow: none !important;
           }
 
           .contract-a4-page {
+            position: relative !important;
             box-shadow: none !important;
             page-break-after: always !important;
             break-after: page !important;
             margin: 0 !important;
-            padding: 20mm 25mm 15mm 25mm !important;
+            padding: 20mm 25mm 20mm 25mm !important;
             width: 210mm !important;
-            height: 297mm !important;
+            min-height: 257mm !important;
+            max-height: 297mm !important;
+            background: white !important;
+            display: block !important;
+            overflow: visible !important;
           }
 
           .contract-a4-page:last-child {
             page-break-after: avoid !important;
           }
 
+          .contract-header-logo,
+          .contract-current-date,
+          .contract-content,
+          .contract-footer,
+          .footer-page-number {
+            display: block !important;
+            visibility: visible !important;
+            color: #000 !important;
+          }
+
           .contract-content {
             page-break-inside: auto !important;
+            color: #000 !important;
+            background: transparent !important;
+          }
+
+          .contract-content * {
+            color: #000 !important;
+            background: transparent !important;
           }
 
           .contract-content h1,
@@ -593,6 +762,7 @@ export function EventContractTab({ eventId }: Props) {
 
           nav, header, footer:not(.contract-footer), button, .no-print {
             display: none !important;
+            visibility: hidden !important;
           }
         }
 
@@ -834,41 +1004,6 @@ export function EventContractTab({ eventId }: Props) {
         .contract-content p br {
           display: inline;
           margin: 0;
-        }
-
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-
-          .contract-preview, .contract-preview * {
-            visibility: visible;
-          }
-
-          .contract-preview {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 210mm;
-            min-height: 297mm;
-            margin: 0;
-            padding: 20mm 25mm;
-            background: white;
-            box-shadow: none;
-            border-radius: 0;
-            font-family: 'Calibri', 'Arial', sans-serif;
-            font-size: 11pt;
-            line-height: 1.5;
-          }
-
-          .contract-header img {
-            height: 50px;
-          }
-
-          @page {
-            size: A4;
-            margin: 0;
-          }
         }
       `}</style>
     </div>
