@@ -232,10 +232,10 @@ export default function EventDetailPage() {
 
       setCurrentUserId(session.user.id);
 
-      // Sprawdź czy użytkownik jest adminem oraz pobierz access_level
+      // Sprawdź czy użytkownik jest adminem oraz pobierz access_level i indywidualne event_tabs
       const { data: employee } = await supabase
         .from('employees')
-        .select('permissions, role, access_level_id, access_levels(event_tabs)')
+        .select('permissions, role, access_level_id, event_tabs, access_levels(event_tabs)')
         .eq('id', session.user.id)
         .single();
 
@@ -249,8 +249,16 @@ export default function EventDetailPage() {
         return;
       }
 
-      // Ustaw dozwolone zakładki na podstawie poziomu dostępu
-      const eventTabs = (employee?.access_levels as any)?.event_tabs || ['overview'];
+      // Ustaw dozwolone zakładki:
+      // 1. Jeśli pracownik ma indywidualne event_tabs - użyj ich
+      // 2. Jeśli nie, użyj event_tabs z access_level
+      // 3. Jeśli nic nie ma, domyślnie tylko 'overview'
+      let eventTabs: string[] = ['overview'];
+      if (employee?.event_tabs && employee.event_tabs.length > 0) {
+        eventTabs = employee.event_tabs;
+      } else if ((employee?.access_levels as any)?.event_tabs) {
+        eventTabs = (employee.access_levels as any).event_tabs;
+      }
       setAllowedEventTabs(eventTabs);
 
       // Sprawdź czy jest creatorem lub ma uprawnienia
