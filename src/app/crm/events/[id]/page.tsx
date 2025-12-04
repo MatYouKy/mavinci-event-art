@@ -1175,10 +1175,15 @@ export default function EventDetailPage() {
           if (hasLimitedAccess) {
             return tab.id === 'overview';
           }
-          // Ukryj zakładkę Finanse dla użytkowników bez uprawnień
-          if (tab.id === 'finances' && !isUserAdmin && !hasScope('finances_manage') && !hasScope('finances_view')) {
-            return false;
+
+          // Oferta, Finanse i Umowa widoczne tylko dla autora eventu lub admina
+          if (['offer', 'finances', 'contract'].includes(tab.id)) {
+            const isAuthor = event?.created_by === currentUserId;
+            if (!isUserAdmin && !isAuthor) {
+              return false;
+            }
           }
+
           return true;
         })
         .map((tab) => {

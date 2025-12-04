@@ -83,7 +83,24 @@ export default function EventsPage() {
 
   const fetchEvents = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        setEvents([]);
+        return;
+      }
+
+      const currentUserId = session.user.id;
+
+      // Sprawdź czy użytkownik jest adminem
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('permissions, role')
+        .eq('id', currentUserId)
+        .maybeSingle();
+
+      const isAdmin = employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
+
+      let query = supabase
         .from('events')
         .select(
           `
@@ -93,8 +110,35 @@ export default function EventsPage() {
           event_categories(name, color),
           locations(name, formatted_address, address, city, postal_code)
         `,
-        )
-        .order('event_date', { ascending: true });
+        );
+
+      // Jeśli użytkownik nie jest adminem, pokaż tylko eventy do których jest przypisany
+      if (!isAdmin) {
+        const { data: assignedEvents } = await supabase
+          .from('employee_assignments')
+          .select('event_id')
+          .eq('employee_id', currentUserId);
+
+        const eventIds = assignedEvents?.map((a) => a.event_id) || [];
+
+        // Dodaj też eventy utworzone przez użytkownika
+        const { data: createdEvents } = await supabase
+          .from('events')
+          .select('id')
+          .eq('created_by', currentUserId);
+
+        const createdEventIds = createdEvents?.map((e) => e.id) || [];
+        const allEventIds = [...new Set([...eventIds, ...createdEventIds])];
+
+        if (allEventIds.length === 0) {
+          setEvents([]);
+          return;
+        }
+
+        query = query.in('id', allEventIds);
+      }
+
+      const { data, error } = await query.order('event_date', { ascending: true });
 
       if (error) {
         console.error('Error fetching events:', error);
