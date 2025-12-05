@@ -108,8 +108,8 @@ Deno.serve(async (req: Request) => {
     ) => {
       if (!textFields || textFields.length === 0) return;
 
-      const regularFontUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.ttf';
-      const boldFontUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc4.ttf';
+      const regularFontUrl = 'https://github.com/google/fonts/raw/main/apache/roboto/Roboto-Regular.ttf';
+      const boldFontUrl = 'https://github.com/google/fonts/raw/main/apache/roboto/Roboto-Bold.ttf';
 
       const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
       const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
