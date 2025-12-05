@@ -110,8 +110,8 @@ Deno.serve(async (req: Request) => {
 
       pdfDoc.registerFontkit(fontkit);
 
-      const regularFontUrl = 'https://cdn.jsdelivr.net/fontsource/fonts/lato@latest/latin-ext-400-normal.ttf';
-      const boldFontUrl = 'https://cdn.jsdelivr.net/fontsource/fonts/lato@latest/latin-ext-700-normal.ttf';
+      const regularFontUrl = 'https://fonts.gstatic.com/s/notosans/v36/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A-9a6Vc.ttf';
+      const boldFontUrl = 'https://fonts.gstatic.com/s/notosans/v36/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyBz-O9a6Vc.ttf';
 
       const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
       const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
