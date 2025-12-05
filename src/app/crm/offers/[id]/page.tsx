@@ -427,13 +427,6 @@ export default function OfferDetailPage() {
     }
 
     try {
-      const { subtotal, total } = calculateItemTotal(
-        editingItemData.quantity!,
-        editingItemData.unit_price!,
-        editingItemData.discount_percent || 0,
-        editingItemData.discount_amount || 0
-      );
-
       const { error } = await supabase
         .from('offer_items')
         .update({
@@ -441,8 +434,6 @@ export default function OfferDetailPage() {
           unit_price: editingItemData.unit_price,
           discount_percent: editingItemData.discount_percent || 0,
           discount_amount: editingItemData.discount_amount || 0,
-          subtotal,
-          total,
         })
         .eq('id', itemId);
 
