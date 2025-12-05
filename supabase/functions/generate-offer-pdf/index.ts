@@ -331,6 +331,20 @@ Deno.serve(async (req: Request) => {
     };
 
     const mergedPdf = await PDFDocument.create();
+    mergedPdf.registerFontkit(fontkit);
+
+    const fontResponse = await fetch(
+      'https://github.com/google/fonts/raw/main/ofl/roboto/static/Roboto-Regular.ttf'
+    );
+    const fontBytes = await fontResponse.arrayBuffer();
+    const regularFont = await mergedPdf.embedFont(fontBytes);
+
+    const boldFontResponse = await fetch(
+      'https://github.com/google/fonts/raw/main/ofl/roboto/static/Roboto-Bold.ttf'
+    );
+    const boldFontBytes = await boldFontResponse.arrayBuffer();
+    const boldFont = await mergedPdf.embedFont(boldFontBytes);
+
     const offerData = prepareOfferData(offer, currentEmployee || {});
 
     const addPdfFromTemplate = async (templateType: string) => {
@@ -358,28 +372,13 @@ Deno.serve(async (req: Request) => {
 
         const pdfBytes = await pdfResponse.arrayBuffer();
         const templatePdf = await PDFDocument.load(pdfBytes);
-        templatePdf.registerFontkit(fontkit);
-
-        const fontResponse = await fetch(
-          'https://github.com/google/fonts/raw/main/ofl/roboto/static/Roboto-Regular.ttf'
-        );
-        const fontBytes = await fontResponse.arrayBuffer();
-        const regularFont = await templatePdf.embedFont(fontBytes);
-
-        const boldFontResponse = await fetch(
-          'https://github.com/google/fonts/raw/main/ofl/roboto/static/Roboto-Bold.ttf'
-        );
-        const boldFontBytes = await boldFontResponse.arrayBuffer();
-        const boldFont = await templatePdf.embedFont(boldFontBytes);
-
-        const pages = templatePdf.getPages();
-        const page = pages[0];
-
-        const textFields = template.text_fields_config || [];
-        await renderTextFields(page, textFields, offerData, templatePdf, regularFont, boldFont);
 
         const [copiedPage] = await mergedPdf.copyPages(templatePdf, [0]);
         mergedPdf.addPage(copiedPage);
+
+        if (template.text_fields_config && template.text_fields_config.length > 0) {
+          await renderTextFields(copiedPage, template.text_fields_config, offerData, mergedPdf, regularFont, boldFont);
+        }
 
         console.log(`Successfully added ${templateType} page`);
       } catch (error) {
