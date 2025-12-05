@@ -15,7 +15,8 @@
     "deploy": "chmod +x deploy-worker.sh && ./deploy-worker.sh",
     "test": "chmod +x test-local.sh && ./test-local.sh",
     "check": "chmod +x check-config.sh && ./check-config.sh",
-    "compare": "chmod +x compare-secrets.sh && ./compare-secrets.sh"
+    "compare": "chmod +x compare-secrets.sh && ./compare-secrets.sh",
+    "config": "chmod +x show-config.sh && ./show-config.sh"
   },
   "dependencies": {
     "express": "^4.18.2",
