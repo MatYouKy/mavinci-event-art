@@ -19,6 +19,8 @@ interface OfferPageTemplate {
   is_default: boolean;
   is_active: boolean;
   pdf_url?: string;
+  pdf_width?: number;
+  pdf_height?: number;
   text_fields_config?: TextFieldConfig[];
   created_by: string;
   created_at: string;
@@ -760,13 +762,43 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
   const [textFields, setTextFields] = useState<TextFieldConfig[]>(template.text_fields_config || []);
   const [pdfUrl, setPdfUrl] = useState<string>('');
   const [selectedFieldIndex, setSelectedFieldIndex] = useState<number | null>(null);
+  const [pdfDimensions, setPdfDimensions] = useState({ width: 595, height: 842 });
+  const [showGrid, setShowGrid] = useState(true);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [clickToPlaceMode, setClickToPlaceMode] = useState(false);
+  const [pendingField, setPendingField] = useState<Partial<TextFieldConfig> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const embedRef = useRef<HTMLEmbedElement>(null);
+  const gridSize = 10;
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.async = true;
+    script.onload = () => {
+      if ((window as any).pdfjsLib) {
+        (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      document.head.removeChild(script);
+    };
+  }, []);
 
   useEffect(() => {
     if (template.pdf_url) {
       loadPdfUrl();
     }
   }, [template.pdf_url]);
+
+  useEffect(() => {
+    if (template.pdf_width && template.pdf_height) {
+      setPdfDimensions({ width: template.pdf_width, height: template.pdf_height });
+    }
+  }, [template.pdf_width, template.pdf_height]);
 
   const loadPdfUrl = async () => {
     try {
@@ -776,24 +808,94 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
 
       if (data?.signedUrl) {
         setPdfUrl(data.signedUrl);
+        detectPdfDimensions(data.signedUrl);
       }
     } catch (err: any) {
       showSnackbar('Błąd ładowania PDF', 'error');
     }
   };
 
+  const detectPdfDimensions = async (url: string) => {
+    try {
+      const pdfjsLib = (window as any).pdfjsLib;
+      if (!pdfjsLib) {
+        console.log('PDF.js nie załadowane, używam domyślnych wymiarów');
+        return;
+      }
+
+      const loadingTask = pdfjsLib.getDocument(url);
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 1 });
+
+      const newDimensions = {
+        width: Math.round(viewport.width),
+        height: Math.round(viewport.height)
+      };
+
+      setPdfDimensions(newDimensions);
+
+      if (newDimensions.width !== template.pdf_width || newDimensions.height !== template.pdf_height) {
+        await supabase
+          .from('offer_page_templates')
+          .update({
+            pdf_width: newDimensions.width,
+            pdf_height: newDimensions.height
+          })
+          .eq('id', template.id);
+      }
+    } catch (err) {
+      console.log('Nie udało się wykryć wymiarów PDF, używam zapisanych lub domyślnych');
+    }
+  };
+
+  const snapToGridIfEnabled = (value: number) => {
+    if (!snapToGrid) return value;
+    return Math.round(value / gridSize) * gridSize;
+  };
+
   const handleAddField = () => {
+    if (clickToPlaceMode) {
+      setPendingField({
+        field_name: 'client_name',
+        label: 'Nazwa klienta',
+        font_size: 14,
+        font_color: '#000000',
+        align: 'left',
+      });
+      showSnackbar('Kliknij na PDF aby umieścić pole', 'info');
+    } else {
+      const newField: TextFieldConfig = {
+        field_name: 'client_name',
+        label: 'Nazwa klienta',
+        x: snapToGridIfEnabled(50),
+        y: snapToGridIfEnabled(50),
+        font_size: 14,
+        font_color: '#000000',
+        align: 'left',
+      };
+      setTextFields(prev => [...prev, newField]);
+      setSelectedFieldIndex(textFields.length);
+    }
+  };
+
+  const handlePdfClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!pendingField || !containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = snapToGridIfEnabled(e.clientX - rect.left);
+    const y = snapToGridIfEnabled(e.clientY - rect.top);
+
     const newField: TextFieldConfig = {
-      field_name: 'client_name',
-      label: 'Nazwa klienta',
-      x: 100,
-      y: 100,
-      font_size: 14,
-      font_color: '#000000',
-      align: 'left',
+      ...pendingField as TextFieldConfig,
+      x,
+      y,
     };
+
     setTextFields(prev => [...prev, newField]);
     setSelectedFieldIndex(textFields.length);
+    setPendingField(null);
+    setClickToPlaceMode(false);
   };
 
   const handleUpdateField = (index: number, updates: Partial<TextFieldConfig>) => {
@@ -810,10 +912,10 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
   };
 
   const handleDragStop = (index: number, e: any, data: any) => {
-    handleUpdateField(index, {
-      x: Math.max(0, data.x),
-      y: Math.max(0, data.y),
-    });
+    const x = snapToGridIfEnabled(Math.max(0, Math.min(data.x, pdfDimensions.width - 100)));
+    const y = snapToGridIfEnabled(Math.max(0, Math.min(data.y, pdfDimensions.height - 50)));
+
+    handleUpdateField(index, { x, y });
   };
 
   const handleSaveAll = async () => {
@@ -845,16 +947,47 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
           <div>
             <h3 className="text-xl font-light text-[#e5e4e2]">Konfiguracja pól tekstowych: {template.name}</h3>
             <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              Przeciągnij pola tekstowe na PDF aby określić ich pozycję
+              PDF: {pdfDimensions.width}x{pdfDimensions.height}px | Pól: {textFields.length}
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
+              <input
+                type="checkbox"
+                checked={showGrid}
+                onChange={(e) => setShowGrid(e.target.checked)}
+                className="rounded"
+              />
+              Siatka
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
+              <input
+                type="checkbox"
+                checked={snapToGrid}
+                onChange={(e) => setSnapToGrid(e.target.checked)}
+                className="rounded"
+              />
+              Przyciągaj
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
+              <input
+                type="checkbox"
+                checked={clickToPlaceMode}
+                onChange={(e) => setClickToPlaceMode(e.target.checked)}
+                className="rounded"
+              />
+              Kliknij aby umieścić
+            </label>
             <button
               onClick={handleAddField}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                clickToPlaceMode
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#d3bb73]/90'
+              }`}
             >
               <Plus className="w-4 h-4" />
-              Dodaj pole
+              {clickToPlaceMode ? 'Kliknij na PDF' : 'Dodaj pole'}
             </button>
             <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
               <X className="w-5 h-5" />
@@ -867,30 +1000,76 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
           <div className="flex-1 overflow-auto bg-[#0a0d1a] p-6">
             <div className="mx-auto flex justify-center">
               {pdfUrl ? (
-                <div className="relative" style={{ width: '595px', height: '842px' }}>
-                  {/* PDF jako tło - format A4: 595x842px przy 72 DPI */}
+                <div
+                  className="relative"
+                  style={{
+                    width: `${pdfDimensions.width}px`,
+                    height: `${pdfDimensions.height}px`
+                  }}
+                >
+                  {/* PDF jako tło */}
                   <div className="absolute inset-0 bg-white rounded-lg shadow-2xl overflow-hidden">
                     <embed
+                      ref={embedRef}
                       src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
                       type="application/pdf"
                       className="w-full h-full"
                     />
                   </div>
 
-                  {/* Warstwa z polami tekstowymi - absolutne pozycjonowanie */}
-                  <div ref={containerRef} className="absolute inset-0 pointer-events-none">
+                  {/* Siatka pomocnicza */}
+                  {showGrid && (
+                    <svg
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ zIndex: 1 }}
+                      width={pdfDimensions.width}
+                      height={pdfDimensions.height}
+                    >
+                      <defs>
+                        <pattern
+                          id="grid"
+                          width={gridSize}
+                          height={gridSize}
+                          patternUnits="userSpaceOnUse"
+                        >
+                          <path
+                            d={`M ${gridSize} 0 L 0 0 0 ${gridSize}`}
+                            fill="none"
+                            stroke="rgba(211, 187, 115, 0.15)"
+                            strokeWidth="0.5"
+                          />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="100%" fill="url(#grid)" />
+                    </svg>
+                  )}
+
+                  {/* Warstwa z polami tekstowymi */}
+                  <div
+                    ref={containerRef}
+                    className="absolute inset-0"
+                    style={{
+                      zIndex: 2,
+                      cursor: pendingField ? 'crosshair' : 'default'
+                    }}
+                    onClick={pendingField ? handlePdfClick : undefined}
+                  >
                     {textFields.map((field, index) => (
                       <Draggable
                         key={index}
                         position={{ x: field.x, y: field.y }}
                         onStop={(e, data) => handleDragStop(index, e, data)}
                         bounds="parent"
+                        grid={snapToGrid ? [gridSize, gridSize] : undefined}
                       >
                         <div
-                          onClick={() => setSelectedFieldIndex(index)}
-                          className={`absolute pointer-events-auto cursor-move border-2 rounded px-2 py-1 transition-all ${
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFieldIndex(index);
+                          }}
+                          className={`absolute cursor-move border-2 rounded px-2 py-1 transition-all ${
                             selectedFieldIndex === index
-                              ? 'border-[#d3bb73] bg-[#d3bb73]/30 shadow-lg'
+                              ? 'border-[#d3bb73] bg-[#d3bb73]/30 shadow-lg ring-2 ring-[#d3bb73]/50'
                               : 'border-blue-400/50 bg-blue-400/20 hover:border-blue-400 hover:bg-blue-400/30'
                           }`}
                           style={{
@@ -905,12 +1084,19 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                             <Type className="w-3 h-3 text-[#d3bb73]" />
                             <span className="text-xs font-medium">{field.label}</span>
                           </div>
-                          <div className="text-xs opacity-60 mt-0.5">
+                          <div className="text-xs opacity-60 mt-0.5 font-mono">
                             X: {Math.round(field.x)}, Y: {Math.round(field.y)}
                           </div>
                         </div>
                       </Draggable>
                     ))}
+
+                    {/* Podpowiedź w trybie click-to-place */}
+                    {pendingField && (
+                      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
+                        Kliknij na PDF aby umieścić pole
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
