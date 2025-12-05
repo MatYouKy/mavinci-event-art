@@ -17,6 +17,7 @@ interface OfferPageTemplate {
   description: string;
   is_default: boolean;
   is_active: boolean;
+  pdf_url?: string;
   created_by: string;
   created_at: string;
 }
@@ -55,6 +56,7 @@ export default function OfferPageTemplatesEditor() {
   const [editingTemplate, setEditingTemplate] = useState<OfferPageTemplate | null>(null);
   const [showContentEditor, setShowContentEditor] = useState(false);
   const [editingContent, setEditingContent] = useState<TemplateContent[]>([]);
+  const [uploadingPdf, setUploadingPdf] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTemplates();
@@ -124,6 +126,69 @@ export default function OfferPageTemplatesEditor() {
 
   const getTypeInfo = (type: string) => {
     return templateTypes.find(t => t.value === type);
+  };
+
+  const handleUploadPdf = async (template: OfferPageTemplate, file: File) => {
+    if (!file.type.includes('pdf')) {
+      showSnackbar('Wybierz plik PDF', 'error');
+      return;
+    }
+
+    try {
+      setUploadingPdf(template.id);
+
+      const fileName = `${template.type}_${template.id}_${Date.now()}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from('offer-template-pages')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await supabase
+        .from('offer_page_templates')
+        .update({ pdf_url: fileName })
+        .eq('id', template.id);
+
+      if (updateError) throw updateError;
+
+      showSnackbar('Plik PDF zapisany', 'success');
+      fetchTemplates();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd uploadu PDF', 'error');
+    } finally {
+      setUploadingPdf(null);
+    }
+  };
+
+  const handleDeletePdf = async (template: OfferPageTemplate) => {
+    if (!template.pdf_url) return;
+
+    const confirmed = await showConfirm({
+      title: 'Usunąć plik PDF?',
+      message: 'Czy na pewno chcesz usunąć plik PDF z tego szablonu?',
+      confirmText: 'Usuń',
+      cancelText: 'Anuluj',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await supabase.storage
+        .from('offer-template-pages')
+        .remove([template.pdf_url]);
+
+      const { error } = await supabase
+        .from('offer_page_templates')
+        .update({ pdf_url: null })
+        .eq('id', template.id);
+
+      if (error) throw error;
+
+      showSnackbar('Plik PDF usunięty', 'success');
+      fetchTemplates();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd usuwania PDF', 'error');
+    }
   };
 
   if (loading) {
@@ -239,8 +304,45 @@ export default function OfferPageTemplatesEditor() {
                     {template.description && (
                       <p className="text-sm text-[#e5e4e2]/60">{template.description}</p>
                     )}
+                    <div className="flex items-center gap-2 mt-2">
+                      {template.pdf_url ? (
+                        <span className="flex items-center gap-2 px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">
+                          <FileText className="w-3 h-3" />
+                          PDF załączony
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2 px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded">
+                          <FileText className="w-3 h-3" />
+                          Brak PDF
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        className="hidden"
+                        disabled={uploadingPdf === template.id}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadPdf(template, file);
+                        }}
+                      />
+                      <div className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors" title="Upload PDF">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                    </label>
+                    {template.pdf_url && (
+                      <button
+                        onClick={() => handleDeletePdf(template)}
+                        className="p-2 text-orange-400 hover:bg-orange-400/10 rounded-lg transition-colors"
+                        title="Usuń PDF"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEditTemplate(template)}
                       className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
