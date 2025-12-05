@@ -13,7 +13,7 @@ interface OfferItem {
   product_id: string;
   quantity: number;
   unit_price: number;
-  total_price: number;
+  total: number;
   display_order: number;
   product?: {
     id: string;
@@ -142,7 +142,7 @@ export default function OfferDetailPage() {
             product_id,
             quantity,
             unit_price,
-            total_price,
+            total,
             display_order,
             product:offer_products(
               id,
@@ -715,7 +715,7 @@ export default function OfferDetailPage() {
                           <div className="text-right">
                             <div className="text-sm text-[#e5e4e2]/60 mb-1">Wartość</div>
                             <div className="text-xl font-light text-[#d3bb73]">
-                              {item.total_price.toLocaleString('pl-PL')} zł
+                              {item.total.toLocaleString('pl-PL')} zł
                             </div>
                           </div>
                         </div>
