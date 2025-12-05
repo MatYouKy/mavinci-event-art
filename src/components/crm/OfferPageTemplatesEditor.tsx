@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import dynamic from 'next/dynamic';
+import Draggable from 'react-draggable';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -757,7 +758,29 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [textFields, setTextFields] = useState<TextFieldConfig[]>(template.text_fields_config || []);
-  const [editingField, setEditingField] = useState<TextFieldConfig | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string>('');
+  const [selectedFieldIndex, setSelectedFieldIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (template.pdf_url) {
+      loadPdfUrl();
+    }
+  }, [template.pdf_url]);
+
+  const loadPdfUrl = async () => {
+    try {
+      const { data } = await supabase.storage
+        .from('offer-template-pages')
+        .createSignedUrl(template.pdf_url!, 3600);
+
+      if (data?.signedUrl) {
+        setPdfUrl(data.signedUrl);
+      }
+    } catch (err: any) {
+      showSnackbar('Błąd ładowania PDF', 'error');
+    }
+  };
 
   const handleAddField = () => {
     const newField: TextFieldConfig = {
@@ -765,32 +788,32 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
       label: 'Nazwa klienta',
       x: 100,
       y: 100,
-      font_size: 12,
+      font_size: 14,
       font_color: '#000000',
       align: 'left',
     };
-    setEditingField(newField);
+    setTextFields(prev => [...prev, newField]);
+    setSelectedFieldIndex(textFields.length);
   };
 
-  const handleSaveField = () => {
-    if (!editingField) return;
-
-    if (textFields.find(f => f.field_name === editingField.field_name && f !== editingField)) {
-      showSnackbar('Pole o tej nazwie już istnieje', 'error');
-      return;
-    }
-
-    const existingIndex = textFields.findIndex(f => f.field_name === editingField.field_name);
-    if (existingIndex >= 0) {
-      setTextFields(prev => prev.map((f, i) => i === existingIndex ? editingField : f));
-    } else {
-      setTextFields(prev => [...prev, editingField]);
-    }
-    setEditingField(null);
+  const handleUpdateField = (index: number, updates: Partial<TextFieldConfig>) => {
+    setTextFields(prev => prev.map((field, i) =>
+      i === index ? { ...field, ...updates } : field
+    ));
   };
 
-  const handleDeleteField = (fieldName: string) => {
-    setTextFields(prev => prev.filter(f => f.field_name !== fieldName));
+  const handleDeleteField = (index: number) => {
+    setTextFields(prev => prev.filter((_, i) => i !== index));
+    if (selectedFieldIndex === index) {
+      setSelectedFieldIndex(null);
+    }
+  };
+
+  const handleDragStop = (index: number, e: any, data: any) => {
+    handleUpdateField(index, {
+      x: Math.max(0, data.x),
+      y: Math.max(0, data.y),
+    });
   };
 
   const handleSaveAll = async () => {
@@ -813,23 +836,19 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
     }
   };
 
+  const selectedField = selectedFieldIndex !== null ? textFields[selectedFieldIndex] : null;
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between flex-shrink-0">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full max-w-[95vw] h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-[#d3bb73]/10 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="text-xl font-light text-[#e5e4e2]">Konfiguracja pól tekstowych: {template.name}</h3>
             <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              Określ pozycje i wygląd dynamicznych pól na PDF
+              Przeciągnij pola tekstowe na PDF aby określić ich pozycję
             </p>
           </div>
-          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="mb-6">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleAddField}
               className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
@@ -837,76 +856,222 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
               <Plus className="w-4 h-4" />
               Dodaj pole
             </button>
+            <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+              <X className="w-5 h-5" />
+            </button>
           </div>
-
-          {textFields.length === 0 ? (
-            <div className="text-center py-12">
-              <Settings className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-              <p className="text-[#e5e4e2]/60 mb-4">
-                Brak skonfigurowanych pól tekstowych
-              </p>
-              <p className="text-sm text-[#e5e4e2]/40 mb-4">
-                Kliknij "Dodaj pole" aby oznaczyć miejsca na dane dynamiczne
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {textFields.map((field, index) => (
-                <div
-                  key={index}
-                  className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/20 transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h4 className="font-medium text-[#e5e4e2] mb-1">{field.label}</h4>
-                      <p className="text-xs text-[#e5e4e2]/40">{field.field_name}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setEditingField(field)}
-                        className="p-1.5 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteField(field.field_name)}
-                        className="p-1.5 text-red-400 hover:bg-red-400/10 rounded transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-[#e5e4e2]/60">Pozycja: </span>
-                      <span className="text-[#e5e4e2]">X: {field.x}, Y: {field.y}</span>
-                    </div>
-                    <div>
-                      <span className="text-[#e5e4e2]/60">Rozmiar: </span>
-                      <span className="text-[#e5e4e2]">{field.font_size}px</span>
-                    </div>
-                    <div>
-                      <span className="text-[#e5e4e2]/60">Kolor: </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span
-                          className="w-4 h-4 rounded border border-[#d3bb73]/20"
-                          style={{ backgroundColor: field.font_color }}
-                        />
-                        <span className="text-[#e5e4e2]">{field.font_color}</span>
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[#e5e4e2]/60">Wyrównanie: </span>
-                      <span className="text-[#e5e4e2]">{field.align || 'left'}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end flex-shrink-0">
+        <div className="flex-1 flex overflow-hidden">
+          {/* Podgląd PDF z polami */}
+          <div className="flex-1 overflow-auto bg-[#0a0d1a] p-6">
+            <div className="mx-auto" style={{ maxWidth: '800px' }}>
+              {pdfUrl ? (
+                <div ref={containerRef} className="relative bg-white rounded-lg shadow-2xl">
+                  <iframe
+                    src={pdfUrl}
+                    className="w-full"
+                    style={{ height: '1100px', border: 'none' }}
+                  />
+
+                  {/* Warstwa z polami tekstowymi */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    {textFields.map((field, index) => (
+                      <Draggable
+                        key={index}
+                        position={{ x: field.x, y: field.y }}
+                        onStop={(e, data) => handleDragStop(index, e, data)}
+                        bounds="parent"
+                      >
+                        <div
+                          onClick={() => setSelectedFieldIndex(index)}
+                          className={`absolute pointer-events-auto cursor-move border-2 rounded px-2 py-1 ${
+                            selectedFieldIndex === index
+                              ? 'border-[#d3bb73] bg-[#d3bb73]/20'
+                              : 'border-blue-400/50 bg-blue-400/10 hover:border-blue-400'
+                          }`}
+                          style={{
+                            fontSize: `${field.font_size}px`,
+                            color: field.font_color,
+                            minWidth: '120px',
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Move className="w-3 h-3 text-[#d3bb73]" />
+                            <Type className="w-3 h-3 text-[#d3bb73]" />
+                            <span className="text-xs font-medium">{field.label}</span>
+                          </div>
+                          <div className="text-xs opacity-60 mt-0.5">
+                            {field.field_name}
+                          </div>
+                        </div>
+                      </Draggable>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-24">
+                  <FileText className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                  <p className="text-[#e5e4e2]/60">Ładowanie PDF...</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Panel edycji wybranego pola */}
+          <div className="w-80 border-l border-[#d3bb73]/10 overflow-y-auto bg-[#1c1f33]">
+            {selectedField ? (
+              <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-medium text-[#e5e4e2]">Edycja pola</h4>
+                  <button
+                    onClick={() => handleDeleteField(selectedFieldIndex!)}
+                    className="p-2 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pole danych</label>
+                  <select
+                    value={selectedField.field_name}
+                    onChange={(e) => {
+                      const selected = AVAILABLE_FIELDS.find(f => f.value === e.target.value);
+                      handleUpdateField(selectedFieldIndex!, {
+                        field_name: e.target.value,
+                        label: selected?.label || e.target.value,
+                      });
+                    }}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  >
+                    {AVAILABLE_FIELDS.map(field => (
+                      <option key={field.value} value={field.value}>
+                        {field.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">X</label>
+                    <input
+                      type="number"
+                      value={Math.round(selectedField.x)}
+                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { x: parseInt(e.target.value) || 0 })}
+                      className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Y</label>
+                    <input
+                      type="number"
+                      value={Math.round(selectedField.y)}
+                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { y: parseInt(e.target.value) || 0 })}
+                      className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki</label>
+                  <input
+                    type="number"
+                    value={selectedField.font_size}
+                    onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_size: parseInt(e.target.value) || 12 })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor czcionki</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={selectedField.font_color}
+                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
+                      className="w-16 h-10 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-1"
+                    />
+                    <input
+                      type="text"
+                      value={selectedField.font_color}
+                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
+                      className="flex-1 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyrównanie</label>
+                  <select
+                    value={selectedField.align || 'left'}
+                    onChange={(e) => handleUpdateField(selectedFieldIndex!, { align: e.target.value as any })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  >
+                    <option value="left">Lewo</option>
+                    <option value="center">Środek</option>
+                    <option value="right">Prawo</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Max. szerokość (opcjonalne)</label>
+                  <input
+                    type="number"
+                    value={selectedField.max_width || ''}
+                    onChange={(e) => handleUpdateField(selectedFieldIndex!, { max_width: parseInt(e.target.value) || undefined })}
+                    placeholder="Auto"
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+                  <p className="text-xs text-blue-400">
+                    Przeciągnij pole na PDF lub edytuj wartości X/Y ręcznie
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6 text-center">
+                <Type className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-3" />
+                <p className="text-sm text-[#e5e4e2]/60 mb-2">
+                  Wybierz pole z PDF
+                </p>
+                <p className="text-xs text-[#e5e4e2]/40">
+                  lub kliknij "Dodaj pole" aby utworzyć nowe
+                </p>
+              </div>
+            )}
+
+            {/* Lista wszystkich pól */}
+            <div className="border-t border-[#d3bb73]/10 p-4">
+              <h5 className="text-sm font-medium text-[#e5e4e2] mb-3">
+                Wszystkie pola ({textFields.length})
+              </h5>
+              <div className="space-y-2">
+                {textFields.map((field, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedFieldIndex(index)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                      selectedFieldIndex === index
+                        ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30'
+                        : 'bg-[#0a0d1a] text-[#e5e4e2]/80 border border-[#d3bb73]/10 hover:border-[#d3bb73]/20'
+                    }`}
+                  >
+                    <div className="font-medium">{field.label}</div>
+                    <div className="text-xs opacity-60">
+                      X: {Math.round(field.x)}, Y: {Math.round(field.y)}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-[#d3bb73]/10 flex gap-3 justify-end flex-shrink-0">
           <button
             onClick={onClose}
             className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
@@ -923,141 +1088,6 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
           </button>
         </div>
       </div>
-
-      {/* Modal edycji pojedynczego pola */}
-      {editingField && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full">
-            <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
-              <h3 className="text-xl font-light text-[#e5e4e2]">
-                {textFields.includes(editingField) ? 'Edytuj pole' : 'Nowe pole'}
-              </h3>
-              <button
-                onClick={() => setEditingField(null)}
-                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pole danych *</label>
-                <select
-                  value={editingField.field_name}
-                  onChange={(e) => {
-                    const selected = AVAILABLE_FIELDS.find(f => f.value === e.target.value);
-                    setEditingField({
-                      ...editingField,
-                      field_name: e.target.value,
-                      label: selected?.label || e.target.value,
-                    });
-                  }}
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                >
-                  {AVAILABLE_FIELDS.map(field => (
-                    <option key={field.value} value={field.value}>
-                      {field.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pozycja X (px) *</label>
-                  <input
-                    type="number"
-                    value={editingField.x}
-                    onChange={(e) => setEditingField({ ...editingField, x: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pozycja Y (px) *</label>
-                  <input
-                    type="number"
-                    value={editingField.y}
-                    onChange={(e) => setEditingField({ ...editingField, y: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki (px) *</label>
-                  <input
-                    type="number"
-                    value={editingField.font_size}
-                    onChange={(e) => setEditingField({ ...editingField, font_size: parseInt(e.target.value) || 12 })}
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor czcionki *</label>
-                  <input
-                    type="color"
-                    value={editingField.font_color}
-                    onChange={(e) => setEditingField({ ...editingField, font_color: e.target.value })}
-                    className="w-full h-10 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-2 py-1"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Maksymalna szerokość (px)</label>
-                  <input
-                    type="number"
-                    value={editingField.max_width || ''}
-                    onChange={(e) => setEditingField({ ...editingField, max_width: parseInt(e.target.value) || undefined })}
-                    placeholder="Opcjonalne"
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyrównanie</label>
-                  <select
-                    value={editingField.align || 'left'}
-                    onChange={(e) => setEditingField({ ...editingField, align: e.target.value as any })}
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  >
-                    <option value="left">Lewo</option>
-                    <option value="center">Środek</option>
-                    <option value="right">Prawo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <p className="text-sm text-blue-400 mb-2">Wskazówki:</p>
-                <ul className="text-xs text-blue-400/80 space-y-1 list-disc list-inside">
-                  <li>Pozycje X i Y odnoszą się do lewego górnego rogu strony PDF</li>
-                  <li>Y=0 to góra strony, większe wartości przesuwają tekst w dół</li>
-                  <li>Maksymalna szerokość pozwala na zawijanie długiego tekstu</li>
-                  <li>Wyrównanie działa tylko gdy ustawiona jest maksymalna szerokość</li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end">
-              <button
-                onClick={() => setEditingField(null)}
-                className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={handleSaveField}
-                className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90"
-              >
-                {textFields.includes(editingField) ? 'Aktualizuj' : 'Dodaj pole'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
