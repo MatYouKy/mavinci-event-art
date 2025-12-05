@@ -105,8 +105,16 @@ Deno.serve(async (req: Request) => {
       throw new Error("Either emailAccountId or smtpConfig must be provided");
     }
 
+    console.log('[send-email] SMTP settings:', {
+      host: smtpSettings.host,
+      port: smtpSettings.port,
+      secure: smtpSettings.port === 465,
+      username: smtpSettings.username,
+    });
+
     const nodemailer = await import("npm:nodemailer@6.9.7");
 
+    console.log('[send-email] Creating transporter...');
     const transporter = nodemailer.default.createTransport({
       host: smtpSettings.host,
       port: smtpSettings.port,
@@ -121,7 +129,18 @@ Deno.serve(async (req: Request) => {
       connectionTimeout: 30000,
       greetingTimeout: 30000,
       socketTimeout: 60000,
+      debug: true,
+      logger: true,
     });
+
+    console.log('[send-email] Testing connection...');
+    try {
+      await transporter.verify();
+      console.log('[send-email] SMTP connection verified successfully');
+    } catch (verifyError) {
+      console.error('[send-email] SMTP verification failed:', verifyError);
+      throw new Error(`SMTP connection failed: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`);
+    }
 
     const mailOptions: any = {
       from: `${smtpSettings.fromName} <${smtpSettings.from}>`,
