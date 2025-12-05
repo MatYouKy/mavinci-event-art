@@ -157,8 +157,10 @@ W razie pytań proszę o kontakt.`,
   };
 
   const generateContractPDF = async (): Promise<{ base64: string; filename: string }> => {
+    console.log('🔵 START generateContractPDF');
     if (!contract) throw new Error('Brak danych umowy');
 
+    console.log('🔵 Fetching contract data from database...');
     const { data: contractData, error } = await supabase
       .from('contracts')
       .select('*')
@@ -168,6 +170,7 @@ W razie pytań proszę o kontakt.`,
     if (error || !contractData) {
       throw new Error('Nie znaleziono umowy');
     }
+    console.log('🔵 Contract data fetched:', contractData.contract_number);
 
     const headerLogoHtml = contractData.show_header_logo && contractData.header_logo_url
       ? `<div class="contract-header-logo justify-${contractData.header_logo_align || 'start'}">
@@ -273,8 +276,10 @@ W razie pytań proszę o kontakt.`,
       </style>
     `;
 
+    console.log('🔵 Loading html2pdf.js...');
     const html2pdf = (await import('html2pdf.js')).default;
 
+    console.log('🔵 Creating HTML element...');
     const element = document.createElement('div');
     element.innerHTML = htmlContent;
     element.style.position = 'absolute';
@@ -282,21 +287,37 @@ W razie pytań proszę o kontakt.`,
     document.body.appendChild(element);
 
     try {
-      const pdfBlob = await html2pdf()
+      console.log('🔵 Starting PDF generation with html2pdf...');
+
+      const pdfPromise = html2pdf()
         .set({
           margin: 0,
           filename: `${contractData.contract_number}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            allowTaint: true
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         })
         .from(element)
-        .outputPdf('blob');
+        .output('blob');
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout: generowanie PDF trwa za długo')), 30000);
+      });
+
+      console.log('🔵 Waiting for PDF blob...');
+      const pdfBlob = await Promise.race([pdfPromise, timeoutPromise]);
+      console.log('🔵 PDF blob generated, size:', pdfBlob.size);
 
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve, reject) => {
         reader.onloadend = () => {
           const base64 = (reader.result as string).split(',')[1];
+          console.log('🔵 PDF converted to base64, length:', base64.length);
           resolve(base64);
         };
         reader.onerror = reject;
@@ -305,10 +326,14 @@ W razie pytań proszę o kontakt.`,
       reader.readAsDataURL(pdfBlob);
       const base64 = await base64Promise;
 
+      console.log('✅ PDF generation complete');
       return {
         base64,
         filename: `${contractData.contract_number}.pdf`,
       };
+    } catch (err) {
+      console.error('❌ PDF generation error:', err);
+      throw err;
     } finally {
       document.body.removeChild(element);
     }
