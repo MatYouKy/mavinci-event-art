@@ -288,6 +288,45 @@ Deno.serve(async (req: Request) => {
             lineHeight: fontSize * lineHeight,
           });
         }
+
+        if (field.field_name === 'employee_email' && textValue) {
+          const textWidthActual = font.widthOfTextAtSize(textValue, fontSize);
+          const linkHeight = fontSize * (lineHeight || 1.5);
+
+          page.node.set('Annots', [
+            pdfDoc.context.obj({
+              Type: 'Annot',
+              Subtype: 'Link',
+              Rect: [x, y, x + textWidthActual, y + linkHeight],
+              Border: [0, 0, 0],
+              A: {
+                Type: 'Action',
+                S: 'URI',
+                URI: `mailto:${textValue}`
+              }
+            })
+          ]);
+        }
+
+        if (field.field_name === 'employee_phone' && textValue) {
+          const textWidthActual = font.widthOfTextAtSize(textValue, fontSize);
+          const linkHeight = fontSize * (lineHeight || 1.5);
+          const cleanPhone = textValue.replace(/\s/g, '');
+
+          page.node.set('Annots', [
+            pdfDoc.context.obj({
+              Type: 'Annot',
+              Subtype: 'Link',
+              Rect: [x, y, x + textWidthActual, y + linkHeight],
+              Border: [0, 0, 0],
+              A: {
+                Type: 'Action',
+                S: 'URI',
+                URI: `tel:${cleanPhone}`
+              }
+            })
+          ]);
+        }
       }
     };
 
@@ -386,7 +425,7 @@ Deno.serve(async (req: Request) => {
     const filename = `oferta-${offer.offer_number}.pdf`;
 
     const { error: uploadError } = await supabase.storage
-      .from('offers')
+      .from('generated-offers')
       .upload(filename, finalPdfBytes, {
         contentType: 'application/pdf',
         upsert: true,
@@ -397,7 +436,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const { data: publicUrlData } = supabase.storage
-      .from('offers')
+      .from('generated-offers')
       .getPublicUrl(filename);
 
     await supabase
