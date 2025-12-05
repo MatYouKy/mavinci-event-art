@@ -180,7 +180,7 @@ export default function OffersPage() {
         if (orgIds.length > 0) {
           const { data: orgs } = await supabase
             .from('organizations')
-            .select('id, company_name, first_name, last_name')
+            .select('id, name')
             .in('id', orgIds);
           orgsMap = Object.fromEntries((orgs || []).map(o => [o.id, o]));
         }
@@ -188,7 +188,7 @@ export default function OffersPage() {
         if (contactIds.length > 0) {
           const { data: contacts } = await supabase
             .from('contacts')
-            .select('id, first_name, last_name')
+            .select('id, first_name, last_name, company_name')
             .in('id', contactIds);
           contactsMap = Object.fromEntries((contacts || []).map(c => [c.id, c]));
         }
@@ -310,19 +310,14 @@ export default function OffersPage() {
   };
 
   const getClientName = (offer: Offer) => {
-    // Pobierz nazwę z organizacji lub kontaktu przez event
     const event = (offer as any).event;
-    if (event?.organization?.company_name) {
-      return event.organization.company_name;
-    }
-    if (event?.organization?.first_name || event?.organization?.last_name) {
-      return `${event.organization.first_name || ''} ${event.organization.last_name || ''}`.trim();
+    if (event?.organization?.name) {
+      return event.organization.name;
     }
     if (event?.contact?.first_name || event?.contact?.last_name) {
       return `${event.contact.first_name || ''} ${event.contact.last_name || ''}`.trim();
     }
 
-    // Fallback do starego formatu (jeśli istnieje)
     if (offer.client?.company_name) return offer.client.company_name;
     if (offer.client?.first_name || offer.client?.last_name) {
       return `${offer.client.first_name || ''} ${offer.client.last_name || ''}`.trim();
@@ -378,7 +373,7 @@ export default function OffersPage() {
         if (orgIds.length > 0) {
           const { data: orgs } = await supabase
             .from('organizations')
-            .select('id, company_name, first_name, last_name')
+            .select('id, name')
             .in('id', orgIds);
           orgsMap = Object.fromEntries((orgs || []).map(o => [o.id, o]));
         }
@@ -386,7 +381,7 @@ export default function OffersPage() {
         if (contactIds.length > 0) {
           const { data: contacts } = await supabase
             .from('contacts')
-            .select('id, first_name, last_name')
+            .select('id, first_name, last_name, company_name')
             .in('id', contactIds);
           contactsMap = Object.fromEntries((contacts || []).map(c => [c.id, c]));
         }
@@ -616,8 +611,7 @@ export default function OffersPage() {
                 <div className="space-y-2">
                   {events.map((event: any) => {
                     const clientName =
-                      event.organization?.company_name ||
-                      [event.organization?.first_name, event.organization?.last_name].filter(Boolean).join(' ') ||
+                      event.organization?.name ||
                       [event.contact?.first_name, event.contact?.last_name].filter(Boolean).join(' ') ||
                       'Brak klienta';
 
