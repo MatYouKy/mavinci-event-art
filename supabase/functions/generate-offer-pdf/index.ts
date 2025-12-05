@@ -99,6 +99,30 @@ Deno.serve(async (req: Request) => {
       return data;
     };
 
+    const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): string[] => {
+      const words = text.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const width = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+
+      return lines;
+    };
+
     const overlayTextOnPages = async (
       pdfDoc: PDFDocument,
       startPageIndex: number,
@@ -149,26 +173,35 @@ Deno.serve(async (req: Request) => {
               )
             : rgb(0, 0, 0);
 
-          let x = field.x;
-          const y = height - field.y - fontSize;
+          const lines = field.max_width
+            ? wrapText(value, font, fontSize, field.max_width)
+            : [value];
 
-          if (field.align === 'center' && field.max_width) {
-            const textWidth = font.widthOfTextAtSize(value, fontSize);
-            x = field.x + (field.max_width - textWidth) / 2;
-          } else if (field.align === 'right' && field.max_width) {
-            const textWidth = font.widthOfTextAtSize(value, fontSize);
-            x = field.x + field.max_width - textWidth;
+          const lineHeight = fontSize * 1.2;
+
+          for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
+            let x = field.x;
+            const y = height - field.y - fontSize - (lineIndex * lineHeight);
+
+            if (field.align === 'center' && field.max_width) {
+              const textWidth = font.widthOfTextAtSize(line, fontSize);
+              x = field.x + (field.max_width - textWidth) / 2;
+            } else if (field.align === 'right' && field.max_width) {
+              const textWidth = font.widthOfTextAtSize(line, fontSize);
+              x = field.x + field.max_width - textWidth;
+            }
+
+            console.log(`Drawing line ${lineIndex + 1}/${lines.length}: "${line}" at x=${x}, y=${y}`);
+
+            page.drawText(line, {
+              x,
+              y,
+              size: fontSize,
+              font,
+              color,
+            });
           }
-
-          console.log(`Drawing text "${value}" at x=${x}, y=${y}, fontSize=${fontSize}, pageHeight=${height}`);
-
-          page.drawText(value, {
-            x,
-            y,
-            size: fontSize,
-            font,
-            color,
-          });
         }
       }
     };
