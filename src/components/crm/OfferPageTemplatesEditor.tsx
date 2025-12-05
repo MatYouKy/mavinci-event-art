@@ -865,17 +865,20 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
         <div className="flex-1 flex overflow-hidden">
           {/* Podgląd PDF z polami */}
           <div className="flex-1 overflow-auto bg-[#0a0d1a] p-6">
-            <div className="mx-auto" style={{ maxWidth: '800px' }}>
+            <div className="mx-auto flex justify-center">
               {pdfUrl ? (
-                <div ref={containerRef} className="relative bg-white rounded-lg shadow-2xl">
-                  <iframe
-                    src={pdfUrl}
-                    className="w-full"
-                    style={{ height: '1100px', border: 'none' }}
-                  />
+                <div className="relative" style={{ width: '595px', height: '842px' }}>
+                  {/* PDF jako tło - format A4: 595x842px przy 72 DPI */}
+                  <div className="absolute inset-0 bg-white rounded-lg shadow-2xl overflow-hidden">
+                    <embed
+                      src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                      type="application/pdf"
+                      className="w-full h-full"
+                    />
+                  </div>
 
-                  {/* Warstwa z polami tekstowymi */}
-                  <div className="absolute inset-0 pointer-events-none">
+                  {/* Warstwa z polami tekstowymi - absolutne pozycjonowanie */}
+                  <div ref={containerRef} className="absolute inset-0 pointer-events-none">
                     {textFields.map((field, index) => (
                       <Draggable
                         key={index}
@@ -885,15 +888,16 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                       >
                         <div
                           onClick={() => setSelectedFieldIndex(index)}
-                          className={`absolute pointer-events-auto cursor-move border-2 rounded px-2 py-1 ${
+                          className={`absolute pointer-events-auto cursor-move border-2 rounded px-2 py-1 transition-all ${
                             selectedFieldIndex === index
-                              ? 'border-[#d3bb73] bg-[#d3bb73]/20'
-                              : 'border-blue-400/50 bg-blue-400/10 hover:border-blue-400'
+                              ? 'border-[#d3bb73] bg-[#d3bb73]/30 shadow-lg'
+                              : 'border-blue-400/50 bg-blue-400/20 hover:border-blue-400 hover:bg-blue-400/30'
                           }`}
                           style={{
                             fontSize: `${field.font_size}px`,
                             color: field.font_color,
                             minWidth: '120px',
+                            backdropFilter: 'blur(4px)',
                           }}
                         >
                           <div className="flex items-center gap-2">
@@ -902,7 +906,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                             <span className="text-xs font-medium">{field.label}</span>
                           </div>
                           <div className="text-xs opacity-60 mt-0.5">
-                            {field.field_name}
+                            X: {Math.round(field.x)}, Y: {Math.round(field.y)}
                           </div>
                         </div>
                       </Draggable>
@@ -913,6 +917,11 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                 <div className="text-center py-24">
                   <FileText className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
                   <p className="text-[#e5e4e2]/60">Ładowanie PDF...</p>
+                  {template.pdf_url && (
+                    <p className="text-xs text-[#e5e4e2]/40 mt-2">
+                      {template.pdf_url}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
