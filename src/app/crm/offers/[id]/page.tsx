@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, CreditCard as Edit, Save, X, Pencil, AlertTriangle, Send } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, CreditCard as Edit, Save, X, Pencil, AlertTriangle, Send, Download } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -67,6 +67,7 @@ export default function OfferDetailPage() {
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [canSendEmail, setCanSendEmail] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editFormData, setEditFormData] = useState({
     valid_until: '',
     notes: '',
@@ -305,6 +306,51 @@ export default function OfferDetailPage() {
     }
   };
 
+  const handleGeneratePdf = async () => {
+    if (!offer) return;
+
+    try {
+      setGeneratingPdf(true);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showSnackbar('Brak autoryzacji', 'error');
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-offer-pdf`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ offerId: offer.id }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Błąd generowania PDF');
+      }
+
+      showSnackbar(`PDF wygenerowany pomyślnie (${result.pageCount} stron)`, 'success');
+
+      if (result.downloadUrl) {
+        window.open(result.downloadUrl, '_blank');
+      }
+
+      fetchOfferDetails();
+    } catch (err: any) {
+      console.error('Error generating PDF:', err);
+      showSnackbar(err.message || 'Błąd podczas generowania PDF', 'error');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const getClientName = (offer: Offer) => {
     if (offer.organization?.name) return offer.organization.name;
     return 'Brak klienta';
@@ -350,6 +396,15 @@ export default function OfferDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleGeneratePdf}
+            disabled={generatingPdf}
+            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Generuje PDF łącząc wszystkie strony produktów"
+          >
+            <Download className="w-4 h-4" />
+            {generatingPdf ? 'Generowanie...' : 'Generuj PDF'}
+          </button>
           {canSendEmail && (
             <button
               onClick={() => setShowSendEmailModal(true)}

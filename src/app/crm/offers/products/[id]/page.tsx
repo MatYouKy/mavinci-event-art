@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Save, Package, DollarSign, Truck, Users, Wrench, Tag, Settings, X, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Package, DollarSign, Truck, Users, Wrench, Tag, Settings, X, Trash2, FileText, Upload, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -35,6 +35,7 @@ interface Product {
   tags: string[];
   is_active: boolean;
   display_order: number;
+  pdf_page_url?: string | null;
   category?: {
     id: string;
     name: string;
@@ -89,6 +90,8 @@ export default function ProductDetailPage() {
   const [staff, setStaff] = useState<ProductStaff[]>([]);
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const canEdit = isAdmin || hasScope('offers_manage');
 
@@ -182,6 +185,86 @@ export default function ProductDetailPage() {
       .select('*')
       .eq('product_id', params.id);
     if (data) setStaff(data);
+  };
+
+  const handleUploadPdf = async () => {
+    if (!pdfFile || !product || params.id === 'new') return;
+
+    if (pdfFile.type !== 'application/pdf') {
+      showSnackbar('Tylko pliki PDF są dozwolone', 'error');
+      return;
+    }
+
+    try {
+      setUploadingPdf(true);
+
+      const fileExt = 'pdf';
+      const fileName = `${product.id}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      if (product.pdf_page_url) {
+        const oldPath = product.pdf_page_url.split('/').pop();
+        if (oldPath) {
+          await supabase.storage.from('offer-product-pages').remove([oldPath]);
+        }
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('offer-product-pages')
+        .upload(filePath, pdfFile, {
+          upsert: true,
+          contentType: 'application/pdf',
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('offer-product-pages')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('offer_products')
+        .update({ pdf_page_url: filePath })
+        .eq('id', product.id);
+
+      if (updateError) throw updateError;
+
+      showSnackbar('Strona PDF została przesłana', 'success');
+      setPdfFile(null);
+      fetchProduct();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd przesyłania pliku', 'error');
+    } finally {
+      setUploadingPdf(false);
+    }
+  };
+
+  const handleDeletePdf = async () => {
+    if (!product || !product.pdf_page_url || params.id === 'new') return;
+
+    if (!confirm('Czy na pewno chcesz usunąć stronę PDF tego produktu?')) {
+      return;
+    }
+
+    try {
+      const { error: storageError } = await supabase.storage
+        .from('offer-product-pages')
+        .remove([product.pdf_page_url]);
+
+      if (storageError) throw storageError;
+
+      const { error: updateError } = await supabase
+        .from('offer_products')
+        .update({ pdf_page_url: null })
+        .eq('id', product.id);
+
+      if (updateError) throw updateError;
+
+      showSnackbar('Strona PDF została usunięta', 'success');
+      fetchProduct();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd usuwania pliku', 'error');
+    }
   };
 
   const handleDeleteEquipment = async (equipmentId: string) => {
@@ -803,6 +886,102 @@ export default function ProductDetailPage() {
             </div>
           )}
         </div>
+
+        {/* PDF Upload Section */}
+        {params.id !== 'new' && (
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="w-5 h-5 text-[#d3bb73]" />
+              <h2 className="text-lg font-medium text-[#e5e4e2]">Strona PDF produktu</h2>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-[#e5e4e2]/60">
+                Upload pojedynczej strony PDF dla tego produktu. Strona zostanie automatycznie dołączona do finalnej oferty.
+              </p>
+
+              {product.pdf_page_url ? (
+                <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-8 h-8 text-[#d3bb73]" />
+                      <div>
+                        <div className="text-[#e5e4e2] font-medium">Strona PDF przesłana</div>
+                        <div className="text-xs text-[#e5e4e2]/60">Kliknij podgląd aby zobaczyć</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          const { data } = await supabase.storage
+                            .from('offer-product-pages')
+                            .createSignedUrl(product.pdf_page_url!, 3600);
+                          if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Podgląd
+                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={handleDeletePdf}
+                          className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Usuń
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                canEdit && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz plik PDF</label>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            if (file.type !== 'application/pdf') {
+                              showSnackbar('Tylko pliki PDF są dozwolone', 'error');
+                              return;
+                            }
+                            setPdfFile(file);
+                          }
+                        }}
+                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-[#d3bb73] file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
+                      />
+                      {pdfFile && (
+                        <p className="text-xs text-[#d3bb73] mt-2">
+                          Wybrany plik: {pdfFile.name} ({(pdfFile.size / 1024).toFixed(2)} KB)
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={handleUploadPdf}
+                      disabled={!pdfFile || uploadingPdf}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {uploadingPdf ? 'Przesyłanie...' : 'Prześlij PDF'}
+                    </button>
+                  </div>
+                )
+              )}
+
+              {!canEdit && !product.pdf_page_url && (
+                <p className="text-sm text-[#e5e4e2]/40 text-center py-4">
+                  Brak strony PDF dla tego produktu
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Equipment */}
