@@ -46,7 +46,7 @@ nano .env
 
 Ustaw:
 ```env
-PORT=3001
+PORT=3005
 RELAY_SECRET=<wygenerowany-sekret>
 ```
 
@@ -78,7 +78,7 @@ npm start
 
 ```bash
 # Health check
-curl http://localhost:3001/health
+curl http://localhost:3005/health
 
 # Powinieneś zobaczyć:
 # {"status":"ok","service":"smtp-relay-worker","timestamp":"..."}
@@ -91,7 +91,7 @@ curl http://localhost:3001/health
 W dashboard Supabase → Settings → Edge Functions → Environment Variables:
 
 ```
-SMTP_RELAY_URL=http://your-vps-ip:3001
+SMTP_RELAY_URL=http://your-vps-ip:3005
 SMTP_RELAY_SECRET=<ten-sam-sekret-co-w-.env>
 ```
 
@@ -104,7 +104,7 @@ Edge Function automatycznie będzie używać relay workera.
 ### Test z curl:
 
 ```bash
-curl -X POST http://localhost:3001/api/send-email \
+curl -X POST http://localhost:3005/api/send-email \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-secret-here" \
   -d '{
@@ -156,7 +156,7 @@ pm2 save
 ### Worker nie startuje
 ```bash
 # Sprawdź czy port jest wolny
-lsof -i :3001
+lsof -i :3005
 
 # Sprawdź logi
 npm run pm2:logs

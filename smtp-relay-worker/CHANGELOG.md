@@ -73,7 +73,7 @@ npm install
 
 # Skopiuj i edytuj .env
 cp .env.example .env
-nano .env  # Ustaw PORT=3001 i wygeneruj RELAY_SECRET
+nano .env  # Ustaw PORT=3005 i wygeneruj RELAY_SECRET
 
 # Uruchom przez PM2
 npm run pm2:start
@@ -84,7 +84,7 @@ npm run pm2:start
 W Supabase Dashboard → Settings → Edge Functions → Environment Variables dodaj:
 
 ```
-SMTP_RELAY_URL=http://YOUR-VPS-IP:3001
+SMTP_RELAY_URL=http://YOUR-VPS-IP:3005
 SMTP_RELAY_SECRET=<ten-sam-co-w-.env>
 ```
 
@@ -92,7 +92,7 @@ SMTP_RELAY_SECRET=<ten-sam-co-w-.env>
 
 ```bash
 # Na VPS
-curl http://localhost:3001/health
+curl http://localhost:3005/health
 
 # Powinieneś zobaczyć:
 # {"status":"ok","service":"smtp-relay-worker",...}

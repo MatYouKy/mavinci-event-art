@@ -79,7 +79,7 @@ nano .env
 
 Wklej:
 ```env
-PORT=3001
+PORT=3005
 RELAY_SECRET=<wygenerowany-sekret-z-kroku-3.3>
 ```
 
@@ -125,7 +125,7 @@ Powinieneś zobaczyć:
 ┌─────────────────────────────────────────────┐
 │  📮 SMTP Relay Worker                      │
 ├─────────────────────────────────────────────┤
-│  Port: 3001                                │
+│  Port: 3005                                │
 │  Status: ✅ Running                         │
 ...
 ```
@@ -133,7 +133,7 @@ Powinieneś zobaczyć:
 ### 4.4 Test lokalny
 
 ```bash
-curl http://localhost:3001/health
+curl http://localhost:3005/health
 ```
 
 Odpowiedź:
@@ -153,14 +153,14 @@ Jeśli chcesz ograniczyć dostęp tylko do Supabase:
 
 ```bash
 # Ubuntu/Debian z ufw
-sudo ufw allow from <supabase-ip> to any port 3001
+sudo ufw allow from <supabase-ip> to any port 3005
 sudo ufw reload
 ```
 
 Lub pozostaw otwarty dla wszystkich (worker wymaga autoryzacji):
 
 ```bash
-sudo ufw allow 3001
+sudo ufw allow 3005
 sudo ufw reload
 ```
 
@@ -182,7 +182,7 @@ curl ifconfig.me
 **Zmienna 1:**
 ```
 Name: SMTP_RELAY_URL
-Value: http://YOUR-VPS-IP:3001
+Value: http://YOUR-VPS-IP:3005
 ```
 
 **Zmienna 2:**
@@ -218,7 +218,7 @@ pm2 logs smtp-relay-worker --lines 50
 ### 7.2 Test z curl (bezpośredni)
 
 ```bash
-curl -X POST http://YOUR-VPS-IP:3001/api/send-email \
+curl -X POST http://YOUR-VPS-IP:3005/api/send-email \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR-RELAY-SECRET" \
   -d '{
@@ -292,7 +292,7 @@ pm2 logs smtp-relay-worker --err
 
 **Sprawdź czy port jest wolny:**
 ```bash
-lsof -i :3001
+lsof -i :3005
 ```
 
 **Sprawdź .env:**
@@ -323,7 +323,7 @@ sudo ufw status
 **Sprawdź czy worker działa:**
 ```bash
 pm2 status
-curl http://localhost:3001/health
+curl http://localhost:3005/health
 ```
 
 **Sprawdź IP w Supabase:**
@@ -362,7 +362,7 @@ pm2 logs smtp-relay-worker --lines 50
 ## Bezpieczeństwo
 
 1. **Silny RELAY_SECRET** - użyj długiego losowego stringa
-2. **Firewall** - ogranicz dostęp do portu 3001
+2. **Firewall** - ogranicz dostęp do portu 3005
 3. **HTTPS** - rozważ reverse proxy (nginx) z SSL
 4. **Regularne aktualizacje** - `npm update` co jakiś czas
 5. **Monitoruj logi** - sprawdzaj regularnie czy nie ma podejrzanych requestów

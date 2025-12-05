@@ -61,7 +61,7 @@ nano .env  # Ustaw PORT i RELAY_SECRET
 npm run pm2:start
 
 # 4. Sprawdź
-curl http://localhost:3001/health
+curl http://localhost:3005/health
 ```
 
 ## 🔧 API
@@ -146,7 +146,7 @@ pm2 stop smtp-relay-worker
 ### Port już zajęty
 ```bash
 # Sprawdź co używa portu
-lsof -i :3001
+lsof -i :3005
 
 # Zmień port w .env
 nano .env

@@ -63,6 +63,7 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log('[send-email] Sending to:', to);
+    
 
     let smtpSettings: {
       host: string;
