@@ -448,12 +448,14 @@ export default function EventWizard({
 
       // Krok 2: Utwórz ofertę jeśli wybrano
       if (createOffer && currentStep >= 2) {
+        const { data: { session } } = await supabase.auth.getSession();
         await supabase.from('offers').insert([{
           event_id: createdEventId,
           offer_number: offerData.offer_number || null,
           valid_until: offerData.valid_until || null,
           notes: offerData.notes || null,
           status: 'draft',
+          created_by: session?.user?.id || null,
         }]);
       }
 

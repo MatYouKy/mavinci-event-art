@@ -288,6 +288,8 @@ export default function OfferWizard({
         throw new Error('Brak ID wydarzenia');
       }
 
+      const { data: { session } } = await supabase.auth.getSession();
+
       // Utwórz ofertę
       const offerDataToInsert: any = {
         event_id: eventId,
@@ -296,6 +298,7 @@ export default function OfferWizard({
         notes: offerData.notes || null,
         status: 'draft',
         total_amount: calculateTotal(),
+        created_by: session?.user?.id || null,
       };
 
       // Jeśli użytkownik wprowadził numer ręcznie, użyj go. W przeciwnym razie trigger wygeneruje automatycznie
