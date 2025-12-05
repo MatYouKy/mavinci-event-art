@@ -36,6 +36,7 @@ interface Product {
   is_active: boolean;
   display_order: number;
   pdf_page_url?: string | null;
+  pdf_thumbnail_url?: string | null;
   category?: {
     id: string;
     name: string;
@@ -92,6 +93,8 @@ export default function ProductDetailPage() {
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
 
   const canEdit = isAdmin || hasScope('offers_manage');
 
@@ -236,6 +239,80 @@ export default function ProductDetailPage() {
       showSnackbar(err.message || 'Błąd przesyłania pliku', 'error');
     } finally {
       setUploadingPdf(false);
+    }
+  };
+
+  const handleUploadThumbnail = async () => {
+    if (!thumbnailFile || !product || params.id === 'new') return;
+
+    if (!thumbnailFile.type.startsWith('image/')) {
+      showSnackbar('Tylko pliki graficzne są dozwolone', 'error');
+      return;
+    }
+
+    try {
+      setUploadingThumbnail(true);
+
+      const fileExt = thumbnailFile.name.split('.').pop();
+      const fileName = `${product.id}-thumbnail.${fileExt}`;
+      const filePath = `thumbnails/${fileName}`;
+
+      if (product.pdf_thumbnail_url) {
+        const oldPath = product.pdf_thumbnail_url;
+        await supabase.storage.from('offer-product-pages').remove([oldPath]);
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('offer-product-pages')
+        .upload(filePath, thumbnailFile, {
+          upsert: true,
+          contentType: thumbnailFile.type,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await supabase
+        .from('offer_products')
+        .update({ pdf_thumbnail_url: filePath })
+        .eq('id', product.id);
+
+      if (updateError) throw updateError;
+
+      showSnackbar('Miniaturka została przesłana', 'success');
+      setThumbnailFile(null);
+      fetchProduct();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd przesyłania miniaturki', 'error');
+    } finally {
+      setUploadingThumbnail(false);
+    }
+  };
+
+  const handleDeleteThumbnail = async () => {
+    if (!product || !product.pdf_thumbnail_url || params.id === 'new') return;
+
+    if (!confirm('Czy na pewno chcesz usunąć miniaturkę?')) {
+      return;
+    }
+
+    try {
+      const { error: storageError } = await supabase.storage
+        .from('offer-product-pages')
+        .remove([product.pdf_thumbnail_url]);
+
+      if (storageError) throw storageError;
+
+      const { error: updateError } = await supabase
+        .from('offer_products')
+        .update({ pdf_thumbnail_url: null })
+        .eq('id', product.id);
+
+      if (updateError) throw updateError;
+
+      showSnackbar('Miniaturka została usunięta', 'success');
+      fetchProduct();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd usuwania miniaturki', 'error');
     }
   };
 
@@ -901,38 +978,122 @@ export default function ProductDetailPage() {
               </p>
 
               {product.pdf_page_url ? (
-                <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-8 h-8 text-[#d3bb73]" />
-                      <div>
-                        <div className="text-[#e5e4e2] font-medium">Strona PDF przesłana</div>
-                        <div className="text-xs text-[#e5e4e2]/60">Kliknij podgląd aby zobaczyć</div>
+                <div className="space-y-4">
+                  <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-8 h-8 text-[#d3bb73]" />
+                        <div>
+                          <div className="text-[#e5e4e2] font-medium">Strona PDF przesłana</div>
+                          <div className="text-xs text-[#e5e4e2]/60">Kliknij podgląd aby zobaczyć</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={async () => {
+                            const { data } = await supabase.storage
+                              .from('offer-product-pages')
+                              .createSignedUrl(product.pdf_page_url!, 3600);
+                            if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
+                        >
+                          <Eye className="w-4 h-4" />
+                          Podgląd
+                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={handleDeletePdf}
+                            className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Usuń
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={async () => {
-                          const { data } = await supabase.storage
-                            .from('offer-product-pages')
-                            .createSignedUrl(product.pdf_page_url!, 3600);
-                          if (data?.signedUrl) window.open(data.signedUrl, '_blank');
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
-                      >
-                        <Eye className="w-4 h-4" />
-                        Podgląd
-                      </button>
-                      {canEdit && (
-                        <button
-                          onClick={handleDeletePdf}
-                          className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Usuń
-                        </button>
-                      )}
-                    </div>
+                  </div>
+
+                  {/* Thumbnail Section */}
+                  <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
+                    <div className="text-sm text-[#e5e4e2] font-medium mb-3">Miniaturka podglądu PDF</div>
+
+                    {product.pdf_thumbnail_url ? (
+                      <div className="space-y-3">
+                        <div className="relative w-full max-w-md mx-auto">
+                          <img
+                            src={`${supabase.storage.from('offer-product-pages').getPublicUrl(product.pdf_thumbnail_url).data.publicUrl}`}
+                            alt="Miniaturka PDF"
+                            className="w-full h-auto rounded-lg border border-[#d3bb73]/20"
+                            onError={(e) => {
+                              (async () => {
+                                const { data } = await supabase.storage
+                                  .from('offer-product-pages')
+                                  .createSignedUrl(product.pdf_thumbnail_url!, 3600);
+                                if (data?.signedUrl) {
+                                  (e.target as HTMLImageElement).src = data.signedUrl;
+                                }
+                              })();
+                            }}
+                          />
+                        </div>
+                        {canEdit && (
+                          <div className="flex justify-center gap-2">
+                            <button
+                              onClick={handleDeleteThumbnail}
+                              className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Usuń miniaturkę
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      canEdit && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-[#e5e4e2]/60">
+                            Dodaj miniaturkę aby zobaczyć podgląd zawartości PDF
+                          </p>
+                          <div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  if (!file.type.startsWith('image/')) {
+                                    showSnackbar('Tylko pliki graficzne są dozwolone', 'error');
+                                    return;
+                                  }
+                                  setThumbnailFile(file);
+                                }
+                              }}
+                              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-[#d3bb73] file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
+                            />
+                            {thumbnailFile && (
+                              <p className="text-xs text-[#d3bb73] mt-2">
+                                Wybrany plik: {thumbnailFile.name} ({(thumbnailFile.size / 1024).toFixed(2)} KB)
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={handleUploadThumbnail}
+                            disabled={!thumbnailFile || uploadingThumbnail}
+                            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Upload className="w-4 h-4" />
+                            {uploadingThumbnail ? 'Przesyłanie...' : 'Prześlij miniaturkę'}
+                          </button>
+                        </div>
+                      )
+                    )}
+
+                    {!canEdit && !product.pdf_thumbnail_url && (
+                      <p className="text-sm text-[#e5e4e2]/40 text-center py-4">
+                        Brak miniaturki dla tego produktu
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (

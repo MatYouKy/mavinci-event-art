@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
       .from("offers")
       .select(`
         *,
-        client:contacts(*),
+        organization:organizations(*),
         created_by_employee:employees(*),
         offer_items(
           *,
