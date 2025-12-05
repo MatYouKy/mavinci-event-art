@@ -13,6 +13,9 @@ interface OfferItem {
   product_id: string;
   quantity: number;
   unit_price: number;
+  discount_percent: number;
+  discount_amount: number;
+  subtotal: number;
   total: number;
   display_order: number;
   product?: {
@@ -89,6 +92,9 @@ export default function OfferDetailPage() {
     valid_until: '',
     notes: '',
   });
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemData, setEditingItemData] = useState<Partial<OfferItem>>({});
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (offerId) {
@@ -142,6 +148,9 @@ export default function OfferDetailPage() {
             product_id,
             quantity,
             unit_price,
+            discount_percent,
+            discount_amount,
+            subtotal,
             total,
             display_order,
             product:offer_products(
@@ -386,6 +395,94 @@ export default function OfferDetailPage() {
   const getClientName = (offer: Offer) => {
     if (offer.organization?.name) return offer.organization.name;
     return 'Brak klienta';
+  };
+
+  const handleStartEditItem = (item: OfferItem) => {
+    setEditingItemId(item.id);
+    setEditingItemData({
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      discount_percent: item.discount_percent || 0,
+      discount_amount: item.discount_amount || 0,
+    });
+  };
+
+  const handleCancelEditItem = () => {
+    setEditingItemId(null);
+    setEditingItemData({});
+  };
+
+  const calculateItemTotal = (quantity: number, unitPrice: number, discountPercent: number, discountAmount: number) => {
+    const subtotal = quantity * unitPrice;
+    const percentDiscount = subtotal * (discountPercent / 100);
+    const totalDiscount = percentDiscount + discountAmount;
+    const total = subtotal - totalDiscount;
+    return { subtotal, total };
+  };
+
+  const handleSaveItemEdit = async (itemId: string) => {
+    if (!editingItemData.quantity || !editingItemData.unit_price) {
+      showSnackbar('Ilość i cena jednostkowa są wymagane', 'error');
+      return;
+    }
+
+    try {
+      const { subtotal, total } = calculateItemTotal(
+        editingItemData.quantity!,
+        editingItemData.unit_price!,
+        editingItemData.discount_percent || 0,
+        editingItemData.discount_amount || 0
+      );
+
+      const { error } = await supabase
+        .from('offer_items')
+        .update({
+          quantity: editingItemData.quantity,
+          unit_price: editingItemData.unit_price,
+          discount_percent: editingItemData.discount_percent || 0,
+          discount_amount: editingItemData.discount_amount || 0,
+          subtotal,
+          total,
+        })
+        .eq('id', itemId);
+
+      if (error) {
+        console.error('Error updating item:', error);
+        showSnackbar('Błąd podczas zapisywania', 'error');
+        return;
+      }
+
+      // Pobierz zaktualizowane dane i przelicz total_amount oferty
+      await fetchOfferDetails();
+      await updateOfferTotalAmount();
+
+      setEditingItemId(null);
+      setEditingItemData({});
+      showSnackbar('Pozycja zaktualizowana', 'success');
+    } catch (err) {
+      console.error('Error:', err);
+      showSnackbar('Wystąpił błąd', 'error');
+    }
+  };
+
+  const updateOfferTotalAmount = async () => {
+    try {
+      const { data: items } = await supabase
+        .from('offer_items')
+        .select('total')
+        .eq('offer_id', offerId);
+
+      if (!items) return;
+
+      const totalAmount = items.reduce((sum, item) => sum + (item.total || 0), 0);
+
+      await supabase
+        .from('offers')
+        .update({ total_amount: totalAmount })
+        .eq('id', offerId);
+    } catch (err) {
+      console.error('Error updating total amount:', err);
+    }
   };
 
   if (loading) {
@@ -638,90 +735,159 @@ export default function OfferDetailPage() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {offer.offer_items
                   .sort((a, b) => a.display_order - b.display_order)
-                  .map((item) => (
-                    <div
-                      key={item.id}
-                      className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/20 transition-colors"
-                    >
-                      <div className="grid grid-cols-[120px_1fr_auto] gap-4">
-                        {/* Miniaturka */}
-                        <div className="relative w-[120px] h-[160px] rounded-lg overflow-hidden bg-[#1c1f33] border border-[#d3bb73]/10 flex items-center justify-center">
-                          {item.product?.pdf_thumbnail_url ? (
-                            <img
-                              src={`${supabase.storage.from('offer-product-pages').getPublicUrl(item.product.pdf_thumbnail_url).data.publicUrl}`}
-                              alt={item.product?.name || 'Produkt'}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (async () => {
-                                  const { data } = await supabase.storage
-                                    .from('offer-product-pages')
-                                    .createSignedUrl(item.product?.pdf_thumbnail_url!, 3600);
-                                  if (data?.signedUrl) {
-                                    (e.target as HTMLImageElement).src = data.signedUrl;
-                                  }
-                                })();
-                              }}
-                            />
-                          ) : (
-                            <FileText className="w-12 h-12 text-[#e5e4e2]/20" />
-                          )}
-                        </div>
-
-                        {/* Informacje o produkcie */}
-                        <div className="flex flex-col justify-between">
-                          <div>
-                            <h3 className="text-[#e5e4e2] font-medium mb-1">
-                              {item.product?.name || 'Produkt bez nazwy'}
-                            </h3>
-                            {item.product?.description && (
-                              <p className="text-sm text-[#e5e4e2]/60 line-clamp-2">
-                                {item.product.description}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm">
-                            <div>
-                              <span className="text-[#e5e4e2]/60">Ilość: </span>
-                              <span className="text-[#e5e4e2] font-medium">{item.quantity}</span>
-                            </div>
-                            <div>
-                              <span className="text-[#e5e4e2]/60">Cena jedn.: </span>
-                              <span className="text-[#e5e4e2] font-medium">
-                                {item.unit_price.toLocaleString('pl-PL')} zł
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Cena całkowita */}
-                        <div className="flex flex-col items-end justify-between">
-                          <button
+                  .map((item) => {
+                    const isEditing = editingItemId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/20 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Miniaturka - mniejsza */}
+                          <div
+                            className="relative w-16 h-20 rounded overflow-hidden bg-[#1c1f33] border border-[#d3bb73]/10 flex-shrink-0 cursor-pointer hover:border-[#d3bb73]/30 transition-colors"
                             onClick={async () => {
                               if (item.product?.pdf_page_url) {
                                 const { data } = await supabase.storage
                                   .from('offer-product-pages')
                                   .createSignedUrl(item.product.pdf_page_url, 3600);
-                                if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                                if (data?.signedUrl) setPreviewImage(data.signedUrl);
                               }
                             }}
-                            disabled={!item.product?.pdf_page_url}
-                            className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Podgląd PDF
-                          </button>
-                          <div className="text-right">
-                            <div className="text-sm text-[#e5e4e2]/60 mb-1">Wartość</div>
-                            <div className="text-xl font-light text-[#d3bb73]">
-                              {item.total.toLocaleString('pl-PL')} zł
-                            </div>
+                            {item.product?.pdf_thumbnail_url ? (
+                              <img
+                                src={`${supabase.storage.from('offer-product-pages').getPublicUrl(item.product.pdf_thumbnail_url).data.publicUrl}`}
+                                alt={item.product?.name || 'Produkt'}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (async () => {
+                                    const { data } = await supabase.storage
+                                      .from('offer-product-pages')
+                                      .createSignedUrl(item.product?.pdf_thumbnail_url!, 3600);
+                                    if (data?.signedUrl) {
+                                      (e.target as HTMLImageElement).src = data.signedUrl;
+                                    }
+                                  })();
+                                }}
+                              />
+                            ) : (
+                              <FileText className="w-6 h-6 text-[#e5e4e2]/20" />
+                            )}
                           </div>
+
+                          {/* Nazwa produktu */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm text-[#e5e4e2] font-medium truncate">
+                              {item.product?.name || 'Produkt bez nazwy'}
+                            </h3>
+                          </div>
+
+                          {/* Edytowalne pola lub wartości */}
+                          {isEditing ? (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <div className="w-20">
+                                  <input
+                                    type="number"
+                                    value={editingItemData.quantity || ''}
+                                    onChange={(e) => setEditingItemData({ ...editingItemData, quantity: Number(e.target.value) })}
+                                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-xs text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                                    placeholder="Ilość"
+                                    min="1"
+                                  />
+                                </div>
+                                <span className="text-xs text-[#e5e4e2]/60">×</span>
+                                <div className="w-24">
+                                  <input
+                                    type="number"
+                                    value={editingItemData.unit_price || ''}
+                                    onChange={(e) => setEditingItemData({ ...editingItemData, unit_price: Number(e.target.value) })}
+                                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-xs text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                                    placeholder="Cena"
+                                    min="0"
+                                    step="0.01"
+                                  />
+                                </div>
+                                <div className="w-20">
+                                  <input
+                                    type="number"
+                                    value={editingItemData.discount_percent || ''}
+                                    onChange={(e) => setEditingItemData({ ...editingItemData, discount_percent: Number(e.target.value) })}
+                                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-xs text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                                    placeholder="Rabat %"
+                                    min="0"
+                                    max="100"
+                                  />
+                                </div>
+                                <div className="w-24">
+                                  <input
+                                    type="number"
+                                    value={editingItemData.discount_amount || ''}
+                                    onChange={(e) => setEditingItemData({ ...editingItemData, discount_amount: Number(e.target.value) })}
+                                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-xs text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                                    placeholder="Rabat zł"
+                                    min="0"
+                                    step="0.01"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleSaveItemEdit(item.id)}
+                                  className="p-1.5 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors"
+                                  title="Zapisz"
+                                >
+                                  <Save className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={handleCancelEditItem}
+                                  className="p-1.5 text-[#e5e4e2]/60 hover:bg-[#1c1f33] rounded transition-colors"
+                                  title="Anuluj"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-4 text-xs">
+                                <div className="text-[#e5e4e2]/80">
+                                  <span className="font-medium">{item.quantity}</span>
+                                  <span className="text-[#e5e4e2]/60"> szt.</span>
+                                </div>
+                                <div className="text-[#e5e4e2]/80">
+                                  <span className="font-medium">{item.unit_price.toLocaleString('pl-PL')}</span>
+                                  <span className="text-[#e5e4e2]/60"> zł/szt.</span>
+                                </div>
+                                {(item.discount_percent > 0 || item.discount_amount > 0) && (
+                                  <div className="text-red-400 text-xs">
+                                    {item.discount_percent > 0 && `-${item.discount_percent}%`}
+                                    {item.discount_amount > 0 && ` -${item.discount_amount.toLocaleString('pl-PL')} zł`}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-right min-w-[100px]">
+                                <div className="text-base font-medium text-[#d3bb73]">
+                                  {item.total.toLocaleString('pl-PL')} zł
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleStartEditItem(item)}
+                                className="p-1.5 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                                title="Edytuj pozycję"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -868,6 +1034,27 @@ export default function OfferDetailPage() {
             fetchOfferDetails();
           }}
         />
+      )}
+
+      {/* Modal podglądu PDF */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button
+            onClick={() => setPreviewImage(null)}
+            className="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={previewImage}
+            alt="Podgląd PDF"
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );
