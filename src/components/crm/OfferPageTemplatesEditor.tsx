@@ -31,10 +31,14 @@ interface TextFieldConfig {
   label: string;
   x: number;
   y: number;
-  font_size: number;
-  font_color: string;
+  type?: 'text' | 'image';
+  font_size?: number;
+  font_color?: string;
   max_width?: number;
   align?: 'left' | 'center' | 'right';
+  width?: number;
+  height?: number;
+  border_radius?: number;
 }
 
 interface TemplateContent {
@@ -739,27 +743,28 @@ function ContentEditorModal({ template, content, onClose, onSuccess }: { templat
 }
 
 const AVAILABLE_FIELDS = [
-  { value: 'client_name', label: 'Nazwa klienta' },
-  { value: 'client_address', label: 'Adres klienta' },
-  { value: 'client_nip', label: 'NIP klienta' },
-  { value: 'client_city', label: 'Miasto klienta' },
-  { value: 'client_postal_code', label: 'Kod pocztowy klienta' },
-  { value: 'client_street', label: 'Ulica klienta' },
-  { value: 'offer_number', label: 'Numer oferty' },
-  { value: 'offer_name', label: 'Nazwa oferty' },
-  { value: 'offer_date', label: 'Data oferty' },
-  { value: 'event_name', label: 'Nazwa eventu' },
-  { value: 'event_date', label: 'Data eventu' },
-  { value: 'event_location', label: 'Lokalizacja eventu' },
-  { value: 'total_price', label: 'Całkowita cena' },
-  { value: 'employee_first_name', label: 'Imię pracownika' },
-  { value: 'employee_last_name', label: 'Nazwisko pracownika' },
-  { value: 'employee_full_name', label: 'Imię i nazwisko pracownika' },
-  { value: 'employee_email', label: 'Email pracownika' },
-  { value: 'employee_phone', label: 'Telefon pracownika' },
-  { value: 'seller_name', label: 'Nazwa sprzedawcy' },
-  { value: 'seller_address', label: 'Adres sprzedawcy' },
-  { value: 'seller_nip', label: 'NIP sprzedawcy' },
+  { value: 'client_name', label: 'Nazwa klienta', type: 'text' },
+  { value: 'client_address', label: 'Adres klienta', type: 'text' },
+  { value: 'client_nip', label: 'NIP klienta', type: 'text' },
+  { value: 'client_city', label: 'Miasto klienta', type: 'text' },
+  { value: 'client_postal_code', label: 'Kod pocztowy klienta', type: 'text' },
+  { value: 'client_street', label: 'Ulica klienta', type: 'text' },
+  { value: 'offer_number', label: 'Numer oferty', type: 'text' },
+  { value: 'offer_name', label: 'Nazwa oferty', type: 'text' },
+  { value: 'offer_date', label: 'Data oferty', type: 'text' },
+  { value: 'event_name', label: 'Nazwa eventu', type: 'text' },
+  { value: 'event_date', label: 'Data eventu', type: 'text' },
+  { value: 'event_location', label: 'Lokalizacja eventu', type: 'text' },
+  { value: 'total_price', label: 'Całkowita cena', type: 'text' },
+  { value: 'employee_first_name', label: 'Imię pracownika', type: 'text' },
+  { value: 'employee_last_name', label: 'Nazwisko pracownika', type: 'text' },
+  { value: 'employee_full_name', label: 'Imię i nazwisko pracownika', type: 'text' },
+  { value: 'employee_email', label: 'Email pracownika', type: 'text' },
+  { value: 'employee_phone', label: 'Telefon pracownika', type: 'text' },
+  { value: 'employee_avatar_url', label: 'Avatar pracownika', type: 'image' },
+  { value: 'seller_name', label: 'Nazwa sprzedawcy', type: 'text' },
+  { value: 'seller_address', label: 'Adres sprzedawcy', type: 'text' },
+  { value: 'seller_nip', label: 'NIP sprzedawcy', type: 'text' },
 ];
 
 function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: OfferPageTemplate; onClose: () => void; onSuccess: () => void }) {
@@ -865,6 +870,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
       setPendingField({
         field_name: 'client_name',
         label: 'Nazwa klienta',
+        type: 'text',
         font_size: 14,
         font_color: '#000000',
         align: 'left',
@@ -874,6 +880,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
       const newField: TextFieldConfig = {
         field_name: 'client_name',
         label: 'Nazwa klienta',
+        type: 'text',
         x: snapToGridIfEnabled(50),
         y: snapToGridIfEnabled(50),
         font_size: 14,
@@ -1073,28 +1080,23 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                             e.stopPropagation();
                             setSelectedFieldIndex(index);
                           }}
-                          className={`absolute cursor-move border-2 rounded px-2 py-1 transition-all ${
+                          className={`absolute cursor-move border-2 rounded transition-all ${
                             selectedFieldIndex === index
-                              ? 'border-[#d3bb73] bg-[#d3bb73]/30 shadow-lg ring-2 ring-[#d3bb73]/50'
-                              : 'border-blue-400/50 bg-blue-400/20 hover:border-blue-400 hover:bg-blue-400/30'
+                              ? 'border-[#d3bb73] bg-[#d3bb73]/20 shadow-lg ring-2 ring-[#d3bb73]/50'
+                              : 'border-blue-400/70 bg-blue-400/10 hover:border-blue-400 hover:bg-blue-400/20'
                           }`}
                           style={{
-                            fontSize: `${field.font_size}px`,
+                            fontSize: field.type === 'image' ? '12px' : `${field.font_size || 12}px`,
                             color: field.font_color,
-                            minWidth: '120px',
-                            width: field.max_width ? `${field.max_width}px` : 'auto',
-                            backdropFilter: 'blur(4px)',
+                            width: field.type === 'image' ? `${field.width || 100}px` : (field.max_width ? `${field.max_width}px` : 'auto'),
+                            height: field.type === 'image' ? `${field.height || 100}px` : `${(field.font_size || 12) * 1.5}px`,
+                            backdropFilter: 'blur(2px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                           }}
                         >
-                          <div className="flex items-center gap-2">
-                            <Move className="w-3 h-3 text-[#d3bb73]" />
-                            <Type className="w-3 h-3 text-[#d3bb73]" />
-                            <span className="text-xs font-medium">{field.label}</span>
-                          </div>
-                          <div className="text-xs opacity-60 mt-0.5 font-mono">
-                            X: {Math.round(field.x)}, Y: {Math.round(field.y)}
-                            {field.max_width && ` | W: ${field.max_width}px`}
-                          </div>
+                          <span className="text-xs font-medium opacity-70">{field.label}</span>
                         </div>
                       </Draggable>
                     ))}
@@ -1144,6 +1146,8 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                       handleUpdateField(selectedFieldIndex!, {
                         field_name: e.target.value,
                         label: selected?.label || e.target.value,
+                        type: selected?.type as 'text' | 'image' || 'text',
+                        ...(selected?.type === 'image' ? { width: 100, height: 100 } : { font_size: 12 })
                       });
                     }}
                     className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
@@ -1177,57 +1181,84 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki</label>
-                  <input
-                    type="number"
-                    value={selectedField.font_size}
-                    onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_size: parseInt(e.target.value) || 12 })}
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  />
-                </div>
+{selectedField.type === 'image' ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Szerokość</label>
+                        <input
+                          type="number"
+                          value={selectedField.width || 100}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { width: parseInt(e.target.value) || 100 })}
+                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wysokość</label>
+                        <input
+                          type="number"
+                          value={selectedField.height || 100}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { height: parseInt(e.target.value) || 100 })}
+                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki</label>
+                      <input
+                        type="number"
+                        value={selectedField.font_size || 12}
+                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_size: parseInt(e.target.value) || 12 })}
+                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor czcionki</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={selectedField.font_color}
-                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
-                      className="w-16 h-10 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-1"
-                    />
-                    <input
-                      type="text"
-                      value={selectedField.font_color}
-                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
-                      className="flex-1 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                    />
-                  </div>
-                </div>
+                    <div>
+                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor czcionki</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="color"
+                          value={selectedField.font_color || '#000000'}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
+                          className="w-16 h-10 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-1"
+                        />
+                        <input
+                          type="text"
+                          value={selectedField.font_color || '#000000'}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
+                          className="flex-1 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyrównanie</label>
-                  <select
-                    value={selectedField.align || 'left'}
-                    onChange={(e) => handleUpdateField(selectedFieldIndex!, { align: e.target.value as any })}
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  >
-                    <option value="left">Lewo</option>
-                    <option value="center">Środek</option>
-                    <option value="right">Prawo</option>
-                  </select>
-                </div>
+                    <div>
+                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyrównanie</label>
+                      <select
+                        value={selectedField.align || 'left'}
+                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { align: e.target.value as any })}
+                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      >
+                        <option value="left">Lewo</option>
+                        <option value="center">Środek</option>
+                        <option value="right">Prawo</option>
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Max. szerokość (opcjonalne)</label>
-                  <input
-                    type="number"
-                    value={selectedField.max_width || ''}
-                    onChange={(e) => handleUpdateField(selectedFieldIndex!, { max_width: parseInt(e.target.value) || undefined })}
-                    placeholder="Auto"
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Max. szerokość (opcjonalne)</label>
+                      <input
+                        type="number"
+                        value={selectedField.max_width || ''}
+                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { max_width: parseInt(e.target.value) || undefined })}
+                        placeholder="Auto"
+                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
                   <p className="text-xs text-blue-400">

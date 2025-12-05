@@ -18,10 +18,14 @@ interface TextFieldConfig {
   label: string;
   x: number;
   y: number;
-  font_size: number;
+  type?: 'text' | 'image';
+  font_size?: number;
   font_color?: string;
   max_width?: number;
   align?: 'left' | 'center' | 'right';
+  width?: number;
+  height?: number;
+  border_radius?: number;
 }
 
 Deno.serve(async (req: Request) => {
@@ -109,7 +113,7 @@ Deno.serve(async (req: Request) => {
         employee_avatar_url: employee.avatar_url || '',
 
         seller_name: 'Mavinci Event & Entertainment',
-        seller_address: 'ul. Przyk\u0142adowa 1, 00-000 Warszawa',
+        seller_address: 'ul. Przykładowa 1, 00-000 Warszawa',
         seller_nip: 'NIP: 1234567890',
       };
 
@@ -170,10 +174,50 @@ Deno.serve(async (req: Request) => {
         for (const field of textFields) {
           const value = data[field.field_name] || '';
 
-          console.log(`Processing field ${field.field_name}: value="${value}"`);
+          console.log(`Processing field ${field.field_name}: type=${field.type}, value="${value}"`);
 
           if (!value) {
             console.log(`Skipping field ${field.field_name} - no value`);
+            continue;
+          }
+
+          if (field.type === 'image') {
+            try {
+              console.log(`Fetching image from URL: ${value}`);
+              const imageResponse = await fetch(value);
+              if (!imageResponse.ok) {
+                console.error(`Failed to fetch image: ${imageResponse.status}`);
+                continue;
+              }
+
+              const imageBytes = await imageResponse.arrayBuffer();
+              const imageType = imageResponse.headers.get('content-type');
+
+              let image;
+              if (imageType?.includes('png')) {
+                image = await pdfDoc.embedPng(imageBytes);
+              } else if (imageType?.includes('jpeg') || imageType?.includes('jpg')) {
+                image = await pdfDoc.embedJpg(imageBytes);
+              } else {
+                console.error(`Unsupported image type: ${imageType}`);
+                continue;
+              }
+
+              const imgWidth = field.width || 100;
+              const imgHeight = field.height || 100;
+              const y = height - field.y - imgHeight;
+
+              console.log(`Drawing image at x=${field.x}, y=${y}, width=${imgWidth}, height=${imgHeight}`);
+
+              page.drawImage(image, {
+                x: field.x,
+                y: y,
+                width: imgWidth,
+                height: imgHeight,
+              });
+            } catch (error) {
+              console.error(`Error drawing image ${field.field_name}:`, error);
+            }
             continue;
           }
 
@@ -309,7 +353,7 @@ Deno.serve(async (req: Request) => {
 
     const sanitizeFileName = (name: string) => {
       return name
-        .replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s\-_]/g, '')
+        .replace(/[^a-zA-Z0-9\u0105\u0107\u0119\u0142\u0144\u00f3\u015b\u017a\u017c\u0104\u0106\u0118\u0141\u0143\u00d3\u015a\u0179\u017b\s\-_]/g, '')
         .replace(/\s+/g, '-')
         .toLowerCase();
     };

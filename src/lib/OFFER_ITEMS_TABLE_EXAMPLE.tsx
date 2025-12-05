@@ -144,7 +144,7 @@ export function QuickTestExample() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4">Test Placeholdera {{'{{'}}OFFER_ITEMS_TABLE{{'}}'}}</h2>
+      <h2 className="text-2xl font-bold mb-4">Test Placeholdera {`{{OFFER_ITEMS_TABLE}}`}</h2>
       <div
         className="border border-gray-300 rounded-lg p-6 bg-white"
         dangerouslySetInnerHTML={{ __html: result }}
