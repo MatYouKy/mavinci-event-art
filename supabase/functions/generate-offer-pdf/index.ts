@@ -56,6 +56,38 @@ Deno.serve(async (req: Request) => {
 
     const mergedPdf = await PDFDocument.create();
 
+    const addPdfFromTemplate = async (templateType: string) => {
+      try {
+        const { data: template } = await supabase
+          .from('offer_page_templates')
+          .select('pdf_url')
+          .eq('type', templateType)
+          .eq('is_default', true)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (template?.pdf_url) {
+          const { data: pdfData } = await supabase.storage
+            .from('offer-template-pages')
+            .download(template.pdf_url);
+
+          if (pdfData) {
+            const arrayBuffer = await pdfData.arrayBuffer();
+            const templatePdf = await PDFDocument.load(arrayBuffer);
+            const copiedPages = await mergedPdf.copyPages(templatePdf, templatePdf.getPageIndices());
+            copiedPages.forEach((page) => mergedPdf.addPage(page));
+            return true;
+          }
+        }
+      } catch (error) {
+        console.error(`Error adding ${templateType} template:`, error);
+      }
+      return false;
+    };
+
+    await addPdfFromTemplate('cover');
+    await addPdfFromTemplate('about');
+
     const productPagesWithPdf = offer.offer_items
       .filter((item: any) => item.product?.pdf_page_url)
       .sort((a: any, b: any) => a.display_order - b.display_order);
@@ -63,7 +95,7 @@ Deno.serve(async (req: Request) => {
     for (const item of productPagesWithPdf) {
       try {
         const pdfPath = item.product.pdf_page_url;
-        
+
         const { data: pdfData, error: downloadError } = await supabase.storage
           .from('offer-product-pages')
           .download(pdfPath);
@@ -75,7 +107,7 @@ Deno.serve(async (req: Request) => {
 
         const arrayBuffer = await pdfData.arrayBuffer();
         const productPdf = await PDFDocument.load(arrayBuffer);
-        
+
         const copiedPages = await mergedPdf.copyPages(productPdf, productPdf.getPageIndices());
         copiedPages.forEach((page) => mergedPdf.addPage(page));
       } catch (error) {
@@ -83,8 +115,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    await addPdfFromTemplate('final');
+
     if (mergedPdf.getPageCount() === 0) {
-      throw new Error("No PDF pages found in products. Please add PDF pages to products first.");
+      throw new Error("No PDF pages found. Please add PDF pages to templates or products first.");
     }
 
     const pdfBytes = await mergedPdf.save();

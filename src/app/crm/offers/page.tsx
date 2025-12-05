@@ -111,6 +111,10 @@ export default function OffersPage() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
 
+  // Liczniki
+  const [productCount, setProductCount] = useState(0);
+  const [templateCount, setTemplateCount] = useState(0);
+
   // Kreator oferty
   const [showOfferWizard, setShowOfferWizard] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -126,6 +130,7 @@ export default function OffersPage() {
 
   useEffect(() => {
     if (employee) {
+      fetchCounts();
       if (activeTab === 'offers') {
         fetchOffers();
       } else if (activeTab === 'catalog') {
@@ -136,6 +141,20 @@ export default function OffersPage() {
       }
     }
   }, [employee, activeTab]);
+
+  const fetchCounts = async () => {
+    try {
+      const [productsResult, templatesResult] = await Promise.all([
+        supabase.from('offer_products').select('id', { count: 'exact', head: true }),
+        supabase.from('offer_templates').select('id', { count: 'exact', head: true }),
+      ]);
+
+      if (productsResult.count !== null) setProductCount(productsResult.count);
+      if (templatesResult.count !== null) setTemplateCount(templatesResult.count);
+    } catch (err) {
+      console.error('Error fetching counts:', err);
+    }
+  };
 
   useEffect(() => {
     filterOffers();
@@ -471,7 +490,7 @@ export default function OffersPage() {
             <Package className="w-5 h-5" />
             <span>Katalog produktów</span>
             <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
-              {products.length}
+              {productCount}
             </span>
           </div>
           {activeTab === 'catalog' && (
@@ -491,7 +510,7 @@ export default function OffersPage() {
             <FileType className="w-5 h-5" />
             <span>Szablony</span>
             <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[#1c1f33] text-[#e5e4e2]/60">
-              {templates.length}
+              {templateCount}
             </span>
           </div>
           {activeTab === 'templates' && (
