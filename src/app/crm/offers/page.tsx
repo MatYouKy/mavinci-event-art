@@ -9,8 +9,9 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import TechnicalBrochureEditor from './TechnicalBrochureEditor';
 import { OffersListView, OffersTableView, OffersGridView } from './OffersViews';
 import OfferWizard from '@/components/crm/OfferWizard';
+import OfferPageTemplatesEditor from '@/components/crm/OfferPageTemplatesEditor';
 
-type Tab = 'offers' | 'catalog' | 'templates' | 'brochure';
+type Tab = 'offers' | 'catalog' | 'templates' | 'brochure' | 'pages';
 
 interface Offer {
   id: string;
@@ -118,7 +119,7 @@ export default function OffersPage() {
 
   useEffect(() => {
     const tab = searchParams.get('tab') as Tab;
-    if (tab && (tab === 'offers' || tab === 'catalog' || tab === 'templates')) {
+    if (tab && (tab === 'offers' || tab === 'catalog' || tab === 'templates' || tab === 'pages')) {
       setActiveTab(tab);
     }
   }, [searchParams]);
@@ -514,6 +515,23 @@ export default function OffersPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
+
+        <button
+          onClick={() => handleTabChange('pages')}
+          className={`px-6 py-3 font-medium transition-colors relative ${
+            activeTab === 'pages'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <FileText className="w-5 h-5" />
+            <span>Szablony stron</span>
+          </div>
+          {activeTab === 'pages' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
       </div>
 
       {/* Content */}
@@ -569,6 +587,14 @@ export default function OffersPage() {
         <div className="bg-[#1c1f33]/50 rounded-xl border border-[#d3bb73]/20">
           <div className="p-6">
             <TechnicalBrochureEditor employee={employee} />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'pages' && (
+        <div className="bg-[#1c1f33]/50 rounded-xl border border-[#d3bb73]/20">
+          <div className="p-6">
+            <OfferPageTemplatesEditor />
           </div>
         </div>
       )}
