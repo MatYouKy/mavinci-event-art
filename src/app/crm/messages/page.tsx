@@ -457,6 +457,26 @@ export default function MessagesPage() {
         return;
       }
 
+      const attachmentsBase64 = [];
+      if (data.attachments && data.attachments.length > 0) {
+        for (const file of data.attachments) {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const base64 = btoa(
+              new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+            );
+            attachmentsBase64.push({
+              filename: file.name,
+              content: base64,
+              contentType: file.type || 'application/octet-stream',
+            });
+          } catch (err) {
+            console.error('Error converting attachment:', err);
+            showSnackbar(`Błąd konwersji załącznika: ${file.name}`, 'warning');
+          }
+        }
+      }
+
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
 
       const response = await fetch(apiUrl, {
@@ -470,7 +490,7 @@ export default function MessagesPage() {
           to: data.to,
           subject: data.subject,
           body: data.bodyHtml,
-          attachments: data.attachments || [],
+          attachments: attachmentsBase64,
         }),
       });
 

@@ -51,11 +51,18 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig, attachments }: EmailRequest = await req.json();
+    console.log('[send-email] Request received');
+    const requestBody = await req.json();
+    console.log('[send-email] Request body keys:', Object.keys(requestBody));
+
+    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig, attachments }: EmailRequest = requestBody;
 
     if (!to || !subject || !body) {
+      console.error('[send-email] Missing fields:', { to: !!to, subject: !!subject, body: !!body });
       throw new Error("Missing required fields: to, subject, body");
     }
+
+    console.log('[send-email] Sending to:', to);
 
     let smtpSettings: {
       host: string;
@@ -133,13 +140,14 @@ Deno.serve(async (req: Request) => {
       }));
     }
 
+    console.log('[send-email] Sending email with attachments count:', attachments?.length || 0);
     const info = await transporter.sendMail(mailOptions);
+    console.log('[send-email] Email sent successfully. MessageId:', info.messageId);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Zapisz wysłany email w bazie
     const authHeader = req.headers.get("Authorization");
     if (authHeader && emailAccountId) {
       const { data: { user } } = await supabase.auth.getUser(
@@ -160,7 +168,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Zaktualizuj status wiadomości kontaktowej jeśli to odpowiedź
     if (messageId && emailAccountId) {
       await supabase
         .from("contact_messages")
