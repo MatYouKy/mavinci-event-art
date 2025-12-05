@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
             : rgb(0, 0, 0);
 
           let x = field.x;
-          const y = height - field.y;
+          const y = height - field.y - fontSize;
 
           if (field.align === 'center' && field.max_width) {
             const textWidth = font.widthOfTextAtSize(value, fontSize);
