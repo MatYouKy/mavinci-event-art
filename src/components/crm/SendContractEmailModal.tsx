@@ -280,28 +280,15 @@ W razie pytań proszę o kontakt.`,
 
       let attachments: any[] = [];
 
-      try {
-        const pdfPromise = generateContractPDF();
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout')), 10000);
-        });
+      console.log('[SendContract] SKIPPING PDF - sending email without attachment for testing');
+      showSnackbar('Test: Wysyłam bez załącznika PDF', 'info');
 
-        const { base64: contractPdfBase64, filename: contractFilename } = await Promise.race([
-          pdfPromise,
-          timeoutPromise
-        ]);
-
-        attachments = [
-          {
-            filename: contractFilename,
-            content: contractPdfBase64,
-            contentType: 'application/pdf',
-          },
-        ];
-      } catch (pdfError) {
-        console.warn('PDF generation failed, sending without attachment:', pdfError);
-        showSnackbar('Ostrzeżenie: Wysyłam bez załącznika PDF', 'warning');
-      }
+      console.log('[SendContract] Sending email request...', {
+        to: formData.to,
+        subject: formData.subject,
+        hasAttachments: attachments.length > 0,
+        accountId: formData.fromAccountId,
+      });
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
@@ -321,10 +308,16 @@ W razie pytań proszę o kontakt.`,
         }
       );
 
+      console.log('[SendContract] Response received:', response.status, response.statusText);
+
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Błąd podczas wysyłania email');
+        console.error('[SendContract] Error response:', error);
+        throw new Error(error.error || error.message || 'Błąd podczas wysyłania email');
       }
+
+      const result = await response.json();
+      console.log('[SendContract] Success:', result);
 
       await supabase
         .from('contracts')
