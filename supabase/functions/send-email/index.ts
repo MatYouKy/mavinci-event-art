@@ -108,63 +108,47 @@ Deno.serve(async (req: Request) => {
     console.log('[send-email] SMTP settings:', {
       host: smtpSettings.host,
       port: smtpSettings.port,
-      secure: smtpSettings.port === 465,
       username: smtpSettings.username,
     });
 
-    const nodemailer = await import("npm:nodemailer@6.9.7");
+    const relayUrl = Deno.env.get("SMTP_RELAY_URL");
+    const relaySecret = Deno.env.get("SMTP_RELAY_SECRET");
 
-    console.log('[send-email] Creating transporter...');
-    const transporter = nodemailer.default.createTransport({
-      host: smtpSettings.host,
-      port: smtpSettings.port,
-      secure: smtpSettings.port === 465,
-      auth: {
-        user: smtpSettings.username,
-        pass: smtpSettings.password,
-      },
-      tls: {
-        rejectUnauthorized: false
-      },
-      connectionTimeout: 30000,
-      greetingTimeout: 30000,
-      socketTimeout: 60000,
-      debug: true,
-      logger: true,
-    });
-
-    console.log('[send-email] Testing connection...');
-    try {
-      await transporter.verify();
-      console.log('[send-email] SMTP connection verified successfully');
-    } catch (verifyError) {
-      console.error('[send-email] SMTP verification failed:', verifyError);
-      throw new Error(`SMTP connection failed: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`);
+    if (!relayUrl || !relaySecret) {
+      throw new Error("SMTP_RELAY_URL or SMTP_RELAY_SECRET not configured");
     }
 
-    const mailOptions: any = {
-      from: `${smtpSettings.fromName} <${smtpSettings.from}>`,
-      to: to,
-      subject: subject,
-      html: body,
+    console.log('[send-email] Using SMTP relay:', relayUrl);
+
+    const relayPayload = {
+      smtpConfig: smtpSettings,
+      to,
+      subject,
+      body,
+      replyTo,
+      attachments,
     };
 
-    if (replyTo) {
-      mailOptions.replyTo = replyTo;
+    console.log('[send-email] Sending request to relay with attachments count:', attachments?.length || 0);
+
+    const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${relaySecret}`,
+      },
+      body: JSON.stringify(relayPayload),
+    });
+
+    if (!relayResponse.ok) {
+      const errorData = await relayResponse.json();
+      throw new Error(`Relay error: ${errorData.error || 'Unknown error'}`);
     }
 
-    if (attachments && attachments.length > 0) {
-      mailOptions.attachments = attachments.map((att) => ({
-        filename: att.filename,
-        content: att.content,
-        encoding: 'base64',
-        contentType: att.contentType || 'application/octet-stream',
-      }));
-    }
+    const relayResult = await relayResponse.json();
+    const info = { messageId: relayResult.messageId };
 
-    console.log('[send-email] Sending email with attachments count:', attachments?.length || 0);
-    const info = await transporter.sendMail(mailOptions);
-    console.log('[send-email] Email sent successfully. MessageId:', info.messageId);
+    console.log('[send-email] Email sent successfully via relay. MessageId:', info.messageId);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

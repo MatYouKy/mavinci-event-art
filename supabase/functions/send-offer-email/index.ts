@@ -84,20 +84,12 @@ Deno.serve(async (req: Request) => {
       throw new Error("No default email account found for user");
     }
 
-    const nodemailer = await import("npm:nodemailer@6.9.7");
+    const relayUrl = Deno.env.get("SMTP_RELAY_URL");
+    const relaySecret = Deno.env.get("SMTP_RELAY_SECRET");
 
-    const transporter = nodemailer.default.createTransport({
-      host: emailAccount.smtp_host,
-      port: emailAccount.smtp_port,
-      secure: emailAccount.smtp_port === 465,
-      auth: {
-        user: emailAccount.smtp_username,
-        pass: emailAccount.smtp_password,
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
+    if (!relayUrl || !relaySecret) {
+      throw new Error("SMTP_RELAY_URL or SMTP_RELAY_SECRET not configured");
+    }
 
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -106,14 +98,36 @@ Deno.serve(async (req: Request) => {
       </div>
     `;
 
-    const mailOptions = {
-      from: `${emailAccount.from_name} <${emailAccount.email_address}>`,
-      to: to,
-      subject: subject,
-      html: htmlBody,
+    const relayPayload = {
+      smtpConfig: {
+        host: emailAccount.smtp_host,
+        port: emailAccount.smtp_port,
+        username: emailAccount.smtp_username,
+        password: emailAccount.smtp_password,
+        from: emailAccount.email_address,
+        fromName: emailAccount.from_name,
+      },
+      to,
+      subject,
+      body: htmlBody,
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${relaySecret}`,
+      },
+      body: JSON.stringify(relayPayload),
+    });
+
+    if (!relayResponse.ok) {
+      const errorData = await relayResponse.json();
+      throw new Error(`Relay error: ${errorData.error || 'Unknown error'}`);
+    }
+
+    const relayResult = await relayResponse.json();
+    const info = { messageId: relayResult.messageId };
 
     await supabase.from("sent_emails").insert({
       employee_id: user.id,
