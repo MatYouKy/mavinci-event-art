@@ -34,11 +34,15 @@ interface TextFieldConfig {
   type?: 'text' | 'image';
   font_size?: number;
   font_color?: string;
+  font_weight?: 'normal' | 'bold';
+  letter_spacing?: number;
+  line_height?: number;
   max_width?: number;
   align?: 'left' | 'center' | 'right';
   width?: number;
   height?: number;
   border_radius?: number;
+  sample_text?: string;
 }
 
 interface TemplateContent {
@@ -1088,15 +1092,27 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                           style={{
                             fontSize: field.type === 'image' ? '12px' : `${field.font_size || 12}px`,
                             color: field.font_color,
+                            fontWeight: field.font_weight || 'normal',
+                            letterSpacing: field.letter_spacing ? `${field.letter_spacing}px` : 'normal',
+                            lineHeight: field.line_height || 1.5,
                             width: field.type === 'image' ? `${field.width || 100}px` : (field.max_width ? `${field.max_width}px` : 'auto'),
-                            height: field.type === 'image' ? `${field.height || 100}px` : `${(field.font_size || 12) * 1.5}px`,
+                            height: field.type === 'image' ? `${field.height || 100}px` : 'auto',
+                            minHeight: field.type === 'image' ? 'auto' : `${(field.font_size || 12) * (field.line_height || 1.5)}px`,
                             backdropFilter: 'blur(2px)',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
+                            justifyContent: field.align === 'center' ? 'center' : field.align === 'right' ? 'flex-end' : 'flex-start',
+                            padding: '4px 8px',
+                            textAlign: field.align || 'left',
                           }}
                         >
-                          <span className="text-xs font-medium opacity-70">{field.label}</span>
+                          {field.sample_text ? (
+                            <span style={{ fontSize: `${field.font_size || 12}px`, fontWeight: field.font_weight || 'normal' }}>
+                              {field.sample_text}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium opacity-70">{field.label}</span>
+                          )}
                         </div>
                       </Draggable>
                     ))}
@@ -1207,13 +1223,37 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                 ) : (
                   <>
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki</label>
+                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Przykładowy tekst</label>
                       <input
-                        type="number"
-                        value={selectedField.font_size || 12}
-                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_size: parseInt(e.target.value) || 12 })}
+                        type="text"
+                        value={selectedField.sample_text || ''}
+                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { sample_text: e.target.value })}
+                        placeholder="Wpisz tekst do podglądu..."
                         className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
                       />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki</label>
+                        <input
+                          type="number"
+                          value={selectedField.font_size || 12}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_size: parseInt(e.target.value) || 12 })}
+                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Grubość czcionki</label>
+                        <select
+                          value={selectedField.font_weight || 'normal'}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_weight: e.target.value as any })}
+                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        >
+                          <option value="normal">Normalna</option>
+                          <option value="bold">Pogrubiona</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div>
@@ -1230,6 +1270,31 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                           value={selectedField.font_color || '#000000'}
                           onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
                           className="flex-1 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Odstęp liter (px)</label>
+                        <input
+                          type="number"
+                          value={selectedField.letter_spacing || 0}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { letter_spacing: parseFloat(e.target.value) || 0 })}
+                          step="0.1"
+                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wysokość linii</label>
+                        <input
+                          type="number"
+                          value={selectedField.line_height || 1.5}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { line_height: parseFloat(e.target.value) || 1.5 })}
+                          step="0.1"
+                          min="0.5"
+                          max="3"
+                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
                         />
                       </div>
                     </div>

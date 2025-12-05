@@ -21,11 +21,15 @@ interface TextFieldConfig {
   type?: 'text' | 'image';
   font_size?: number;
   font_color?: string;
+  font_weight?: 'normal' | 'bold';
+  letter_spacing?: number;
+  line_height?: number;
   max_width?: number;
   align?: 'left' | 'center' | 'right';
   width?: number;
   height?: number;
   border_radius?: number;
+  sample_text?: string;
 }
 
 function drawCircle(cx: number, cy: number, r: number): string[][] {
@@ -139,7 +143,7 @@ Deno.serve(async (req: Request) => {
         employee_avatar_url: employee.avatar_url || '',
 
         seller_name: 'Mavinci Event & Entertainment',
-        seller_address: 'ul. PrzykBadowa 1, 00-000 Warszawa',
+        seller_address: 'ul. Przykładowa 1, 00-000 Warszawa',
         seller_nip: 'NIP: 1234567890',
       };
 
@@ -230,9 +234,7 @@ Deno.serve(async (req: Request) => {
         }
 
         const fontSize = field.font_size || 12;
-        const font = field.field_name.includes('name') || field.field_name.includes('title')
-          ? boldFont
-          : regularFont;
+        const font = field.font_weight === 'bold' ? boldFont : regularFont;
 
         const colorMatch = field.font_color?.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
         const color = colorMatch
@@ -244,6 +246,8 @@ Deno.serve(async (req: Request) => {
           : rgb(0, 0, 0);
 
         const textValue = String(value);
+        const lineHeight = field.line_height || 1.5;
+
         const textWidth = font.widthOfTextAtSize(textValue, fontSize);
         const maxWidth = field.max_width || width - field.x - 20;
 
@@ -254,18 +258,36 @@ Deno.serve(async (req: Request) => {
           x = field.x - textWidth;
         }
 
-        const y = height - field.y - fontSize;
+        const y = height - field.y - (fontSize * lineHeight);
 
-        console.log(`Drawing text "${textValue}" at x=${x}, y=${y}, fontSize=${fontSize}`);
+        console.log(`Drawing text "${textValue}" at x=${x}, y=${y}, fontSize=${fontSize}, weight=${field.font_weight}, lineHeight=${lineHeight}`);
 
-        page.drawText(textValue, {
-          x,
-          y,
-          size: fontSize,
-          font,
-          color,
-          maxWidth,
-        });
+        if (field.letter_spacing && field.letter_spacing !== 0) {
+          const chars = textValue.split('');
+          let currentX = x;
+
+          for (const char of chars) {
+            page.drawText(char, {
+              x: currentX,
+              y,
+              size: fontSize,
+              font,
+              color,
+            });
+            const charWidth = font.widthOfTextAtSize(char, fontSize);
+            currentX += charWidth + field.letter_spacing;
+          }
+        } else {
+          page.drawText(textValue, {
+            x,
+            y,
+            size: fontSize,
+            font,
+            color,
+            maxWidth,
+            lineHeight: fontSize * lineHeight,
+          });
+        }
       }
     };
 
