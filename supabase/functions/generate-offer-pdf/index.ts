@@ -49,7 +49,14 @@ Deno.serve(async (req: Request) => {
         *,
         organization:organizations(*, location:locations(*)),
         event:events(*, location:locations(*)),
-        created_by_employee:employees(*),
+        created_by_employee:employees(
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          avatar_url
+        ),
         offer_items(
           *,
           product:offer_products(
@@ -72,6 +79,7 @@ Deno.serve(async (req: Request) => {
       const event = offer.event;
       const location = org?.location || {};
       const eventLocation = event?.location || {};
+      const employee = offer.created_by_employee || {};
 
       const data = {
         client_name: org?.name || '',
@@ -82,6 +90,7 @@ Deno.serve(async (req: Request) => {
         client_street: location.street || '',
 
         offer_number: offer.offer_number || '',
+        offer_name: offer.name || '',
         offer_date: offer.created_at ? new Date(offer.created_at).toLocaleDateString('pl-PL') : '',
 
         event_name: event?.name || '',
@@ -89,6 +98,15 @@ Deno.serve(async (req: Request) => {
         event_location: eventLocation.address || eventLocation.city || '',
 
         total_price: offer.total_price ? `${offer.total_price.toFixed(2)} PLN` : '',
+
+        employee_first_name: employee.first_name || '',
+        employee_last_name: employee.last_name || '',
+        employee_full_name: employee.first_name && employee.last_name
+          ? `${employee.first_name} ${employee.last_name}`
+          : '',
+        employee_email: employee.email || '',
+        employee_phone: employee.phone || '',
+        employee_avatar_url: employee.avatar_url || '',
 
         seller_name: 'Mavinci Event & Entertainment',
         seller_address: 'ul. Przyk\u0142adowa 1, 00-000 Warszawa',
@@ -289,8 +307,15 @@ Deno.serve(async (req: Request) => {
 
     const pdfBytes = await mergedPdf.save();
 
-    const offerNumber = offer.offer_number || offerId;
-    const fileName = `oferta-${offerNumber}.pdf`;
+    const sanitizeFileName = (name: string) => {
+      return name
+        .replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s\-_]/g, '')
+        .replace(/\s+/g, '-')
+        .toLowerCase();
+    };
+
+    const offerName = offer.name ? sanitizeFileName(offer.name) : (offer.offer_number || offerId);
+    const fileName = `oferta-${offerName}.pdf`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('generated-offers')
       .upload(fileName, pdfBytes, {
