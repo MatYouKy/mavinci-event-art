@@ -980,37 +980,67 @@ export default function ProductDetailPage() {
               {product.pdf_page_url ? (
                 <div className="space-y-4">
                   <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <FileText className="w-8 h-8 text-[#d3bb73]" />
-                        <div>
-                          <div className="text-[#e5e4e2] font-medium">Strona PDF przesłana</div>
-                          <div className="text-xs text-[#e5e4e2]/60">Kliknij podgląd aby zobaczyć</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={async () => {
+                    <div className="grid grid-cols-[200px_1fr_auto] gap-4 items-start">
+                      {/* Miniaturka PDF po lewej */}
+                      <div className="relative">
+                        {product.pdf_thumbnail_url ? (
+                          <div className="relative group cursor-pointer" onClick={async () => {
                             const { data } = await supabase.storage
                               .from('offer-product-pages')
                               .createSignedUrl(product.pdf_page_url!, 3600);
                             if (data?.signedUrl) window.open(data.signedUrl, '_blank');
-                          }}
-                          className="flex items-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
-                        >
-                          <Eye className="w-4 h-4" />
-                          Podgląd
-                        </button>
-                        {canEdit && (
-                          <button
-                            onClick={handleDeletePdf}
-                            className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Usuń
-                          </button>
+                          }}>
+                            <img
+                              src={`${supabase.storage.from('offer-product-pages').getPublicUrl(product.pdf_thumbnail_url).data.publicUrl}`}
+                              alt="Podgląd PDF"
+                              className="w-full rounded-lg border border-[#d3bb73]/20 hover:border-[#d3bb73]/40 transition-colors"
+                              onError={(e) => {
+                                (async () => {
+                                  const { data } = await supabase.storage
+                                    .from('offer-product-pages')
+                                    .createSignedUrl(product.pdf_thumbnail_url!, 3600);
+                                  if (data?.signedUrl) {
+                                    (e.target as HTMLImageElement).src = data.signedUrl;
+                                  }
+                                })();
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                              <Eye className="w-8 h-8 text-white" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-full aspect-[3/4] bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg flex items-center justify-center">
+                            <FileText className="w-12 h-12 text-[#e5e4e2]/20" />
+                          </div>
                         )}
                       </div>
+
+                      {/* Informacje o PDF */}
+                      <div className="flex flex-col justify-center">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-5 h-5 text-[#d3bb73]" />
+                          <div className="text-[#e5e4e2] font-medium">Strona PDF przesłana</div>
+                        </div>
+                        <div className="text-sm text-[#e5e4e2]/60">
+                          {product.pdf_thumbnail_url
+                            ? 'Kliknij miniaturkę aby otworzyć PDF w nowej karcie'
+                            : 'PDF jest dostępny, ale nie ma miniaturki'}
+                        </div>
+                      </div>
+
+                      {/* Przyciski akcji */}
+                      {canEdit && (
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={handleDeletePdf}
+                            className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm whitespace-nowrap"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Usuń PDF
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 

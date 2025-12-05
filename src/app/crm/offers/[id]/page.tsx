@@ -8,6 +8,22 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 
+interface OfferItem {
+  id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  display_order: number;
+  product?: {
+    id: string;
+    name: string;
+    description: string;
+    pdf_page_url?: string;
+    pdf_thumbnail_url?: string;
+  };
+}
+
 interface Offer {
   id: string;
   offer_number: string;
@@ -32,6 +48,7 @@ interface Offer {
       last_name?: string;
     };
   };
+  offer_items?: OfferItem[];
 }
 
 const statusColors: Record<string, string> = {
@@ -119,6 +136,21 @@ export default function OfferDetailPage() {
             event_date,
             location,
             contact:contacts(email, first_name, last_name)
+          ),
+          offer_items(
+            id,
+            product_id,
+            quantity,
+            unit_price,
+            total_price,
+            display_order,
+            product:offer_products(
+              id,
+              name,
+              description,
+              pdf_page_url,
+              pdf_thumbnail_url
+            )
           )
         `)
         .eq('id', offerId)
@@ -594,16 +626,104 @@ export default function OfferDetailPage() {
             <h2 className="text-lg font-light text-[#e5e4e2] mb-4">
               Pozycje oferty
             </h2>
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-              <p className="text-[#e5e4e2]/60 mb-4">
-                Brak pozycji w ofercie
-              </p>
-              <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 mx-auto">
-                <Plus className="w-4 h-4" />
-                Dodaj pozycję
-              </button>
-            </div>
+            {!offer.offer_items || offer.offer_items.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <p className="text-[#e5e4e2]/60 mb-4">
+                  Brak pozycji w ofercie
+                </p>
+                <button className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 mx-auto">
+                  <Plus className="w-4 h-4" />
+                  Dodaj pozycję
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {offer.offer_items
+                  .sort((a, b) => a.display_order - b.display_order)
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/20 transition-colors"
+                    >
+                      <div className="grid grid-cols-[120px_1fr_auto] gap-4">
+                        {/* Miniaturka */}
+                        <div className="relative w-[120px] h-[160px] rounded-lg overflow-hidden bg-[#1c1f33] border border-[#d3bb73]/10 flex items-center justify-center">
+                          {item.product?.pdf_thumbnail_url ? (
+                            <img
+                              src={`${supabase.storage.from('offer-product-pages').getPublicUrl(item.product.pdf_thumbnail_url).data.publicUrl}`}
+                              alt={item.product?.name || 'Produkt'}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (async () => {
+                                  const { data } = await supabase.storage
+                                    .from('offer-product-pages')
+                                    .createSignedUrl(item.product?.pdf_thumbnail_url!, 3600);
+                                  if (data?.signedUrl) {
+                                    (e.target as HTMLImageElement).src = data.signedUrl;
+                                  }
+                                })();
+                              }}
+                            />
+                          ) : (
+                            <FileText className="w-12 h-12 text-[#e5e4e2]/20" />
+                          )}
+                        </div>
+
+                        {/* Informacje o produkcie */}
+                        <div className="flex flex-col justify-between">
+                          <div>
+                            <h3 className="text-[#e5e4e2] font-medium mb-1">
+                              {item.product?.name || 'Produkt bez nazwy'}
+                            </h3>
+                            {item.product?.description && (
+                              <p className="text-sm text-[#e5e4e2]/60 line-clamp-2">
+                                {item.product.description}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm">
+                            <div>
+                              <span className="text-[#e5e4e2]/60">Ilość: </span>
+                              <span className="text-[#e5e4e2] font-medium">{item.quantity}</span>
+                            </div>
+                            <div>
+                              <span className="text-[#e5e4e2]/60">Cena jedn.: </span>
+                              <span className="text-[#e5e4e2] font-medium">
+                                {item.unit_price.toLocaleString('pl-PL')} zł
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Cena całkowita */}
+                        <div className="flex flex-col items-end justify-between">
+                          <button
+                            onClick={async () => {
+                              if (item.product?.pdf_page_url) {
+                                const { data } = await supabase.storage
+                                  .from('offer-product-pages')
+                                  .createSignedUrl(item.product.pdf_page_url, 3600);
+                                if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                              }
+                            }}
+                            disabled={!item.product?.pdf_page_url}
+                            className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Podgląd PDF
+                          </button>
+                          <div className="text-right">
+                            <div className="text-sm text-[#e5e4e2]/60 mb-1">Wartość</div>
+                            <div className="text-xl font-light text-[#d3bb73]">
+                              {item.total_price.toLocaleString('pl-PL')} zł
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
 
