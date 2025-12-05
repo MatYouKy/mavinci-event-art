@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, rgb } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -107,8 +107,14 @@ Deno.serve(async (req: Request) => {
     ) => {
       if (!textFields || textFields.length === 0) return;
 
-      const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const regularFontUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.ttf';
+      const boldFontUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc4.ttf';
+
+      const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
+      const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
+
+      const regularFont = await pdfDoc.embedFont(regularFontBytes);
+      const boldFont = await pdfDoc.embedFont(boldFontBytes);
 
       const pages = pdfDoc.getPages();
 
@@ -128,8 +134,8 @@ Deno.serve(async (req: Request) => {
 
           const fontSize = field.font_size || 12;
           const font = field.field_name.includes('name') || field.field_name.includes('title')
-            ? helveticaBold
-            : helveticaFont;
+            ? boldFont
+            : regularFont;
 
           const colorMatch = field.font_color?.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
           const color = colorMatch
