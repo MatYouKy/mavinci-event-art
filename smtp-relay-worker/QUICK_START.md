@@ -5,6 +5,23 @@
 Worker który pośredniczy w wysyłaniu emaili dla Supabase Edge Functions.
 Deno Deploy blokuje porty SMTP, więc ten worker na VPS rozwiązuje problem.
 
+## ⚡ Super Szybki Start (Jeśli masz już worker na VPS)
+
+```bash
+cd ~/smtp-relay-worker
+
+# Test wszystkiego
+npm run test
+
+# Jeśli błąd autoryzacji
+npm run compare
+
+# Pełny deploy
+npm run deploy
+```
+
+**To wszystko!** Pozostała część jest dla nowej instalacji.
+
 ## 📦 Instalacja na VPS
 
 ### 1. Skopiuj pliki na VPS

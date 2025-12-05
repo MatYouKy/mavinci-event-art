@@ -2,6 +2,21 @@
 
 Worker Node.js który działa na VPS i pośredniczy w wysyłaniu emaili dla Supabase Edge Functions.
 
+## ⚡ Szybki start
+
+```bash
+cd ~/smtp-relay-worker
+
+# 1. Sprawdź czy działa
+./test-local.sh
+
+# 2. Jeśli błąd autoryzacji
+./compare-secrets.sh
+
+# 3. Zobacz pełną checklistę
+cat CHECKLIST.md
+```
+
 ## 🎯 Problem
 
 Supabase Edge Functions działają na Deno Deploy, który **blokuje porty SMTP** (587, 465, 25).
