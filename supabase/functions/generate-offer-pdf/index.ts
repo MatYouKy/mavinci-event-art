@@ -1,7 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument, rgb } from "npm:pdf-lib@1.17.1";
-import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
+import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -108,14 +107,8 @@ Deno.serve(async (req: Request) => {
     ) => {
       if (!textFields || textFields.length === 0) return;
 
-      const regularFontUrl = 'https://github.com/google/fonts/raw/main/apache/roboto/Roboto-Regular.ttf';
-      const boldFontUrl = 'https://github.com/google/fonts/raw/main/apache/roboto/Roboto-Bold.ttf';
-
-      const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
-      const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
-
-      const regularFont = await pdfDoc.embedFont(regularFontBytes);
-      const boldFont = await pdfDoc.embedFont(boldFontBytes);
+      const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
       const pages = pdfDoc.getPages();
 
@@ -172,7 +165,6 @@ Deno.serve(async (req: Request) => {
     };
 
     const mergedPdf = await PDFDocument.create();
-    mergedPdf.registerFontkit(fontkit);
     const offerData = prepareOfferData(offer);
 
     const addPdfFromTemplate = async (templateType: string) => {
