@@ -435,9 +435,13 @@ Deno.serve(async (req: Request) => {
       throw uploadError;
     }
 
-    const { data: publicUrlData } = supabase.storage
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('generated-offers')
-      .getPublicUrl(filename);
+      .createSignedUrl(filename, 3600);
+
+    if (signedUrlError) {
+      throw signedUrlError;
+    }
 
     await supabase
       .from('offers')
@@ -447,7 +451,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        pdfUrl: publicUrlData.publicUrl,
+        pdfUrl: signedUrlData.signedUrl,
       }),
       {
         headers: {
