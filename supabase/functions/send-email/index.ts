@@ -117,7 +117,10 @@ Deno.serve(async (req: Request) => {
       },
       tls: {
         rejectUnauthorized: false
-      }
+      },
+      connectionTimeout: 30000,
+      greetingTimeout: 30000,
+      socketTimeout: 60000,
     });
 
     const mailOptions: any = {
