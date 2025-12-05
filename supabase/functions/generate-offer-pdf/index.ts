@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, rgb } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -107,8 +107,14 @@ Deno.serve(async (req: Request) => {
     ) => {
       if (!textFields || textFields.length === 0) return;
 
-      const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const regularFontUrl = 'https://cdn.jsdelivr.net/fontsource/fonts/roboto@latest/latin-ext-400-normal.ttf';
+      const boldFontUrl = 'https://cdn.jsdelivr.net/fontsource/fonts/roboto@latest/latin-ext-700-normal.ttf';
+
+      const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
+      const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
+
+      const regularFont = await pdfDoc.embedFont(regularFontBytes);
+      const boldFont = await pdfDoc.embedFont(boldFontBytes);
 
       const pages = pdfDoc.getPages();
 
