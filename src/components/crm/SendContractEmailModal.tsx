@@ -159,40 +159,159 @@ W razie pytań proszę o kontakt.`,
   const generateContractPDF = async (): Promise<{ base64: string; filename: string }> => {
     if (!contract) throw new Error('Brak danych umowy');
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      throw new Error('Brak sesji użytkownika');
+    const { data: contractData, error } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', contractId)
+      .maybeSingle();
+
+    if (error || !contractData) {
+      throw new Error('Nie znaleziono umowy');
     }
 
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-contract-pdf`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          contractId: contractId,
-        }),
-      }
-    );
+    const headerLogoHtml = contractData.show_header_logo && contractData.header_logo_url
+      ? `<div class="contract-header-logo justify-${contractData.header_logo_align || 'start'}">
+          <img src="${contractData.header_logo_url}" alt="Logo" style="height: ${contractData.header_logo_height || 50}px;" />
+        </div>`
+      : '';
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Błąd podczas generowania PDF');
+    const centerLogoHtml = contractData.show_center_logo && contractData.center_logo_url
+      ? `<div class="contract-center-logo">
+          <img src="${contractData.center_logo_url}" alt="Logo" style="height: ${contractData.center_logo_height || 100}px;" />
+        </div>`
+      : '';
+
+    const footerHtml = contractData.show_footer && contractData.footer_content
+      ? `<div class="contract-footer">${contractData.footer_content}</div>`
+      : '';
+
+    const htmlContent = `
+      <div class="contract-a4-page">
+        ${headerLogoHtml}
+        ${centerLogoHtml}
+        <div class="contract-content">${contractData.content}</div>
+        ${footerHtml}
+      </div>
+      <style>
+        .contract-a4-page {
+          position: relative;
+          width: 210mm;
+          padding: 20mm 25mm 30mm;
+          min-height: 297mm;
+          background: white;
+          font-family: Arial, sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          color: #000;
+          display: flex;
+          flex-direction: column;
+          box-sizing: border-box;
+        }
+        .contract-header-logo {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          margin-bottom: 4mm;
+          flex-shrink: 0;
+        }
+        .contract-header-logo.justify-start {
+          justify-content: flex-start;
+        }
+        .contract-header-logo.justify-center {
+          justify-content: center;
+        }
+        .contract-header-logo.justify-end {
+          justify-content: flex-end;
+        }
+        .contract-header-logo img {
+          height: auto;
+          object-fit: contain;
+          max-width: 80%;
+        }
+        .contract-center-logo {
+          text-align: center;
+          margin-bottom: 10mm;
+          flex-shrink: 0;
+        }
+        .contract-center-logo img {
+          height: auto;
+          object-fit: contain;
+          max-width: 80%;
+        }
+        .contract-content {
+          flex: 1;
+          text-align: justify;
+          color: #000;
+          font-family: Arial, sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+        }
+        .contract-content p {
+          margin: 0;
+          padding: 0;
+          text-align: justify;
+          color: #000;
+        }
+        .contract-content h1, .contract-content h2, .contract-content h3 {
+          margin-top: 1.5em;
+          margin-bottom: 0.75em;
+          font-weight: bold;
+          color: #000;
+        }
+        .contract-footer {
+          display: flex;
+          justify-content: space-between;
+          border-top: 1px solid #d3bb73;
+          margin-top: auto;
+          width: 100%;
+          min-height: 15mm;
+          padding-top: 5px;
+          background: white;
+          flex-shrink: 0;
+          opacity: 0.7;
+        }
+      </style>
+    `;
+
+    const html2pdf = (await import('html2pdf.js')).default;
+
+    const element = document.createElement('div');
+    element.innerHTML = htmlContent;
+    element.style.position = 'absolute';
+    element.style.left = '-9999px';
+    document.body.appendChild(element);
+
+    try {
+      const pdfBlob = await html2pdf()
+        .set({
+          margin: 0,
+          filename: `${contractData.contract_number}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        })
+        .from(element)
+        .outputPdf('blob');
+
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+
+      reader.readAsDataURL(pdfBlob);
+      const base64 = await base64Promise;
+
+      return {
+        base64,
+        filename: `${contractData.contract_number}.pdf`,
+      };
+    } finally {
+      document.body.removeChild(element);
     }
-
-    const result = await response.json();
-
-    if (!result.success || !result.pdf) {
-      throw new Error('Nie udało się wygenerować PDF');
-    }
-
-    return {
-      base64: result.pdf,
-      filename: result.filename,
-    };
   };
 
   const fetchEmailAccounts = async () => {
