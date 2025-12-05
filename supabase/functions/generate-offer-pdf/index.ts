@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
       const location = org?.location || {};
       const eventLocation = event?.location || {};
 
-      return {
+      const data = {
         client_name: org?.name || '',
         client_address: location.address || `${location.street || ''} ${location.city || ''}`.trim(),
         client_nip: org?.nip || '',
@@ -93,6 +93,9 @@ Deno.serve(async (req: Request) => {
         seller_address: 'ul. Przykładowa 1, 00-000 Warszawa',
         seller_nip: 'NIP: 1234567890',
       };
+
+      console.log('Prepared offer data:', JSON.stringify(data, null, 2));
+      return data;
     };
 
     const overlayTextOnPages = async (
@@ -115,7 +118,13 @@ Deno.serve(async (req: Request) => {
 
         for (const field of textFields) {
           const value = data[field.field_name] || '';
-          if (!value) continue;
+
+          console.log(`Processing field ${field.field_name}: value="${value}"`);
+
+          if (!value) {
+            console.log(`Skipping field ${field.field_name} - no value`);
+            continue;
+          }
 
           const fontSize = field.font_size || 12;
           const font = field.field_name.includes('name') || field.field_name.includes('title')
@@ -141,6 +150,8 @@ Deno.serve(async (req: Request) => {
             const textWidth = font.widthOfTextAtSize(value, fontSize);
             x = field.x + field.max_width - textWidth;
           }
+
+          console.log(`Drawing text "${value}" at x=${x}, y=${y}, fontSize=${fontSize}, pageHeight=${height}`);
 
           page.drawText(value, {
             x,
