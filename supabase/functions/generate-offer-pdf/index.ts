@@ -53,12 +53,12 @@ Deno.serve(async (req: Request) => {
         *,
         organization:organizations(*, location:locations(*)),
         event:events(*, location:locations(*)),
-        created_by_employee:employees(
+        created_by_employee:employees!created_by(
           id,
-          first_name,
-          last_name,
+          name,
+          surname,
           email,
-          phone,
+          phone_number,
           avatar_url
         ),
         offer_items(
@@ -103,13 +103,13 @@ Deno.serve(async (req: Request) => {
 
         total_price: offer.total_price ? `${offer.total_price.toFixed(2)} PLN` : '',
 
-        employee_first_name: employee.first_name || '',
-        employee_last_name: employee.last_name || '',
-        employee_full_name: employee.first_name && employee.last_name
-          ? `${employee.first_name} ${employee.last_name}`
+        employee_first_name: employee.name || '',
+        employee_last_name: employee.surname || '',
+        employee_full_name: employee.name && employee.surname
+          ? `${employee.name} ${employee.surname}`
           : '',
         employee_email: employee.email || '',
-        employee_phone: employee.phone || '',
+        employee_phone: employee.phone_number || '',
         employee_avatar_url: employee.avatar_url || '',
 
         seller_name: 'Mavinci Event & Entertainment',
