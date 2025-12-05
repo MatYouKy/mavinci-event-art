@@ -5,6 +5,7 @@ import { FileText, Download, Edit, Save, X, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { numberToWords } from '@/lib/offerTemplateHelpers';
 import '@/styles/contractA4.css';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import SendContractEmailModal from './SendContractEmailModal';
@@ -12,83 +13,6 @@ import SendContractEmailModal from './SendContractEmailModal';
 interface Props {
   eventId: string;
 }
-
-const numberToWords = (num: number): string => {
-  const units = [
-    '',
-    'jeden',
-    'dwa',
-    'trzy',
-    'cztery',
-    'pięć',
-    'sześć',
-    'siedem',
-    'osiem',
-    'dziewięć',
-  ];
-  const teens = [
-    'dziesięć',
-    'jedenaście',
-    'dwanaście',
-    'trzynaście',
-    'czternaście',
-    'piętnaście',
-    'szesnaście',
-    'siedemnaście',
-    'osiemnaście',
-    'dziewiętnaście',
-  ];
-  const tens = [
-    '',
-    '',
-    'dwadzieścia',
-    'trzydzieści',
-    'czterdzieści',
-    'pięćdziesiąt',
-    'sześćdziesiąt',
-    'siedemdziesiąt',
-    'osiemdziesiąt',
-    'dziewięćdziesiąt',
-  ];
-  const hundreds = [
-    '',
-    'sto',
-    'dwieście',
-    'trzysta',
-    'czterysta',
-    'pięćset',
-    'sześćset',
-    'siedemset',
-    'osiemset',
-    'dziewięćset',
-  ];
-
-  if (num === 0) return 'zero';
-  if (num < 0) return 'minus ' + numberToWords(-num);
-
-  let result = '';
-  const thousand = Math.floor(num / 1000);
-  const remainder = num % 1000;
-
-  if (thousand > 0) {
-    if (thousand === 1) result += 'tysiąc ';
-    else if (thousand < 10) result += units[thousand] + ' tysiące ';
-    else result += numberToWords(thousand) + ' tysięcy ';
-  }
-
-  const hundred = Math.floor(remainder / 100);
-  const ten = Math.floor((remainder % 100) / 10);
-  const unit = remainder % 10;
-
-  if (hundred > 0) result += hundreds[hundred] + ' ';
-  if (ten === 1) result += teens[unit] + ' ';
-  else {
-    if (ten > 0) result += tens[ten] + ' ';
-    if (unit > 0) result += units[unit] + ' ';
-  }
-
-  return result.trim();
-};
 
 const replaceVariables = (template: string, variables: Record<string, string>): string => {
   let result = template;
@@ -316,7 +240,7 @@ export function EventContractTab({ eventId }: Props) {
           </ul>`
           : '<p style="font-style: italic; color: #666;">Brak pozycji w ofercie</p>';
 
-      const { generateOfferItemsTable, numberToWords } = await import('@/lib/offerTemplateHelpers');
+      const { generateOfferItemsTable } = await import('@/lib/offerTemplateHelpers');
       const offerItemsTable = generateOfferItemsTable(offerItemsArray || []);
 
       const varsMap: Record<string, string> = {
