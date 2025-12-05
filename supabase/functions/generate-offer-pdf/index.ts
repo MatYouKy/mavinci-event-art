@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +10,17 @@ const corsHeaders = {
 
 interface GenerateOfferPdfRequest {
   offerId: string;
+}
+
+interface TextFieldConfig {
+  field_name: string;
+  label: string;
+  x: number;
+  y: number;
+  font_size: number;
+  font_color?: string;
+  max_width?: number;
+  align?: 'left' | 'center' | 'right';
 }
 
 Deno.serve(async (req: Request) => {
@@ -35,7 +46,8 @@ Deno.serve(async (req: Request) => {
       .from("offers")
       .select(`
         *,
-        organization:organizations(*),
+        organization:organizations(*, location:locations(*)),
+        event:events(*, location:locations(*)),
         created_by_employee:employees(*),
         offer_items(
           *,
@@ -54,13 +66,101 @@ Deno.serve(async (req: Request) => {
       throw new Error("Offer not found: " + offerError?.message);
     }
 
+    const prepareOfferData = (offer: any) => {
+      const org = offer.organization;
+      const event = offer.event;
+      const location = org?.location || {};
+      const eventLocation = event?.location || {};
+
+      return {
+        client_name: org?.name || '',
+        client_address: location.address || `${location.street || ''} ${location.city || ''}`.trim(),
+        client_nip: org?.nip || '',
+        client_city: location.city || '',
+        client_postal_code: location.postal_code || '',
+        client_street: location.street || '',
+
+        offer_number: offer.offer_number || '',
+        offer_date: offer.created_at ? new Date(offer.created_at).toLocaleDateString('pl-PL') : '',
+
+        event_name: event?.name || '',
+        event_date: event?.start_date ? new Date(event.start_date).toLocaleDateString('pl-PL') : '',
+        event_location: eventLocation.address || eventLocation.city || '',
+
+        total_price: offer.total_price ? `${offer.total_price.toFixed(2)} PLN` : '',
+
+        seller_name: 'Mavinci Event & Entertainment',
+        seller_address: 'ul. Przykładowa 1, 00-000 Warszawa',
+        seller_nip: 'NIP: 1234567890',
+      };
+    };
+
+    const overlayTextOnPages = async (
+      pdfDoc: PDFDocument,
+      startPageIndex: number,
+      pageCount: number,
+      textFields: TextFieldConfig[],
+      data: Record<string, string>
+    ) => {
+      if (!textFields || textFields.length === 0) return;
+
+      const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      const pages = pdfDoc.getPages();
+
+      for (let i = startPageIndex; i < startPageIndex + pageCount && i < pages.length; i++) {
+        const page = pages[i];
+        const { height } = page.getSize();
+
+        for (const field of textFields) {
+          const value = data[field.field_name] || '';
+          if (!value) continue;
+
+          const fontSize = field.font_size || 12;
+          const font = field.field_name.includes('name') || field.field_name.includes('title')
+            ? helveticaBold
+            : helveticaFont;
+
+          const colorMatch = field.font_color?.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
+          const color = colorMatch
+            ? rgb(
+                parseInt(colorMatch[1], 16) / 255,
+                parseInt(colorMatch[2], 16) / 255,
+                parseInt(colorMatch[3], 16) / 255
+              )
+            : rgb(0, 0, 0);
+
+          let x = field.x;
+          const y = height - field.y;
+
+          if (field.align === 'center' && field.max_width) {
+            const textWidth = font.widthOfTextAtSize(value, fontSize);
+            x = field.x + (field.max_width - textWidth) / 2;
+          } else if (field.align === 'right' && field.max_width) {
+            const textWidth = font.widthOfTextAtSize(value, fontSize);
+            x = field.x + field.max_width - textWidth;
+          }
+
+          page.drawText(value, {
+            x,
+            y,
+            size: fontSize,
+            font,
+            color,
+          });
+        }
+      }
+    };
+
     const mergedPdf = await PDFDocument.create();
+    const offerData = prepareOfferData(offer);
 
     const addPdfFromTemplate = async (templateType: string) => {
       try {
         const { data: template } = await supabase
           .from('offer_page_templates')
-          .select('pdf_url')
+          .select('pdf_url, text_fields_config')
           .eq('type', templateType)
           .eq('is_default', true)
           .eq('is_active', true)
@@ -74,8 +174,21 @@ Deno.serve(async (req: Request) => {
           if (pdfData) {
             const arrayBuffer = await pdfData.arrayBuffer();
             const templatePdf = await PDFDocument.load(arrayBuffer);
+
+            const startPageIndex = mergedPdf.getPageCount();
             const copiedPages = await mergedPdf.copyPages(templatePdf, templatePdf.getPageIndices());
             copiedPages.forEach((page) => mergedPdf.addPage(page));
+
+            if (template.text_fields_config && Array.isArray(template.text_fields_config)) {
+              await overlayTextOnPages(
+                mergedPdf,
+                startPageIndex,
+                copiedPages.length,
+                template.text_fields_config as TextFieldConfig[],
+                offerData
+              );
+            }
+
             return true;
           }
         }

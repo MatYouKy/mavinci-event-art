@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -18,8 +18,20 @@ interface OfferPageTemplate {
   is_default: boolean;
   is_active: boolean;
   pdf_url?: string;
+  text_fields_config?: TextFieldConfig[];
   created_by: string;
   created_at: string;
+}
+
+interface TextFieldConfig {
+  field_name: string;
+  label: string;
+  x: number;
+  y: number;
+  font_size: number;
+  font_color: string;
+  max_width?: number;
+  align?: 'left' | 'center' | 'right';
 }
 
 interface TemplateContent {
@@ -57,6 +69,7 @@ export default function OfferPageTemplatesEditor() {
   const [showContentEditor, setShowContentEditor] = useState(false);
   const [editingContent, setEditingContent] = useState<TemplateContent[]>([]);
   const [uploadingPdf, setUploadingPdf] = useState<string | null>(null);
+  const [showTextFieldsEditor, setShowTextFieldsEditor] = useState(false);
 
   useEffect(() => {
     fetchTemplates();
@@ -79,6 +92,11 @@ export default function OfferPageTemplatesEditor() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditTextFields = (template: OfferPageTemplate) => {
+    setEditingTemplate(template);
+    setShowTextFieldsEditor(true);
   };
 
   const handleCreateTemplate = () => {
@@ -335,13 +353,22 @@ export default function OfferPageTemplatesEditor() {
                       </div>
                     </label>
                     {template.pdf_url && (
-                      <button
-                        onClick={() => handleDeletePdf(template)}
-                        className="p-2 text-orange-400 hover:bg-orange-400/10 rounded-lg transition-colors"
-                        title="Usuń PDF"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleEditTextFields(template)}
+                          className="p-2 text-green-400 hover:bg-green-400/10 rounded-lg transition-colors"
+                          title="Konfiguruj pola tekstowe"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePdf(template)}
+                          className="p-2 text-orange-400 hover:bg-orange-400/10 rounded-lg transition-colors"
+                          title="Usuń PDF"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => handleEditTemplate(template)}
@@ -391,6 +418,22 @@ export default function OfferPageTemplatesEditor() {
             setShowContentEditor(false);
             setEditingTemplate(null);
             setEditingContent([]);
+            fetchTemplates();
+          }}
+        />
+      )}
+
+      {/* Edytor pól tekstowych */}
+      {showTextFieldsEditor && editingTemplate && (
+        <TextFieldsEditorModal
+          template={editingTemplate}
+          onClose={() => {
+            setShowTextFieldsEditor(false);
+            setEditingTemplate(null);
+          }}
+          onSuccess={() => {
+            setShowTextFieldsEditor(false);
+            setEditingTemplate(null);
             fetchTemplates();
           }}
         />
@@ -688,6 +731,333 @@ function ContentEditorModal({ template, content, onClose, onSuccess }: { templat
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const AVAILABLE_FIELDS = [
+  { value: 'client_name', label: 'Nazwa klienta' },
+  { value: 'client_address', label: 'Adres klienta' },
+  { value: 'client_nip', label: 'NIP klienta' },
+  { value: 'client_city', label: 'Miasto klienta' },
+  { value: 'client_postal_code', label: 'Kod pocztowy klienta' },
+  { value: 'client_street', label: 'Ulica klienta' },
+  { value: 'offer_number', label: 'Numer oferty' },
+  { value: 'offer_date', label: 'Data oferty' },
+  { value: 'event_name', label: 'Nazwa eventu' },
+  { value: 'event_date', label: 'Data eventu' },
+  { value: 'event_location', label: 'Lokalizacja eventu' },
+  { value: 'total_price', label: 'Całkowita cena' },
+  { value: 'seller_name', label: 'Nazwa sprzedawcy' },
+  { value: 'seller_address', label: 'Adres sprzedawcy' },
+  { value: 'seller_nip', label: 'NIP sprzedawcy' },
+];
+
+function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: OfferPageTemplate; onClose: () => void; onSuccess: () => void }) {
+  const { showSnackbar } = useSnackbar();
+  const [loading, setLoading] = useState(false);
+  const [textFields, setTextFields] = useState<TextFieldConfig[]>(template.text_fields_config || []);
+  const [editingField, setEditingField] = useState<TextFieldConfig | null>(null);
+
+  const handleAddField = () => {
+    const newField: TextFieldConfig = {
+      field_name: 'client_name',
+      label: 'Nazwa klienta',
+      x: 100,
+      y: 100,
+      font_size: 12,
+      font_color: '#000000',
+      align: 'left',
+    };
+    setEditingField(newField);
+  };
+
+  const handleSaveField = () => {
+    if (!editingField) return;
+
+    if (textFields.find(f => f.field_name === editingField.field_name && f !== editingField)) {
+      showSnackbar('Pole o tej nazwie już istnieje', 'error');
+      return;
+    }
+
+    const existingIndex = textFields.findIndex(f => f.field_name === editingField.field_name);
+    if (existingIndex >= 0) {
+      setTextFields(prev => prev.map((f, i) => i === existingIndex ? editingField : f));
+    } else {
+      setTextFields(prev => [...prev, editingField]);
+    }
+    setEditingField(null);
+  };
+
+  const handleDeleteField = (fieldName: string) => {
+    setTextFields(prev => prev.filter(f => f.field_name !== fieldName));
+  };
+
+  const handleSaveAll = async () => {
+    try {
+      setLoading(true);
+
+      const { error } = await supabase
+        .from('offer_page_templates')
+        .update({ text_fields_config: textFields })
+        .eq('id', template.id);
+
+      if (error) throw error;
+
+      showSnackbar('Konfiguracja pól zapisana', 'success');
+      onSuccess();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd zapisu', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="text-xl font-light text-[#e5e4e2]">Konfiguracja pól tekstowych: {template.name}</h3>
+            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+              Określ pozycje i wygląd dynamicznych pól na PDF
+            </p>
+          </div>
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="mb-6">
+            <button
+              onClick={handleAddField}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj pole
+            </button>
+          </div>
+
+          {textFields.length === 0 ? (
+            <div className="text-center py-12">
+              <Settings className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+              <p className="text-[#e5e4e2]/60 mb-4">
+                Brak skonfigurowanych pól tekstowych
+              </p>
+              <p className="text-sm text-[#e5e4e2]/40 mb-4">
+                Kliknij "Dodaj pole" aby oznaczyć miejsca na dane dynamiczne
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {textFields.map((field, index) => (
+                <div
+                  key={index}
+                  className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/20 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h4 className="font-medium text-[#e5e4e2] mb-1">{field.label}</h4>
+                      <p className="text-xs text-[#e5e4e2]/40">{field.field_name}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditingField(field)}
+                        className="p-1.5 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteField(field.field_name)}
+                        className="p-1.5 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Pozycja: </span>
+                      <span className="text-[#e5e4e2]">X: {field.x}, Y: {field.y}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Rozmiar: </span>
+                      <span className="text-[#e5e4e2]">{field.font_size}px</span>
+                    </div>
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Kolor: </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span
+                          className="w-4 h-4 rounded border border-[#d3bb73]/20"
+                          style={{ backgroundColor: field.font_color }}
+                        />
+                        <span className="text-[#e5e4e2]">{field.font_color}</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#e5e4e2]/60">Wyrównanie: </span>
+                      <span className="text-[#e5e4e2]">{field.align || 'left'}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
+          >
+            Anuluj
+          </button>
+          <button
+            onClick={handleSaveAll}
+            disabled={loading}
+            className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {loading ? 'Zapisywanie...' : 'Zapisz konfigurację'}
+          </button>
+        </div>
+      </div>
+
+      {/* Modal edycji pojedynczego pola */}
+      {editingField && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full">
+            <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
+              <h3 className="text-xl font-light text-[#e5e4e2]">
+                {textFields.includes(editingField) ? 'Edytuj pole' : 'Nowe pole'}
+              </h3>
+              <button
+                onClick={() => setEditingField(null)}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pole danych *</label>
+                <select
+                  value={editingField.field_name}
+                  onChange={(e) => {
+                    const selected = AVAILABLE_FIELDS.find(f => f.value === e.target.value);
+                    setEditingField({
+                      ...editingField,
+                      field_name: e.target.value,
+                      label: selected?.label || e.target.value,
+                    });
+                  }}
+                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                >
+                  {AVAILABLE_FIELDS.map(field => (
+                    <option key={field.value} value={field.value}>
+                      {field.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pozycja X (px) *</label>
+                  <input
+                    type="number"
+                    value={editingField.x}
+                    onChange={(e) => setEditingField({ ...editingField, x: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pozycja Y (px) *</label>
+                  <input
+                    type="number"
+                    value={editingField.y}
+                    onChange={(e) => setEditingField({ ...editingField, y: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki (px) *</label>
+                  <input
+                    type="number"
+                    value={editingField.font_size}
+                    onChange={(e) => setEditingField({ ...editingField, font_size: parseInt(e.target.value) || 12 })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor czcionki *</label>
+                  <input
+                    type="color"
+                    value={editingField.font_color}
+                    onChange={(e) => setEditingField({ ...editingField, font_color: e.target.value })}
+                    className="w-full h-10 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-2 py-1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Maksymalna szerokość (px)</label>
+                  <input
+                    type="number"
+                    value={editingField.max_width || ''}
+                    onChange={(e) => setEditingField({ ...editingField, max_width: parseInt(e.target.value) || undefined })}
+                    placeholder="Opcjonalne"
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyrównanie</label>
+                  <select
+                    value={editingField.align || 'left'}
+                    onChange={(e) => setEditingField({ ...editingField, align: e.target.value as any })}
+                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  >
+                    <option value="left">Lewo</option>
+                    <option value="center">Środek</option>
+                    <option value="right">Prawo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                <p className="text-sm text-blue-400 mb-2">Wskazówki:</p>
+                <ul className="text-xs text-blue-400/80 space-y-1 list-disc list-inside">
+                  <li>Pozycje X i Y odnoszą się do lewego górnego rogu strony PDF</li>
+                  <li>Y=0 to góra strony, większe wartości przesuwają tekst w dół</li>
+                  <li>Maksymalna szerokość pozwala na zawijanie długiego tekstu</li>
+                  <li>Wyrównanie działa tylko gdy ustawiona jest maksymalna szerokość</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end">
+              <button
+                onClick={() => setEditingField(null)}
+                className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleSaveField}
+                className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90"
+              >
+                {textFields.includes(editingField) ? 'Aktualizuj' : 'Dodaj pole'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
