@@ -17,12 +17,42 @@ if (!RELAY_SECRET) {
 
 function verifyAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || authHeader !== `Bearer ${RELAY_SECRET}`) {
+
+  console.log('🔐 Authorization check:');
+  console.log(`   Received header: ${authHeader ? authHeader.substring(0, 20) + '...' : 'MISSING'}`);
+  console.log(`   Expected: Bearer ${RELAY_SECRET.substring(0, 10)}...`);
+
+  if (!authHeader) {
+    console.log('❌ No authorization header provided');
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: No authorization header'
+    });
+  }
+
+  if (!authHeader.startsWith('Bearer ')) {
+    console.log('❌ Invalid authorization format (should be "Bearer <token>")');
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Invalid authorization format'
+    });
+  }
+
+  const providedSecret = authHeader.replace('Bearer ', '');
+  const expectedSecret = RELAY_SECRET;
+
+  if (providedSecret !== expectedSecret) {
+    console.log('❌ Secret mismatch');
+    console.log(`   Provided length: ${providedSecret.length}`);
+    console.log(`   Expected length: ${expectedSecret.length}`);
+    console.log(`   First 10 chars match: ${providedSecret.substring(0, 10) === expectedSecret.substring(0, 10)}`);
     return res.status(401).json({
       success: false,
       error: 'Unauthorized: Invalid relay secret'
     });
   }
+
+  console.log('✅ Authorization successful');
   next();
 }
 
