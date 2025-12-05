@@ -1076,6 +1076,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                             fontSize: `${field.font_size}px`,
                             color: field.font_color,
                             minWidth: '120px',
+                            width: field.max_width ? `${field.max_width}px` : 'auto',
                             backdropFilter: 'blur(4px)',
                           }}
                         >
@@ -1086,6 +1087,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                           </div>
                           <div className="text-xs opacity-60 mt-0.5 font-mono">
                             X: {Math.round(field.x)}, Y: {Math.round(field.y)}
+                            {field.max_width && ` | W: ${field.max_width}px`}
                           </div>
                         </div>
                       </Draggable>

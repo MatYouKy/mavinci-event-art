@@ -289,7 +289,8 @@ Deno.serve(async (req: Request) => {
 
     const pdfBytes = await mergedPdf.save();
 
-    const fileName = `offer-${offerId}-${Date.now()}.pdf`;
+    const offerNumber = offer.offer_number || offerId;
+    const fileName = `oferta-${offerNumber}.pdf`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('generated-offers')
       .upload(fileName, pdfBytes, {
