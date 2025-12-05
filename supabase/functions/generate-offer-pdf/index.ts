@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PDFDocument, rgb } from "npm:pdf-lib@1.17.1";
+import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,7 +91,7 @@ Deno.serve(async (req: Request) => {
         total_price: offer.total_price ? `${offer.total_price.toFixed(2)} PLN` : '',
 
         seller_name: 'Mavinci Event & Entertainment',
-        seller_address: 'ul. Przykładowa 1, 00-000 Warszawa',
+        seller_address: 'ul. Przyk\u0142adowa 1, 00-000 Warszawa',
         seller_nip: 'NIP: 1234567890',
       };
 
@@ -106,6 +107,8 @@ Deno.serve(async (req: Request) => {
       data: Record<string, string>
     ) => {
       if (!textFields || textFields.length === 0) return;
+
+      pdfDoc.registerFontkit(fontkit);
 
       const regularFontUrl = 'https://cdn.jsdelivr.net/fontsource/fonts/roboto@latest/latin-ext-400-normal.ttf';
       const boldFontUrl = 'https://cdn.jsdelivr.net/fontsource/fonts/roboto@latest/latin-ext-700-normal.ttf';
