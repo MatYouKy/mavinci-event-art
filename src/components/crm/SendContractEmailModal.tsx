@@ -278,7 +278,30 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
-      const { base64: contractPdfBase64, filename: contractFilename } = await generateContractPDF();
+      let attachments: any[] = [];
+
+      try {
+        const pdfPromise = generateContractPDF();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout')), 10000);
+        });
+
+        const { base64: contractPdfBase64, filename: contractFilename } = await Promise.race([
+          pdfPromise,
+          timeoutPromise
+        ]);
+
+        attachments = [
+          {
+            filename: contractFilename,
+            content: contractPdfBase64,
+            contentType: 'application/pdf',
+          },
+        ];
+      } catch (pdfError) {
+        console.warn('PDF generation failed, sending without attachment:', pdfError);
+        showSnackbar('Ostrzeżenie: Wysyłam bez załącznika PDF', 'warning');
+      }
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
@@ -293,13 +316,7 @@ W razie pytań proszę o kontakt.`,
             to: formData.to,
             subject: formData.subject,
             body: previewHtml,
-            attachments: [
-              {
-                filename: contractFilename,
-                content: contractPdfBase64,
-                contentType: 'application/pdf',
-              },
-            ],
+            attachments: attachments,
           }),
         }
       );
@@ -470,7 +487,7 @@ W razie pytań proszę o kontakt.`,
 
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
                 <p className="text-xs text-amber-400">
-                  <strong>Wskazówka:</strong> Po wysłaniu umowy status zostanie automatycznie zmieniony na "Wysłana", a umowa zostanie załączona jako plik PDF.
+                  <strong>Wskazówka:</strong> Po wysłaniu umowy status zostanie automatycznie zmieniony na &quot;Wysłana&quot;, a umowa zostanie załączona jako plik PDF.
                 </p>
               </div>
             </>
