@@ -411,12 +411,32 @@ export function EventContractTab({ eventId }: Props) {
   };
 
   const handleSave = () => {
-    setVariables(editedVariables);
+    const updatedVariables = { ...editedVariables };
+
+    const extractNumber = (value: string) => {
+      if (!value) return 0;
+      const cleaned = value.replace(/\s/g, '').replace(',', '.').replace(/[^\d.]/g, '');
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? 0 : Math.round(num);
+    };
+
+    if (updatedVariables.budget) {
+      const budgetNum = extractNumber(updatedVariables.budget);
+      updatedVariables.budget_words = numberToWords(budgetNum);
+    }
+
+    if (updatedVariables.deposit_amount) {
+      const depositNum = extractNumber(updatedVariables.deposit_amount);
+      updatedVariables.deposit_words = numberToWords(depositNum);
+    }
+
+    setVariables(updatedVariables);
+    setEditedVariables(updatedVariables);
 
     try {
       const parsed = JSON.parse(originalTemplate);
       if (parsed.pages && Array.isArray(parsed.pages)) {
-        const pages = parsed.pages.map((page: string) => replaceVariables(page, editedVariables));
+        const pages = parsed.pages.map((page: string) => replaceVariables(page, updatedVariables));
         setContractContent(
           JSON.stringify({
             pages,
@@ -424,13 +444,13 @@ export function EventContractTab({ eventId }: Props) {
           }),
         );
       } else if (Array.isArray(parsed)) {
-        const pages = parsed.map((page: string) => replaceVariables(page, editedVariables));
+        const pages = parsed.map((page: string) => replaceVariables(page, updatedVariables));
         setContractContent(JSON.stringify(pages));
       } else {
-        setContractContent(replaceVariables(originalTemplate, editedVariables));
+        setContractContent(replaceVariables(originalTemplate, updatedVariables));
       }
     } catch {
-      setContractContent(replaceVariables(originalTemplate, editedVariables));
+      setContractContent(replaceVariables(originalTemplate, updatedVariables));
     }
 
     setEditMode(false);
