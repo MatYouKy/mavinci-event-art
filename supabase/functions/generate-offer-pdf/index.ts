@@ -1,7 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument, rgb } from "npm:pdf-lib@1.17.1";
-import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
+import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,18 +29,6 @@ interface TextFieldConfig {
   height?: number;
   border_radius?: number;
   sample_text?: string;
-}
-
-function drawCircle(cx: number, cy: number, r: number): string[][] {
-  const k = 0.5522847498;
-  return [
-    ['q'],
-    [`${cx + r} ${cy} m`],
-    [`${cx + r} ${cy + r * k} ${cx + r * k} ${cy + r} ${cx} ${cy + r} c`],
-    [`${cx - r * k} ${cy + r} ${cx - r} ${cy + r * k} ${cx - r} ${cy} c`],
-    [`${cx - r} ${cy - r * k} ${cx - r * k} ${cy - r} ${cx} ${cy - r} c`],
-    [`${cx + r * k} ${cy - r} ${cx + r} ${cy - r * k} ${cx + r} ${cy} c`],
-  ];
 }
 
 Deno.serve(async (req: Request) => {
@@ -201,32 +188,12 @@ Deno.serve(async (req: Request) => {
 
             console.log(`Drawing image at x=${field.x}, y=${y}, width=${imgWidth}, height=${imgHeight}`);
 
-            if (field.field_name === 'employee_avatar_url') {
-              const centerX = field.x + imgWidth / 2;
-              const centerY = y + imgHeight / 2;
-              const radius = Math.min(imgWidth, imgHeight) / 2;
-
-              page.pushOperators(
-                ...drawCircle(centerX, centerY, radius),
-                ['W', 'n']
-              );
-
-              page.drawImage(image, {
-                x: field.x,
-                y: y,
-                width: imgWidth,
-                height: imgHeight,
-              });
-
-              page.pushOperators(['Q']);
-            } else {
-              page.drawImage(image, {
-                x: field.x,
-                y: y,
-                width: imgWidth,
-                height: imgHeight,
-              });
-            }
+            page.drawImage(image, {
+              x: field.x,
+              y: y,
+              width: imgWidth,
+              height: imgHeight,
+            });
           } catch (error) {
             console.error(`Error drawing image ${field.field_name}:`, error);
           }
@@ -331,19 +298,8 @@ Deno.serve(async (req: Request) => {
     };
 
     const mergedPdf = await PDFDocument.create();
-    mergedPdf.registerFontkit(fontkit);
-
-    const fontResponse = await fetch(
-      'https://github.com/google/fonts/raw/main/ofl/roboto/static/Roboto-Regular.ttf'
-    );
-    const fontBytes = await fontResponse.arrayBuffer();
-    const regularFont = await mergedPdf.embedFont(fontBytes);
-
-    const boldFontResponse = await fetch(
-      'https://github.com/google/fonts/raw/main/ofl/roboto/static/Roboto-Bold.ttf'
-    );
-    const boldFontBytes = await boldFontResponse.arrayBuffer();
-    const boldFont = await mergedPdf.embedFont(boldFontBytes);
+    const regularFont = await mergedPdf.embedFont(StandardFonts.Helvetica);
+    const boldFont = await mergedPdf.embedFont(StandardFonts.HelveticaBold);
 
     const offerData = prepareOfferData(offer, currentEmployee || {});
 
