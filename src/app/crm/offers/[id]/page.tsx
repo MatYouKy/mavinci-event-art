@@ -377,10 +377,10 @@ export default function OfferDetailPage() {
         throw new Error(result.error || 'Błąd generowania PDF');
       }
 
-      showSnackbar('PDF wygenerowany pomyślnie', 'success');
+      showSnackbar(`PDF wygenerowany pomyślnie (${result.pageCount} stron)`, 'success');
 
-      if (result.pdfUrl) {
-        window.open(result.pdfUrl, '_blank');
+      if (result.downloadUrl) {
+        window.open(result.downloadUrl, '_blank');
       }
 
       fetchOfferDetails();

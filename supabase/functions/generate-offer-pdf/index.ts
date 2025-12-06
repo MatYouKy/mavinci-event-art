@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, rgb } from "npm:pdf-lib@1.17.1";
+import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,15 +21,11 @@ interface TextFieldConfig {
   type?: 'text' | 'image';
   font_size?: number;
   font_color?: string;
-  font_weight?: 'normal' | 'bold';
-  letter_spacing?: number;
-  line_height?: number;
   max_width?: number;
   align?: 'left' | 'center' | 'right';
   width?: number;
   height?: number;
   border_radius?: number;
-  sample_text?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -46,21 +43,8 @@ Deno.serve(async (req: Request) => {
       throw new Error("offerId is required");
     }
 
-    const authHeader = req.headers.get("Authorization");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader!,
-        },
-      },
-    });
-
-    const { data: { user } } = await supabaseClient.auth.getUser();
-
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: offer, error: offerError } = await supabase
@@ -69,6 +53,14 @@ Deno.serve(async (req: Request) => {
         *,
         organization:organizations(*, location:locations(*)),
         event:events(*, location:locations(*)),
+        created_by_employee:employees!created_by(
+          id,
+          name,
+          surname,
+          email,
+          phone_number,
+          avatar_url
+        ),
         offer_items(
           *,
           product:offer_products(
@@ -86,21 +78,12 @@ Deno.serve(async (req: Request) => {
       throw new Error("Offer not found: " + offerError?.message);
     }
 
-    const { data: currentEmployee, error: employeeError } = await supabase
-      .from("employees")
-      .select("id, name, surname, email, phone_number, avatar_url")
-      .eq("id", user?.id)
-      .maybeSingle();
-
-    if (employeeError) {
-      console.error("Error fetching employee:", employeeError);
-    }
-
-    const prepareOfferData = (offer: any, employee: any) => {
+    const prepareOfferData = (offer: any) => {
       const org = offer.organization;
       const event = offer.event;
       const location = org?.location || {};
       const eventLocation = event?.location || {};
+      const employee = offer.created_by_employee || {};
 
       const data = {
         client_name: org?.name || '',
@@ -138,275 +121,276 @@ Deno.serve(async (req: Request) => {
       return data;
     };
 
-    const renderTextFields = async (
-      page: any,
-      fields: TextFieldConfig[],
-      data: any,
-      pdfDoc: any,
-      regularFont: any,
-      boldFont: any
-    ) => {
-      const { width, height } = page.getSize();
+    const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): string[] => {
+      const words = text.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
 
-      for (const field of fields) {
-        const value = data[field.field_name];
-        if (!value) {
-          console.log(`Skipping field ${field.field_name} - no value`);
-          continue;
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const width = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
         }
+      }
 
-        if (field.type === 'image') {
-          if (typeof value !== 'string' || !value.startsWith('http')) {
-            console.log(`Skipping image field ${field.field_name} - invalid URL`);
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+
+      return lines;
+    };
+
+    const overlayTextOnPages = async (
+      pdfDoc: PDFDocument,
+      startPageIndex: number,
+      pageCount: number,
+      textFields: TextFieldConfig[],
+      data: Record<string, string>
+    ) => {
+      if (!textFields || textFields.length === 0) return;
+
+      pdfDoc.registerFontkit(fontkit);
+
+      const regularFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf';
+      const boldFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf';
+
+      const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
+      const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
+
+      const regularFont = await pdfDoc.embedFont(regularFontBytes);
+      const boldFont = await pdfDoc.embedFont(boldFontBytes);
+
+      const pages = pdfDoc.getPages();
+
+      for (let i = startPageIndex; i < startPageIndex + pageCount && i < pages.length; i++) {
+        const page = pages[i];
+        const { height } = page.getSize();
+
+        for (const field of textFields) {
+          const value = data[field.field_name] || '';
+
+          console.log(`Processing field ${field.field_name}: type=${field.type}, value="${value}"`);
+
+          if (!value) {
+            console.log(`Skipping field ${field.field_name} - no value`);
             continue;
           }
 
-          try {
-            console.log(`Fetching image from URL: ${value}`);
-            const imageResponse = await fetch(value);
-            if (!imageResponse.ok) {
-              console.error(`Failed to fetch image: ${imageResponse.status}`);
-              continue;
+          if (field.type === 'image') {
+            try {
+              console.log(`Fetching image from URL: ${value}`);
+              const imageResponse = await fetch(value);
+              if (!imageResponse.ok) {
+                console.error(`Failed to fetch image: ${imageResponse.status}`);
+                continue;
+              }
+
+              const imageBytes = await imageResponse.arrayBuffer();
+              const imageType = imageResponse.headers.get('content-type');
+
+              let image;
+              if (imageType?.includes('png')) {
+                image = await pdfDoc.embedPng(imageBytes);
+              } else if (imageType?.includes('jpeg') || imageType?.includes('jpg')) {
+                image = await pdfDoc.embedJpg(imageBytes);
+              } else {
+                console.error(`Unsupported image type: ${imageType}`);
+                continue;
+              }
+
+              const imgWidth = field.width || 100;
+              const imgHeight = field.height || 100;
+              const y = height - field.y - imgHeight;
+
+              console.log(`Drawing image at x=${field.x}, y=${y}, width=${imgWidth}, height=${imgHeight}`);
+
+              page.drawImage(image, {
+                x: field.x,
+                y: y,
+                width: imgWidth,
+                height: imgHeight,
+              });
+            } catch (error) {
+              console.error(`Error drawing image ${field.field_name}:`, error);
             }
-
-            const imageBytes = await imageResponse.arrayBuffer();
-            const imageType = imageResponse.headers.get('content-type');
-
-            let image;
-            if (imageType?.includes('png')) {
-              image = await pdfDoc.embedPng(imageBytes);
-            } else if (imageType?.includes('jpeg') || imageType?.includes('jpg')) {
-              image = await pdfDoc.embedJpg(imageBytes);
-            } else {
-              console.error(`Unsupported image type: ${imageType}`);
-              continue;
-            }
-
-            const imgWidth = field.width || 100;
-            const imgHeight = field.height || 100;
-            const y = height - field.y - imgHeight;
-
-            console.log(`Drawing image at x=${field.x}, y=${y}, width=${imgWidth}, height=${imgHeight}`);
-
-            page.drawImage(image, {
-              x: field.x,
-              y: y,
-              width: imgWidth,
-              height: imgHeight,
-            });
-          } catch (error) {
-            console.error(`Error drawing image ${field.field_name}:`, error);
+            continue;
           }
-          continue;
-        }
 
-        const fontSize = field.font_size || 12;
-        const font = field.font_weight === 'bold' ? boldFont : regularFont;
+          const fontSize = field.font_size || 12;
+          const font = field.field_name.includes('name') || field.field_name.includes('title')
+            ? boldFont
+            : regularFont;
 
-        const colorMatch = field.font_color?.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
-        const color = colorMatch
-          ? rgb(
-              parseInt(colorMatch[1], 16) / 255,
-              parseInt(colorMatch[2], 16) / 255,
-              parseInt(colorMatch[3], 16) / 255
-            )
-          : rgb(0, 0, 0);
+          const colorMatch = field.font_color?.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
+          const color = colorMatch
+            ? rgb(
+                parseInt(colorMatch[1], 16) / 255,
+                parseInt(colorMatch[2], 16) / 255,
+                parseInt(colorMatch[3], 16) / 255
+              )
+            : rgb(0, 0, 0);
 
-        const textValue = String(value);
-        const lineHeight = field.line_height || 1.5;
+          const lines = field.max_width
+            ? wrapText(value, font, fontSize, field.max_width)
+            : [value];
 
-        const textWidth = font.widthOfTextAtSize(textValue, fontSize);
-        const maxWidth = field.max_width || width - field.x - 20;
+          const lineHeight = fontSize * 1.2;
 
-        let x = field.x;
-        if (field.align === 'center') {
-          x = field.x - textWidth / 2;
-        } else if (field.align === 'right') {
-          x = field.x - textWidth;
-        }
+          for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
+            let x = field.x;
+            const y = height - field.y - fontSize - (lineIndex * lineHeight);
 
-        const y = height - field.y - (fontSize * lineHeight);
+            if (field.align === 'center' && field.max_width) {
+              const textWidth = font.widthOfTextAtSize(line, fontSize);
+              x = field.x + (field.max_width - textWidth) / 2;
+            } else if (field.align === 'right' && field.max_width) {
+              const textWidth = font.widthOfTextAtSize(line, fontSize);
+              x = field.x + field.max_width - textWidth;
+            }
 
-        console.log(`Drawing text "${textValue}" at x=${x}, y=${y}, fontSize=${fontSize}, weight=${field.font_weight}, lineHeight=${lineHeight}`);
+            console.log(`Drawing line ${lineIndex + 1}/${lines.length}: "${line}" at x=${x}, y=${y}`);
 
-        if (field.letter_spacing && field.letter_spacing !== 0) {
-          const chars = textValue.split('');
-          let currentX = x;
-
-          for (const char of chars) {
-            page.drawText(char, {
-              x: currentX,
+            page.drawText(line, {
+              x,
               y,
               size: fontSize,
               font,
               color,
             });
-            const charWidth = font.widthOfTextAtSize(char, fontSize);
-            currentX += charWidth + field.letter_spacing;
           }
-        } else {
-          page.drawText(textValue, {
-            x,
-            y,
-            size: fontSize,
-            font,
-            color,
-            maxWidth,
-            lineHeight: fontSize * lineHeight,
-          });
-        }
-
-        if (field.field_name === 'employee_email' && textValue) {
-          const textWidthActual = font.widthOfTextAtSize(textValue, fontSize);
-          const linkHeight = fontSize * (lineHeight || 1.5);
-
-          page.node.set('Annots', [
-            pdfDoc.context.obj({
-              Type: 'Annot',
-              Subtype: 'Link',
-              Rect: [x, y, x + textWidthActual, y + linkHeight],
-              Border: [0, 0, 0],
-              A: {
-                Type: 'Action',
-                S: 'URI',
-                URI: `mailto:${textValue}`
-              }
-            })
-          ]);
-        }
-
-        if (field.field_name === 'employee_phone' && textValue) {
-          const textWidthActual = font.widthOfTextAtSize(textValue, fontSize);
-          const linkHeight = fontSize * (lineHeight || 1.5);
-          const cleanPhone = textValue.replace(/\s/g, '');
-
-          page.node.set('Annots', [
-            pdfDoc.context.obj({
-              Type: 'Annot',
-              Subtype: 'Link',
-              Rect: [x, y, x + textWidthActual, y + linkHeight],
-              Border: [0, 0, 0],
-              A: {
-                Type: 'Action',
-                S: 'URI',
-                URI: `tel:${cleanPhone}`
-              }
-            })
-          ]);
         }
       }
     };
 
     const mergedPdf = await PDFDocument.create();
-    const regularFont = await mergedPdf.embedFont(StandardFonts.Helvetica);
-    const boldFont = await mergedPdf.embedFont(StandardFonts.HelveticaBold);
-
-    const offerData = prepareOfferData(offer, currentEmployee || {});
+    const offerData = prepareOfferData(offer);
 
     const addPdfFromTemplate = async (templateType: string) => {
       try {
         const { data: template } = await supabase
-          .from("offer_page_templates")
-          .select("*")
-          .eq("type", templateType)
-          .eq("is_active", true)
+          .from('offer_page_templates')
+          .select('pdf_url, text_fields_config')
+          .eq('type', templateType)
+          .eq('is_default', true)
+          .eq('is_active', true)
           .maybeSingle();
 
-        if (!template || !template.pdf_url) {
-          console.log(`No template found for type: ${templateType}`);
-          return;
+        if (template?.pdf_url) {
+          const { data: pdfData } = await supabase.storage
+            .from('offer-template-pages')
+            .download(template.pdf_url);
+
+          if (pdfData) {
+            const arrayBuffer = await pdfData.arrayBuffer();
+            const templatePdf = await PDFDocument.load(arrayBuffer);
+
+            const startPageIndex = mergedPdf.getPageCount();
+            const copiedPages = await mergedPdf.copyPages(templatePdf, templatePdf.getPageIndices());
+            copiedPages.forEach((page) => mergedPdf.addPage(page));
+
+            if (template.text_fields_config && Array.isArray(template.text_fields_config)) {
+              await overlayTextOnPages(
+                mergedPdf,
+                startPageIndex,
+                copiedPages.length,
+                template.text_fields_config as TextFieldConfig[],
+                offerData
+              );
+            }
+
+            return true;
+          }
         }
-
-        console.log(`Processing template ${templateType} from ${template.pdf_url}`);
-
-        const pdfUrl = `${supabaseUrl}/storage/v1/object/public/offer-template-pages/${template.pdf_url}`;
-        const pdfResponse = await fetch(pdfUrl);
-
-        if (!pdfResponse.ok) {
-          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
-        }
-
-        const pdfBytes = await pdfResponse.arrayBuffer();
-        const templatePdf = await PDFDocument.load(pdfBytes);
-
-        const [copiedPage] = await mergedPdf.copyPages(templatePdf, [0]);
-        mergedPdf.addPage(copiedPage);
-
-        if (template.text_fields_config && template.text_fields_config.length > 0) {
-          await renderTextFields(copiedPage, template.text_fields_config, offerData, mergedPdf, regularFont, boldFont);
-        }
-
-        console.log(`Successfully added ${templateType} page`);
       } catch (error) {
-        console.error(`Error adding ${templateType} page:`, error);
+        console.error(`Error adding ${templateType} template:`, error);
       }
+      return false;
     };
 
     await addPdfFromTemplate('cover');
+    await addPdfFromTemplate('about');
 
-    if (offer.offer_items && offer.offer_items.length > 0) {
-      for (const item of offer.offer_items) {
-        if (item.product?.pdf_page_url) {
-          try {
-            console.log(`Adding product page from ${item.product.pdf_page_url}`);
+    const productPagesWithPdf = offer.offer_items
+      .filter((item: any) => item.product?.pdf_page_url)
+      .sort((a: any, b: any) => a.display_order - b.display_order);
 
-            const productPdfUrl = `${supabaseUrl}/storage/v1/object/public/offer-template-pages/${item.product.pdf_page_url}`;
-            const productPdfResponse = await fetch(productPdfUrl);
+    for (const item of productPagesWithPdf) {
+      try {
+        const pdfPath = item.product.pdf_page_url;
 
-            if (productPdfResponse.ok) {
-              const productPdfBytes = await productPdfResponse.arrayBuffer();
-              const productPdf = await PDFDocument.load(productPdfBytes);
+        const { data: pdfData, error: downloadError } = await supabase.storage
+          .from('offer-product-pages')
+          .download(pdfPath);
 
-              const productPages = productPdf.getPages();
-              for (let i = 0; i < productPages.length; i++) {
-                const [copiedPage] = await mergedPdf.copyPages(productPdf, [i]);
-                mergedPdf.addPage(copiedPage);
-              }
-
-              console.log(`Successfully added product pages for ${item.product.name}`);
-            }
-          } catch (error) {
-            console.error(`Error adding product page:`, error);
-          }
+        if (downloadError || !pdfData) {
+          console.error(`Failed to download PDF for product ${item.product.name}:`, downloadError);
+          continue;
         }
+
+        const arrayBuffer = await pdfData.arrayBuffer();
+        const productPdf = await PDFDocument.load(arrayBuffer);
+
+        const copiedPages = await mergedPdf.copyPages(productPdf, productPdf.getPageIndices());
+        copiedPages.forEach((page) => mergedPdf.addPage(page));
+      } catch (error) {
+        console.error(`Error processing PDF for product ${item.product.name}:`, error);
       }
     }
 
-    await addPdfFromTemplate('pricing');
-    await addPdfFromTemplate('about');
     await addPdfFromTemplate('final');
 
-    const finalPdfBytes = await mergedPdf.save();
-    const filename = `oferta-${offer.offer_number}.pdf`;
+    if (mergedPdf.getPageCount() === 0) {
+      throw new Error("No PDF pages found. Please add PDF pages to templates or products first.");
+    }
 
-    const { error: uploadError } = await supabase.storage
+    const pdfBytes = await mergedPdf.save();
+
+    const sanitizeFileName = (name: string) => {
+      return name
+        .replace(/[^a-zA-Z0-9\u0105\u0107\u0119\u0142\u0144\u00f3\u015b\u017a\u017c\u0104\u0106\u0118\u0141\u0143\u00d3\u015a\u0179\u017b\s\-_]/g, '')
+        .replace(/\s+/g, '-')
+        .toLowerCase();
+    };
+
+    const offerName = offer.name ? sanitizeFileName(offer.name) : (offer.offer_number || offerId);
+    const fileName = `oferta-${offerName}.pdf`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('generated-offers')
-      .upload(filename, finalPdfBytes, {
+      .upload(fileName, pdfBytes, {
         contentType: 'application/pdf',
         upsert: true,
       });
 
     if (uploadError) {
-      throw uploadError;
+      throw new Error("Failed to upload PDF: " + uploadError.message);
     }
 
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-      .from('generated-offers')
-      .createSignedUrl(filename, 3600);
-
-    if (signedUrlError) {
-      throw signedUrlError;
-    }
-
-    await supabase
+    const { error: updateError } = await supabase
       .from('offers')
-      .update({ generated_pdf_url: filename })
+      .update({ generated_pdf_url: fileName })
       .eq('id', offerId);
+
+    if (updateError) {
+      throw new Error("Failed to update offer: " + updateError.message);
+    }
+
+    const { data: signedUrlData } = await supabase.storage
+      .from('generated-offers')
+      .createSignedUrl(fileName, 3600);
 
     return new Response(
       JSON.stringify({
         success: true,
-        pdfUrl: signedUrlData.signedUrl,
+        message: "Offer PDF generated successfully",
+        fileName: fileName,
+        pageCount: mergedPdf.getPageCount(),
+        downloadUrl: signedUrlData?.signedUrl,
       }),
       {
         headers: {
@@ -416,14 +400,14 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error generating offer PDF:", error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error.message || "Failed to generate offer PDF",
       }),
       {
-        status: 400,
+        status: 500,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",
