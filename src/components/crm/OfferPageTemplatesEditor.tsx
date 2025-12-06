@@ -5,6 +5,7 @@ import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCirc
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
 
@@ -68,6 +69,7 @@ const sectionTypes: Record<string, string[]> = {
 export default function OfferPageTemplatesEditor() {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
+  const { employee } = useCurrentEmployee();
   const [templates, setTemplates] = useState<OfferPageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<string>('cover');
@@ -403,6 +405,7 @@ export default function OfferPageTemplatesEditor() {
       {showModal && (
         <CreateTemplateModal
           type={selectedType as any}
+          employee={employee}
           onClose={() => setShowModal(false)}
           onSuccess={() => {
             setShowModal(false);
@@ -449,7 +452,7 @@ export default function OfferPageTemplatesEditor() {
   );
 }
 
-function CreateTemplateModal({ type, onClose, onSuccess }: { type: 'cover' | 'about' | 'pricing' | 'final'; onClose: () => void; onSuccess: () => void }) {
+function CreateTemplateModal({ type, employee, onClose, onSuccess }: { type: 'cover' | 'about' | 'pricing' | 'final'; employee: any; onClose: () => void; onSuccess: () => void }) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -465,18 +468,20 @@ function CreateTemplateModal({ type, onClose, onSuccess }: { type: 'cover' | 'ab
       return;
     }
 
+    if (!employee?.id) {
+      showSnackbar('Musisz być zalogowany', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nie jesteś zalogowany');
 
       const { data: template, error } = await supabase
         .from('offer_page_templates')
         .insert({
           type,
           ...formData,
-          created_by: user.id,
+          created_by: employee.id,
         })
         .select()
         .single();

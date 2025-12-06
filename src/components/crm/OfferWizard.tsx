@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ShoppingCart, Package, Search, ChevronRight, ChevronLeft, Check, AlertTriangle, Wrench, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Product {
   id: string;
@@ -46,6 +47,7 @@ export default function OfferWizard({
   organizationId,
   onSuccess,
 }: OfferWizardProps) {
+  const { employee } = useCurrentEmployee();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -288,7 +290,9 @@ export default function OfferWizard({
         throw new Error('Brak ID wydarzenia');
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
+      if (!employee?.id) {
+        throw new Error('Musisz być zalogowany aby utworzyć ofertę');
+      }
 
       // Utwórz ofertę
       const offerDataToInsert: any = {
@@ -298,7 +302,7 @@ export default function OfferWizard({
         notes: offerData.notes || null,
         status: 'draft',
         total_amount: calculateTotal(),
-        created_by: session?.user?.id || null,
+        created_by: employee.id,
       };
 
       // Jeśli użytkownik wprowadził numer ręcznie, użyj go. W przeciwnym razie trigger wygeneruje automatycznie

@@ -21,16 +21,21 @@
  */
 
 export interface Employee {
-  position: any;
-  surname: any;
-  name: any;
-  avatar_url: string;
-  email: string;
-  phone: string;
   id: string;
-  access_level?: string;
+  name: string;
+  surname: string;
+  nickname?: string;
+  email: string;
+  phone_number?: string;
+  phone_private?: string;
+  avatar_url?: string;
   role?: string;
+  access_level?: string;
+  occupation?: string;
+  region?: string;
   permissions?: string[];
+  position?: any;
+  phone?: string;
 }
 
 /**
