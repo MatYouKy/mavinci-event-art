@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument, rgb } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, rgb, pushGraphicsState, popGraphicsState, moveTo, appendBezierCurve, closePath, clip, endPath } from "npm:pdf-lib@1.17.1";
 import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
 
 const corsHeaders = {
@@ -252,6 +252,22 @@ Deno.serve(async (req: Request) => {
                   offsetY = -(drawHeight - size) / 2;
                 }
 
+                const kappa = 0.5522847498;
+                const ox = radius * kappa;
+                const oy = radius * kappa;
+
+                page.pushOperators(
+                  pushGraphicsState(),
+                  moveTo(centerX, centerY + radius),
+                  appendBezierCurve(centerX + ox, centerY + radius, centerX + radius, centerY + oy, centerX + radius, centerY),
+                  appendBezierCurve(centerX + radius, centerY - oy, centerX + ox, centerY - radius, centerX, centerY - radius),
+                  appendBezierCurve(centerX - ox, centerY - radius, centerX - radius, centerY - oy, centerX - radius, centerY),
+                  appendBezierCurve(centerX - radius, centerY + oy, centerX - ox, centerY + radius, centerX, centerY + radius),
+                  closePath(),
+                  clip(),
+                  endPath()
+                );
+
                 page.drawImage(image, {
                   x: field.x + offsetX,
                   y: y + offsetY,
@@ -259,39 +275,7 @@ Deno.serve(async (req: Request) => {
                   height: drawHeight,
                 });
 
-                const cornerSize = radius * (1 - Math.SQRT2 / 2);
-
-                page.drawRectangle({
-                  x: field.x,
-                  y: y + size - cornerSize,
-                  width: cornerSize,
-                  height: cornerSize,
-                  color: rgb(1, 1, 1),
-                });
-
-                page.drawRectangle({
-                  x: field.x + size - cornerSize,
-                  y: y + size - cornerSize,
-                  width: cornerSize,
-                  height: cornerSize,
-                  color: rgb(1, 1, 1),
-                });
-
-                page.drawRectangle({
-                  x: field.x,
-                  y: y,
-                  width: cornerSize,
-                  height: cornerSize,
-                  color: rgb(1, 1, 1),
-                });
-
-                page.drawRectangle({
-                  x: field.x + size - cornerSize,
-                  y: y,
-                  width: cornerSize,
-                  height: cornerSize,
-                  color: rgb(1, 1, 1),
-                });
+                page.pushOperators(popGraphicsState());
 
               } else {
                 page.drawImage(image, {
