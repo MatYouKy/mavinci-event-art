@@ -563,7 +563,10 @@ Deno.serve(async (req: Request) => {
 
     const { error: updateError } = await supabase
       .from('offers')
-      .update({ generated_pdf_url: fileName })
+      .update({
+        generated_pdf_url: fileName,
+        modified_after_generation: false
+      })
       .eq('id', offerId);
 
     if (updateError) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
-import { Pencil, X, Check, Calendar, FileText, Download, RefreshCw, Send } from 'lucide-react';
+import { Pencil, X, Check, Calendar, FileText, Download, RefreshCw, Send, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
@@ -158,7 +158,7 @@ export default function OfferActions({
           Przejdź do eventu
         </button>
 
-        {!offer.generated_pdf_url ? (
+        {!offer.generated_pdf_url || offer.modified_after_generation ? (
           <button
             disabled={generatingPdf}
             onClick={handleGeneratePdf}
@@ -172,40 +172,32 @@ export default function OfferActions({
             ) : (
               <>
                 <FileText className="h-4 w-4" />
-                Generuj PDF
+                {offer.modified_after_generation ? 'Regeneruj PDF' : 'Generuj PDF'}
               </>
             )}
           </button>
         ) : (
           <>
             <button
-              onClick={handleGeneratePdf}
-              disabled={generatingPdf}
-              className="flex w-full items-center gap-2 text-sm rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Generuj PDF ponownie"
+              onClick={async () => {
+                if (!offer.generated_pdf_url) return;
+                try {
+                  const { data } = await supabase.storage
+                    .from('generated-offers')
+                    .createSignedUrl(offer.generated_pdf_url, 3600);
+                  if (data?.signedUrl) {
+                    window.open(data.signedUrl, '_blank');
+                  }
+                } catch (err) {
+                  showSnackbar('Błąd podczas otwierania PDF', 'error');
+                }
+              }}
+              className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+              title="Pokaż PDF"
             >
-              {generatingPdf ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  Generowanie...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4" />
-                  Generuj
-                </>
-              )}
+              <Eye className="h-4 w-4" />
+              Pokaż PDF
             </button>
-            {canSendEmail && (
-              <button
-                onClick={() => setShowSendEmailModal(true)}
-                className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-blue-500/20"
-                title="Prześlij ofertę e-mailem"
-              >
-                <Send className="h-4 w-4" />
-                Prześlij ofertę e-mailem
-              </button>
-            )}
             <button
               onClick={handleDownloadPdf}
               className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
@@ -223,6 +215,16 @@ export default function OfferActions({
                 </>
               )}
             </button>
+            {canSendEmail && (
+              <button
+                onClick={() => setShowSendEmailModal(true)}
+                className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-blue-500/20"
+                title="Prześlij ofertę e-mailem"
+              >
+                <Send className="h-4 w-4" />
+                Prześlij ofertę e-mailem
+              </button>
+            )}
           </>
         )}
       </div>

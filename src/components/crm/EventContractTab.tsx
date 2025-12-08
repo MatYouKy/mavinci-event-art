@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FileText, Download, Edit, Save, X, Mail } from 'lucide-react';
+import { FileText, Download, Edit, Save, X, Mail, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -55,6 +55,8 @@ export function EventContractTab({ eventId }: Props) {
     signed_returned_at?: string;
     cancelled_at?: string;
   }>({});
+  const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
+  const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
 
   useEffect(() => {
     fetchContractData();
@@ -96,7 +98,7 @@ export function EventContractTab({ eventId }: Props) {
       const { data: existingContract } = await supabase
         .from('contracts')
         .select(
-          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by',
+          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation',
         )
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
@@ -113,6 +115,8 @@ export function EventContractTab({ eventId }: Props) {
         setContractId(existingContract.id);
         setContractStatus(existingContract.status as ContractStatus);
         setContractCreatedBy(existingContract.created_by);
+        setGeneratedPdfPath(existingContract.generated_pdf_path || null);
+        setModifiedAfterGeneration(existingContract.modified_after_generation || false);
         setStatusDates({
           issued_at: existingContract.issued_at,
           sent_at: existingContract.sent_at,
@@ -439,6 +443,18 @@ export function EventContractTab({ eventId }: Props) {
           },
         ]);
 
+        await supabase
+          .from('contracts')
+          .update({
+            generated_pdf_path: storagePath,
+            generated_pdf_at: new Date().toISOString(),
+            modified_after_generation: false,
+          })
+          .eq('id', contractId);
+
+        setGeneratedPdfPath(storagePath);
+        setModifiedAfterGeneration(false);
+
         showSnackbar('Umowa PDF została zapisana w zakładce Pliki', 'success');
       }
 
@@ -447,6 +463,50 @@ export function EventContractTab({ eventId }: Props) {
     } catch (err) {
       console.error('Error generating PDF:', err);
       window.print();
+    }
+  };
+
+  const handleShowPdf = async () => {
+    if (!generatedPdfPath) return;
+
+    try {
+      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error showing PDF:', err);
+      showSnackbar('Błąd podczas otwierania PDF', 'error');
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!generatedPdfPath) return;
+
+    try {
+      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+
+      if (data?.signedUrl) {
+        const response = await fetch(data.signedUrl);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = generatedPdfPath.split('/').pop() || 'umowa.pdf';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
+      showSnackbar('Błąd podczas pobierania PDF', 'error');
     }
   };
 
@@ -578,14 +638,31 @@ export function EventContractTab({ eventId }: Props) {
       ];
     }
 
-    const baseActions = [
-      {
-        label: 'Pobierz PDF',
+    const baseActions = [];
+
+    if (!generatedPdfPath || modifiedAfterGeneration) {
+      baseActions.push({
+        label: modifiedAfterGeneration ? 'Regeneruj PDF' : 'Generuj PDF',
         onClick: handlePrint,
         icon: <Download className="h-4 w-4" />,
         variant: 'primary' as const,
-      },
-    ];
+      });
+    } else {
+      baseActions.push(
+        {
+          label: 'Pokaż PDF',
+          onClick: handleShowPdf,
+          icon: <Eye className="h-4 w-4" />,
+          variant: 'primary' as const,
+        },
+        {
+          label: 'Pobierz PDF',
+          onClick: handleDownloadPdf,
+          icon: <Download className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+      );
+    }
 
     if (canSendEmail) {
       baseActions.unshift({
@@ -606,7 +683,7 @@ export function EventContractTab({ eventId }: Props) {
     }
 
     return baseActions;
-  }, [editMode, canEdit, canSendEmail, handleCancel, handleSave, handlePrint]);
+  }, [editMode, canEdit, canSendEmail, generatedPdfPath, modifiedAfterGeneration, handleCancel, handleSave, handlePrint, handleShowPdf, handleDownloadPdf]);
 
   if (loading) {
     return (

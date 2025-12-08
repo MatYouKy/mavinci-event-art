@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List } from 'lucide-react';
+import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List, Eye, Download } from 'lucide-react';
 import { dataUriToBlob } from '@/app/crm/events/[id]/helpers/blobPDFHelper';
 import { buildAgendaHtml } from '@/app/crm/events/[id]/helpers/buildAgendaPdf';
 
@@ -80,6 +80,8 @@ export default function EventAgendaTab({
   const [agendaId, setAgendaId] = useState<string | null>(null);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
   const [agendaNotes, setAgendaNotes] = useState<AgendaNote[]>([]);
+  const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
+  const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
 
   const normalizedEventDate = useMemo(() => isoToDateInput(eventDate), [eventDate]);
 
@@ -121,6 +123,8 @@ export default function EventAgendaTab({
         setStartTimeInput(isoToTimeInput(agenda.start_time) || isoToTimeInput(startTime) || '');
         setEndTimeInput(isoToTimeInput(agenda.end_time) || isoToTimeInput(endTime) || '');
         setClientContactInput(agenda.client_contact || clientContact || '');
+        setGeneratedPdfPath(agenda.generated_pdf_path || null);
+        setModifiedAfterGeneration(agenda.modified_after_generation || false);
 
         const { data: items, error: itemsError } = await supabase
           .from('event_agenda_items')
@@ -407,6 +411,18 @@ export default function EventAgendaTab({
           },
         ]);
 
+        await supabase
+          .from('event_agendas')
+          .update({
+            generated_pdf_path: storagePath,
+            generated_pdf_at: new Date().toISOString(),
+            modified_after_generation: false,
+          })
+          .eq('id', agendaId);
+
+        setGeneratedPdfPath(storagePath);
+        setModifiedAfterGeneration(false);
+
         alert('Agenda PDF została zapisana w zakładce Pliki');
       }
 
@@ -418,6 +434,50 @@ export default function EventAgendaTab({
       alert('Wystąpił błąd podczas generowania PDF (szczegóły w konsoli)');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleShowPdf = async () => {
+    if (!generatedPdfPath) return;
+
+    try {
+      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error showing PDF:', err);
+      alert('Błąd podczas otwierania PDF');
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!generatedPdfPath) return;
+
+    try {
+      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+
+      if (data?.signedUrl) {
+        const response = await fetch(data.signedUrl);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = generatedPdfPath.split('/').pop() || 'agenda.pdf';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
+      alert('Błąd podczas pobierania PDF');
     }
   };
 
@@ -636,14 +696,33 @@ export default function EventAgendaTab({
 
           {!editMode && agendaId && (
             <>
-              <button
-                onClick={handleGeneratePDF}
-                disabled={generating}
-                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-              >
-                <FileDown className="h-4 w-4" />
-                <span>{generating ? 'Generowanie...' : 'Generuj PDF'}</span>
-              </button>
+              {(!generatedPdfPath || modifiedAfterGeneration) ? (
+                <button
+                  onClick={handleGeneratePDF}
+                  disabled={generating}
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+                >
+                  <FileDown className="h-4 w-4" />
+                  <span>{generating ? 'Generowanie...' : modifiedAfterGeneration ? 'Regeneruj PDF' : 'Generuj PDF'}</span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleShowPdf}
+                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                  >
+                    <Eye className="h-4 w-4" />
+                    <span>Pokaż PDF</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadPdf}
+                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Pobierz PDF</span>
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => window.print()}
                 className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
