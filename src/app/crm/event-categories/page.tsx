@@ -212,6 +212,7 @@ export default function EventCategoriesPage() {
         ...formData,
         icon_id: formData.icon_id || null,
         contract_template_id: formData.contract_template_id || null,
+        default_offer_template_category_id: formData.default_offer_template_category_id || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -598,6 +599,24 @@ export default function EventCategoriesPage() {
                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       rows={3}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Szablon oferty (opcjonalnie)
+                    </label>
+                    <select
+                      value={formData.default_offer_template_category_id}
+                      onChange={(e) => setFormData({ ...formData, default_offer_template_category_id: e.target.value })}
+                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Domyślny szablon</option>
+                      {offerTemplateCategories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>

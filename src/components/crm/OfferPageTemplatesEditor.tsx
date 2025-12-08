@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type, ChevronDown, ChevronRight, Tag } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -11,6 +11,16 @@ import Draggable from 'react-draggable';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
+
+interface OfferTemplateCategory {
+  id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface OfferPageTemplate {
   id: string;
@@ -23,6 +33,7 @@ interface OfferPageTemplate {
   pdf_width?: number;
   pdf_height?: number;
   text_fields_config?: TextFieldConfig[];
+  template_category_id?: string;
   created_by: string;
   created_at: string;
 }
@@ -72,18 +83,47 @@ export default function OfferPageTemplatesEditor() {
   const { showConfirm } = useDialog();
   const { employee } = useCurrentEmployee();
   const [templates, setTemplates] = useState<OfferPageTemplate[]>([]);
+  const [categories, setCategories] = useState<OfferTemplateCategory[]>([]);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<string>('cover');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<OfferPageTemplate | null>(null);
   const [showContentEditor, setShowContentEditor] = useState(false);
   const [editingContent, setEditingContent] = useState<TemplateContent[]>([]);
   const [uploadingPdf, setUploadingPdf] = useState<string | null>(null);
   const [showTextFieldsEditor, setShowTextFieldsEditor] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<OfferTemplateCategory | null>(null);
 
   useEffect(() => {
+    fetchCategories();
     fetchTemplates();
   }, [selectedType]);
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('offer_template_categories')
+        .select('*')
+        .order('is_default', { ascending: false })
+        .order('name');
+
+      if (error) throw error;
+      setCategories(data || []);
+
+      if (data && data.length > 0) {
+        const defaultCategory = data.find(c => c.is_default);
+        if (defaultCategory) {
+          setExpandedCategories(new Set([defaultCategory.id]));
+        }
+      }
+    } catch (err: any) {
+      console.error('Error fetching categories:', err);
+      showSnackbar('Błąd podczas ładowania kategorii', 'error');
+    }
+  };
 
   const fetchTemplates = async () => {
     try {
@@ -91,7 +131,6 @@ export default function OfferPageTemplatesEditor() {
       const { data, error } = await supabase
         .from('offer_page_templates')
         .select('*')
-        .eq('type', selectedType)
         .order('is_default', { ascending: false })
         .order('name');
 
@@ -227,26 +266,255 @@ export default function OfferPageTemplatesEditor() {
     );
   }
 
+  const toggleCategory = (categoryId: string) => {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(categoryId)) {
+      newExpanded.delete(categoryId);
+    } else {
+      newExpanded.add(categoryId);
+    }
+    setExpandedCategories(newExpanded);
+  };
+
+  const getTemplatesForCategory = (categoryId: string, type: string) => {
+    return templates.filter(t => t.template_category_id === categoryId && t.type === type);
+  };
+
+  const handleEditCategory = (category: OfferTemplateCategory) => {
+    setEditingCategory(category);
+    setShowCategoryModal(true);
+  };
+
+  const handleCreateCategory = () => {
+    setEditingCategory(null);
+    setShowCategoryModal(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-light text-[#e5e4e2]">Szablony stron ofert</h2>
           <p className="text-sm text-[#e5e4e2]/60 mt-1">
-            Zarządzaj szablonami stron: tytułowa, o nas, wycena, końcowa
+            Zarządzaj kategoriami i szablonami stron dla różnych typów eventów
           </p>
         </div>
-        <button
-          onClick={handleCreateTemplate}
-          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Nowy szablon
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCreateCategory}
+            className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+          >
+            <Tag className="w-4 h-4" />
+            Nowa kategoria
+          </button>
+          <button
+            onClick={() => {
+              setSelectedCategoryId(categories.find(c => c.is_default)?.id || categories[0]?.id || null);
+              handleCreateTemplate();
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nowy szablon
+          </button>
+        </div>
       </div>
 
-      {/* Filtry typów */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Kategorie w accordion */}
+      <div className="space-y-3">
+        {categories.map((category) => {
+          const isExpanded = expandedCategories.has(category.id);
+
+          return (
+            <div key={category.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+              {/* Header kategorii */}
+              <button
+                onClick={() => toggleCategory(category.id)}
+                className="w-full p-4 flex items-center justify-between hover:bg-[#d3bb73]/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: category.color }}
+                  >
+                    <Tag className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-medium text-[#e5e4e2]">{category.name}</h3>
+                      {category.is_default && (
+                        <span className="px-2 py-0.5 text-xs bg-[#d3bb73] text-[#1c1f33] rounded">
+                          Domyślna
+                        </span>
+                      )}
+                    </div>
+                    {category.description && (
+                      <p className="text-sm text-[#e5e4e2]/60 mt-0.5">{category.description}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditCategory(category);
+                    }}
+                    className="p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                    title="Edytuj kategorię"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  {isExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-[#e5e4e2]/60" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-[#e5e4e2]/60" />
+                  )}
+                </div>
+              </button>
+
+              {/* Rozwinięta zawartość - typy stron i szablony */}
+              {isExpanded && (
+                <div className="border-t border-[#d3bb73]/10 p-4 space-y-4">
+                  {templateTypes.map((type) => {
+                    const Icon = type.icon;
+                    const categoryTemplates = getTemplatesForCategory(category.id, type.value);
+
+                    return (
+                      <div key={type.value} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-4 h-4 text-[#d3bb73]" />
+                            <h4 className="font-medium text-[#e5e4e2]">{type.label}</h4>
+                            <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] text-xs rounded">
+                              {categoryTemplates.length}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSelectedCategoryId(category.id);
+                              setSelectedType(type.value);
+                              handleCreateTemplate();
+                            }}
+                            className="text-sm px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors"
+                          >
+                            + Dodaj
+                          </button>
+                        </div>
+
+                        {categoryTemplates.length > 0 ? (
+                          <div className="space-y-2 pl-6">
+                            {categoryTemplates.map((template) => (
+                              <div
+                                key={template.id}
+                                className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/20 transition-colors"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h5 className="text-sm font-medium text-[#e5e4e2]">{template.name}</h5>
+                                      {template.is_default && (
+                                        <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] text-xs rounded">
+                                          Domyślny
+                                        </span>
+                                      )}
+                                      {!template.is_active && (
+                                        <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded">
+                                          Nieaktywny
+                                        </span>
+                                      )}
+                                    </div>
+                                    {template.description && (
+                                      <p className="text-xs text-[#e5e4e2]/60">{template.description}</p>
+                                    )}
+                                    <div className="flex items-center gap-2 mt-1">
+                                      {template.pdf_url ? (
+                                        <span className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
+                                          <FileText className="w-3 h-3" />
+                                          PDF
+                                        </span>
+                                      ) : (
+                                        <span className="flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded">
+                                          <FileText className="w-3 h-3" />
+                                          Brak PDF
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <label className="cursor-pointer">
+                                      <input
+                                        type="file"
+                                        accept=".pdf"
+                                        className="hidden"
+                                        disabled={uploadingPdf === template.id}
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) handleUploadPdf(template, file);
+                                        }}
+                                      />
+                                      <div className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded transition-colors" title="Upload PDF">
+                                        <Upload className="w-4 h-4" />
+                                      </div>
+                                    </label>
+                                    {template.pdf_url && (
+                                      <button
+                                        onClick={() => handleEditTextFields(template)}
+                                        className="p-1.5 text-green-400 hover:bg-green-400/10 rounded transition-colors"
+                                        title="Konfiguruj pola"
+                                      >
+                                        <Type className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleEditTemplate(template)}
+                                      className="p-1.5 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                                      title="Edytuj"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteTemplate(template)}
+                                      className="p-1.5 text-[#e5e4e2]/60 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                      title="Usuń"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="pl-6 text-sm text-[#e5e4e2]/40 italic">
+                            Brak szablonów
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {categories.length === 0 && (
+          <div className="text-center py-12 text-[#e5e4e2]/60">
+            <Tag className="w-12 h-12 mx-auto mb-4 text-[#e5e4e2]/20" />
+            <p className="mb-4">Brak kategorii szablonów</p>
+            <button
+              onClick={handleCreateCategory}
+              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors inline-flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Utwórz pierwszą kategorię
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Old template types - remove this */}
+      <div className="hidden">
         {templateTypes.map((type) => {
           const Icon = type.icon;
           const isSelected = selectedType === type.value;
