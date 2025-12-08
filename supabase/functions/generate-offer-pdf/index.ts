@@ -61,7 +61,8 @@ Deno.serve(async (req: Request) => {
           surname,
           email,
           phone_number,
-          avatar_url
+          avatar_url,
+          avatar_metadata
         ),
         offer_items(
           *,
@@ -84,7 +85,7 @@ Deno.serve(async (req: Request) => {
     if (employeeId) {
       const { data: empData } = await supabase
         .from("employees")
-        .select("id, name, surname, email, phone_number, avatar_url")
+        .select("id, name, surname, email, phone_number, avatar_url, avatar_metadata")
         .eq("id", employeeId)
         .maybeSingle();
 
@@ -130,6 +131,7 @@ Deno.serve(async (req: Request) => {
         employee_email: employee.email || '',
         employee_phone: employee.phone_number || '',
         employee_avatar_url: employee.avatar_url || '',
+        employee_avatar_metadata: employee.avatar_metadata || null,
 
         seller_name: 'Mavinci Event & Entertainment',
         seller_address: 'ul. Przykładowa 1, 00-000 Warszawa',
@@ -239,18 +241,43 @@ Deno.serve(async (req: Request) => {
                 const imgDims = image.scale(1);
                 const imgAspect = imgDims.width / imgDims.height;
 
-                let drawWidth = size;
-                let drawHeight = size;
-                let offsetX = 0;
-                let offsetY = 0;
+                let metadata = null;
+                if (field.field_name.includes('avatar')) {
+                  const metadataValue = data['employee_avatar_metadata'];
+                  if (metadataValue && typeof metadataValue === 'object') {
+                    metadata = metadataValue;
+                  } else if (typeof metadataValue === 'string') {
+                    try {
+                      metadata = JSON.parse(metadataValue);
+                    } catch (e) {
+                      console.error('Failed to parse avatar metadata:', e);
+                    }
+                  }
+                }
+
+                const positionData = metadata?.desktop?.position;
+                const scale = positionData?.scale || 1;
+                const posXPercent = positionData?.posX || 50;
+                const posYPercent = positionData?.posY || 50;
+
+                console.log(`Avatar positioning: scale=${scale}, posX=${posXPercent}%, posY=${posYPercent}%`);
+
+                let drawWidth = size * scale;
+                let drawHeight = size * scale;
 
                 if (imgAspect > 1) {
-                  drawWidth = size * imgAspect;
-                  offsetX = -(drawWidth - size) / 2;
+                  drawWidth = size * imgAspect * scale;
+                  drawHeight = size * scale;
                 } else if (imgAspect < 1) {
-                  drawHeight = size / imgAspect;
-                  offsetY = -(drawHeight - size) / 2;
+                  drawWidth = size * scale;
+                  drawHeight = (size / imgAspect) * scale;
                 }
+
+                const maxOffsetX = drawWidth - size;
+                const maxOffsetY = drawHeight - size;
+
+                const offsetX = -(maxOffsetX * posXPercent / 100);
+                const offsetY = -(maxOffsetY * (100 - posYPercent) / 100);
 
                 const kappa = 0.5522847498;
                 const ox = radius * kappa;
