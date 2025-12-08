@@ -214,6 +214,7 @@ export default function EventDetailPage() {
     | 'logistics'
     | 'finances'
     | 'contract'
+    | 'agenda'
     | 'history'
   >('overview');
 

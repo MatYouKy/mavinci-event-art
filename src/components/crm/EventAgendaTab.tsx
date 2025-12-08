@@ -39,6 +39,7 @@ interface AgendaNote {
 }
 
 export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
+  console.log('eventId', eventId);
   const { employee } = useCurrentEmployee();
   const { data: eventDetails, isLoading: isEventLoading } = useGetEventDetailsQuery(eventId);
   const [loading, setLoading] = useState(true);
@@ -59,40 +60,51 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
   // Agenda notes
   const [agendaNotes, setAgendaNotes] = useState<AgendaNote[]>([]);
 
-  const canManage = employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
+  const canManage =
+    employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
 
   useEffect(() => {
     fetchAgenda();
   }, [eventId]);
 
   useEffect(() => {
-    if (eventDetails && !agendaId) {
-      setEventName(eventDetails.name || '');
+    if (!eventDetails || agendaId) return;
 
-      if (eventDetails.event_date) {
-        const eventDateTime = new Date(eventDetails.event_date);
-        const dateOnly = eventDateTime.toISOString().split('T')[0];
-        setEventDate(dateOnly);
+    // Nazwa wydarzenia – próbujemy po kilku polach
+    setEventName(eventDetails.name ?? eventDetails.name ?? eventDetails.name ?? '');
 
-        const hours = eventDateTime.getHours().toString().padStart(2, '0');
-        const minutes = eventDateTime.getMinutes().toString().padStart(2, '0');
-        setStartTime(`${hours}:${minutes}`);
-      }
+    // Data + godzina startu – próbujemy po kilku polach
+    const startRaw =
+      eventDetails.event_date ?? eventDetails.event_date ?? eventDetails.event_date ?? null;
 
-      if (eventDetails.event_end_date) {
-        const endDateTime = new Date(eventDetails.event_end_date);
-        const hours = endDateTime.getHours().toString().padStart(2, '0');
-        const minutes = endDateTime.getMinutes().toString().padStart(2, '0');
-        setEndTime(`${hours}:${minutes}`);
-      }
+    if (startRaw) {
+      const eventDateTime = new Date(startRaw);
+      const dateOnly = eventDateTime.toISOString().split('T')[0];
+      setEventDate(dateOnly);
 
-      if (eventDetails.organization) {
-        setClientContact(`${eventDetails.organization.name}`);
-      } else if (eventDetails.contact_person) {
-        setClientContact(`${eventDetails.contact_person.full_name}`);
-      }
+      const hours = eventDateTime.getHours().toString().padStart(2, '0');
+      const minutes = eventDateTime.getMinutes().toString().padStart(2, '0');
+      setStartTime(`${hours}:${minutes}`);
     }
-  }, [eventDetails, agendaId]);
+
+    const endRaw =
+      eventDetails.event_end_date ?? eventDetails.event_end_date ?? eventDetails.event_end_date ?? null;
+
+    if (endRaw) {
+      const endDateTime = new Date(endRaw);
+      const hours = endDateTime.getHours().toString().padStart(2, '0');
+      const minutes = endDateTime.getMinutes().toString().padStart(2, '0');
+      setEndTime(`${hours}:${minutes}`);
+    }
+
+    // Kontakt do klienta – kilka możliwych ścieżek
+    setClientContact(
+      eventDetails.organization?.name ??
+        eventDetails.organization?.name ??
+        eventDetails.organization?.name ??
+        '',
+    );
+  }, [eventDetails, agendaId]); 
 
   const fetchAgenda = async () => {
     try {
@@ -240,7 +252,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
             title: item.title,
             description: item.description,
             order_index: index,
-          }))
+          })),
         );
 
         if (itemsError) throw itemsError;
@@ -258,9 +270,10 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
             .insert([
               {
                 agenda_id: currentAgendaId,
-                parent_id: note.parent_id && notesWithIds.has(note.parent_id)
-                  ? notesWithIds.get(note.parent_id)
-                  : null,
+                parent_id:
+                  note.parent_id && notesWithIds.has(note.parent_id)
+                    ? notesWithIds.get(note.parent_id)
+                    : null,
                 content: note.content,
                 order_index: note.order_index,
                 level: note.level,
@@ -302,7 +315,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
             Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({ agendaId }),
-        }
+        },
       );
 
       if (!response.ok) throw new Error('Failed to generate agenda data');
@@ -336,9 +349,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
 
         if (uploadError) throw uploadError;
 
-        const { data: urlData } = supabase.storage
-          .from('event-files')
-          .getPublicUrl(filePath);
+        const { data: urlData } = supabase.storage.from('event-files').getPublicUrl(filePath);
 
         const { error: fileRecordError } = await supabase.from('event_files').insert([
           {
@@ -477,15 +488,15 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
     return (
       <div key={note.id} className="space-y-2">
         <div className="flex items-start gap-2" style={{ marginLeft: `${indent}px` }}>
-          <div className="flex-1 flex items-start gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-3">
-            <span className="text-[#d3bb73] mt-1">•</span>
+          <div className="flex flex-1 items-start gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-3">
+            <span className="mt-1 text-[#d3bb73]">•</span>
             <input
               type="text"
               value={note.content}
               onChange={(e) => updateNote(note.id!, e.target.value)}
               placeholder="Treść uwagi..."
               disabled={!canManage}
-              className="flex-1 bg-transparent border-none text-[#e5e4e2] focus:outline-none"
+              className="flex-1 border-none bg-transparent text-[#e5e4e2] focus:outline-none"
             />
             <div className="flex items-center gap-1">
               {note.level < 2 && canManage && (
@@ -494,7 +505,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
                   className="p-1 text-[#d3bb73]/60 hover:text-[#d3bb73]"
                   title="Dodaj podpunkt"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               )}
               {canManage && (
@@ -502,7 +513,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
                   onClick={() => removeNote(note.id!)}
                   className="p-1 text-red-400/60 hover:text-red-400"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -530,9 +541,9 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
+              <Save className="h-4 w-4" />
               <span>{saving ? 'Zapisywanie...' : 'Zapisz'}</span>
             </button>
           )}
@@ -541,16 +552,16 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <button
                 onClick={handleGeneratePDF}
                 disabled={generating}
-                className="flex items-center gap-2 px-4 py-2 border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
               >
-                <FileDown className="w-4 h-4" />
+                <FileDown className="h-4 w-4" />
                 <span>{generating ? 'Generowanie...' : 'Generuj PDF'}</span>
               </button>
               <button
                 onClick={() => window.print()}
-                className="flex items-center gap-2 px-4 py-2 border border-[#d3bb73]/30 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/10"
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="h-4 w-4" />
                 <span>Drukuj</span>
               </button>
             </>
@@ -559,122 +570,128 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
       </div>
 
       <div className="space-y-6">
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 space-y-4">
-          <h3 className="text-lg font-medium text-[#e5e4e2]">Podstawowe informacje (z wydarzenia)</h3>
+        <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+          <h3 className="text-lg font-medium text-[#e5e4e2]">
+            Podstawowe informacje (z wydarzenia)
+          </h3>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa wydarzenia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa wydarzenia</label>
               <input
                 type="text"
                 value={eventName}
                 readOnly
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]/70 cursor-not-allowed"
+                className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data wydarzenia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data wydarzenia</label>
               <input
                 type="date"
                 value={eventDate}
                 readOnly
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]/70 cursor-not-allowed"
+                className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Godzina rozpoczęcia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina rozpoczęcia</label>
               <input
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 disabled={!canManage}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Godzina zakończenia</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina zakończenia</label>
               <input
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 disabled={!canManage}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kontakt do klienta</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kontakt do klienta</label>
               <input
                 type="text"
                 value={clientContact}
                 readOnly
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]/70 cursor-not-allowed"
+                className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
               />
             </div>
           </div>
         </div>
 
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 space-y-4">
+        <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <h3 className="text-lg font-medium text-[#e5e4e2]">Harmonogram</h3>
 
           <div className="space-y-3">
             {agendaItems.length === 0 ? (
-              <div className="text-center py-8">
+              <div className="py-8 text-center">
                 {canManage && (
                   <button
                     onClick={() => addAgendaItem()}
-                    className="flex items-center gap-2 px-4 py-2 mx-auto bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg text-[#d3bb73] hover:bg-[#d3bb73]/20"
+                    className="mx-auto flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/20"
                   >
-                    <Plus className="w-5 h-5" />
+                    <Plus className="h-5 w-5" />
                     <span>Dodaj pierwszy etap</span>
                   </button>
                 )}
-                {!canManage && (
-                  <p className="text-[#e5e4e2]/60">Brak etapów w harmonogramie</p>
-                )}
+                {!canManage && <p className="text-[#e5e4e2]/60">Brak etapów w harmonogramie</p>}
               </div>
             ) : (
               getSortedAgendaItems().map((item, displayIndex) => {
                 const originalIndex = agendaItems.indexOf(item);
                 return (
                   <div key={originalIndex} className="space-y-2">
-                    <div className="flex items-start gap-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4">
-                      <Clock className="w-5 h-5 text-[#d3bb73] mt-1 flex-shrink-0" />
+                    <div className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
+                      <Clock className="mt-1 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2">
                           <input
                             type="time"
                             value={item.time}
-                            onChange={(e) => updateAgendaItem(originalIndex, 'time', e.target.value)}
+                            onChange={(e) =>
+                              updateAgendaItem(originalIndex, 'time', e.target.value)
+                            }
                             disabled={!canManage}
-                            className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                            className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
                           />
                           <input
                             type="text"
                             value={item.title}
-                            onChange={(e) => updateAgendaItem(originalIndex, 'title', e.target.value)}
+                            onChange={(e) =>
+                              updateAgendaItem(originalIndex, 'title', e.target.value)
+                            }
                             placeholder="Tytuł etapu..."
                             disabled={!canManage}
-                            className="flex-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                            className="flex-1 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
                           />
                         </div>
                         <textarea
                           value={item.description}
-                          onChange={(e) => updateAgendaItem(originalIndex, 'description', e.target.value)}
+                          onChange={(e) =>
+                            updateAgendaItem(originalIndex, 'description', e.target.value)
+                          }
                           placeholder="Opis etapu..."
                           disabled={!canManage}
                           rows={2}
-                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                          className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
                         />
                       </div>
                       {canManage && (
                         <button
                           onClick={() => removeAgendaItem(originalIndex)}
-                          className="p-2 text-red-400/60 hover:text-red-400 flex-shrink-0"
+                          className="flex-shrink-0 p-2 text-red-400/60 hover:text-red-400"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       )}
                     </div>
@@ -682,9 +699,9 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
                       <div className="flex justify-center">
                         <button
                           onClick={() => addAgendaItem(originalIndex)}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73]/5 border border-[#d3bb73]/20 rounded-lg text-[#d3bb73]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73] text-sm"
+                          className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-3 py-1.5 text-sm text-[#d3bb73]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
                         >
-                          <Plus className="w-4 h-4" />
+                          <Plus className="h-4 w-4" />
                           <span>Dodaj kolejny etap</span>
                         </button>
                       </div>
@@ -696,15 +713,15 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 space-y-4">
+        <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium text-[#e5e4e2]">Uwagi</h3>
             {canManage && (
               <button
                 onClick={() => addNote(0)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg text-[#d3bb73] hover:bg-[#d3bb73]/20 text-sm"
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 <span>Dodaj uwagę</span>
               </button>
             )}
@@ -713,7 +730,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
           <div className="space-y-2">
             {agendaNotes.map((note) => renderNote(note))}
             {agendaNotes.length === 0 && (
-              <div className="text-center py-8 text-[#e5e4e2]/60">
+              <div className="py-8 text-center text-[#e5e4e2]/60">
                 Brak uwag. Dodaj pierwszą uwagę.
               </div>
             )}
