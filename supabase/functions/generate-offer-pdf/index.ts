@@ -277,7 +277,7 @@ Deno.serve(async (req: Request) => {
                 const maxOffsetY = drawHeight - size;
 
                 const offsetX = -(maxOffsetX * posXPercent / 100);
-                const offsetY = -(maxOffsetY * (100 - posYPercent) / 100);
+                const offsetY = -(maxOffsetY * posYPercent / 100);
 
                 const kappa = 0.5522847498;
                 const ox = radius * kappa;

@@ -39,6 +39,7 @@ interface Offer {
   status: string;
   notes: string;
   created_at: string;
+  generated_pdf_url?: string;
   organization?: {
     name?: string;
     email?: string;
@@ -389,16 +390,47 @@ export default function OfferDetailPage() {
 
       showSnackbar(`PDF wygenerowany pomyślnie (${result.pageCount} stron)`, 'success');
 
-      if (result.downloadUrl) {
-        window.open(result.downloadUrl, '_blank');
-      }
+      await fetchOfferDetails();
 
-      fetchOfferDetails();
+      if (result.downloadUrl) {
+        const link = document.createElement('a');
+        link.href = result.downloadUrl;
+        link.download = result.fileName || 'oferta.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
     } catch (err: any) {
       console.error('Error generating PDF:', err);
       showSnackbar(err.message || 'Błąd podczas generowania PDF', 'error');
     } finally {
       setGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!offer?.generated_pdf_url) return;
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('generated-offers')
+        .createSignedUrl(offer.generated_pdf_url, 3600);
+
+      if (error || !data) {
+        throw new Error('Nie udało się pobrać PDF');
+      }
+
+      const link = document.createElement('a');
+      link.href = data.signedUrl;
+      link.download = offer.generated_pdf_url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showSnackbar('Pobieranie PDF...', 'success');
+    } catch (err: any) {
+      console.error('Error downloading PDF:', err);
+      showSnackbar(err.message || 'Błąd podczas pobierania PDF', 'error');
     }
   };
 
@@ -526,23 +558,36 @@ export default function OfferDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleGeneratePdf}
-            disabled={generatingPdf}
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Generuje PDF łącząc wszystkie strony produktów"
-          >
-            <Download className="w-4 h-4" />
-            {generatingPdf ? 'Generowanie...' : 'Generuj PDF'}
-          </button>
-          {canSendEmail && (
+          {!offer.generated_pdf_url ? (
             <button
-              onClick={() => setShowSendEmailModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors"
+              onClick={handleGeneratePdf}
+              disabled={generatingPdf}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Generuje PDF łącząc wszystkie strony produktów"
             >
-              <Send className="w-4 h-4" />
-              Wyślij
+              <FileText className="w-4 h-4" />
+              {generatingPdf ? 'Generowanie...' : 'Generuj PDF'}
             </button>
+          ) : (
+            <>
+              <button
+                onClick={handleDownloadPdf}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+                title="Pobierz wygenerowany PDF"
+              >
+                <Download className="w-4 h-4" />
+                Pobierz PDF
+              </button>
+              {canSendEmail && (
+                <button
+                  onClick={() => setShowSendEmailModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                  Wyślij
+                </button>
+              )}
+            </>
           )}
           <button
             onClick={handleEditOffer}
