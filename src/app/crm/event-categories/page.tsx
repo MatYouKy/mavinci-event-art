@@ -29,6 +29,7 @@ export default function EventCategoriesPage() {
   const [categories, setCategories] = useState<EventCategory[]>([]);
   const [icons, setIcons] = useState<CustomIcon[]>([]);
   const [contractTemplates, setContractTemplates] = useState<{id: string; name: string}[]>([]);
+  const [offerTemplateCategories, setOfferTemplateCategories] = useState<{id: string; name: string; color: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showIconModal, setShowIconModal] = useState(false);
@@ -42,6 +43,7 @@ export default function EventCategoriesPage() {
     is_active: true,
     icon_id: '',
     contract_template_id: '',
+    default_offer_template_category_id: '',
   });
   const [iconFormData, setIconFormData] = useState({
     name: '',
@@ -53,6 +55,7 @@ export default function EventCategoriesPage() {
     fetchCategories();
     fetchIcons();
     fetchContractTemplates();
+    fetchOfferTemplateCategories();
   }, []);
 
   useEffect(() => {
@@ -64,6 +67,7 @@ export default function EventCategoriesPage() {
         is_active: editingCategory.is_active,
         icon_id: editingCategory.icon_id || '',
         contract_template_id: editingCategory.contract_template_id || '',
+        default_offer_template_category_id: (editingCategory as any).default_offer_template_category_id || '',
       });
     }
   }, [editingCategory]);
@@ -116,6 +120,21 @@ export default function EventCategoriesPage() {
     }
   };
 
+  const fetchOfferTemplateCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('offer_template_categories')
+        .select('id, name, color')
+        .order('is_default', { ascending: false })
+        .order('name');
+
+      if (error) throw error;
+      setOfferTemplateCategories(data || []);
+    } catch (error) {
+      console.error('Error fetching offer template categories:', error);
+    }
+  };
+
   const handleOpenModal = (category?: EventCategory) => {
     if (category) {
       setEditingCategory(category);
@@ -126,6 +145,7 @@ export default function EventCategoriesPage() {
         is_active: category.is_active,
         icon_id: category.icon_id || '',
         contract_template_id: category.contract_template_id || '',
+        default_offer_template_category_id: (category as any).default_offer_template_category_id || '',
       });
     } else {
       setEditingCategory(null);
@@ -136,6 +156,7 @@ export default function EventCategoriesPage() {
         is_active: true,
         icon_id: '',
         contract_template_id: '',
+        default_offer_template_category_id: '',
       });
     }
     setShowModal(true);
