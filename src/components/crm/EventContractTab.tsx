@@ -391,16 +391,51 @@ export function EventContractTab({ eventId }: Props) {
   };
 
   const handlePrint = async () => {
-    if (!contractId) {
-      showSnackbar('Najpierw zapisz umowę', 'warning');
-      return;
+    let currentContractId = contractId;
+
+    if (!currentContractId) {
+      if (!templateId) {
+        showSnackbar('Brak szablonu umowy dla tej kategorii wydarzenia', 'error');
+        return;
+      }
+
+      try {
+        const { data: eventData } = await supabase
+          .from('events')
+          .select('contact_person_id, organization_id')
+          .eq('id', eventId)
+          .single();
+
+        const clientId = eventData?.contact_person_id || eventData?.organization_id || null;
+
+        const { data: newContract, error: createError } = await supabase
+          .from('contracts')
+          .insert({
+            event_id: eventId,
+            client_id: clientId,
+            title: `Umowa dla eventu ${eventId}`,
+            content: contractContent,
+            status: 'draft',
+            template_id: templateId,
+          })
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+        currentContractId = newContract.id;
+        setContractId(newContract.id);
+      } catch (err) {
+        console.error('Error creating contract:', err);
+        showSnackbar('Błąd podczas tworzenia umowy', 'error');
+        return;
+      }
     }
 
     try {
       const { default: html2pdf } = await import('html2pdf.js');
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
 
-      const contractElement = document.querySelector('.contract-a4-wrapper');
+      const contractElement = document.querySelector('.contract-a4-container');
       if (!contractElement) {
         window.print();
         return;
@@ -408,7 +443,7 @@ export function EventContractTab({ eventId }: Props) {
 
       const opt: any = {
         margin: 0,
-        filename: `umowa-${contractId}.pdf`,
+        filename: `umowa-${currentContractId}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -450,7 +485,7 @@ export function EventContractTab({ eventId }: Props) {
             generated_pdf_at: new Date().toISOString(),
             modified_after_generation: false,
           })
-          .eq('id', contractId);
+          .eq('id', currentContractId);
 
         setGeneratedPdfPath(storagePath);
         setModifiedAfterGeneration(false);
