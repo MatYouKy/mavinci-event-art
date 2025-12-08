@@ -7,7 +7,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Building2, Calendar, DollarSign, FileText } from 'lucide-react';
+import { Building2, Calendar, DollarSign, FileText, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -192,6 +192,27 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                 </p>
               </div>
             </div>
+
+            {offer.last_generated_by && offer.last_generated_at && (
+              <div className="flex items-start gap-3">
+                <User className="w-5 h-5 text-[#d3bb73] mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs text-[#e5e4e2]/60">Ostatnio wygenerowana przez</p>
+                  <p className="text-sm text-[#e5e4e2] font-medium">
+                    {offer.last_generated_by_employee?.first_name || ''} {offer.last_generated_by_employee?.last_name || 'Nieznany'}
+                  </p>
+                  <p className="text-xs text-[#e5e4e2]/60 mt-1">
+                    {new Date(offer.last_generated_at).toLocaleString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {offer.notes && (
               <div className="pt-4 border-t border-[#d3bb73]/10">

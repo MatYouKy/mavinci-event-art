@@ -156,6 +156,11 @@ export default function OfferDetailPage() {
             location,
             contact:contacts(email, first_name, last_name)
           ),
+          last_generated_by_employee:employees!last_generated_by(
+            id,
+            first_name,
+            last_name
+          ),
           offer_items(
             id,
             product_id,
