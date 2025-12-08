@@ -2540,6 +2540,8 @@ export default function EventDetailPage() {
           onClose={() => setShowCreateOfferModal(false)}
           eventId={eventId}
           organizationId={event.organization_id}
+          contactId={event.contact_person_id}
+          clientType={event.client_type}
           onSuccess={() => {
             setShowCreateOfferModal(false);
             fetchOffers();

@@ -37,6 +37,8 @@ interface OfferWizardProps {
   onClose: () => void;
   eventId: string;
   organizationId?: string;
+  contactId?: string;
+  clientType?: 'individual' | 'business';
   onSuccess: () => void;
 }
 
@@ -44,14 +46,24 @@ export default function OfferWizard({
   isOpen,
   onClose,
   eventId,
-  organizationId,
+  organizationId: propOrganizationId,
+  contactId: propContactId,
+  clientType: propClientType,
   onSuccess,
 }: OfferWizardProps) {
   const { employee } = useCurrentEmployee();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Step 1: Podstawowe dane oferty
+  // Step 1: Wybór klienta
+  const [clientType, setClientType] = useState<'individual' | 'business' | ''>(propClientType || '');
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>(propOrganizationId || '');
+  const [selectedContactId, setSelectedContactId] = useState<string>(propContactId || '');
+  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+
+  // Step 2: Podstawowe dane oferty
   const [offerData, setOfferData] = useState({
     offer_number: '',
     valid_until: '',
@@ -87,11 +99,15 @@ export default function OfferWizard({
   const [showSubcontractorSelector, setShowSubcontractorSelector] = useState(false);
 
   useEffect(() => {
-    if (isOpen && step === 2) {
+    if (isOpen && step === 1) {
+      fetchOrganizations();
+      fetchContacts();
+    }
+    if (isOpen && step === 3) {
       fetchProducts();
       fetchCategories();
     }
-    if (isOpen && step === 3) {
+    if (isOpen && step === 4) {
       fetchEquipment();
       fetchSubcontractors();
     }
@@ -100,6 +116,35 @@ export default function OfferWizard({
   useEffect(() => {
     filterProducts();
   }, [products, selectedCategory, searchQuery]);
+
+  const fetchOrganizations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id, name, nip, email, phone')
+        .order('name');
+
+      if (error) throw error;
+      if (data) setOrganizations(data);
+    } catch (err) {
+      console.error('Error fetching organizations:', err);
+    }
+  };
+
+  const fetchContacts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, name, surname, email, phone, company_name')
+        .eq('contact_type', 'individual')
+        .order('surname');
+
+      if (error) throw error;
+      if (data) setContacts(data);
+    } catch (err) {
+      console.error('Error fetching contacts:', err);
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -282,6 +327,21 @@ export default function OfferWizard({
       return;
     }
 
+    if (!clientType) {
+      alert('Wybierz typ klienta');
+      return;
+    }
+
+    if (clientType === 'business' && !selectedOrganizationId) {
+      alert('Wybierz organizację');
+      return;
+    }
+
+    if (clientType === 'individual' && !selectedContactId) {
+      alert('Wybierz kontakt');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -297,7 +357,9 @@ export default function OfferWizard({
       // Utwórz ofertę
       const offerDataToInsert: any = {
         event_id: eventId,
-        organization_id: organizationId && typeof organizationId === 'string' && organizationId.trim() !== '' ? organizationId : null,
+        client_type: clientType,
+        organization_id: clientType === 'business' && selectedOrganizationId ? selectedOrganizationId : null,
+        contact_id: clientType === 'individual' && selectedContactId ? selectedContactId : null,
         valid_until: offerData.valid_until || null,
         notes: offerData.notes || null,
         status: 'draft',
@@ -377,7 +439,7 @@ export default function OfferWizard({
           <div>
             <h2 className="text-2xl font-light text-[#e5e4e2]">Kreator oferty</h2>
             <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              Krok {step} z 3
+              Krok {step} z 4
             </p>
           </div>
           <button
@@ -390,7 +452,7 @@ export default function OfferWizard({
 
         {/* Progress Steps */}
         <div className="px-6 py-4 border-b border-[#d3bb73]/10">
-          <div className="flex items-center justify-between max-w-2xl mx-auto">
+          <div className="flex items-center justify-between max-w-4xl mx-auto">
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                 step >= 1 ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/40'
@@ -398,7 +460,7 @@ export default function OfferWizard({
                 1
               </div>
               <span className={`text-sm ${step >= 1 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
-                Dane podstawowe
+                Wybór klienta
               </span>
             </div>
             <ChevronRight className="w-5 h-5 text-[#e5e4e2]/40" />
@@ -409,7 +471,7 @@ export default function OfferWizard({
                 2
               </div>
               <span className={`text-sm ${step >= 2 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
-                Katalog produktów
+                Dane podstawowe
               </span>
             </div>
             <ChevronRight className="w-5 h-5 text-[#e5e4e2]/40" />
@@ -420,6 +482,17 @@ export default function OfferWizard({
                 3
               </div>
               <span className={`text-sm ${step >= 3 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
+                Katalog produktów
+              </span>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#e5e4e2]/40" />
+            <div className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                step >= 4 ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/40'
+              }`}>
+                4
+              </div>
+              <span className={`text-sm ${step >= 4 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
                 Pozycje i podsumowanie
               </span>
             </div>
@@ -428,8 +501,119 @@ export default function OfferWizard({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Step 1: Podstawowe dane */}
+          {/* Step 1: Wybór klienta */}
           {step === 1 && (
+            <div className="max-w-2xl mx-auto space-y-6">
+              <div>
+                <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Wybierz typ klienta</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setClientType('business')}
+                    className={`p-6 rounded-lg border-2 transition-all ${
+                      clientType === 'business'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                    }`}
+                  >
+                    <Package className="w-8 h-8 text-[#d3bb73] mb-2" />
+                    <h4 className="text-lg font-medium text-[#e5e4e2]">Klient biznesowy</h4>
+                    <p className="text-sm text-[#e5e4e2]/60 mt-1">Organizacja / Firma</p>
+                  </button>
+                  <button
+                    onClick={() => setClientType('individual')}
+                    className={`p-6 rounded-lg border-2 transition-all ${
+                      clientType === 'individual'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                    }`}
+                  >
+                    <Users className="w-8 h-8 text-[#d3bb73] mb-2" />
+                    <h4 className="text-lg font-medium text-[#e5e4e2]">Klient indywidualny</h4>
+                    <p className="text-sm text-[#e5e4e2]/60 mt-1">Osoba prywatna</p>
+                  </button>
+                </div>
+              </div>
+
+              {clientType === 'business' && (
+                <div>
+                  <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Wybierz organizację</h3>
+                  <div className="mb-4">
+                    <input
+                      type="text"
+                      placeholder="Szukaj organizacji..."
+                      value={clientSearchQuery}
+                      onChange={(e) => setClientSearchQuery(e.target.value)}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {organizations
+                      .filter((org) =>
+                        org.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+                        org.nip?.toLowerCase().includes(clientSearchQuery.toLowerCase())
+                      )
+                      .map((org) => (
+                        <button
+                          key={org.id}
+                          onClick={() => setSelectedOrganizationId(org.id)}
+                          className={`w-full text-left p-4 rounded-lg border transition-all ${
+                            selectedOrganizationId === org.id
+                              ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                              : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                          }`}
+                        >
+                          <h4 className="text-sm font-medium text-[#e5e4e2]">{org.name}</h4>
+                          {org.nip && <p className="text-xs text-[#e5e4e2]/60 mt-1">NIP: {org.nip}</p>}
+                          {org.email && <p className="text-xs text-[#e5e4e2]/60">{org.email}</p>}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {clientType === 'individual' && (
+                <div>
+                  <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Wybierz kontakt</h3>
+                  <div className="mb-4">
+                    <input
+                      type="text"
+                      placeholder="Szukaj kontaktu..."
+                      value={clientSearchQuery}
+                      onChange={(e) => setClientSearchQuery(e.target.value)}
+                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    />
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {contacts
+                      .filter((contact) =>
+                        `${contact.name} ${contact.surname}`.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+                        contact.email?.toLowerCase().includes(clientSearchQuery.toLowerCase())
+                      )
+                      .map((contact) => (
+                        <button
+                          key={contact.id}
+                          onClick={() => setSelectedContactId(contact.id)}
+                          className={`w-full text-left p-4 rounded-lg border transition-all ${
+                            selectedContactId === contact.id
+                              ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                              : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                          }`}
+                        >
+                          <h4 className="text-sm font-medium text-[#e5e4e2]">
+                            {contact.name} {contact.surname}
+                          </h4>
+                          {contact.email && <p className="text-xs text-[#e5e4e2]/60 mt-1">{contact.email}</p>}
+                          {contact.phone && <p className="text-xs text-[#e5e4e2]/60">{contact.phone}</p>}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 2: Podstawowe dane */}
+          {step === 2 && (
             <div className="max-w-2xl mx-auto space-y-4">
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
                 <p className="text-sm text-blue-400">
@@ -476,8 +660,8 @@ export default function OfferWizard({
             </div>
           )}
 
-          {/* Step 2: Katalog produktów */}
-          {step === 2 && (
+          {/* Step 3: Katalog produktów */}
+          {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium text-[#e5e4e2]">
@@ -576,8 +760,8 @@ export default function OfferWizard({
             </div>
           )}
 
-          {/* Step 3: Pozycje oferty */}
-          {step === 3 && (
+          {/* Step 4: Pozycje oferty */}
+          {step === 4 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium text-[#e5e4e2]">
@@ -983,10 +1167,11 @@ export default function OfferWizard({
           </button>
 
           <div className="flex gap-3">
-            {step < 3 ? (
+            {step < 4 ? (
               <button
                 onClick={() => setStep(step + 1)}
-                className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 font-medium"
+                disabled={step === 1 && (!clientType || (clientType === 'business' && !selectedOrganizationId) || (clientType === 'individual' && !selectedContactId))}
+                className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>Dalej</span>
                 <ChevronRight className="w-5 h-5" />

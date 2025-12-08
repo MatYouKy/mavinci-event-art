@@ -703,7 +703,6 @@ export default function OffersPage() {
             setSelectedEventId(null);
           }}
           eventId={selectedEventId}
-          clientId={null}
           onSuccess={() => {
             setShowOfferWizard(false);
             setSelectedEventId(null);
