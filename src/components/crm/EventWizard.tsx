@@ -175,9 +175,27 @@ export default function EventWizard({
   const fetchContacts = async () => {
     const { data } = await supabase
       .from('contacts')
-      .select('id, full_name, organization_id')
+      .select(`
+        id,
+        full_name,
+        contact_type,
+        contact_organizations(
+          organization_id,
+          is_primary,
+          is_current
+        )
+      `)
       .order('full_name');
-    if (data) setContacts(data);
+
+    if (data) {
+      const mappedContacts = data.map(contact => ({
+        ...contact,
+        organization_id: contact.contact_organizations?.find((co: any) => co.is_current)?.organization_id ||
+                         contact.contact_organizations?.[0]?.organization_id ||
+                         null
+      }));
+      setContacts(mappedContacts as any);
+    }
   };
 
   const fetchCategories = async () => {
@@ -280,11 +298,7 @@ export default function EventWizard({
         contact_type: clientType === 'individual' ? 'individual' : 'organization_contact',
       };
 
-      if (clientType === 'business' && eventData.organization_id) {
-        contactData.organization_id = eventData.organization_id;
-      }
-
-      const { data, error } = await supabase
+      const { data: newContactData, error } = await supabase
         .from('contacts')
         .insert([contactData])
         .select()
@@ -292,8 +306,21 @@ export default function EventWizard({
 
       if (error) throw error;
 
-      setContacts([...contacts, data]);
-      setEventData({ ...eventData, contact_person_id: data.id });
+      if (clientType === 'business' && eventData.organization_id) {
+        const { error: orgError } = await supabase
+          .from('contact_organizations')
+          .insert([{
+            contact_id: newContactData.id,
+            organization_id: eventData.organization_id,
+            is_current: true,
+            is_primary: true,
+          }]);
+
+        if (orgError) throw orgError;
+      }
+
+      await fetchContacts();
+      setEventData({ ...eventData, contact_person_id: newContactData.id });
       setShowNewContactForm(false);
       setNewContact({ first_name: '', last_name: '', email: '', phone: '' });
       showSnackbar('Osoba kontaktowa dodana!', 'success');

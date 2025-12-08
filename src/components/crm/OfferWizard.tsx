@@ -138,9 +138,9 @@ export default function OfferWizard({
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, name, surname, email, phone, company_name')
+        .select('id, first_name, last_name, full_name, email, phone, company_name')
         .eq('contact_type', 'individual')
-        .order('surname');
+        .order('last_name');
 
       if (error) throw error;
       if (data) setContacts(data);
@@ -602,7 +602,7 @@ export default function OfferWizard({
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {contacts
                       .filter((contact) =>
-                        `${contact.name} ${contact.surname}`.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+                        contact.full_name?.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
                         contact.email?.toLowerCase().includes(clientSearchQuery.toLowerCase())
                       )
                       .map((contact) => (
@@ -616,7 +616,7 @@ export default function OfferWizard({
                           }`}
                         >
                           <h4 className="text-sm font-medium text-[#e5e4e2]">
-                            {contact.name} {contact.surname}
+                            {contact.full_name}
                           </h4>
                           {contact.email && <p className="text-xs text-[#e5e4e2]/60 mt-1">{contact.email}</p>}
                           {contact.phone && <p className="text-xs text-[#e5e4e2]/60">{contact.phone}</p>}
