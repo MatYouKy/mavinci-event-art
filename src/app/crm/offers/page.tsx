@@ -14,6 +14,7 @@ import OfferPageTemplatesEditor from '@/components/crm/OfferPageTemplatesEditor'
 type Tab = 'offers' | 'catalog' | 'templates' | 'brochure' | 'pages';
 
 interface Offer {
+  client: any;
   id: string;
   offer_number: string;
   event_id: string;
