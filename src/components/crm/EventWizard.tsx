@@ -416,15 +416,28 @@ export default function EventWizard({
 
       // Automatycznie dodaj autora do zespołu z pełnym dostępem (status: accepted)
       if (session?.user?.id) {
-        await supabase
+        const { error: assignmentError } = await supabase
           .from('employee_assignments')
           .insert([{
             event_id: data.id,
             employee_id: session.user.id,
             role: 'Koordynator',
-            access_level: 'full',
-            status: 'accepted'
+            status: 'accepted',
+            can_edit_event: true,
+            can_edit_agenda: true,
+            can_edit_tasks: true,
+            can_edit_files: true,
+            can_edit_equipment: true,
+            can_invite_members: true,
+            can_view_budget: true,
+            granted_by: session.user.id,
+            permissions_updated_at: new Date().toISOString()
           }]);
+
+        if (assignmentError) {
+          console.error('Error adding creator to team:', assignmentError);
+          showSnackbar('Uwaga: Nie udało się automatycznie dodać Cię do zespołu wydarzenia', 'warning');
+        }
       }
 
       showSnackbar('Event utworzony pomyślnie!', 'success');
