@@ -13,6 +13,8 @@ interface OfferActionsProps {
   currentUser: IUser;
   showSendEmailModal: boolean;
   setShowSendEmailModal: Dispatch<SetStateAction<boolean>>;
+  isEditing: boolean;
+  setIsEditing: Dispatch<SetStateAction<boolean>>;
 }
 
 export default function OfferActions({
@@ -20,6 +22,8 @@ export default function OfferActions({
   currentUser,
   setShowSendEmailModal,
   showSendEmailModal,
+  isEditing,
+  setIsEditing,
 }: OfferActionsProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -146,6 +150,27 @@ export default function OfferActions({
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
       <div className="space-y-2">
+        <button
+          onClick={() => setIsEditing(!isEditing)}
+          className={`flex w-full items-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors ${
+            isEditing
+              ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+              : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+          }`}
+        >
+          {isEditing ? (
+            <>
+              <X className="h-4 w-4" />
+              Anuluj edycję
+            </>
+          ) : (
+            <>
+              <Pencil className="h-4 w-4" />
+              Edytuj ofertę
+            </>
+          )}
+        </button>
+
         <button
           onClick={() => {
             if (offer.event_id) {

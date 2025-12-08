@@ -92,6 +92,7 @@ export default function OfferDetailPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [canSendManage, setCanSendManage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (offerId) {
@@ -314,7 +315,11 @@ export default function OfferDetailPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <OfferBasicInfo offer={offer} />
+          <OfferBasicInfo
+            offer={offer}
+            isEditing={isEditing}
+            onUpdate={fetchOfferDetails}
+          />
 
           <OfferItems
             items={offer.offer_items || []}
@@ -337,6 +342,8 @@ export default function OfferDetailPage() {
             currentUser={currentUser}
             showSendEmailModal={showSendEmailModal}
             setShowSendEmailModal={setShowSendEmailModal}
+            isEditing={isEditing}
+            setIsEditing={setIsEditing}
           />
         </div>
       </div>
