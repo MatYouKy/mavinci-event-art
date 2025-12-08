@@ -339,10 +339,10 @@ export default function EventAgendaTab({
       alert('Najpierw zapisz agendę');
       return;
     }
-  
+
     try {
       setGenerating(true);
-  
+
       // 1. Zbuduj HTML agendy
       const html = buildAgendaHtml({
         eventName,
@@ -352,15 +352,15 @@ export default function EventAgendaTab({
         clientContact: clientContactInput,
         agendaItems: getSortedAgendaItems(),
       });
-  
+
       // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
       const { default: html2pdf } = await import('html2pdf.js');
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
-  
+
       // 3. Tworzymy tymczasowy element z HTML-em
       const element = document.createElement('div');
       element.innerHTML = html;
-  
+
       const opt: any = {
         margin: 10,
         filename: `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
@@ -368,44 +368,51 @@ export default function EventAgendaTab({
         html2canvas: { scale: 2 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       };
-  
+
       // 4. Generujemy PDF jako Blob
       const worker = html2pdfFn().from(element).set(opt).toPdf();
-      const pdfBlob: Blob = await worker.output('blob');          // 👈 ZWRÓĆ UWAGĘ: output, nie outputPdf
-  
-      // 5. Podgląd PDF w nowej karcie
-      const previewUrl = URL.createObjectURL(pdfBlob);
-      window.open(previewUrl, '_blank');
-  
-      // 6. Upload do Supabase storage
-      const fileName = `agenda_${Date.now()}.pdf`;
-      const filePath = `${eventId}/${fileName}`;
-  
+      const pdfBlob: Blob = await worker.output('blob');
+
+      // 5. Zapisz PDF do storage i event_files
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const fileName = `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
+      const storagePath = `${eventId}/${fileName}`;
+
       const { error: uploadError } = await supabase.storage
         .from('event-files')
-        .upload(filePath, pdfBlob, {
+        .upload(storagePath, pdfBlob, {
           contentType: 'application/pdf',
           upsert: false,
         });
-  
-      if (uploadError) throw uploadError;
-  
-      // 7. Zapis rekordu w event_files
-      const { error: fileRecordError } = await supabase.from('event_files').insert([
-        {
-          event_id: eventId,
-          name: `Agenda - ${eventName}.pdf`,
-          original_name: `agenda_${eventName}.pdf`,
-          file_path: filePath,
-          file_size: pdfBlob.size,
-          mime_type: 'application/pdf',
-          uploaded_by: employee?.id,
-        },
-      ]);
-  
-      if (fileRecordError) throw fileRecordError;
-  
-      alert('PDF został wygenerowany i zapisany w zakładce Pliki');
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        alert('Błąd podczas zapisywania pliku');
+      } else {
+        const { data: { publicUrl } } = supabase.storage
+          .from('event-files')
+          .getPublicUrl(storagePath);
+
+        await supabase.from('event_files').insert([
+          {
+            event_id: eventId,
+            folder_id: null,
+            name: fileName,
+            original_name: fileName,
+            file_path: storagePath,
+            file_size: pdfBlob.size,
+            mime_type: 'application/pdf',
+            thumbnail_url: null,
+            uploaded_by: employee?.id,
+          },
+        ]);
+
+        alert('Agenda PDF została zapisana w zakładce Pliki');
+      }
+
+      // 6. Podgląd PDF w nowej karcie
+      const previewUrl = URL.createObjectURL(pdfBlob);
+      window.open(previewUrl, '_blank');
     } catch (err) {
       console.error('Error generating PDF:', err);
       alert('Wystąpił błąd podczas generowania PDF (szczegóły w konsoli)');

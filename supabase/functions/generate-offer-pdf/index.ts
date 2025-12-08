@@ -570,6 +570,38 @@ Deno.serve(async (req: Request) => {
       throw new Error("Failed to update offer: " + updateError.message);
     }
 
+    if (offer.event_id) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const eventFileName = `oferta-${offerName}-${timestamp}.pdf`;
+      const eventFilePath = `${offer.event_id}/${eventFileName}`;
+
+      const { error: eventUploadError } = await supabase.storage
+        .from('event-files')
+        .upload(eventFilePath, pdfBytes, {
+          contentType: 'application/pdf',
+          upsert: false,
+        });
+
+      if (!eventUploadError) {
+        await supabase.from('event_files').insert([
+          {
+            event_id: offer.event_id,
+            folder_id: null,
+            name: eventFileName,
+            original_name: eventFileName,
+            file_path: eventFilePath,
+            file_size: pdfBytes.length,
+            mime_type: 'application/pdf',
+            thumbnail_url: null,
+            uploaded_by: currentEmployee?.id || offer.created_by,
+          },
+        ]);
+        console.log('Offer PDF saved to event files');
+      } else {
+        console.error('Failed to save offer PDF to event files:', eventUploadError);
+      }
+    }
+
     const { data: signedUrlData } = await supabase.storage
       .from('generated-offers')
       .createSignedUrl(fileName, 3600);

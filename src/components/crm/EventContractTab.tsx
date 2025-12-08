@@ -386,8 +386,68 @@ export function EventContractTab({ eventId }: Props) {
     setEditMode(false);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (!contractId) {
+      showSnackbar('Najpierw zapisz umowę', 'warning');
+      return;
+    }
+
+    try {
+      const { default: html2pdf } = await import('html2pdf.js');
+      const html2pdfFn: any = (html2pdf as any) || html2pdf;
+
+      const contractElement = document.querySelector('.contract-a4-wrapper');
+      if (!contractElement) {
+        window.print();
+        return;
+      }
+
+      const opt: any = {
+        margin: 0,
+        filename: `umowa-${contractId}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+
+      const worker = html2pdfFn().from(contractElement).set(opt).toPdf();
+      const pdfBlob: Blob = await worker.output('blob');
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const fileName = `umowa-${timestamp}.pdf`;
+      const storagePath = `${eventId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('event-files')
+        .upload(storagePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false,
+        });
+
+      if (!uploadError) {
+        await supabase.from('event_files').insert([
+          {
+            event_id: eventId,
+            folder_id: null,
+            name: fileName,
+            original_name: fileName,
+            file_path: storagePath,
+            file_size: pdfBlob.size,
+            mime_type: 'application/pdf',
+            thumbnail_url: null,
+            uploaded_by: employee?.id,
+          },
+        ]);
+
+        showSnackbar('Umowa PDF została zapisana w zakładce Pliki', 'success');
+      }
+
+      const previewUrl = URL.createObjectURL(pdfBlob);
+      window.open(previewUrl, '_blank');
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      window.print();
+    }
   };
 
   const handleStatusChange = async (newStatus: ContractStatus) => {
