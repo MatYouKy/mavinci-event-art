@@ -1,19 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Download, Send, Trash2, RefreshCw, Pencil } from 'lucide-react';
+import {
+  ArrowLeft,
+  FileText,
+  Download,
+  Send,
+  Trash2,
+  RefreshCw,
+  Pencil,
+  X,
+  Check,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
-import OfferBasicInfo from './components/OfferBasicInfo';
+
 import OfferActions from './components/OfferActions';
 import OfferItems from './components/OfferItems';
 import OfferHistory from './components/OfferHistory';
 import { OfferDetails } from './components/OfferDetails';
+import OfferBasicInfo, { OfferBasicInfoHandle } from './components/OfferBasicInfo';
 
 interface OfferItem {
   id: string;
@@ -84,7 +94,6 @@ export default function OfferDetailPage() {
   const offerId = params.id as string;
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { employee } = useCurrentEmployee();
 
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,11 +103,14 @@ export default function OfferDetailPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
+  const basicInfoRef = useRef<OfferBasicInfoHandle | null>(null);
+
   useEffect(() => {
     if (offerId) {
       fetchOfferDetails();
       fetchCurrentUser();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerId]);
 
   const fetchCurrentUser = async () => {
@@ -128,7 +140,7 @@ export default function OfferDetailPage() {
     }
   }, [offer, currentUser]);
 
-  const fetchOfferDetails = async () => {
+  const fetchOfferDetails = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -170,6 +182,7 @@ export default function OfferDetailPage() {
       if (error) {
         console.error('Error fetching offer:', error);
         showSnackbar('Błąd podczas pobierania oferty', 'error');
+        setOffer(null);
         return;
       }
 
@@ -186,9 +199,9 @@ export default function OfferDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [offerId, showSnackbar]);
 
-  const handleDeleteOffer = async () => {
+  const handleDeleteOffer = useCallback(async () => {
     if (!offer) return;
 
     const confirmed = await showConfirm(
@@ -218,7 +231,7 @@ export default function OfferDetailPage() {
       console.error('Error:', err);
       showSnackbar('Wystąpił błąd', 'error');
     }
-  };
+  }, [offer, offerId, router, showConfirm, showSnackbar]);
 
   const handleDeleteItem = async (itemId: string) => {
     const confirmed = await showConfirm(
@@ -245,22 +258,53 @@ export default function OfferDetailPage() {
     }
   };
 
-  const actions: Action[] = [
-    {
+  const handleOfferUpdated = () => {
+    fetchOfferDetails();
+    setIsEditing(false);
+  };
+
+  const actions = useMemo(() => {
+    if (!canSendManage) return [] as Action[];
+
+    const result: Action[] = [];
+
+    // Edytuj / Zapisz
+    result.push({
+      label: isEditing ? 'Zapisz' : 'Edytuj',
+      onClick: () => {
+        if (isEditing) {
+          basicInfoRef.current?.submit();
+        } else {
+          setIsEditing(true);
+        }
+      },
+      icon: isEditing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />,
+      variant: 'primary',
+      show: true,
+    });
+
+    // Anuluj w trybie edycji
+    if (isEditing) {
+      result.push({
+        label: 'Anuluj',
+        onClick: () => setIsEditing(false),
+        icon: <X className="h-4 w-4" />,
+        variant: 'danger',
+        show: true,
+      });
+    }
+
+    // Usuń zawsze dostępny dla zarządzających
+    result.push({
       label: 'Usuń',
       onClick: handleDeleteOffer,
       icon: <Trash2 className="h-4 w-4" />,
       variant: 'danger',
       show: true,
-    },
-    {
-      label: 'Edytuj',
-      onClick: () => {},
-      icon: <Pencil className="h-4 w-4" />,
-      variant: 'primary',
-      show: true,
-    },
-  ];
+    });
+
+    return result;
+  }, [canSendManage, isEditing, handleDeleteOffer]);
 
   if (loading) {
     return (
@@ -316,9 +360,10 @@ export default function OfferDetailPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <OfferBasicInfo
+            ref={basicInfoRef}
             offer={offer}
             isEditing={isEditing}
-            onUpdate={fetchOfferDetails}
+            onUpdate={handleOfferUpdated}
           />
 
           <OfferItems
@@ -342,22 +387,20 @@ export default function OfferDetailPage() {
             currentUser={currentUser}
             showSendEmailModal={showSendEmailModal}
             setShowSendEmailModal={setShowSendEmailModal}
-            isEditing={isEditing}
-            setIsEditing={setIsEditing}
           />
         </div>
       </div>
 
       {showSendEmailModal && offer && (
         <SendOfferEmailModal
-          offer={offer}
+          offerId={offer.id}
+          offerNumber={offer.offer_number}
+          clientEmail={offer.organization?.email}
+          clientName={offer.organization?.name}
           onClose={() => setShowSendEmailModal(false)}
-          onSuccess={() => {
-            setShowSendEmailModal(false);
-            fetchOfferDetails();
-          }}
+          onSent={handleOfferUpdated}
         />
-      )}
+      )}  
 
       {previewImage && (
         <div
