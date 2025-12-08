@@ -6,6 +6,7 @@ import { ArrowLeft, FileText, Plus, Trash2, DollarSign, Calendar, Building2, Cre
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 
 interface OfferItem {
@@ -76,6 +77,7 @@ export default function OfferDetailPage() {
   const offerId = params.id as string;
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
+  const { employee } = useCurrentEmployee();
 
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -350,6 +352,11 @@ export default function OfferDetailPage() {
   const handleGeneratePdf = async () => {
     if (!offer) return;
 
+    if (!employee?.id) {
+      showSnackbar('Musisz być zalogowany', 'error');
+      return;
+    }
+
     try {
       setGeneratingPdf(true);
 
@@ -367,7 +374,10 @@ export default function OfferDetailPage() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ offerId: offer.id }),
+          body: JSON.stringify({
+            offerId: offer.id,
+            employeeId: employee.id
+          }),
         }
       );
 

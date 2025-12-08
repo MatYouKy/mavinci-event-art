@@ -11,6 +11,7 @@ const corsHeaders = {
 
 interface GenerateOfferPdfRequest {
   offerId: string;
+  employeeId?: string;
 }
 
 interface TextFieldConfig {
@@ -37,7 +38,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { offerId }: GenerateOfferPdfRequest = await req.json();
+    const { offerId, employeeId }: GenerateOfferPdfRequest = await req.json();
 
     if (!offerId) {
       throw new Error("offerId is required");
@@ -78,12 +79,29 @@ Deno.serve(async (req: Request) => {
       throw new Error("Offer not found: " + offerError?.message);
     }
 
-    const prepareOfferData = (offer: any) => {
+    let currentEmployee: any = null;
+    if (employeeId) {
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("id, name, surname, email, phone_number, avatar_url")
+        .eq("id", employeeId)
+        .maybeSingle();
+
+      currentEmployee = empData;
+    }
+
+    if (!currentEmployee) {
+      currentEmployee = offer.created_by_employee || {};
+      console.log('Using offer creator employee (fallback):', currentEmployee.id);
+    } else {
+      console.log('Using logged-in employee:', currentEmployee.id);
+    }
+
+    const prepareOfferData = (offer: any, employee: any) => {
       const org = offer.organization;
       const event = offer.event;
       const location = org?.location || {};
       const eventLocation = event?.location || {};
-      const employee = offer.created_by_employee || {};
 
       const data = {
         client_name: org?.name || '',
@@ -269,7 +287,7 @@ Deno.serve(async (req: Request) => {
     };
 
     const mergedPdf = await PDFDocument.create();
-    const offerData = prepareOfferData(offer);
+    const offerData = prepareOfferData(offer, currentEmployee);
 
     const addPdfFromTemplate = async (templateType: string) => {
       try {
