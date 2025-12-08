@@ -52,7 +52,9 @@ export default function OfferWizard({
   onSuccess,
 }: OfferWizardProps) {
   const { employee } = useCurrentEmployee();
-  const [step, setStep] = useState(1);
+  // If client is already selected (from event), start at step 2
+  const initialStep = (propClientType && (propOrganizationId || propContactId)) ? 2 : 1;
+  const [step, setStep] = useState(initialStep);
   const [loading, setLoading] = useState(false);
 
   // Step 1: Wybór klienta
@@ -62,6 +64,7 @@ export default function OfferWizard({
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [showAddClientModal, setShowAddClientModal] = useState(false);
 
   // Step 2: Podstawowe dane oferty
   const [offerData, setOfferData] = useState({
@@ -439,7 +442,7 @@ export default function OfferWizard({
           <div>
             <h2 className="text-2xl font-light text-[#e5e4e2]">Kreator oferty</h2>
             <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              Krok {step} z 4
+              Krok {initialStep === 2 ? step - 1 : step} z {initialStep === 2 ? 3 : 4}
             </p>
           </div>
           <button
@@ -453,22 +456,26 @@ export default function OfferWizard({
         {/* Progress Steps */}
         <div className="px-6 py-4 border-b border-[#d3bb73]/10">
           <div className="flex items-center justify-between max-w-4xl mx-auto">
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                step >= 1 ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/40'
-              }`}>
-                1
-              </div>
-              <span className={`text-sm ${step >= 1 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
-                Wybór klienta
-              </span>
-            </div>
-            <ChevronRight className="w-5 h-5 text-[#e5e4e2]/40" />
+            {initialStep === 1 && (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    step >= 1 ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/40'
+                  }`}>
+                    1
+                  </div>
+                  <span className={`text-sm ${step >= 1 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
+                    Wybór klienta
+                  </span>
+                </div>
+                <ChevronRight className="w-5 h-5 text-[#e5e4e2]/40" />
+              </>
+            )}
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                 step >= 2 ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/40'
               }`}>
-                2
+                {initialStep === 2 ? 1 : 2}
               </div>
               <span className={`text-sm ${step >= 2 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
                 Dane podstawowe
@@ -479,7 +486,7 @@ export default function OfferWizard({
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                 step >= 3 ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/40'
               }`}>
-                3
+                {initialStep === 2 ? 2 : 3}
               </div>
               <span className={`text-sm ${step >= 3 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
                 Katalog produktów
@@ -490,7 +497,7 @@ export default function OfferWizard({
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                 step >= 4 ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]/40'
               }`}>
-                4
+                {initialStep === 2 ? 3 : 4}
               </div>
               <span className={`text-sm ${step >= 4 ? 'text-[#e5e4e2]' : 'text-[#e5e4e2]/40'}`}>
                 Pozycje i podsumowanie
@@ -573,7 +580,16 @@ export default function OfferWizard({
 
               {clientType === 'individual' && (
                 <div>
-                  <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Wybierz kontakt</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-light text-[#e5e4e2]">Wybierz kontakt</h3>
+                    <button
+                      onClick={() => setShowAddClientModal(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg text-[#d3bb73] hover:bg-[#d3bb73]/20 transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Dodaj nowego klienta</span>
+                    </button>
+                  </div>
                   <div className="mb-4">
                     <input
                       type="text"
@@ -1188,6 +1204,110 @@ export default function OfferWizard({
           </div>
         </div>
       </div>
+
+      {/* Add Client Modal */}
+      {showAddClientModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj nowego klienta</h3>
+              <button
+                onClick={() => setShowAddClientModal(false)}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const name = formData.get('name') as string;
+                const surname = formData.get('surname') as string;
+                const email = formData.get('email') as string;
+                const phone = formData.get('phone') as string;
+
+                try {
+                  const { data, error } = await supabase
+                    .from('contacts')
+                    .insert([
+                      {
+                        name,
+                        surname,
+                        email: email || null,
+                        phone: phone || null,
+                        contact_type: 'individual',
+                      },
+                    ])
+                    .select()
+                    .single();
+
+                  if (error) throw error;
+
+                  setContacts([...contacts, data]);
+                  setSelectedContactId(data.id);
+                  setShowAddClientModal(false);
+                  alert('Klient został dodany pomyślnie');
+                } catch (err) {
+                  console.error('Error adding client:', err);
+                  alert('Wystąpił błąd podczas dodawania klienta');
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Imię *</label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwisko *</label>
+                <input
+                  type="text"
+                  name="surname"
+                  required
+                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Telefon</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddClientModal(false)}
+                  className="flex-1 px-4 py-2 border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#1c1f33]"
+                >
+                  Anuluj
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 font-medium"
+                >
+                  Dodaj
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

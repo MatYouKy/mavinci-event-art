@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
+  ArrowRight,
   Calendar,
   MapPin,
   Building2,
@@ -2430,14 +2431,28 @@ export default function EventDetailPage() {
 
                       <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/40 hover:shadow-lg">
                         <div className="mb-2 flex items-start justify-between gap-4">
-                          <div>
+                          <div className="flex-1">
                             <p className="font-medium text-[#e5e4e2]">
                               <span className="text-[#d3bb73]">{displayName}</span>{' '}
                               {log.action === 'create' && 'utworzył'}
                               {log.action === 'update' && 'zaktualizował'}
                               {log.action === 'delete' && 'usunął'}{' '}
-                              <span className="text-[#e5e4e2]/80">{log.entity_type}</span>
+                              <span className="text-[#e5e4e2]/80">
+                                {log.entity_type === 'events' && 'wydarzenie'}
+                                {log.entity_type === 'event_equipment' && 'sprzęt wydarzenia'}
+                                {log.entity_type === 'employee_assignments' && 'przypisanie pracownika'}
+                                {log.entity_type === 'event_vehicles' && 'pojazd wydarzenia'}
+                                {log.entity_type === 'tasks' && 'zadanie'}
+                                {log.entity_type === 'offers' && 'ofertę'}
+                                {log.entity_type === 'contracts' && 'umowę'}
+                                {log.entity_type === 'event_files' && 'plik'}
+                                {log.entity_type === 'event_subcontractors' && 'podwykonawcę'}
+                                {!['events', 'event_equipment', 'employee_assignments', 'event_vehicles', 'tasks', 'offers', 'contracts', 'event_files', 'event_subcontractors'].includes(log.entity_type) && log.entity_type}
+                              </span>
                             </p>
+                            {log.description && (
+                              <p className="mt-1 text-sm text-[#e5e4e2]/70">{log.description}</p>
+                            )}
                             {log.field_name && (
                               <p className="mt-1 text-sm text-[#e5e4e2]/60">
                                 Pole: <span className="text-[#d3bb73]/80">{log.field_name}</span>
@@ -2459,6 +2474,63 @@ export default function EventDetailPage() {
                             </div>
                           </div>
                         </div>
+
+                        {log.action === 'update' && (log.old_value || log.new_value) && (
+                          <div className="mt-3 space-y-2 border-t border-[#d3bb73]/10 pt-3">
+                            {(() => {
+                              const oldVal = log.old_value || {};
+                              const newVal = log.new_value || {};
+                              const changedFields = Object.keys(newVal).filter(
+                                (key) => JSON.stringify(oldVal[key]) !== JSON.stringify(newVal[key])
+                              );
+
+                              if (changedFields.length === 0) return null;
+
+                              return changedFields.map((field) => {
+                                if (['id', 'created_at', 'updated_at'].includes(field)) return null;
+
+                                const fieldLabels: Record<string, string> = {
+                                  name: 'Nazwa',
+                                  description: 'Opis',
+                                  status: 'Status',
+                                  budget: 'Budżet',
+                                  event_date: 'Data wydarzenia',
+                                  location: 'Lokalizacja',
+                                  quantity: 'Ilość',
+                                  notes: 'Notatki',
+                                  organization_id: 'Organizacja',
+                                  contact_person_id: 'Osoba kontaktowa',
+                                  category_id: 'Kategoria',
+                                  expected_revenue: 'Przewidywany przychód',
+                                  estimated_costs: 'Szacowane koszty',
+                                };
+
+                                const formatValue = (val: any) => {
+                                  if (val === null || val === undefined) return 'brak';
+                                  if (typeof val === 'boolean') return val ? 'tak' : 'nie';
+                                  if (typeof val === 'number') return val.toLocaleString('pl-PL');
+                                  if (typeof val === 'string' && val.length > 100) return val.substring(0, 100) + '...';
+                                  return String(val);
+                                };
+
+                                return (
+                                  <div key={field} className="text-sm">
+                                    <span className="text-[#e5e4e2]/60">{fieldLabels[field] || field}:</span>
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <span className="rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
+                                        {formatValue(oldVal[field])}
+                                      </span>
+                                      <ArrowRight className="h-3 w-3 text-[#e5e4e2]/40" />
+                                      <span className="rounded bg-green-500/10 px-2 py-1 text-xs text-green-400">
+                                        {formatValue(newVal[field])}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                        )}
 
                         {log.metadata?.table && (
                           <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
