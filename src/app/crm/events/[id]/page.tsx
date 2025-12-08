@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Calendar,
+  ClipboardList,
   MapPin,
   Building2,
   DollarSign,
@@ -50,6 +51,7 @@ import EventSubcontractorsPanel from '@/components/crm/EventSubcontractorsPanel'
 import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
 import OfferWizard from '@/components/crm/OfferWizard';
 import EventFinancesTab from '@/components/crm/EventFinancesTab';
+import EventAgendaTab from '@/components/crm/EventAgendaTab';
 import EventStatusEditor from '@/components/crm/EventStatusEditor';
 import { EventContractTab } from '@/components/crm/EventContractTab';
 import { useDialog } from '@/contexts/DialogContext';
@@ -1275,6 +1277,7 @@ export default function EventDetailPage() {
           { id: 'offer', label: 'Oferta', icon: DollarSign },
           { id: 'finances', label: 'Finanse', icon: DollarSign },
           { id: 'contract', label: 'Umowa', icon: FileText },
+          { id: 'agenda', label: 'Agenda', icon: ClipboardList },
           { id: 'equipment', label: 'Sprzęt', icon: Package },
           { id: 'team', label: 'Zespół', icon: Users },
           { id: 'logistics', label: 'Logistyka', icon: Truck },
@@ -2317,6 +2320,8 @@ export default function EventDetailPage() {
       {activeTab === 'finances' && <EventFinancesTab eventId={eventId} />}
 
       {activeTab === 'contract' && <EventContractTab eventId={eventId} />}
+
+      {activeTab === 'agenda' && <EventAgendaTab eventId={eventId} />}
 
       {activeTab === 'history' && (
         <div className="space-y-6">
