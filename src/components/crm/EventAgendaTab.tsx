@@ -31,6 +31,26 @@ const isoToTimeInput = (value?: string | null): string => {
   return d.toISOString().slice(11, 16);
 };
 
+const combineDateAndTime = (dateStr: string, timeStr: string): string | null => {
+  if (!dateStr || !timeStr) return null;
+
+  try {
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    if (hours === undefined || minutes === undefined) return null;
+
+    date.setHours(hours, minutes, 0, 0);
+
+    if (Number.isNaN(date.getTime())) return null;
+
+    return date.toISOString();
+  } catch {
+    return null;
+  }
+};
+
 interface EventAgendaTabProps {
   eventId: string;
   eventName: string;
@@ -116,8 +136,8 @@ export default function EventAgendaTab({
 
         // Jeśli agenda istnieje, preferujemy jej dane,
         // ale fallbackiem są wartości z wydarzenia (propsy/logi)
-        setStartTimeInput(agenda.start_time || startTime || '');
-        setEndTimeInput(agenda.end_time || endTime || '');
+        setStartTimeInput(isoToTimeInput(agenda.start_time) || isoToTimeInput(startTime) || '');
+        setEndTimeInput(isoToTimeInput(agenda.end_time) || isoToTimeInput(endTime) || '');
         setClientContactInput(agenda.client_contact || clientContact || '');
 
         const { data: items, error: itemsError } = await supabase
@@ -127,7 +147,12 @@ export default function EventAgendaTab({
           .order('order_index');
 
         if (itemsError) throw itemsError;
-        setAgendaItems(items || []);
+        setAgendaItems(
+          (items || []).map((item) => ({
+            ...item,
+            time: isoToTimeInput(item.time) || '',
+          })),
+        );
 
         const { data: notes, error: notesError } = await supabase
           .from('event_agenda_notes')
@@ -208,8 +233,8 @@ export default function EventAgendaTab({
               event_id: eventId,
               event_name: eventName,
               event_date: eventDate,
-              start_time: startTimeInput ? new Date(startTimeInput).toISOString() : null,
-              end_time: endTimeInput ? new Date(endTimeInput).toISOString() : null,
+              start_time: combineDateAndTime(eventDate, startTimeInput),
+              end_time: combineDateAndTime(eventDate, endTimeInput),
               client_contact: clientContactInput || null,
               created_by: employee?.id,
             },
@@ -226,8 +251,8 @@ export default function EventAgendaTab({
           .update({
             event_name: eventName,
             event_date: eventDate,
-            start_time: startTimeInput ? new Date(startTimeInput).toISOString() : null,
-            end_time: endTimeInput ? new Date(endTimeInput).toISOString() : null,
+            start_time: combineDateAndTime(eventDate, startTimeInput),
+            end_time: combineDateAndTime(eventDate, endTimeInput),
             client_contact: clientContactInput || null,
           })
           .eq('id', currentAgendaId);
@@ -242,7 +267,7 @@ export default function EventAgendaTab({
         const { error: itemsError } = await supabase.from('event_agenda_items').insert(
           sortedItems.map((item, index) => ({
             agenda_id: currentAgendaId,
-            time: item.time ? new Date(item.time).toISOString() : null,
+            time: combineDateAndTime(eventDate, item.time),
             title: item.title,
             description: item.description,
             order_index: index,
