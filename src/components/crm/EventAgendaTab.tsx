@@ -3,66 +3,50 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight } from 'lucide-react';
+import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List } from 'lucide-react';
+import { dataUriToBlob } from '@/app/crm/events/[id]/helpers/blobPDFHelper';
+import { buildAgendaHtml } from '@/app/crm/events/[id]/helpers/buildAgendaPdf';
+
+// YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00.000Z
+const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
+  if (!dateOnly || !timeStr) return null;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return null;
+  if (!/^\d{2}:\d{2}$/.test(timeStr)) return null;
+
+  return `${dateOnly}T${timeStr}:00.000Z`;
+};
 
 const isoToDateInput = (value?: string | null): string => {
   if (!value) return '';
-
-  // jeśli już jest w formacie YYYY-MM-DD – zostaw
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-
-  // YYYY-MM-DD
-  return d.toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
 };
 
 const isoToTimeInput = (value?: string | null): string => {
   if (!value) return '';
-
-  // jeśli już jest HH:MM – zostaw
   if (/^\d{2}:\d{2}$/.test(value)) return value;
 
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-
-  // HH:MM
-  return d.toISOString().slice(11, 16);
-};
-
-const combineDateAndTime = (dateStr: string, timeStr: string): string | null => {
-  if (!dateStr || !timeStr) return null;
-
-  try {
-    const date = new Date(dateStr);
-    if (Number.isNaN(date.getTime())) return null;
-
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    if (hours === undefined || minutes === undefined) return null;
-
-    date.setHours(hours, minutes, 0, 0);
-
-    if (Number.isNaN(date.getTime())) return null;
-
-    return date.toISOString();
-  } catch {
-    return null;
-  }
+  return d.toISOString().slice(11, 16); // HH:MM
 };
 
 interface EventAgendaTabProps {
   eventId: string;
   eventName: string;
-  eventDate: string;
-  startTime: string;        // z logów / rodzica (np. "12:00")
+  eventDate: string;   // ISO albo YYYY-MM-DD
+  startTime: string;   // ISO albo HH:MM
   endTime: string;
-  clientContact: string;    // z logów / rodzica
+  clientContact: string;
 }
 
 interface AgendaItem {
   id?: string;
-  time: string;
+  time: string; // HH:MM w UI
   title: string;
   description: string;
   order_index: number;
@@ -90,34 +74,34 @@ export default function EventAgendaTab({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
-
-  const [startTimeInput, setStartTimeInput] = useState(() => isoToTimeInput(startTime));
-  const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
-  const [clientContactInput, setClientContactInput] = useState(clientContact || '');
+  const [editMode, setEditMode] = useState(false);
+  const [html2pdfReady, setHtml2pdfReady] = useState(false);
 
   const [agendaId, setAgendaId] = useState<string | null>(null);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
   const [agendaNotes, setAgendaNotes] = useState<AgendaNote[]>([]);
 
   const normalizedEventDate = useMemo(() => isoToDateInput(eventDate), [eventDate]);
-  const normalizedStartTime = useMemo(() => isoToTimeInput(startTime), [startTime]);
-  const normalizedEndTime = useMemo(() => isoToTimeInput(endTime), [endTime]);
+
+  const [startTimeInput, setStartTimeInput] = useState(() => isoToTimeInput(startTime));
+  const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
+  const [clientContactInput, setClientContactInput] = useState(clientContact || '');
+
   const canManage =
     employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
 
-  // Gdy propsy z wydarzenia się zmienią (np. po załadowaniu eventDetails w rodzicu),
-  // nadpisujemy lokalne inputy, o ile agenda jeszcze nie istnieje
+  useEffect(() => {
+    fetchAgenda();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId]);
+
   useEffect(() => {
     if (!agendaId) {
-      setStartTimeInput(startTime || '');
-      setEndTimeInput(endTime || '');
+      setStartTimeInput(isoToTimeInput(startTime));
+      setEndTimeInput(isoToTimeInput(endTime));
       setClientContactInput(clientContact || '');
     }
   }, [startTime, endTime, clientContact, agendaId]);
-
-  useEffect(() => {
-    fetchAgenda();
-  }, [eventId]);
 
   const fetchAgenda = async () => {
     try {
@@ -134,8 +118,6 @@ export default function EventAgendaTab({
       if (agenda) {
         setAgendaId(agenda.id);
 
-        // Jeśli agenda istnieje, preferujemy jej dane,
-        // ale fallbackiem są wartości z wydarzenia (propsy/logi)
         setStartTimeInput(isoToTimeInput(agenda.start_time) || isoToTimeInput(startTime) || '');
         setEndTimeInput(isoToTimeInput(agenda.end_time) || isoToTimeInput(endTime) || '');
         setClientContactInput(agenda.client_contact || clientContact || '');
@@ -147,6 +129,7 @@ export default function EventAgendaTab({
           .order('order_index');
 
         if (itemsError) throw itemsError;
+
         setAgendaItems(
           (items || []).map((item) => ({
             ...item,
@@ -162,6 +145,13 @@ export default function EventAgendaTab({
 
         if (notesError) throw notesError;
         setAgendaNotes(buildNoteTree(notes || []));
+      } else {
+        // brak agendy – reset do propsów
+        setAgendaItems([]);
+        setAgendaNotes([]);
+        setStartTimeInput(isoToTimeInput(startTime));
+        setEndTimeInput(isoToTimeInput(endTime));
+        setClientContactInput(clientContact || '');
       }
     } catch (err) {
       console.error('Error fetching agenda:', err);
@@ -209,16 +199,28 @@ export default function EventAgendaTab({
     return flat;
   };
 
+  const getSortedAgendaItems = () => {
+    return [...agendaItems].sort((a, b) => {
+      if (!a.time && !b.time) return 0;
+      if (!a.time) return 1;
+      if (!b.time) return -1;
+      return a.time.localeCompare(b.time);
+    });
+  };
+
   const handleSave = async () => {
     if (!canManage) {
       alert('Nie masz uprawnień do zapisywania agendy');
       return;
     }
 
-    if (!eventName || !eventDate) {
+    if (!eventName || !normalizedEventDate) {
       alert('Nazwa wydarzenia i data są wymagane');
       return;
     }
+
+    const isoStart = buildIsoDateTime(normalizedEventDate, startTimeInput);
+    const isoEnd = buildIsoDateTime(normalizedEventDate, endTimeInput);
 
     try {
       setSaving(true);
@@ -232,9 +234,9 @@ export default function EventAgendaTab({
             {
               event_id: eventId,
               event_name: eventName,
-              event_date: eventDate,
-              start_time: combineDateAndTime(eventDate, startTimeInput),
-              end_time: combineDateAndTime(eventDate, endTimeInput),
+              event_date: normalizedEventDate,
+              start_time: isoStart,
+              end_time: isoEnd,
               client_contact: clientContactInput || null,
               created_by: employee?.id,
             },
@@ -250,9 +252,9 @@ export default function EventAgendaTab({
           .from('event_agendas')
           .update({
             event_name: eventName,
-            event_date: eventDate,
-            start_time: combineDateAndTime(eventDate, startTimeInput),
-            end_time: combineDateAndTime(eventDate, endTimeInput),
+            event_date: normalizedEventDate,
+            start_time: isoStart,
+            end_time: isoEnd,
             client_contact: clientContactInput || null,
           })
           .eq('id', currentAgendaId);
@@ -260,6 +262,7 @@ export default function EventAgendaTab({
         if (updateError) throw updateError;
       }
 
+      // items
       await supabase.from('event_agenda_items').delete().eq('agenda_id', currentAgendaId);
 
       if (agendaItems.length > 0) {
@@ -267,7 +270,7 @@ export default function EventAgendaTab({
         const { error: itemsError } = await supabase.from('event_agenda_items').insert(
           sortedItems.map((item, index) => ({
             agenda_id: currentAgendaId,
-            time: combineDateAndTime(eventDate, item.time),
+            time: buildIsoDateTime(normalizedEventDate, item.time),
             title: item.title,
             description: item.description,
             order_index: index,
@@ -277,6 +280,7 @@ export default function EventAgendaTab({
         if (itemsError) throw itemsError;
       }
 
+      // notes
       await supabase.from('event_agenda_notes').delete().eq('agenda_id', currentAgendaId);
 
       const flatNotes = flattenNotes(agendaNotes);
@@ -308,6 +312,7 @@ export default function EventAgendaTab({
 
       alert('Agenda została zapisana');
       await fetchAgenda();
+      setEditMode(false);
     } catch (err) {
       console.error('Error saving agenda:', err);
       alert('Wystąpił błąd podczas zapisywania agendy');
@@ -316,89 +321,122 @@ export default function EventAgendaTab({
     }
   };
 
+  const handleCancelEdit = async () => {
+    if (agendaId) {
+      await fetchAgenda();
+    } else {
+      setAgendaItems([]);
+      setAgendaNotes([]);
+      setStartTimeInput(isoToTimeInput(startTime));
+      setEndTimeInput(isoToTimeInput(endTime));
+      setClientContactInput(clientContact || '');
+    }
+    setEditMode(false);
+  };
+
   const handleGeneratePDF = async () => {
     if (!agendaId) {
       alert('Najpierw zapisz agendę');
       return;
     }
-
+  
     try {
       setGenerating(true);
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-agenda-pdf`,
+  
+      // 1. Zbuduj HTML agendy
+      const html = buildAgendaHtml({
+        eventName,
+        eventDate: normalizedEventDate, // YYYY-MM-DD
+        startTime: startTimeInput,
+        endTime: endTimeInput,
+        clientContact: clientContactInput,
+        agendaItems: getSortedAgendaItems(),
+      });
+  
+      // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
+      const { default: html2pdf } = await import('html2pdf.js');
+      const html2pdfFn: any = (html2pdf as any) || html2pdf;
+  
+      // 3. Tworzymy tymczasowy element z HTML-em
+      const element = document.createElement('div');
+      element.innerHTML = html;
+  
+      const opt: any = {
+        margin: 10,
+        filename: `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+  
+      // 4. Generujemy PDF jako Blob
+      const worker = html2pdfFn().from(element).set(opt).toPdf();
+      const pdfBlob: Blob = await worker.output('blob');          // 👈 ZWRÓĆ UWAGĘ: output, nie outputPdf
+  
+      // 5. Podgląd PDF w nowej karcie
+      const previewUrl = URL.createObjectURL(pdfBlob);
+      window.open(previewUrl, '_blank');
+  
+      // 6. Upload do Supabase storage
+      const fileName = `agenda_${Date.now()}.pdf`;
+      const filePath = `${eventId}/${fileName}`;
+  
+      const { error: uploadError } = await supabase.storage
+        .from('event-files')
+        .upload(filePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false,
+        });
+  
+      if (uploadError) throw uploadError;
+  
+      // 7. Zapis rekordu w event_files
+      const { error: fileRecordError } = await supabase.from('event_files').insert([
         {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ agendaId }),
+          event_id: eventId,
+          name: `Agenda - ${eventName}.pdf`,
+          original_name: `agenda_${eventName}.pdf`,
+          file_path: filePath,
+          file_size: pdfBlob.size,
+          mime_type: 'application/pdf',
+          uploaded_by: employee?.id,
         },
-      );
-
-      if (!response.ok) throw new Error('Failed to generate agenda data');
-
-      const { htmlContent, agenda } = await response.json();
-
-      if (typeof window !== 'undefined' && (window as any).html2pdf) {
-        const html2pdf = (window as any).html2pdf;
-        const element = document.createElement('div');
-        element.innerHTML = htmlContent;
-
-        const opt = {
-          margin: 10,
-          filename: `agenda-${agenda.event_name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2 },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        };
-
-        const pdfBlob = await html2pdf().set(opt).from(element).outputPdf('blob');
-
-        const fileName = `agenda_${Date.now()}.pdf`;
-        const filePath = `${eventId}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('event-files')
-          .upload(filePath, pdfBlob, {
-            contentType: 'application/pdf',
-            upsert: false,
-          });
-
-        if (uploadError) throw uploadError;
-
-        const { error: fileRecordError } = await supabase.from('event_files').insert([
-          {
-            event_id: eventId,
-            name: `Agenda - ${agenda.event_name}.pdf`,
-            original_name: `agenda_${agenda.event_name}.pdf`,
-            file_path: filePath,
-            file_size: pdfBlob.size,
-            mime_type: 'application/pdf',
-            uploaded_by: employee?.id,
-          },
-        ]);
-
-        if (fileRecordError) throw fileRecordError;
-
-        const pdfUrl = URL.createObjectURL(pdfBlob);
-        window.open(pdfUrl, '_blank');
-
-        alert('PDF został wygenerowany i zapisany w zakładce Pliki');
-      } else {
-        throw new Error('html2pdf library not loaded');
-      }
+      ]);
+  
+      if (fileRecordError) throw fileRecordError;
+  
+      alert('PDF został wygenerowany i zapisany w zakładce Pliki');
     } catch (err) {
       console.error('Error generating PDF:', err);
-      alert('Wystąpił błąd podczas generowania PDF');
+      alert('Wystąpił błąd podczas generowania PDF (szczegóły w konsoli)');
     } finally {
       setGenerating(false);
     }
   };
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if ((window as any).html2pdf) {
+      setHtml2pdfReady(true);
+      return;
+    }
+  
+    const script = document.createElement('script');
+    script.src =
+      'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js';
+    script.async = true;
+    script.onload = () => setHtml2pdfReady(true);
+    script.onerror = () => console.error('Nie udało się załadować html2pdf.js');
+    document.body.appendChild(script);
+  
+    return () => {
+      // opcjonalnie usuwanie skryptu przy unmount
+      document.body.removeChild(script);
+    };
+  }, []);
+
   const addAgendaItem = (afterIndex?: number) => {
-    const newItem = {
+    const newItem: AgendaItem = {
       time: '',
       title: '',
       description: '',
@@ -417,20 +455,11 @@ export default function EventAgendaTab({
     }
   };
 
-  const getSortedAgendaItems = () => {
-    return [...agendaItems].sort((a, b) => {
-      if (!a.time && !b.time) return 0;
-      if (!a.time) return 1;
-      if (!b.time) return -1;
-      return a.time.localeCompare(b.time);
-    });
-  };
-
   const removeAgendaItem = (index: number) => {
     setAgendaItems(agendaItems.filter((_, i) => i !== index));
   };
 
-  const updateAgendaItem = (index: number, field: string, value: string) => {
+  const updateAgendaItem = (index: number, field: keyof AgendaItem, value: string) => {
     const updated = [...agendaItems];
     updated[index] = { ...updated[index], [field]: value };
     setAgendaItems(updated);
@@ -500,7 +529,7 @@ export default function EventAgendaTab({
     setAgendaNotes(removeFromTree(agendaNotes));
   };
 
-  const renderNote = (note: AgendaNote, depth: number = 0) => {
+  const renderNoteEdit = (note: AgendaNote, depth: number = 0) => {
     const indent = depth * 24;
     return (
       <div key={note.id} className="space-y-2">
@@ -536,7 +565,20 @@ export default function EventAgendaTab({
             </div>
           </div>
         </div>
-        {note.children && note.children.map((child) => renderNote(child, depth + 1))}
+        {note.children && note.children.map((child) => renderNoteEdit(child, depth + 1))}
+      </div>
+    );
+  };
+
+  const renderNoteView = (note: AgendaNote, depth: number = 0) => {
+    const indent = depth * 24;
+    return (
+      <div key={note.id} style={{ marginLeft: `${indent}px` }} className="py-1">
+        <div className="flex gap-2 text-sm text-[#e5e4e2]">
+          <span className="mt-1 text-[#d3bb73]">•</span>
+          <span>{note.content}</span>
+        </div>
+        {note.children && note.children.map((child) => renderNoteView(child, depth + 1))}
       </div>
     );
   };
@@ -551,20 +593,41 @@ export default function EventAgendaTab({
 
   return (
     <div className="space-y-6">
+      {/* Nagłówek + akcje */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Agenda wydarzenia</h2>
         <div className="flex gap-2">
-          {canManage && (
+          {canManage && !editMode && (
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+              onClick={() => setEditMode(true)}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/40 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
             >
-              <Save className="h-4 w-4" />
-              <span>{saving ? 'Zapisywanie...' : 'Zapisz'}</span>
+              <List className="h-4 w-4" />
+              <span>Edytuj agendę</span>
             </button>
           )}
-          {agendaId && (
+
+          {canManage && editMode && (
+            <>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                <span>{saving ? 'Zapisywanie...' : 'Zapisz'}</span>
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/40 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+              >
+                <span>Anuluj</span>
+              </button>
+            </>
+          )}
+
+          {!editMode && agendaId && (
             <>
               <button
                 onClick={handleGeneratePDF}
@@ -587,6 +650,7 @@ export default function EventAgendaTab({
       </div>
 
       <div className="space-y-6">
+        {/* Podstawowe informacje */}
         <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <h3 className="text-lg font-medium text-[#e5e4e2]">
             Podstawowe informacje (z wydarzenia)
@@ -616,23 +680,33 @@ export default function EventAgendaTab({
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina rozpoczęcia</label>
-              <input
-                type="time"
-                value={normalizedStartTime}
-                onChange={(e) => setStartTimeInput(e.target.value)}
-                disabled={!canManage}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-              />
+              {editMode && canManage ? (
+                <input
+                  type="time"
+                  value={startTimeInput}
+                  onChange={(e) => setStartTimeInput(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              ) : (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/80">
+                  {startTimeInput || '--:--'}
+                </div>
+              )}
             </div>
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina zakończenia</label>
-              <input
-                type="time"
-                value={normalizedEndTime}
-                onChange={(e) => setEndTimeInput(e.target.value)}
-                disabled={!canManage}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-              />
+              {editMode && canManage ? (
+                <input
+                  type="time"
+                  value={endTimeInput}
+                  onChange={(e) => setEndTimeInput(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              ) : (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/80">
+                  {endTimeInput || '--:--'}
+                </div>
+              )}
             </div>
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kontakt do klienta</label>
@@ -646,13 +720,64 @@ export default function EventAgendaTab({
           </div>
         </div>
 
+        {/* Harmonogram */}
         <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <h3 className="text-lg font-medium text-[#e5e4e2]">Harmonogram</h3>
 
-          <div className="space-y-3">
-            {agendaItems.length === 0 ? (
-              <div className="py-8 text-center">
-                {canManage && (
+          {/* TRYB PODGLĄDU – elegancka tabela */}
+          {!editMode && (
+            <div className="overflow-x-auto rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+              {agendaItems.length === 0 ? (
+                <div className="py-8 text-center text-[#e5e4e2]/60">
+                  Brak etapów w harmonogramie
+                  {canManage && (
+                    <div className="mt-4">
+                      <button
+                        onClick={() => setEditMode(true)}
+                        className="rounded-lg border border-[#d3bb73]/40 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                      >
+                        Dodaj harmonogram
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <table className="min-w-full text-sm text-left">
+                  <thead className="border-b border-[#d3bb73]/20 bg-[#151726] text-xs uppercase text-[#e5e4e2]/60">
+                    <tr>
+                      <th className="px-4 py-3 w-32">Godzina</th>
+                      <th className="px-4 py-3 w-64">Etap</th>
+                      <th className="px-4 py-3">Opis</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getSortedAgendaItems().map((item, idx) => (
+                      <tr
+                        key={`${item.time}-${item.title}-${idx}`}
+                        className="border-b border-[#d3bb73]/10 last:border-0"
+                      >
+                        <td className="px-4 py-3 align-top text-[#e5e4e2]/80">
+                          {item.time || '--:--'}
+                        </td>
+                        <td className="px-4 py-3 align-top font-medium text-[#e5e4e2]">
+                          {item.title || '—'}
+                        </td>
+                        <td className="px-4 py-3 align-top text-[#e5e4e2]/80 whitespace-pre-wrap">
+                          {item.description || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* TRYB EDYCJI – karty jak wcześniej */}
+          {editMode && (
+            <div className="space-y-3">
+              {agendaItems.length === 0 ? (
+                <div className="py-8 text-center">
                   <button
                     onClick={() => addAgendaItem()}
                     className="mx-auto flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/20"
@@ -660,59 +785,51 @@ export default function EventAgendaTab({
                     <Plus className="h-5 w-5" />
                     <span>Dodaj pierwszy etap</span>
                   </button>
-                )}
-                {!canManage && <p className="text-[#e5e4e2]/60">Brak etapów w harmonogramie</p>}
-              </div>
-            ) : (
-              getSortedAgendaItems().map((item, displayIndex) => {
-                const originalIndex = agendaItems.indexOf(item);
-                return (
-                  <div key={originalIndex} className="space-y-2">
-                    <div className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
-                      <Clock className="mt-1 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="time"
-                            value={item.time}
+                </div>
+              ) : (
+                getSortedAgendaItems().map((item) => {
+                  const originalIndex = agendaItems.indexOf(item);
+                  return (
+                    <div key={originalIndex} className="space-y-2">
+                      <div className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
+                        <Clock className="mt-1 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="time"
+                              value={item.time}
+                              onChange={(e) =>
+                                updateAgendaItem(originalIndex, 'time', e.target.value)
+                              }
+                              className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                            />
+                            <input
+                              type="text"
+                              value={item.title}
+                              onChange={(e) =>
+                                updateAgendaItem(originalIndex, 'title', e.target.value)
+                              }
+                              placeholder="Tytuł etapu..."
+                              className="flex-1 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                            />
+                          </div>
+                          <textarea
+                            value={item.description}
                             onChange={(e) =>
-                              updateAgendaItem(originalIndex, 'time', e.target.value)
+                              updateAgendaItem(originalIndex, 'description', e.target.value)
                             }
-                            disabled={!canManage}
-                            className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                          />
-                          <input
-                            type="text"
-                            value={item.title}
-                            onChange={(e) =>
-                              updateAgendaItem(originalIndex, 'title', e.target.value)
-                            }
-                            placeholder="Tytuł etapu..."
-                            disabled={!canManage}
-                            className="flex-1 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
+                            placeholder="Opis etapu..."
+                            rows={2}
+                            className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                           />
                         </div>
-                        <textarea
-                          value={item.description}
-                          onChange={(e) =>
-                            updateAgendaItem(originalIndex, 'description', e.target.value)
-                          }
-                          placeholder="Opis etapu..."
-                          disabled={!canManage}
-                          rows={2}
-                          className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                        />
-                      </div>
-                      {canManage && (
                         <button
                           onClick={() => removeAgendaItem(originalIndex)}
                           className="flex-shrink-0 p-2 text-red-400/60 hover:text-red-400"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
-                      )}
-                    </div>
-                    {canManage && (
+                      </div>
                       <div className="flex justify-center">
                         <button
                           onClick={() => addAgendaItem(originalIndex)}
@@ -722,18 +839,19 @@ export default function EventAgendaTab({
                           <span>Dodaj kolejny etap</span>
                         </button>
                       </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
+        {/* Uwagi */}
         <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium text-[#e5e4e2]">Uwagi</h3>
-            {canManage && (
+            {canManage && editMode && (
               <button
                 onClick={() => addNote(0)}
                 className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20"
@@ -744,14 +862,27 @@ export default function EventAgendaTab({
             )}
           </div>
 
-          <div className="space-y-2">
-            {agendaNotes.map((note) => renderNote(note))}
-            {agendaNotes.length === 0 && (
-              <div className="py-8 text-center text-[#e5e4e2]/60">
-                Brak uwag. Dodaj pierwszą uwagę.
-              </div>
-            )}
-          </div>
+          {!editMode && (
+            <div className="space-y-1">
+              {agendaNotes.length === 0 && (
+                <div className="py-4 text-center text-[#e5e4e2]/60">
+                  Brak uwag do agendy.
+                </div>
+              )}
+              {agendaNotes.map((note) => renderNoteView(note))}
+            </div>
+          )}
+
+          {editMode && (
+            <div className="space-y-2">
+              {agendaNotes.map((note) => renderNoteEdit(note))}
+              {agendaNotes.length === 0 && (
+                <div className="py-4 text-center text-[#e5e4e2]/60">
+                  Brak uwag. Dodaj pierwszą uwagę.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
