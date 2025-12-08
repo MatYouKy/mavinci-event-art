@@ -158,8 +158,8 @@ export default function OfferDetailPage() {
           ),
           last_generated_by_employee:employees!last_generated_by(
             id,
-            first_name,
-            last_name
+            name,
+            surname
           ),
           offer_items(
             id,

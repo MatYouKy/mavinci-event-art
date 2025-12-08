@@ -199,7 +199,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                 <div className="flex-1">
                   <p className="text-xs text-[#e5e4e2]/60">Ostatnio wygenerowana przez</p>
                   <p className="text-sm text-[#e5e4e2] font-medium">
-                    {offer.last_generated_by_employee?.first_name || ''} {offer.last_generated_by_employee?.last_name || 'Nieznany'}
+                    {offer.last_generated_by_employee?.name || ''} {offer.last_generated_by_employee?.surname || 'Nieznany'}
                   </p>
                   <p className="text-xs text-[#e5e4e2]/60 mt-1">
                     {new Date(offer.last_generated_at).toLocaleString('pl-PL', {
