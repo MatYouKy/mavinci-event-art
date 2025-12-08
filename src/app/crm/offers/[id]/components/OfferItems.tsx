@@ -130,7 +130,10 @@ export default function OfferItems({
 
                           {item.product?.pdf_thumbnail_url && (
                             <button
-                              onClick={() => onPreviewImage(item.product!.pdf_thumbnail_url!)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPreviewImage(item.product!.pdf_thumbnail_url!);
+                              }}
                               className="flex-shrink-0 w-16 h-16 rounded overflow-hidden border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-colors"
                             >
                               <img
@@ -177,7 +180,8 @@ export default function OfferItems({
 
                             {item.product?.pdf_page_url && (
                               <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/offer-product-pages/${item.product?.pdf_page_url}`;
                                   window.open(url, '_blank');
                                 }}
@@ -189,14 +193,20 @@ export default function OfferItems({
                             )}
 
                             <button
-                              onClick={() => onEditItem(item)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditItem(item);
+                              }}
                               className="p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
 
                             <button
-                              onClick={() => onDeleteItem(item.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteItem(item.id);
+                              }}
                               className="p-2 text-[#e5e4e2]/60 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />

@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Send, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
-import OfferActions from './components/OfferActions';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import OfferBasicInfo from './components/OfferBasicInfo';
 import OfferItems from './components/OfferItems';
 import OfferHistory from './components/OfferHistory';
@@ -193,17 +193,6 @@ export default function OfferDetailPage() {
     if (!confirmed) return;
 
     try {
-      const { error: itemsError } = await supabase
-        .from('offer_items')
-        .delete()
-        .eq('offer_id', offerId);
-
-      if (itemsError) {
-        console.error('Error deleting offer items:', itemsError);
-        showSnackbar('Błąd podczas usuwania pozycji oferty', 'error');
-        return;
-      }
-
       const { error: offerError } = await supabase
         .from('offers')
         .delete()
@@ -275,12 +264,21 @@ export default function OfferDetailPage() {
       await fetchOfferDetails();
 
       if (result.downloadUrl) {
+        const pdfResponse = await fetch(result.downloadUrl);
+        const blob = await pdfResponse.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
         const link = document.createElement('a');
-        link.href = result.downloadUrl;
+        link.href = blobUrl;
         link.download = result.fileName || 'oferta.pdf';
+        link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
+
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 100);
       }
     } catch (err: any) {
       console.error('Error generating PDF:', err);
@@ -302,23 +300,26 @@ export default function OfferDetailPage() {
         throw new Error('Nie udało się pobrać PDF');
       }
 
+      const response = await fetch(data.signedUrl);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
       const link = document.createElement('a');
-      link.href = data.signedUrl;
+      link.href = blobUrl;
       link.download = offer.generated_pdf_url;
+      link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 100);
 
       showSnackbar('Pobieranie PDF...', 'success');
     } catch (err: any) {
       console.error('Error downloading PDF:', err);
       showSnackbar(err.message || 'Błąd podczas pobierania PDF', 'error');
-    }
-  };
-
-  const handleGoToEvent = () => {
-    if (offer?.event_id) {
-      router.push(`/crm/events/${offer.event_id}`);
     }
   };
 
@@ -349,6 +350,23 @@ export default function OfferDetailPage() {
       showSnackbar('Wystąpił błąd', 'error');
     }
   };
+
+  const actions: Action[] = [
+    {
+      label: 'Edytuj',
+      onClick: handleEditOffer,
+      icon: <Pencil className="w-4 h-4" />,
+      variant: 'default',
+      show: true,
+    },
+    {
+      label: 'Usuń',
+      onClick: handleDeleteOffer,
+      icon: <Trash2 className="w-4 h-4" />,
+      variant: 'danger',
+      show: true,
+    },
+  ];
 
   if (loading) {
     return (
@@ -390,13 +408,76 @@ export default function OfferDetailPage() {
           </div>
         </div>
 
-        <span
-          className={`px-4 py-2 rounded-lg text-sm border ${
-            statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
-          }`}
-        >
-          {statusLabels[offer.status] || offer.status}
-        </span>
+        <div className="flex items-center gap-3">
+          {!offer.generated_pdf_url ? (
+            <button
+              onClick={handleGeneratePdf}
+              disabled={generatingPdf}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Generuje PDF łącząc wszystkie strony produktów"
+            >
+              {generatingPdf ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Generowanie...
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4" />
+                  Generuj PDF
+                </>
+              )}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleDownloadPdf}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+                title="Pobierz wygenerowany PDF"
+              >
+                <Download className="w-4 h-4" />
+                Pobierz PDF
+              </button>
+              <button
+                onClick={handleGeneratePdf}
+                disabled={generatingPdf}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Generuj PDF ponownie"
+              >
+                {generatingPdf ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Generowanie...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Generuj
+                  </>
+                )}
+              </button>
+              {canSendEmail && (
+                <button
+                  onClick={() => setShowSendEmailModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                  Wyślij
+                </button>
+              )}
+            </>
+          )}
+
+          <ResponsiveActionBar actions={actions} />
+
+          <span
+            className={`px-4 py-2 rounded-lg text-sm border ${
+              statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
+            }`}
+          >
+            {statusLabels[offer.status] || offer.status}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -418,17 +499,7 @@ export default function OfferDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <OfferActions
-            offer={offer}
-            generatingPdf={generatingPdf}
-            canSendEmail={canSendEmail}
-            onGeneratePdf={handleGeneratePdf}
-            onDownloadPdf={handleDownloadPdf}
-            onSendEmail={() => setShowSendEmailModal(true)}
-            onEdit={handleEditOffer}
-            onDelete={handleDeleteOffer}
-            onGoToEvent={handleGoToEvent}
-          />
+          {/* Tutaj może być jakiś sidebar */}
         </div>
       </div>
 
