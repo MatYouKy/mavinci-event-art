@@ -1,132 +1,231 @@
 'use client';
 
-import { useState } from 'react';
-import { Pencil, X, Check } from 'lucide-react';
+import { Dispatch, SetStateAction, useEffect, useState } from 'react';
+import { Pencil, X, Check, Calendar, FileText, Download, RefreshCw, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useRouter } from 'next/navigation';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { IUser } from '@/types/auth.types';
 
 interface OfferActionsProps {
   offer: any;
-  onUpdate: () => void;
+  currentUser: IUser;
+  showSendEmailModal: boolean;
+  setShowSendEmailModal: Dispatch<SetStateAction<boolean>>;
 }
 
-export default function OfferActions({ offer, onUpdate }: OfferActionsProps) {
+export default function OfferActions({
+  offer,
+  currentUser,
+  setShowSendEmailModal,
+  showSendEmailModal,
+}: OfferActionsProps) {
+  const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const { employee } = useCurrentEmployee();
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    valid_until: offer.valid_until || '',
-    notes: offer.notes || '',
-    status: offer.status || 'draft',
-  });
+  const [canSendEmail, setCanSendEmail] = useState(false);
 
-  const handleSubmit = async () => {
+  useEffect(() => {
+    if (offer && currentUser) {
+      const isAdmin = currentUser.permissions?.includes('admin');
+      const isCreator = offer.created_by === currentUser.id;
+      setCanSendEmail(isAdmin || isCreator);
+    }
+  }, [offer, currentUser]);
+
+  const handleGeneratePdf = async () => {
+    if (!offer) return;
+
+    if (!employee?.id) {
+      showSnackbar('Musisz być zalogowany', 'error');
+      return;
+    }
+
     try {
-      setLoading(true);
+      setGeneratingPdf(true);
 
-      const { error } = await supabase
-        .from('offers')
-        .update({
-          valid_until: formData.valid_until || null,
-          notes: formData.notes || '',
-          status: formData.status,
-        })
-        .eq('id', offer.id);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        showSnackbar('Brak autoryzacji', 'error');
+        return;
+      }
 
-      if (error) throw error;
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-offer-pdf`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            offerId: offer.id,
+            employeeId: employee.id,
+          }),
+        },
+      );
 
-      showSnackbar('Oferta zaktualizowana', 'success');
-      setIsEditing(false);
-      onUpdate();
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Błąd generowania PDF');
+      }
+
+      showSnackbar(`PDF wygenerowany pomyślnie (${result.pageCount} stron)`, 'success');
+
+      if (result.downloadUrl) {
+        const pdfResponse = await fetch(result.downloadUrl);
+        const blob = await pdfResponse.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = result.fileName || 'oferta.pdf';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 100);
+      }
     } catch (err: any) {
-      console.error('Error updating offer:', err);
-      showSnackbar(err.message || 'Błąd podczas aktualizacji oferty', 'error');
+      console.error('Error generating PDF:', err);
+      showSnackbar(err.message || 'Błąd podczas generowania PDF', 'error');
     } finally {
-      setLoading(false);
+      setGeneratingPdf(false);
     }
   };
 
-  if (!isEditing) {
-    return (
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Akcje</h2>
-        <button
-          onClick={() => setIsEditing(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
-        >
-          <Pencil className="w-4 h-4" />
-          Edytuj ofertę
-        </button>
-      </div>
-    );
-  }
+  const handleDownloadPdf = async () => {
+    if (!offer?.generated_pdf_url) return;
+
+    try {
+      setDownloadingPdf(true);
+      const { data, error } = await supabase.storage
+        .from('generated-offers')
+        .createSignedUrl(offer.generated_pdf_url, 3600);
+
+      if (error || !data) {
+        throw new Error('Nie udało się pobrać PDF');
+      }
+
+      const response = await fetch(data.signedUrl);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = offer.generated_pdf_url;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 100);
+
+      showSnackbar('Pobieranie PDF...', 'success');
+    } catch (err: any) {
+      console.error('Error downloading PDF:', err);
+      showSnackbar(err.message || 'Błąd podczas pobierania PDF', 'error');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-light text-[#e5e4e2]">Edytuj ofertę</h2>
+    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+      <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
+      <div className="space-y-2">
         <button
-          onClick={() => setIsEditing(false)}
-          className="p-1 text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+          onClick={() => {
+            if (offer.event_id) {
+              router.push(`/crm/events/${offer.event_id}`);
+            }
+          }}
+          disabled={!offer.event_id}
+          className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <X className="w-5 h-5" />
+          <Calendar className="h-4 w-4" />
+          Przejdź do eventu
         </button>
-      </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs text-[#e5e4e2]/60 mb-2">Status</label>
-          <select
-            value={formData.status}
-            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-            className="w-full bg-[#0f1118] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
-          >
-            <option value="draft">Szkic</option>
-            <option value="sent">Wysłana</option>
-            <option value="accepted">Zaakceptowana</option>
-            <option value="rejected">Odrzucona</option>
-            <option value="expired">Wygasła</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-xs text-[#e5e4e2]/60 mb-2">Ważna do</label>
-          <input
-            type="date"
-            value={formData.valid_until}
-            onChange={(e) => setFormData({ ...formData, valid_until: e.target.value })}
-            className="w-full bg-[#0f1118] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-[#e5e4e2]/60 mb-2">Notatki</label>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            rows={4}
-            className="w-full bg-[#0f1118] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50 resize-none"
-            placeholder="Dodaj notatki..."
-          />
-        </div>
-
-        <div className="flex gap-2 pt-2">
+        {!offer.generated_pdf_url ? (
           <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={generatingPdf}
+            onClick={handleGeneratePdf}
+            className="flex w-full items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20"
           >
-            <Check className="w-4 h-4" />
-            {loading ? 'Zapisywanie...' : 'Zapisz'}
+            {generatingPdf ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Generowanie...
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4" />
+                Generuj PDF
+              </>
+            )}
           </button>
-          <button
-            onClick={() => setIsEditing(false)}
-            disabled={loading}
-            className="px-4 py-2.5 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors disabled:opacity-50"
-          >
-            Anuluj
-          </button>
-        </div>
+        ) : (
+          <>
+            <button
+              onClick={handleGeneratePdf}
+              disabled={generatingPdf}
+              className="flex w-full items-center gap-2 text-sm rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Generuj PDF ponownie"
+            >
+              {generatingPdf ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Generowanie...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" />
+                  Generuj
+                </>
+              )}
+            </button>
+            {canSendEmail && (
+              <button
+                onClick={() => setShowSendEmailModal(true)}
+                className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-blue-500/20"
+                title="Prześlij ofertę e-mailem"
+              >
+                <Send className="h-4 w-4" />
+                Prześlij ofertę e-mailem
+              </button>
+            )}
+            <button
+              onClick={handleDownloadPdf}
+              className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+              title="Pobierz wygenerowany PDF"
+            >
+              {downloadingPdf ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Pobieranie PDF...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+                  Pobierz PDF
+                </>
+              )}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

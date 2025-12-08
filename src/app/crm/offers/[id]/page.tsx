@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Download, Send, Trash2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Send, Trash2, RefreshCw, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -13,6 +13,7 @@ import OfferBasicInfo from './components/OfferBasicInfo';
 import OfferActions from './components/OfferActions';
 import OfferItems from './components/OfferItems';
 import OfferHistory from './components/OfferHistory';
+import { OfferDetails } from './components/OfferDetails';
 
 interface OfferItem {
   id: string;
@@ -61,7 +62,7 @@ interface Offer {
   offer_items?: OfferItem[];
 }
 
-const statusColors: Record<string, string> = {
+export const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   sent: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   accepted: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -69,7 +70,7 @@ const statusColors: Record<string, string> = {
   expired: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 };
 
-const statusLabels: Record<string, string> = {
+export const statusLabels: Record<string, string> = {
   draft: 'Szkic',
   sent: 'Wysłana',
   accepted: 'Zaakceptowana',
@@ -89,8 +90,7 @@ export default function OfferDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [canSendEmail, setCanSendEmail] = useState(false);
-  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [canSendManage, setCanSendManage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,7 +102,9 @@ export default function OfferDetailPage() {
 
   const fetchCurrentUser = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: employee } = await supabase
@@ -121,7 +123,7 @@ export default function OfferDetailPage() {
     if (offer && currentUser) {
       const isAdmin = currentUser.permissions?.includes('admin');
       const isCreator = offer.created_by === currentUser.id;
-      setCanSendEmail(isAdmin || isCreator);
+      setCanSendManage(isAdmin || isCreator);
     }
   }, [offer, currentUser]);
 
@@ -131,7 +133,8 @@ export default function OfferDetailPage() {
 
       const { data, error } = await supabase
         .from('offers')
-        .select(`
+        .select(
+          `
           *,
           organization:organizations!organization_id(name, email),
           event:events!event_id(
@@ -158,7 +161,8 @@ export default function OfferDetailPage() {
               pdf_thumbnail_url
             )
           )
-        `)
+        `,
+        )
         .eq('id', offerId)
         .maybeSingle();
 
@@ -188,16 +192,13 @@ export default function OfferDetailPage() {
 
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć tę ofertę?',
-      'Tej operacji nie można cofnąć.'
+      'Tej operacji nie można cofnąć.',
     );
 
     if (!confirmed) return;
 
     try {
-      const { error: offerError } = await supabase
-        .from('offers')
-        .delete()
-        .eq('id', offerId);
+      const { error: offerError } = await supabase.from('offers').delete().eq('id', offerId);
 
       if (offerError) {
         console.error('Error deleting offer:', offerError);
@@ -218,121 +219,16 @@ export default function OfferDetailPage() {
     }
   };
 
-  const handleGeneratePdf = async () => {
-    if (!offer) return;
-
-    if (!employee?.id) {
-      showSnackbar('Musisz być zalogowany', 'error');
-      return;
-    }
-
-    try {
-      setGeneratingPdf(true);
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        showSnackbar('Brak autoryzacji', 'error');
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-offer-pdf`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            offerId: offer.id,
-            employeeId: employee.id
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Błąd generowania PDF');
-      }
-
-      showSnackbar(`PDF wygenerowany pomyślnie (${result.pageCount} stron)`, 'success');
-
-      await fetchOfferDetails();
-
-      if (result.downloadUrl) {
-        const pdfResponse = await fetch(result.downloadUrl);
-        const blob = await pdfResponse.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = result.fileName || 'oferta.pdf';
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-
-        setTimeout(() => {
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(blobUrl);
-        }, 100);
-      }
-    } catch (err: any) {
-      console.error('Error generating PDF:', err);
-      showSnackbar(err.message || 'Błąd podczas generowania PDF', 'error');
-    } finally {
-      setGeneratingPdf(false);
-    }
-  };
-
-  const handleDownloadPdf = async () => {
-    if (!offer?.generated_pdf_url) return;
-
-    try {
-      const { data, error } = await supabase.storage
-        .from('generated-offers')
-        .createSignedUrl(offer.generated_pdf_url, 3600);
-
-      if (error || !data) {
-        throw new Error('Nie udało się pobrać PDF');
-      }
-
-      const response = await fetch(data.signedUrl);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = offer.generated_pdf_url;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-
-      setTimeout(() => {
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-      }, 100);
-
-      showSnackbar('Pobieranie PDF...', 'success');
-    } catch (err: any) {
-      console.error('Error downloading PDF:', err);
-      showSnackbar(err.message || 'Błąd podczas pobierania PDF', 'error');
-    }
-  };
-
   const handleDeleteItem = async (itemId: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć tę pozycję?',
-      'Tej operacji nie można cofnąć.'
+      'Tej operacji nie można cofnąć.',
     );
 
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('offer_items')
-        .delete()
-        .eq('id', itemId);
+      const { error } = await supabase.from('offer_items').delete().eq('id', itemId);
 
       if (error) {
         console.error('Error deleting item:', error);
@@ -352,27 +248,34 @@ export default function OfferDetailPage() {
     {
       label: 'Usuń',
       onClick: handleDeleteOffer,
-      icon: <Trash2 className="w-4 h-4" />,
+      icon: <Trash2 className="h-4 w-4" />,
       variant: 'danger',
+      show: true,
+    },
+    {
+      label: 'Edytuj',
+      onClick: () => {},
+      icon: <Pencil className="h-4 w-4" />,
+      variant: 'primary',
       show: true,
     },
   ];
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-[#e5e4e2] text-lg">Ładowanie...</div>
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
   }
 
   if (!offer) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen space-y-4">
-        <div className="text-[#e5e4e2] text-lg">Oferta nie została znaleziona</div>
+      <div className="flex h-screen flex-col items-center justify-center space-y-4">
+        <div className="text-lg text-[#e5e4e2]">Oferta nie została znaleziona</div>
         <button
           onClick={() => router.push('/crm/offers')}
-          className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+          className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
         >
           Wróć do listy
         </button>
@@ -386,82 +289,21 @@ export default function OfferDetailPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/offers')}
-            className="p-2 text-[#e5e4e2] hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-light text-[#e5e4e2]">
-              Oferta {offer.offer_number}
-            </h1>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">Szczegóły oferty</p>
+            <h1 className="text-2xl font-light text-[#e5e4e2]">Oferta {offer.offer_number}</h1>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">Szczegóły oferty</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {!offer.generated_pdf_url ? (
-            <button
-              onClick={handleGeneratePdf}
-              disabled={generatingPdf}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Generuje PDF łącząc wszystkie strony produktów"
-            >
-              {generatingPdf ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Generowanie...
-                </>
-              ) : (
-                <>
-                  <FileText className="w-4 h-4" />
-                  Generuj PDF
-                </>
-              )}
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={handleDownloadPdf}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
-                title="Pobierz wygenerowany PDF"
-              >
-                <Download className="w-4 h-4" />
-                Pobierz PDF
-              </button>
-              <button
-                onClick={handleGeneratePdf}
-                disabled={generatingPdf}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Generuj PDF ponownie"
-              >
-                {generatingPdf ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Generowanie...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    Generuj
-                  </>
-                )}
-              </button>
-              {canSendEmail && (
-                <button
-                  onClick={() => setShowSendEmailModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors"
-                >
-                  <Send className="w-4 h-4" />
-                  Wyślij
-                </button>
-              )}
-            </>
-          )}
-
-          <ResponsiveActionBar actions={actions} />
+          {canSendManage && <ResponsiveActionBar actions={actions} />}
 
           <span
-            className={`px-4 py-2 rounded-lg text-sm border ${
+            className={`rounded-lg border px-4 py-2 text-sm ${
               statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
             }`}
           >
@@ -470,12 +312,9 @@ export default function OfferDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <OfferBasicInfo offer={offer} />
-            <OfferActions offer={offer} onUpdate={fetchOfferDetails} />
-          </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <OfferBasicInfo offer={offer} />
 
           <OfferItems
             items={offer.offer_items || []}
@@ -492,7 +331,13 @@ export default function OfferDetailPage() {
         </div>
 
         <div className="space-y-6">
-          {/* Tutaj może być jakiś sidebar */}
+          <OfferDetails offer={offer} />
+          <OfferActions
+            offer={offer}
+            currentUser={currentUser}
+            showSendEmailModal={showSendEmailModal}
+            setShowSendEmailModal={setShowSendEmailModal}
+          />
         </div>
       </div>
 
@@ -509,18 +354,18 @@ export default function OfferDetailPage() {
 
       {previewImage && (
         <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setPreviewImage(null)}
         >
-          <div className="max-w-4xl max-h-[90vh] relative">
+          <div className="relative max-h-[90vh] max-w-4xl">
             <img
               src={previewImage}
               alt="Preview"
-              className="max-w-full max-h-full object-contain"
+              className="max-h-full max-w-full object-contain"
             />
             <button
               onClick={() => setPreviewImage(null)}
-              className="absolute top-4 right-4 bg-red-500 text-white p-2 rounded-full hover:bg-red-600"
+              className="absolute right-4 top-4 rounded-full bg-red-500 p-2 text-white hover:bg-red-600"
             >
               ✕
             </button>
