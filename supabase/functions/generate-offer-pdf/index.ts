@@ -19,7 +19,7 @@ interface TextFieldConfig {
   label: string;
   x: number;
   y: number;
-  type?: 'text' | 'image';
+  type?: 'text' | 'image' | 'email' | 'phone';
   font_size?: number;
   font_color?: string;
   max_width?: number;
@@ -28,6 +28,8 @@ interface TextFieldConfig {
   height?: number;
   border_radius?: number;
   is_circular?: boolean;
+  icon_id?: string;
+  clickable?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -332,6 +334,18 @@ Deno.serve(async (req: Request) => {
               )
             : rgb(0, 0, 0);
 
+          const isEmail = field.type === 'email' || field.field_name.includes('email');
+          const isPhone = field.type === 'phone' || field.field_name.includes('phone');
+          const iconSize = fontSize * 0.9;
+          const iconPadding = 4;
+
+          let iconSymbol = '';
+          if (isEmail) {
+            iconSymbol = '✉';
+          } else if (isPhone) {
+            iconSymbol = '☎';
+          }
+
           const lines = field.max_width
             ? wrapText(value, font, fontSize, field.max_width)
             : [value];
@@ -343,12 +357,40 @@ Deno.serve(async (req: Request) => {
             let x = field.x;
             const y = height - field.y - fontSize - (lineIndex * lineHeight);
 
+            if (iconSymbol) {
+              const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
+              x += iconWidth + iconPadding;
+            }
+
             if (field.align === 'center' && field.max_width) {
               const textWidth = font.widthOfTextAtSize(line, fontSize);
-              x = field.x + (field.max_width - textWidth) / 2;
+              const iconWidth = iconSymbol ? font.widthOfTextAtSize(iconSymbol, iconSize) : 0;
+              const totalWidth = iconSymbol ? textWidth + iconWidth + iconPadding : textWidth;
+              x = field.x + (field.max_width - totalWidth) / 2;
+              if (iconSymbol) {
+                const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
+                x += iconWidth + iconPadding;
+              }
             } else if (field.align === 'right' && field.max_width) {
               const textWidth = font.widthOfTextAtSize(line, fontSize);
-              x = field.x + field.max_width - textWidth;
+              const iconWidth = iconSymbol ? font.widthOfTextAtSize(iconSymbol, iconSize) : 0;
+              const totalWidth = iconSymbol ? textWidth + iconWidth + iconPadding : textWidth;
+              x = field.x + field.max_width - totalWidth;
+              if (iconSymbol) {
+                const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
+                x += iconWidth + iconPadding;
+              }
+            }
+
+            if (iconSymbol && lineIndex === 0) {
+              const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
+              page.drawText(iconSymbol, {
+                x: x - iconWidth - iconPadding,
+                y: y,
+                size: iconSize,
+                font: regularFont,
+                color: rgb(0.8, 0.7, 0.45),
+              });
             }
 
             console.log(`Drawing line ${lineIndex + 1}/${lines.length}: "${line}" at x=${x}, y=${y}`);
