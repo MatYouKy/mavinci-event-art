@@ -27,6 +27,7 @@ interface TextFieldConfig {
   width?: number;
   height?: number;
   border_radius?: number;
+  is_circular?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -225,14 +226,81 @@ Deno.serve(async (req: Request) => {
               const imgHeight = field.height || 100;
               const y = height - field.y - imgHeight;
 
-              console.log(`Drawing image at x=${field.x}, y=${y}, width=${imgWidth}, height=${imgHeight}`);
+              const isCircular = field.is_circular || field.field_name.includes('avatar');
 
-              page.drawImage(image, {
-                x: field.x,
-                y: y,
-                width: imgWidth,
-                height: imgHeight,
-              });
+              console.log(`Drawing image at x=${field.x}, y=${y}, width=${imgWidth}, height=${imgHeight}, circular=${isCircular}`);
+
+              if (isCircular) {
+                const size = Math.min(imgWidth, imgHeight);
+                const radius = size / 2;
+                const centerX = field.x + radius;
+                const centerY = y + radius;
+
+                const imgDims = image.scale(1);
+                const imgAspect = imgDims.width / imgDims.height;
+
+                let drawWidth = size;
+                let drawHeight = size;
+                let offsetX = 0;
+                let offsetY = 0;
+
+                if (imgAspect > 1) {
+                  drawWidth = size * imgAspect;
+                  offsetX = -(drawWidth - size) / 2;
+                } else if (imgAspect < 1) {
+                  drawHeight = size / imgAspect;
+                  offsetY = -(drawHeight - size) / 2;
+                }
+
+                page.drawImage(image, {
+                  x: field.x + offsetX,
+                  y: y + offsetY,
+                  width: drawWidth,
+                  height: drawHeight,
+                });
+
+                const cornerSize = radius * (1 - Math.SQRT2 / 2);
+
+                page.drawRectangle({
+                  x: field.x,
+                  y: y + size - cornerSize,
+                  width: cornerSize,
+                  height: cornerSize,
+                  color: rgb(1, 1, 1),
+                });
+
+                page.drawRectangle({
+                  x: field.x + size - cornerSize,
+                  y: y + size - cornerSize,
+                  width: cornerSize,
+                  height: cornerSize,
+                  color: rgb(1, 1, 1),
+                });
+
+                page.drawRectangle({
+                  x: field.x,
+                  y: y,
+                  width: cornerSize,
+                  height: cornerSize,
+                  color: rgb(1, 1, 1),
+                });
+
+                page.drawRectangle({
+                  x: field.x + size - cornerSize,
+                  y: y,
+                  width: cornerSize,
+                  height: cornerSize,
+                  color: rgb(1, 1, 1),
+                });
+
+              } else {
+                page.drawImage(image, {
+                  x: field.x,
+                  y: y,
+                  width: imgWidth,
+                  height: imgHeight,
+                });
+              }
             } catch (error) {
               console.error(`Error drawing image ${field.field_name}:`, error);
             }

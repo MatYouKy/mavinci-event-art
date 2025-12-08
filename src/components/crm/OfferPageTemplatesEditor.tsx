@@ -40,6 +40,7 @@ interface TextFieldConfig {
   width?: number;
   height?: number;
   border_radius?: number;
+  is_circular?: boolean;
 }
 
 interface TemplateContent {
@@ -1085,7 +1086,9 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                             e.stopPropagation();
                             setSelectedFieldIndex(index);
                           }}
-                          className={`absolute cursor-move border-2 rounded transition-all ${
+                          className={`absolute cursor-move border-2 transition-all ${
+                            field.is_circular || field.field_name.includes('avatar') ? 'rounded-full' : 'rounded'
+                          } ${
                             selectedFieldIndex === index
                               ? 'border-[#d3bb73] bg-[#d3bb73]/20 shadow-lg ring-2 ring-[#d3bb73]/50'
                               : 'border-blue-400/70 bg-blue-400/10 hover:border-blue-400 hover:bg-blue-400/20'
@@ -1207,6 +1210,21 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                           className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
                         />
                       </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedField.is_circular || false}
+                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { is_circular: e.target.checked })}
+                          className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+                        />
+                        <span className="text-sm text-[#e5e4e2]">Okrągły kształt (avatar)</span>
+                      </label>
+                      <p className="text-xs text-[#e5e4e2]/40 mt-1 ml-6">
+                        Zaznacz dla avatarów pracowników
+                      </p>
                     </div>
                   </>
                 ) : (
