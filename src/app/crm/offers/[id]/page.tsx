@@ -24,6 +24,7 @@ import OfferItems from './components/OfferItems';
 import OfferHistory from './components/OfferHistory';
 import { OfferDetails } from './components/OfferDetails';
 import OfferBasicInfo, { OfferBasicInfoHandle } from './components/OfferBasicInfo';
+import AddOfferItemModal from './components/AddOfferItemModal';
 
 interface OfferItem {
   id: string;
@@ -98,6 +99,7 @@ export default function OfferDetailPage() {
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [canSendManage, setCanSendManage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -380,6 +382,7 @@ export default function OfferDetailPage() {
             }}
             onDeleteItem={handleDeleteItem}
             onPreviewImage={setPreviewImage}
+            onAddItem={() => setShowAddItemModal(true)}
           />
 
           <OfferHistory offerId={offer.id} />
@@ -405,7 +408,15 @@ export default function OfferDetailPage() {
           onClose={() => setShowSendEmailModal(false)}
           onSent={handleOfferUpdated}
         />
-      )}  
+      )}
+
+      {showAddItemModal && offer && (
+        <AddOfferItemModal
+          offerId={offer.id}
+          onClose={() => setShowAddItemModal(false)}
+          onSuccess={fetchOfferDetails}
+        />
+      )}
 
       {previewImage && (
         <div

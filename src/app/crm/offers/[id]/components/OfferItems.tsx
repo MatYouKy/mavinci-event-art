@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { GripVertical, Pencil, Trash2, Eye } from 'lucide-react';
+import { GripVertical, Pencil, Trash2, Eye, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -32,6 +32,7 @@ interface OfferItemsProps {
   onEditItem: (item: OfferItem) => void;
   onDeleteItem: (itemId: string) => void;
   onPreviewImage: (imageUrl: string) => void;
+  onAddItem?: () => void;
 }
 
 export default function OfferItems({
@@ -41,6 +42,7 @@ export default function OfferItems({
   onEditItem,
   onDeleteItem,
   onPreviewImage,
+  onAddItem,
 }: OfferItemsProps) {
   const { showSnackbar } = useSnackbar();
   const [updating, setUpdating] = useState(false);
@@ -88,7 +90,18 @@ export default function OfferItems({
     <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-light text-[#e5e4e2]">Pozycje Oferty</h2>
-        <p className="text-xs text-[#e5e4e2]/60">Przeciągnij aby zmienić kolejność</p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-[#e5e4e2]/60">Przeciągnij aby zmienić kolejność</p>
+          {onAddItem && (
+            <button
+              onClick={onAddItem}
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj pozycję
+            </button>
+          )}
+        </div>
       </div>
 
       {items.length === 0 ? (

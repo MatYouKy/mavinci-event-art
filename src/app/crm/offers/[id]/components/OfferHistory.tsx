@@ -10,8 +10,8 @@ interface HistoryEntry {
   change_description: string;
   created_at: string;
   changed_by_employee?: {
-    first_name: string;
-    last_name: string;
+    name: string;
+    surname: string;
     avatar_url?: string;
   };
 }
@@ -55,7 +55,7 @@ export default function OfferHistory({ offerId }: OfferHistoryProps) {
         .select(
           `
           *,
-          changed_by_employee:employees!changed_by(first_name, last_name, avatar_url)
+          changed_by_employee:employees!changed_by(name, surname, avatar_url)
         `
         )
         .eq('offer_id', offerId)
@@ -136,7 +136,7 @@ export default function OfferHistory({ offerId }: OfferHistoryProps) {
                     </p>
                     {entry.changed_by_employee && (
                       <p className="text-xs text-[#e5e4e2]/60 mt-0.5">
-                        {entry.changed_by_employee.first_name} {entry.changed_by_employee.last_name}
+                        {entry.changed_by_employee.name} {entry.changed_by_employee.surname}
                       </p>
                     )}
                   </div>

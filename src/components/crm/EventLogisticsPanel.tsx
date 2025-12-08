@@ -196,7 +196,7 @@ export default function EventLogisticsPanel({
         supabase
           .from('vehicle_reservation_conflicts')
           .select('*')
-          .eq('event_id', eventId),
+          .or(`event_id_1.eq.${eventId},event_id_2.eq.${eventId}`),
 
         supabase
           .from('event_logistics_timeline')
