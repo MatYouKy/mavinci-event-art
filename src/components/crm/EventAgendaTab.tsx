@@ -71,7 +71,8 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
         .select(`
           *,
           organization:organizations(name, email, phone),
-          contact:contacts(name, surname, email, phone)
+          contact:contacts(name, surname, email, phone),
+          location:locations(name, address)
         `)
         .eq('id', eventId)
         .single();
@@ -80,6 +81,14 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
 
       setEventName(event.name || '');
       setEventDate(event.event_date || '');
+
+      // Extract times from event_date if it's a timestamp
+      if (event.event_date) {
+        const eventDateTime = new Date(event.event_date);
+        const hours = eventDateTime.getHours().toString().padStart(2, '0');
+        const minutes = eventDateTime.getMinutes().toString().padStart(2, '0');
+        setStartTime(`${hours}:${minutes}`);
+      }
 
       // Set client contact info
       if (event.organization) {
@@ -225,8 +234,9 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
       await supabase.from('event_agenda_items').delete().eq('agenda_id', currentAgendaId);
 
       if (agendaItems.length > 0) {
+        const sortedItems = getSortedAgendaItems();
         const { error: itemsError } = await supabase.from('event_agenda_items').insert(
-          agendaItems.map((item, index) => ({
+          sortedItems.map((item, index) => ({
             agenda_id: currentAgendaId,
             time: item.time,
             title: item.title,
@@ -361,16 +371,33 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
     }
   };
 
-  const addAgendaItem = () => {
-    setAgendaItems([
-      ...agendaItems,
-      {
-        time: '',
-        title: '',
-        description: '',
-        order_index: agendaItems.length,
-      },
-    ]);
+  const addAgendaItem = (afterIndex?: number) => {
+    const newItem = {
+      time: '',
+      title: '',
+      description: '',
+      order_index: typeof afterIndex === 'number' ? afterIndex + 1 : agendaItems.length,
+    };
+
+    if (typeof afterIndex === 'number') {
+      const updatedItems = [
+        ...agendaItems.slice(0, afterIndex + 1),
+        newItem,
+        ...agendaItems.slice(afterIndex + 1),
+      ];
+      setAgendaItems(updatedItems);
+    } else {
+      setAgendaItems([...agendaItems, newItem]);
+    }
+  };
+
+  const getSortedAgendaItems = () => {
+    return [...agendaItems].sort((a, b) => {
+      if (!a.time && !b.time) return 0;
+      if (!a.time) return 1;
+      if (!b.time) return -1;
+      return a.time.localeCompare(b.time);
+    });
   };
 
   const removeAgendaItem = (index: number) => {
@@ -535,7 +562,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
 
       <div className="space-y-6">
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 space-y-4">
-          <h3 className="text-lg font-medium text-[#e5e4e2]">Podstawowe informacje</h3>
+          <h3 className="text-lg font-medium text-[#e5e4e2]">Podstawowe informacje (z wydarzenia)</h3>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -543,9 +570,8 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <input
                 type="text"
                 value={eventName}
-                onChange={(e) => setEventName(e.target.value)}
-                disabled={!canManage}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                readOnly
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]/70 cursor-not-allowed"
               />
             </div>
             <div>
@@ -553,9 +579,8 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <input
                 type="date"
                 value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-                disabled={!canManage}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                readOnly
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]/70 cursor-not-allowed"
               />
             </div>
           </div>
@@ -586,76 +611,89 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <input
                 type="text"
                 value={clientContact}
-                onChange={(e) => setClientContact(e.target.value)}
-                disabled={!canManage}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                readOnly
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]/70 cursor-not-allowed"
               />
             </div>
           </div>
         </div>
 
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium text-[#e5e4e2]">Harmonogram</h3>
-            {canManage && (
-              <button
-                onClick={addAgendaItem}
-                className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg text-[#d3bb73] hover:bg-[#d3bb73]/20 text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Dodaj etap</span>
-              </button>
-            )}
-          </div>
+          <h3 className="text-lg font-medium text-[#e5e4e2]">Harmonogram</h3>
 
           <div className="space-y-3">
-            {agendaItems.map((item, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4"
-              >
-                <Clock className="w-5 h-5 text-[#d3bb73] mt-1 flex-shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="time"
-                      value={item.time}
-                      onChange={(e) => updateAgendaItem(index, 'time', e.target.value)}
-                      disabled={!canManage}
-                      className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
-                    />
-                    <input
-                      type="text"
-                      value={item.title}
-                      onChange={(e) => updateAgendaItem(index, 'title', e.target.value)}
-                      placeholder="Tytuł etapu..."
-                      disabled={!canManage}
-                      className="flex-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
-                    />
-                  </div>
-                  <textarea
-                    value={item.description}
-                    onChange={(e) => updateAgendaItem(index, 'description', e.target.value)}
-                    placeholder="Opis etapu..."
-                    disabled={!canManage}
-                    rows={2}
-                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
-                  />
-                </div>
+            {agendaItems.length === 0 ? (
+              <div className="text-center py-8">
                 {canManage && (
                   <button
-                    onClick={() => removeAgendaItem(index)}
-                    className="p-2 text-red-400/60 hover:text-red-400 flex-shrink-0"
+                    onClick={() => addAgendaItem()}
+                    className="flex items-center gap-2 px-4 py-2 mx-auto bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg text-[#d3bb73] hover:bg-[#d3bb73]/20"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Plus className="w-5 h-5" />
+                    <span>Dodaj pierwszy etap</span>
                   </button>
                 )}
+                {!canManage && (
+                  <p className="text-[#e5e4e2]/60">Brak etapów w harmonogramie</p>
+                )}
               </div>
-            ))}
-            {agendaItems.length === 0 && (
-              <div className="text-center py-8 text-[#e5e4e2]/60">
-                Brak etapów w harmonogramie. Dodaj pierwszy etap.
-              </div>
+            ) : (
+              getSortedAgendaItems().map((item, displayIndex) => {
+                const originalIndex = agendaItems.indexOf(item);
+                return (
+                  <div key={originalIndex} className="space-y-2">
+                    <div className="flex items-start gap-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg p-4">
+                      <Clock className="w-5 h-5 text-[#d3bb73] mt-1 flex-shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={item.time}
+                            onChange={(e) => updateAgendaItem(originalIndex, 'time', e.target.value)}
+                            disabled={!canManage}
+                            className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                          />
+                          <input
+                            type="text"
+                            value={item.title}
+                            onChange={(e) => updateAgendaItem(originalIndex, 'title', e.target.value)}
+                            placeholder="Tytuł etapu..."
+                            disabled={!canManage}
+                            className="flex-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-1 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                          />
+                        </div>
+                        <textarea
+                          value={item.description}
+                          onChange={(e) => updateAgendaItem(originalIndex, 'description', e.target.value)}
+                          placeholder="Opis etapu..."
+                          disabled={!canManage}
+                          rows={2}
+                          className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+                        />
+                      </div>
+                      {canManage && (
+                        <button
+                          onClick={() => removeAgendaItem(originalIndex)}
+                          className="p-2 text-red-400/60 hover:text-red-400 flex-shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {canManage && (
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => addAgendaItem(originalIndex)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73]/5 border border-[#d3bb73]/20 rounded-lg text-[#d3bb73]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73] text-sm"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Dodaj kolejny etap</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
