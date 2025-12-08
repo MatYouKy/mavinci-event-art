@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PDFDocument, rgb, pushGraphicsState, popGraphicsState, moveTo, appendBezierCurve, closePath, clip, endPath } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, rgb, pushGraphicsState, popGraphicsState, moveTo, appendBezierCurve, closePath, clip, endPath, PDFName, PDFDict, PDFString, PDFArray, PDFNumber } from "npm:pdf-lib@1.17.1";
 import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
 
 const corsHeaders = {
@@ -181,12 +181,15 @@ Deno.serve(async (req: Request) => {
 
       const regularFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf';
       const boldFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf';
+      const symbolsFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansSymbols2/hinted/ttf/NotoSansSymbols2-Regular.ttf';
 
       const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
       const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
+      const symbolsFontBytes = await fetch(symbolsFontUrl).then(res => res.arrayBuffer()).catch(() => null);
 
       const regularFont = await pdfDoc.embedFont(regularFontBytes);
       const boldFont = await pdfDoc.embedFont(boldFontBytes);
+      const symbolsFont = symbolsFontBytes ? await pdfDoc.embedFont(symbolsFontBytes) : regularFont;
 
       const pages = pdfDoc.getPages();
 
@@ -280,16 +283,21 @@ Deno.serve(async (req: Request) => {
                 const maxOffsetX = (drawWidth - size) / 2;
                 const maxOffsetY = (drawHeight - size) / 2;
 
-                const offsetX = -(posXPercent / 50) * maxOffsetX;
-                const offsetY = (posYPercent / 50) * maxOffsetY;
+                const offsetX = (posXPercent / 50) * maxOffsetX;
+                const offsetY = -(posYPercent / 50) * maxOffsetY;
+
+                const imageX = centerX - drawWidth / 2 + offsetX;
+                const imageY = centerY - drawHeight / 2 + offsetY;
 
                 console.log(`Avatar calculations:
   - Image size: ${imgDims.width} x ${imgDims.height} (aspect: ${imgAspect.toFixed(2)})
-  - Circle size: ${size}
+  - Circle size: ${size}px, radius: ${radius}px
+  - Circle center: X=${centerX.toFixed(1)}, Y=${centerY.toFixed(1)}
   - Draw size: ${drawWidth.toFixed(1)} x ${drawHeight.toFixed(1)}
   - Max offset: X=${maxOffsetX.toFixed(1)}, Y=${maxOffsetY.toFixed(1)}
   - Position %: X=${posXPercent}, Y=${posYPercent}
-  - Final offset: X=${offsetX.toFixed(1)}, Y=${offsetY.toFixed(1)}`);
+  - Final offset: X=${offsetX.toFixed(1)}, Y=${offsetY.toFixed(1)}
+  - Image draw position: X=${imageX.toFixed(1)}, Y=${imageY.toFixed(1)}`);
 
                 const kappa = 0.5522847498;
                 const ox = radius * kappa;
@@ -308,8 +316,8 @@ Deno.serve(async (req: Request) => {
                 );
 
                 page.drawImage(image, {
-                  x: field.x + offsetX,
-                  y: y + offsetY,
+                  x: imageX,
+                  y: imageY,
                   width: drawWidth,
                   height: drawHeight,
                 });
@@ -367,40 +375,45 @@ Deno.serve(async (req: Request) => {
             let x = field.x;
             const y = height - field.y - fontSize - (lineIndex * lineHeight);
 
+            let iconWidth = 0;
             if (iconSymbol) {
-              const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
+              try {
+                iconWidth = symbolsFont.widthOfTextAtSize(iconSymbol, iconSize);
+              } catch {
+                iconWidth = fontSize;
+              }
               x += iconWidth + iconPadding;
             }
 
             if (field.align === 'center' && field.max_width) {
               const textWidth = font.widthOfTextAtSize(line, fontSize);
-              const iconWidth = iconSymbol ? font.widthOfTextAtSize(iconSymbol, iconSize) : 0;
               const totalWidth = iconSymbol ? textWidth + iconWidth + iconPadding : textWidth;
               x = field.x + (field.max_width - totalWidth) / 2;
               if (iconSymbol) {
-                const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
                 x += iconWidth + iconPadding;
               }
             } else if (field.align === 'right' && field.max_width) {
               const textWidth = font.widthOfTextAtSize(line, fontSize);
-              const iconWidth = iconSymbol ? font.widthOfTextAtSize(iconSymbol, iconSize) : 0;
               const totalWidth = iconSymbol ? textWidth + iconWidth + iconPadding : textWidth;
               x = field.x + field.max_width - totalWidth;
               if (iconSymbol) {
-                const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
                 x += iconWidth + iconPadding;
               }
             }
 
             if (iconSymbol && lineIndex === 0) {
-              const iconWidth = font.widthOfTextAtSize(iconSymbol, iconSize);
-              page.drawText(iconSymbol, {
-                x: x - iconWidth - iconPadding,
-                y: y,
-                size: iconSize,
-                font: regularFont,
-                color: rgb(0.8, 0.7, 0.45),
-              });
+              try {
+                const iconWidth = symbolsFont.widthOfTextAtSize(iconSymbol, iconSize);
+                page.drawText(iconSymbol, {
+                  x: x - iconWidth - iconPadding,
+                  y: y,
+                  size: iconSize,
+                  font: symbolsFont,
+                  color: rgb(0.8, 0.7, 0.45),
+                });
+              } catch (error) {
+                console.error('Error drawing icon:', error);
+              }
             }
 
             console.log(`Drawing line ${lineIndex + 1}/${lines.length}: "${line}" at x=${x}, y=${y}`);
@@ -412,6 +425,33 @@ Deno.serve(async (req: Request) => {
               font,
               color,
             });
+
+            if ((isEmail || isPhone) && lineIndex === 0) {
+              const textWidth = font.widthOfTextAtSize(line, fontSize);
+              const linkUri = isEmail ? `mailto:${line}` : `tel:${line.replace(/\s/g, '')}`;
+
+              try {
+                const linkAnnotation = pdfDoc.context.obj({
+                  Type: 'Annot',
+                  Subtype: 'Link',
+                  Rect: [x, y - 2, x + textWidth, y + fontSize],
+                  Border: [0, 0, 0],
+                  C: [0, 0, 1],
+                  A: {
+                    S: 'URI',
+                    URI: PDFString.of(linkUri),
+                  },
+                });
+
+                const linkAnnotationRef = pdfDoc.context.register(linkAnnotation);
+
+                const annotations = page.node.lookup(PDFName.of('Annots'), PDFArray) || pdfDoc.context.obj([]);
+                annotations.push(linkAnnotationRef);
+                page.node.set(PDFName.of('Annots'), annotations);
+              } catch (error) {
+                console.error('Error adding link annotation:', error);
+              }
+            }
           }
         }
       }

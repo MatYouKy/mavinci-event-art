@@ -327,18 +327,18 @@ export const ImageEditorField: React.FC<ImageEditorFieldProps> = ({
                       : 0,
                 }}
                 value={positions?.posX ?? 0}
-                min={-100}
-                max={100}
-                step={0.01}
+                min={-50}
+                max={50}
+                step={0.5}
                 onChange={(_, v) => {
                   return handleChange('posX', v as number);
                 }}
               />
               <SliderY
                 value={positions?.posY ?? 0}
-                min={-100}
-                max={100}
-                step={0.01}
+                min={-50}
+                max={50}
+                step={0.5}
                 onChange={(_, v) => {
                   return handleChange('posY', v as number);
                 }}
