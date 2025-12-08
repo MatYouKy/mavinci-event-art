@@ -263,11 +263,12 @@ Deno.serve(async (req: Request) => {
                 }
 
                 const positionData = metadata?.desktop?.position;
-                const scale = positionData?.scale !== undefined ? positionData.scale : 1;
+                const baseScale = positionData?.scale !== undefined ? positionData.scale : 1;
+                const scale = baseScale * 0.85;
                 const posXPercent = positionData?.posX !== undefined ? positionData.posX : 0;
                 const posYPercent = positionData?.posY !== undefined ? positionData.posY : 0;
 
-                console.log(`Avatar positioning: scale=${scale}, posX=${posXPercent}%, posY=${posYPercent}%, raw position data:`, positionData);
+                console.log(`Avatar positioning: baseScale=${baseScale}, finalScale=${scale}, posX=${posXPercent}%, posY=${posYPercent}%, raw position data:`, positionData);
 
                 let drawWidth = size * scale;
                 let drawHeight = size * scale;

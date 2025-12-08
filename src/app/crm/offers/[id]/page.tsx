@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Download, Send, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Send, Trash2, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -10,6 +10,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import OfferBasicInfo from './components/OfferBasicInfo';
+import OfferActions from './components/OfferActions';
 import OfferItems from './components/OfferItems';
 import OfferHistory from './components/OfferHistory';
 
@@ -217,10 +218,6 @@ export default function OfferDetailPage() {
     }
   };
 
-  const handleEditOffer = () => {
-    router.push(`/crm/offers`);
-  };
-
   const handleGeneratePdf = async () => {
     if (!offer) return;
 
@@ -353,13 +350,6 @@ export default function OfferDetailPage() {
 
   const actions: Action[] = [
     {
-      label: 'Edytuj',
-      onClick: handleEditOffer,
-      icon: <Pencil className="w-4 h-4" />,
-      variant: 'default',
-      show: true,
-    },
-    {
       label: 'Usuń',
       onClick: handleDeleteOffer,
       icon: <Trash2 className="w-4 h-4" />,
@@ -482,7 +472,10 @@ export default function OfferDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <OfferBasicInfo offer={offer} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <OfferBasicInfo offer={offer} />
+            <OfferActions offer={offer} onUpdate={fetchOfferDetails} />
+          </div>
 
           <OfferItems
             items={offer.offer_items || []}
