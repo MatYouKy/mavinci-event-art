@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useGetEventDetailsQuery } from '@/store/api/eventsApi';
 import {
   Clock,
   Plus,
@@ -39,6 +40,7 @@ interface AgendaNote {
 
 export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
   const { employee } = useCurrentEmployee();
+  const { data: eventDetails, isLoading: isEventLoading } = useGetEventDetailsQuery(eventId);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -60,46 +62,37 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
   const canManage = employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
 
   useEffect(() => {
-    fetchEventDetails();
     fetchAgenda();
   }, [eventId]);
 
-  const fetchEventDetails = async () => {
-    try {
-      const { data: event, error } = await supabase
-        .from('events')
-        .select(`
-          *,
-          organization:organizations(name, email, phone),
-          contact:contacts(name, surname, email, phone),
-          location:locations(name, address)
-        `)
-        .eq('id', eventId)
-        .single();
+  useEffect(() => {
+    if (eventDetails && !agendaId) {
+      setEventName(eventDetails.name || '');
 
-      if (error) throw error;
+      if (eventDetails.event_date) {
+        const eventDateTime = new Date(eventDetails.event_date);
+        const dateOnly = eventDateTime.toISOString().split('T')[0];
+        setEventDate(dateOnly);
 
-      setEventName(event.name || '');
-      setEventDate(event.event_date || '');
-
-      // Extract times from event_date if it's a timestamp
-      if (event.event_date) {
-        const eventDateTime = new Date(event.event_date);
         const hours = eventDateTime.getHours().toString().padStart(2, '0');
         const minutes = eventDateTime.getMinutes().toString().padStart(2, '0');
         setStartTime(`${hours}:${minutes}`);
       }
 
-      // Set client contact info
-      if (event.organization) {
-        setClientContact(`${event.organization.name}${event.organization.phone ? ` - ${event.organization.phone}` : ''}`);
-      } else if (event.contact) {
-        setClientContact(`${event.contact.name} ${event.contact.surname}${event.contact.phone ? ` - ${event.contact.phone}` : ''}`);
+      if (eventDetails.event_end_date) {
+        const endDateTime = new Date(eventDetails.event_end_date);
+        const hours = endDateTime.getHours().toString().padStart(2, '0');
+        const minutes = endDateTime.getMinutes().toString().padStart(2, '0');
+        setEndTime(`${hours}:${minutes}`);
       }
-    } catch (err) {
-      console.error('Error fetching event details:', err);
+
+      if (eventDetails.organization) {
+        setClientContact(`${eventDetails.organization.name}`);
+      } else if (eventDetails.contact_person) {
+        setClientContact(`${eventDetails.contact_person.full_name}`);
+      }
     }
-  };
+  }, [eventDetails, agendaId]);
 
   const fetchAgenda = async () => {
     try {
@@ -191,6 +184,11 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
       return;
     }
 
+    if (!eventName || !eventDate) {
+      alert('Nazwa wydarzenia i data są wymagane');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -206,7 +204,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               event_date: eventDate,
               start_time: startTime || null,
               end_time: endTime || null,
-              client_contact: clientContact,
+              client_contact: clientContact || null,
               created_by: employee?.id,
             },
           ])
@@ -224,7 +222,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
             event_date: eventDate,
             start_time: startTime || null,
             end_time: endTime || null,
-            client_contact: clientContact,
+            client_contact: clientContact || null,
           })
           .eq('id', currentAgendaId);
 
@@ -515,7 +513,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
     );
   };
 
-  if (loading) {
+  if (loading || isEventLoading) {
     return (
       <div className="flex items-center justify-center p-12">
         <div className="text-[#e5e4e2]/60">Ładowanie agendy...</div>
