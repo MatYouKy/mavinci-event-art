@@ -173,7 +173,7 @@ Deno.serve(async (req: Request) => {
       startPageIndex: number,
       pageCount: number,
       textFields: TextFieldConfig[],
-      data: Record<string, string>
+      data: Record<string, any>
     ) => {
       if (!textFields || textFields.length === 0) return;
 
@@ -255,14 +255,16 @@ Deno.serve(async (req: Request) => {
                       console.error('Failed to parse avatar metadata:', e);
                     }
                   }
+
+                  console.log('Raw metadata:', JSON.stringify(metadata, null, 2));
                 }
 
                 const positionData = metadata?.desktop?.position;
-                const scale = positionData?.scale || 1;
-                const posXPercent = positionData?.posX || 50;
-                const posYPercent = positionData?.posY || 50;
+                const scale = positionData?.scale !== undefined ? positionData.scale : 1;
+                const posXPercent = positionData?.posX !== undefined ? positionData.posX : 0;
+                const posYPercent = positionData?.posY !== undefined ? positionData.posY : 0;
 
-                console.log(`Avatar positioning: scale=${scale}, posX=${posXPercent}%, posY=${posYPercent}%`);
+                console.log(`Avatar positioning: scale=${scale}, posX=${posXPercent}%, posY=${posYPercent}%, raw position data:`, positionData);
 
                 let drawWidth = size * scale;
                 let drawHeight = size * scale;
@@ -275,11 +277,19 @@ Deno.serve(async (req: Request) => {
                   drawHeight = (size / imgAspect) * scale;
                 }
 
-                const maxOffsetX = drawWidth - size;
-                const maxOffsetY = drawHeight - size;
+                const maxOffsetX = (drawWidth - size) / 2;
+                const maxOffsetY = (drawHeight - size) / 2;
 
-                const offsetX = -(maxOffsetX * posXPercent / 100);
-                const offsetY = -(maxOffsetY * posYPercent / 100);
+                const offsetX = -(posXPercent / 50) * maxOffsetX;
+                const offsetY = (posYPercent / 50) * maxOffsetY;
+
+                console.log(`Avatar calculations:
+  - Image size: ${imgDims.width} x ${imgDims.height} (aspect: ${imgAspect.toFixed(2)})
+  - Circle size: ${size}
+  - Draw size: ${drawWidth.toFixed(1)} x ${drawHeight.toFixed(1)}
+  - Max offset: X=${maxOffsetX.toFixed(1)}, Y=${maxOffsetY.toFixed(1)}
+  - Position %: X=${posXPercent}, Y=${posYPercent}
+  - Final offset: X=${offsetX.toFixed(1)}, Y=${offsetY.toFixed(1)}`);
 
                 const kappa = 0.5522847498;
                 const ox = radius * kappa;
