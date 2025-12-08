@@ -2322,7 +2322,16 @@ export default function EventDetailPage() {
 
       {activeTab === 'contract' && <EventContractTab eventId={eventId} />}
 
-      {activeTab === 'agenda' && <EventAgendaTab eventId={eventId} />}
+      {activeTab === 'agenda' && (
+        <EventAgendaTab
+          eventId={eventId}
+          eventName={event?.name ?? ''}
+          eventDate={event?.event_date ?? ''}
+          startTime={event?.event_date ?? ''}
+          endTime={event?.event_end_date ?? ''}
+          clientContact={event?.organization?.name ?? ''}
+        />
+      )}
 
       {activeTab === 'history' && (
         <div className="space-y-6">
@@ -2446,14 +2455,25 @@ export default function EventDetailPage() {
                               <span className="text-[#e5e4e2]/80">
                                 {log.entity_type === 'events' && 'wydarzenie'}
                                 {log.entity_type === 'event_equipment' && 'sprzęt wydarzenia'}
-                                {log.entity_type === 'employee_assignments' && 'przypisanie pracownika'}
+                                {log.entity_type === 'employee_assignments' &&
+                                  'przypisanie pracownika'}
                                 {log.entity_type === 'event_vehicles' && 'pojazd wydarzenia'}
                                 {log.entity_type === 'tasks' && 'zadanie'}
                                 {log.entity_type === 'offers' && 'ofertę'}
                                 {log.entity_type === 'contracts' && 'umowę'}
                                 {log.entity_type === 'event_files' && 'plik'}
                                 {log.entity_type === 'event_subcontractors' && 'podwykonawcę'}
-                                {!['events', 'event_equipment', 'employee_assignments', 'event_vehicles', 'tasks', 'offers', 'contracts', 'event_files', 'event_subcontractors'].includes(log.entity_type) && log.entity_type}
+                                {![
+                                  'events',
+                                  'event_equipment',
+                                  'employee_assignments',
+                                  'event_vehicles',
+                                  'tasks',
+                                  'offers',
+                                  'contracts',
+                                  'event_files',
+                                  'event_subcontractors',
+                                ].includes(log.entity_type) && log.entity_type}
                               </span>
                             </p>
                             {log.description && (
@@ -2487,7 +2507,8 @@ export default function EventDetailPage() {
                               const oldVal = log.old_value || {};
                               const newVal = log.new_value || {};
                               const changedFields = Object.keys(newVal).filter(
-                                (key) => JSON.stringify(oldVal[key]) !== JSON.stringify(newVal[key])
+                                (key) =>
+                                  JSON.stringify(oldVal[key]) !== JSON.stringify(newVal[key]),
                               );
 
                               if (changedFields.length === 0) return null;
@@ -2515,13 +2536,16 @@ export default function EventDetailPage() {
                                   if (val === null || val === undefined) return 'brak';
                                   if (typeof val === 'boolean') return val ? 'tak' : 'nie';
                                   if (typeof val === 'number') return val.toLocaleString('pl-PL');
-                                  if (typeof val === 'string' && val.length > 100) return val.substring(0, 100) + '...';
+                                  if (typeof val === 'string' && val.length > 100)
+                                    return val.substring(0, 100) + '...';
                                   return String(val);
                                 };
 
                                 return (
                                   <div key={field} className="text-sm">
-                                    <span className="text-[#e5e4e2]/60">{fieldLabels[field] || field}:</span>
+                                    <span className="text-[#e5e4e2]/60">
+                                      {fieldLabels[field] || field}:
+                                    </span>
                                     <div className="mt-1 flex items-center gap-2">
                                       <span className="rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
                                         {formatValue(oldVal[field])}

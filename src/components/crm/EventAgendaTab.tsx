@@ -1,24 +1,43 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useGetEventDetailsQuery } from '@/store/api/eventsApi';
-import {
-  Clock,
-  Plus,
-  Trash2,
-  Save,
-  FileDown,
-  Printer,
-  ChevronDown,
-  ChevronUp,
-  ChevronRight,
-  List,
-} from 'lucide-react';
+import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight } from 'lucide-react';
+
+const isoToDateInput = (value?: string | null): string => {
+  if (!value) return '';
+
+  // jeśli już jest w formacie YYYY-MM-DD – zostaw
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+
+  // YYYY-MM-DD
+  return d.toISOString().slice(0, 10);
+};
+
+const isoToTimeInput = (value?: string | null): string => {
+  if (!value) return '';
+
+  // jeśli już jest HH:MM – zostaw
+  if (/^\d{2}:\d{2}$/.test(value)) return value;
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+
+  // HH:MM
+  return d.toISOString().slice(11, 16);
+};
 
 interface EventAgendaTabProps {
   eventId: string;
+  eventName: string;
+  eventDate: string;
+  startTime: string;        // z logów / rodzica (np. "12:00")
+  endTime: string;
+  clientContact: string;    // z logów / rodzica
 }
 
 interface AgendaItem {
@@ -38,73 +57,47 @@ interface AgendaNote {
   children?: AgendaNote[];
 }
 
-export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
-  console.log('eventId', eventId);
+export default function EventAgendaTab({
+  eventId,
+  eventName,
+  eventDate,
+  startTime,
+  endTime,
+  clientContact,
+}: EventAgendaTabProps) {
   const { employee } = useCurrentEmployee();
-  const { data: eventDetails, isLoading: isEventLoading } = useGetEventDetailsQuery(eventId);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  // Agenda basic info
+  const [startTimeInput, setStartTimeInput] = useState(() => isoToTimeInput(startTime));
+  const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
+  const [clientContactInput, setClientContactInput] = useState(clientContact || '');
+
   const [agendaId, setAgendaId] = useState<string | null>(null);
-  const [eventName, setEventName] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [clientContact, setClientContact] = useState('');
-
-  // Agenda items
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
-
-  // Agenda notes
   const [agendaNotes, setAgendaNotes] = useState<AgendaNote[]>([]);
 
+  const normalizedEventDate = useMemo(() => isoToDateInput(eventDate), [eventDate]);
+  const normalizedStartTime = useMemo(() => isoToTimeInput(startTime), [startTime]);
+  const normalizedEndTime = useMemo(() => isoToTimeInput(endTime), [endTime]);
   const canManage =
     employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
+
+  // Gdy propsy z wydarzenia się zmienią (np. po załadowaniu eventDetails w rodzicu),
+  // nadpisujemy lokalne inputy, o ile agenda jeszcze nie istnieje
+  useEffect(() => {
+    if (!agendaId) {
+      setStartTimeInput(startTime || '');
+      setEndTimeInput(endTime || '');
+      setClientContactInput(clientContact || '');
+    }
+  }, [startTime, endTime, clientContact, agendaId]);
 
   useEffect(() => {
     fetchAgenda();
   }, [eventId]);
-
-  useEffect(() => {
-    if (!eventDetails || agendaId) return;
-
-    // Nazwa wydarzenia – próbujemy po kilku polach
-    setEventName(eventDetails.name ?? eventDetails.name ?? eventDetails.name ?? '');
-
-    // Data + godzina startu – próbujemy po kilku polach
-    const startRaw =
-      eventDetails.event_date ?? eventDetails.event_date ?? eventDetails.event_date ?? null;
-
-    if (startRaw) {
-      const eventDateTime = new Date(startRaw);
-      const dateOnly = eventDateTime.toISOString().split('T')[0];
-      setEventDate(dateOnly);
-
-      const hours = eventDateTime.getHours().toString().padStart(2, '0');
-      const minutes = eventDateTime.getMinutes().toString().padStart(2, '0');
-      setStartTime(`${hours}:${minutes}`);
-    }
-
-    const endRaw =
-      eventDetails.event_end_date ?? eventDetails.event_end_date ?? eventDetails.event_end_date ?? null;
-
-    if (endRaw) {
-      const endDateTime = new Date(endRaw);
-      const hours = endDateTime.getHours().toString().padStart(2, '0');
-      const minutes = endDateTime.getMinutes().toString().padStart(2, '0');
-      setEndTime(`${hours}:${minutes}`);
-    }
-
-    // Kontakt do klienta – kilka możliwych ścieżek
-    setClientContact(
-      eventDetails.organization?.name ??
-        eventDetails.organization?.name ??
-        eventDetails.organization?.name ??
-        '',
-    );
-  }, [eventDetails, agendaId]); 
 
   const fetchAgenda = async () => {
     try {
@@ -120,11 +113,12 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
 
       if (agenda) {
         setAgendaId(agenda.id);
-        setEventName(agenda.event_name);
-        setEventDate(agenda.event_date);
-        setStartTime(agenda.start_time || '');
-        setEndTime(agenda.end_time || '');
-        setClientContact(agenda.client_contact || '');
+
+        // Jeśli agenda istnieje, preferujemy jej dane,
+        // ale fallbackiem są wartości z wydarzenia (propsy/logi)
+        setStartTimeInput(agenda.start_time || startTime || '');
+        setEndTimeInput(agenda.end_time || endTime || '');
+        setClientContactInput(agenda.client_contact || clientContact || '');
 
         const { data: items, error: itemsError } = await supabase
           .from('event_agenda_items')
@@ -214,9 +208,9 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               event_id: eventId,
               event_name: eventName,
               event_date: eventDate,
-              start_time: startTime || null,
-              end_time: endTime || null,
-              client_contact: clientContact || null,
+              start_time: startTimeInput || null,
+              end_time: endTimeInput || null,
+              client_contact: clientContactInput || null,
               created_by: employee?.id,
             },
           ])
@@ -232,9 +226,9 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
           .update({
             event_name: eventName,
             event_date: eventDate,
-            start_time: startTime || null,
-            end_time: endTime || null,
-            client_contact: clientContact || null,
+            start_time: startTimeInput || null,
+            end_time: endTimeInput || null,
+            client_contact: clientContactInput || null,
           })
           .eq('id', currentAgendaId);
 
@@ -340,7 +334,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
         const fileName = `agenda_${Date.now()}.pdf`;
         const filePath = `${eventId}/${fileName}`;
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('event-files')
           .upload(filePath, pdfBlob, {
             contentType: 'application/pdf',
@@ -348,8 +342,6 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
           });
 
         if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage.from('event-files').getPublicUrl(filePath);
 
         const { error: fileRecordError } = await supabase.from('event_files').insert([
           {
@@ -430,8 +422,8 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
     };
 
     if (parentId) {
-      const addToParent = (notes: AgendaNote[]): AgendaNote[] => {
-        return notes.map((note) => {
+      const addToParent = (notes: AgendaNote[]): AgendaNote[] =>
+        notes.map((note) => {
           if (note.id === parentId) {
             return {
               ...note,
@@ -446,7 +438,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
           }
           return note;
         });
-      };
+
       setAgendaNotes(addToParent(agendaNotes));
     } else {
       setAgendaNotes([...agendaNotes, newNote]);
@@ -454,8 +446,8 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
   };
 
   const updateNote = (noteId: string, content: string) => {
-    const updateInTree = (notes: AgendaNote[]): AgendaNote[] => {
-      return notes.map((note) => {
+    const updateInTree = (notes: AgendaNote[]): AgendaNote[] =>
+      notes.map((note) => {
         if (note.id === noteId) {
           return { ...note, content };
         }
@@ -467,19 +459,19 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
         }
         return note;
       });
-    };
+
     setAgendaNotes(updateInTree(agendaNotes));
   };
 
   const removeNote = (noteId: string) => {
-    const removeFromTree = (notes: AgendaNote[]): AgendaNote[] => {
-      return notes
+    const removeFromTree = (notes: AgendaNote[]): AgendaNote[] =>
+      notes
         .filter((note) => note.id !== noteId)
         .map((note) => ({
           ...note,
           children: note.children ? removeFromTree(note.children) : [],
         }));
-    };
+
     setAgendaNotes(removeFromTree(agendaNotes));
   };
 
@@ -524,7 +516,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
     );
   };
 
-  if (loading || isEventLoading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
         <div className="text-[#e5e4e2]/60">Ładowanie agendy...</div>
@@ -589,7 +581,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data wydarzenia</label>
               <input
                 type="date"
-                value={eventDate}
+                value={normalizedEventDate}
                 readOnly
                 className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
               />
@@ -601,8 +593,8 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina rozpoczęcia</label>
               <input
                 type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                value={normalizedStartTime}
+                onChange={(e) => setStartTimeInput(e.target.value)}
                 disabled={!canManage}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
               />
@@ -611,8 +603,8 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina zakończenia</label>
               <input
                 type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                value={normalizedEndTime}
+                onChange={(e) => setEndTimeInput(e.target.value)}
                 disabled={!canManage}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
               />
@@ -621,7 +613,7 @@ export default function EventAgendaTab({ eventId }: EventAgendaTabProps) {
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kontakt do klienta</label>
               <input
                 type="text"
-                value={clientContact}
+                value={clientContactInput}
                 readOnly
                 className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
               />
