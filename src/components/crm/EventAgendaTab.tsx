@@ -208,8 +208,8 @@ export default function EventAgendaTab({
               event_id: eventId,
               event_name: eventName,
               event_date: eventDate,
-              start_time: startTimeInput || null,
-              end_time: endTimeInput || null,
+              start_time: startTimeInput ? new Date(startTimeInput).toISOString() : null,
+              end_time: endTimeInput ? new Date(endTimeInput).toISOString() : null,
               client_contact: clientContactInput || null,
               created_by: employee?.id,
             },
@@ -226,8 +226,8 @@ export default function EventAgendaTab({
           .update({
             event_name: eventName,
             event_date: eventDate,
-            start_time: startTimeInput || null,
-            end_time: endTimeInput || null,
+            start_time: startTimeInput ? new Date(startTimeInput).toISOString() : null,
+            end_time: endTimeInput ? new Date(endTimeInput).toISOString() : null,
             client_contact: clientContactInput || null,
           })
           .eq('id', currentAgendaId);
@@ -242,7 +242,7 @@ export default function EventAgendaTab({
         const { error: itemsError } = await supabase.from('event_agenda_items').insert(
           sortedItems.map((item, index) => ({
             agenda_id: currentAgendaId,
-            time: item.time,
+            time: item.time ? new Date(item.time).toISOString() : null,
             title: item.title,
             description: item.description,
             order_index: index,
