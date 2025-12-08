@@ -25,6 +25,7 @@ import OfferHistory from './components/OfferHistory';
 import { OfferDetails } from './components/OfferDetails';
 import OfferBasicInfo, { OfferBasicInfoHandle } from './components/OfferBasicInfo';
 import AddOfferItemModal from './components/AddOfferItemModal';
+import EditOfferItemModal from './components/EditOfferItemModal';
 
 interface OfferItem {
   id: string;
@@ -100,6 +101,7 @@ export default function OfferDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<OfferItem | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [canSendManage, setCanSendManage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -378,7 +380,7 @@ export default function OfferDetailPage() {
             offerId={offer.id}
             onItemsReordered={fetchOfferDetails}
             onEditItem={(item) => {
-              console.log('Edit item:', item);
+              setEditingItem(item);
             }}
             onDeleteItem={handleDeleteItem}
             onPreviewImage={setPreviewImage}
@@ -414,6 +416,14 @@ export default function OfferDetailPage() {
         <AddOfferItemModal
           offerId={offer.id}
           onClose={() => setShowAddItemModal(false)}
+          onSuccess={fetchOfferDetails}
+        />
+      )}
+
+      {editingItem && (
+        <EditOfferItemModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
           onSuccess={fetchOfferDetails}
         />
       )}
