@@ -32,11 +32,18 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
 
   const getAvailableQuantity = (item: EquipmentItem): number => {
     if (item.cable_stock_quantity !== undefined && item.cable_stock_quantity !== null) {
+      console.log(`Cable ${item.name}: stock=${item.cable_stock_quantity}`);
       return item.cable_stock_quantity;
     }
-    if (item.equipment_units) {
-      return item.equipment_units.filter(u => u.status === 'available').length;
+    if (item.equipment_units && Array.isArray(item.equipment_units)) {
+      console.log(`Units for ${item.name}:`, {
+        total: item.equipment_units.length,
+        statuses: item.equipment_units.map(u => u.status),
+        units: item.equipment_units
+      });
+      return item.equipment_units.length;
     }
+    console.log(`No units or cable_stock for ${item.name}`);
     return 0;
   };
 
@@ -80,7 +87,24 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       .neq('id', equipment.id)
       .order('name');
 
+    if (error) {
+      console.error('Error fetching equipment:', error);
+      return;
+    }
+
+    console.log('Fetched equipment with units:', data);
+
     if (data) {
+      data.forEach(item => {
+        const availableQty = getAvailableQuantity(item);
+        console.log(`${item.name}:`, {
+          cable_stock_quantity: item.cable_stock_quantity,
+          units: item.equipment_units,
+          units_count: Array.isArray(item.equipment_units) ? item.equipment_units.length : 0,
+          available_count: availableQty
+        });
+      });
+
       setAvailableEquipment(data);
       setFilteredEquipment(data);
     }
