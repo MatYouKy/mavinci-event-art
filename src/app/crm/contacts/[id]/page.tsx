@@ -193,11 +193,52 @@ export default function OrganizationDetailPage() {
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [allowedContactTabs, setAllowedContactTabs] = useState<string[]>(['details']);
+  const [allowedOrganizationTabs, setAllowedOrganizationTabs] = useState<string[]>(['details']);
+
   useEffect(() => {
     if (organizationId) {
       fetchData();
+      fetchPermissions();
     }
   }, [organizationId]);
+
+  const fetchPermissions = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('permissions, role, access_level_id, contact_tabs, organization_tabs, access_levels(contact_tabs, organization_tabs)')
+      .eq('id', session.user.id)
+      .single();
+
+    const userIsAdmin = employee?.role === 'admin' || employee?.permissions?.includes('contacts_manage');
+    setIsAdmin(userIsAdmin);
+
+    if (userIsAdmin) {
+      setAllowedContactTabs(['details', 'notes', 'history']);
+      setAllowedOrganizationTabs(['details', 'contacts', 'invoices', 'events', 'notes', 'history']);
+      return;
+    }
+
+    let contactTabs: string[] = ['details'];
+    if (employee?.contact_tabs && employee.contact_tabs.length > 0) {
+      contactTabs = employee.contact_tabs;
+    } else if ((employee?.access_levels as any)?.contact_tabs) {
+      contactTabs = (employee.access_levels as any).contact_tabs;
+    }
+    setAllowedContactTabs(contactTabs);
+
+    let organizationTabs: string[] = ['details'];
+    if (employee?.organization_tabs && employee.organization_tabs.length > 0) {
+      organizationTabs = employee.organization_tabs;
+    } else if ((employee?.access_levels as any)?.organization_tabs) {
+      organizationTabs = (employee.access_levels as any).organization_tabs;
+    }
+    setAllowedOrganizationTabs(organizationTabs);
+  };
 
   useEffect(() => {
     if (activeTab === 'invoices') {
@@ -983,20 +1024,22 @@ export default function OrganizationDetailPage() {
             { key: 'events' as TabType, label: `Realizacje (${events.length})`, icon: Calendar },
             { key: 'notes' as TabType, label: `Notatki (${organizationNotes.length})`, icon: StickyNote },
             { key: 'history' as TabType, label: 'Historia', icon: History },
-          ].map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`px-4 py-3 font-medium transition-colors flex items-center space-x-2 ${
-                activeTab === key
-                  ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
-                  : 'text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span>{label}</span>
-            </button>
-          ))}
+          ]
+            .filter(({ key }) => allowedOrganizationTabs.includes(key))
+            .map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`px-4 py-3 font-medium transition-colors flex items-center space-x-2 ${
+                  activeTab === key
+                    ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span>{label}</span>
+              </button>
+            ))}
         </div>
 
         {activeTab === 'details' && (

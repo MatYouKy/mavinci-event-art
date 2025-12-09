@@ -116,17 +116,34 @@ export default function EditEventClientModal({
   const fetchBusinessContacts = async () => {
     if (!organizationId) return;
 
-    const { data } = await supabase
-      .from('contacts')
+    const { data, error } = await supabase
+      .from('contact_organizations')
       .select(`
-        *,
-        contact_organizations!inner(organization_id)
+        contact_id,
+        contacts (
+          id,
+          full_name,
+          first_name,
+          last_name,
+          email,
+          phone,
+          position,
+          contact_type
+        )
       `)
-      .eq('contact_organizations.organization_id', organizationId)
-      .eq('contact_type', 'contact')
-      .order('full_name');
+      .eq('organization_id', organizationId);
 
-    if (data) setBusinessContacts(data);
+    if (error) {
+      console.error('Error fetching business contacts:', error);
+      return;
+    }
+
+    if (data) {
+      const contacts = data
+        .map((item: any) => item.contacts)
+        .filter((c: any) => c && c.contact_type === 'contact');
+      setBusinessContacts(contacts);
+    }
   };
 
   const fetchEventContactPersons = async () => {
