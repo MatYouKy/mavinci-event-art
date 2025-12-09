@@ -235,7 +235,7 @@ updateCableQuantity: builder.mutation<
             *,
             warehouse_categories:warehouse_categories(*),
             equipment_stock:equipment_stock(*),
-            equipment_components:equipment_components(*),
+            equipment_components:equipment_components!equipment_components_equipment_id_fkey(*),
             equipment_images:equipment_images(*)
           `)
           .eq('id', id)
