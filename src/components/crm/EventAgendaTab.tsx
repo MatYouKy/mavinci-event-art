@@ -210,7 +210,22 @@ export default function EventAgendaTab({
       if (!a.time && !b.time) return 0;
       if (!a.time) return 1;
       if (!b.time) return -1;
-      return a.time.localeCompare(b.time);
+
+      const timeToMinutes = (time: string): number => {
+        const [hours, minutes] = time.split(':').map(Number);
+        let totalMinutes = hours * 60 + minutes;
+
+        if (hours < 6) {
+          totalMinutes += 24 * 60;
+        }
+
+        return totalMinutes;
+      };
+
+      const aMinutes = timeToMinutes(a.time);
+      const bMinutes = timeToMinutes(b.time);
+
+      return aMinutes - bMinutes;
     });
   };
 
