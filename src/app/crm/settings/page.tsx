@@ -15,6 +15,7 @@ interface ViewModePreference {
 interface NotificationPreferences {
   email: boolean;
   push: boolean;
+  soundEnabled: boolean;
   categories: {
     messages: boolean;
     events: boolean;
@@ -383,6 +384,23 @@ export default function SettingsPage() {
                     type="checkbox"
                     checked={preferences.notifications?.push ?? false}
                     onChange={(e) => updateNotificationPreference('push', e.target.checked)}
+                    className="w-5 h-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-4 bg-[#0f1119] rounded-lg cursor-pointer hover:bg-[#0f1119]/70 transition-colors">
+                  <div>
+                    <p className="text-sm font-medium text-[#e5e4e2]">
+                      Dźwięk powiadomień
+                    </p>
+                    <p className="text-xs text-[#e5e4e2]/60 mt-1">
+                      Odtwarzaj krótki dźwięk przy nowych powiadomieniach
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifications?.soundEnabled ?? true}
+                    onChange={(e) => updateNotificationPreference('soundEnabled', e.target.checked)}
                     className="w-5 h-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
                   />
                 </label>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle, MessageSquare } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -30,9 +30,13 @@ export default function NotificationCenter() {
   const [showPanel, setShowPanel] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const prevUnreadCountRef = useRef<number>(0);
+  const isInitialLoadRef = useRef(true);
 
   useEffect(() => {
     fetchNotifications();
+    loadUserPreferences();
 
     const channel = supabase
       .channel('notification-recipients-changes')
@@ -54,6 +58,67 @@ export default function NotificationCenter() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  useEffect(() => {
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      prevUnreadCountRef.current = unreadCount;
+      return;
+    }
+
+    if (unreadCount > prevUnreadCountRef.current && soundEnabled) {
+      playNotificationSound();
+    }
+
+    prevUnreadCountRef.current = unreadCount;
+  }, [unreadCount, soundEnabled]);
+
+  const loadUserPreferences = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('employees')
+        .select('preferences')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data?.preferences?.notifications?.soundEnabled !== undefined) {
+        setSoundEnabled(data.preferences.notifications.soundEnabled);
+      }
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+    }
+  };
+
+  const playNotificationSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+
+      setTimeout(() => {
+        audioContext.close();
+      }, 400);
+    } catch (error) {
+      console.error('Error playing notification sound:', error);
+    }
+  };
 
   const fetchNotifications = async () => {
     try {
