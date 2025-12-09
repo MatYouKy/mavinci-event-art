@@ -90,10 +90,8 @@ export const buildAgendaHtml = ({
     : '';
 
   const footerHtml = `
-    <div style="margin-top:40px;padding-top:16px;border-top:2px solid #000;">
-      <div style="font-size:12px;color:#333;text-align:center;font-weight:500;">
-        Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}
-      </div>
+    <div class="footer">
+      Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}
     </div>
   `;
 
@@ -104,11 +102,36 @@ export const buildAgendaHtml = ({
   <meta charset="UTF-8" />
   <title>Agenda – ${eventName}</title>
   <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 12px;
       color: #111827;
-      margin: 24px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      min-height: 297mm;
+    }
+    .page-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .content {
+      flex: 1;
+    }
+    .footer {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 2px solid #000;
+      text-align: center;
+      font-size: 12px;
+      color: #333;
+      font-weight: 500;
     }
     .header {
       display: flex;
@@ -157,38 +180,42 @@ export const buildAgendaHtml = ({
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-left">
-      <h1>Agenda wydarzenia</h1>
-      <div class="meta">
-        <div><strong>Nazwa:</strong> ${eventName}</div>
-        <div><strong>Data:</strong> ${eventDate || '-'}</div>
-        <div><strong>Godziny:</strong> ${startTime || '--:--'} – ${endTime || '--:--'}</div>
-        <div><strong>Klient:</strong> ${clientContact || '-'}</div>
+  <div class="page-container">
+    <div class="content">
+      <div class="header">
+        <div class="header-left">
+          <h1>Agenda wydarzenia</h1>
+          <div class="meta">
+            <div><strong>Nazwa:</strong> ${eventName}</div>
+            <div><strong>Data:</strong> ${eventDate || '-'}</div>
+            <div><strong>Godziny:</strong> ${startTime || '--:--'} – ${endTime || '--:--'}</div>
+            <div><strong>Klient:</strong> ${clientContact || '-'}</div>
+          </div>
+        </div>
+        <div class="header-right">
+          <img src="/logo-mavinci-crm.png" alt="Mavinci CRM" class="logo" />
+        </div>
       </div>
+
+      <h2>Harmonogram</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:80px;">Godzina</th>
+            <th>Etap</th>
+            <th>Opis</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="3" style="padding:8px 10px;border:1px solid #ddd;">Brak etapów</td></tr>`}
+        </tbody>
+      </table>
+
+      ${notesHtml}
     </div>
-    <div class="header-right">
-      <img src="/logo-mavinci-crm.png" alt="Mavinci CRM" class="logo" />
-    </div>
+
+    ${footerHtml}
   </div>
-
-  <h2>Harmonogram</h2>
-  <table>
-    <thead>
-      <tr>
-        <th style="width:80px;">Godzina</th>
-        <th>Etap</th>
-        <th>Opis</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rows || `<tr><td colspan="3" style="padding:8px 10px;border:1px solid #ddd;">Brak etapów</td></tr>`}
-    </tbody>
-  </table>
-
-  ${notesHtml}
-
-  ${footerHtml}
 </body>
 </html>
 `;
