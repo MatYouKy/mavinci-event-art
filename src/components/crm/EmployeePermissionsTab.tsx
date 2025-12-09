@@ -41,6 +41,21 @@ const availableEventTabs = [
   { value: 'history', label: 'Historia', description: 'Dziennik zmian wydarzenia' },
 ];
 
+const availableContactTabs = [
+  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o kontakcie' },
+  { value: 'notes', label: 'Notatki', description: 'Notatki i uwagi dotyczące kontaktu' },
+  { value: 'history', label: 'Historia', description: 'Historia kontaktów i zmian' },
+];
+
+const availableOrganizationTabs = [
+  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o organizacji' },
+  { value: 'contacts', label: 'Kontakty', description: 'Osoby kontaktowe w organizacji' },
+  { value: 'invoices', label: 'Faktury', description: 'Faktury powiązane z organizacją' },
+  { value: 'events', label: 'Realizacje', description: 'Wydarzenia powiązane z organizacją' },
+  { value: 'notes', label: 'Notatki', description: 'Notatki dotyczące organizacji' },
+  { value: 'history', label: 'Historia', description: 'Historia zmian i kontaktów' },
+];
+
 const permissionCategories: PermissionCategory[] = [
   {
     key: 'equipment',
@@ -145,6 +160,8 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
   const { showConfirm } = useDialog();
   const [permissions, setPermissions] = useState<string[]>([]);
   const [eventTabs, setEventTabs] = useState<string[]>([]);
+  const [contactTabs, setContactTabs] = useState<string[]>([]);
+  const [organizationTabs, setOrganizationTabs] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -163,7 +180,7 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
 
       const { data, error } = await supabase
         .from('employees')
-        .select('permissions, event_tabs')
+        .select('permissions, event_tabs, contact_tabs, organization_tabs')
         .eq('id', employeeId)
         .maybeSingle();
 
@@ -171,6 +188,8 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
 
       setPermissions(data?.permissions || []);
       setEventTabs(data?.event_tabs || []);
+      setContactTabs(data?.contact_tabs || []);
+      setOrganizationTabs(data?.organization_tabs || []);
     } catch (err) {
       console.error('Error fetching permissions:', err);
     } finally {
@@ -242,6 +261,32 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
     setHasChanges(true);
   };
 
+  const toggleContactTab = (tabValue: string) => {
+    if (!canEditThisEmployee) return;
+
+    setContactTabs((prev) => {
+      if (prev.includes(tabValue)) {
+        return prev.filter((t) => t !== tabValue);
+      } else {
+        return [...prev, tabValue];
+      }
+    });
+    setHasChanges(true);
+  };
+
+  const toggleOrganizationTab = (tabValue: string) => {
+    if (!canEditThisEmployee) return;
+
+    setOrganizationTabs((prev) => {
+      if (prev.includes(tabValue)) {
+        return prev.filter((t) => t !== tabValue);
+      } else {
+        return [...prev, tabValue];
+      }
+    });
+    setHasChanges(true);
+  };
+
   const handleSave = async () => {
     if (!canEditThisEmployee) {
       if (targetIsAdmin) {
@@ -269,6 +314,8 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
         .update({
           permissions,
           event_tabs: eventTabs.length > 0 ? eventTabs : null,
+          contact_tabs: contactTabs.length > 0 ? contactTabs : null,
+          organization_tabs: organizationTabs.length > 0 ? organizationTabs : null,
         })
         .eq('id', employeeId);
 
@@ -470,6 +517,76 @@ export default function EmployeePermissionsTab({ employeeId, isAdmin, targetEmpl
                         ))}
                       </div>
                     </div>
+                  )}
+
+                  {category.key === 'clients' && level !== 'none' && (
+                    <>
+                      <div className="pt-3 border-t border-[#d3bb73]/10 space-y-3">
+                        <div className="text-sm font-medium text-[#e5e4e2]/80 mb-2">
+                          Dostępne zakładki dla kontaktów indywidualnych
+                          <span className="block text-xs font-normal text-[#e5e4e2]/60 mt-1">
+                            Wybierz zakładki, które będą widoczne w profilu kontaktu
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {availableContactTabs.map((tab) => (
+                            <label
+                              key={tab.value}
+                              className="flex items-start gap-3 p-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded hover:border-[#d3bb73]/40 transition-colors cursor-pointer group"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={contactTabs.includes(tab.value)}
+                                onChange={() => toggleContactTab(tab.value)}
+                                disabled={!canEditThisEmployee}
+                                className="mt-1 w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                              />
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
+                                  {tab.label}
+                                </div>
+                                <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
+                                  {tab.description}
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-[#d3bb73]/10 space-y-3">
+                        <div className="text-sm font-medium text-[#e5e4e2]/80 mb-2">
+                          Dostępne zakładki dla organizacji (firm)
+                          <span className="block text-xs font-normal text-[#e5e4e2]/60 mt-1">
+                            Wybierz zakładki, które będą widoczne w profilu organizacji
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {availableOrganizationTabs.map((tab) => (
+                            <label
+                              key={tab.value}
+                              className="flex items-start gap-3 p-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded hover:border-[#d3bb73]/40 transition-colors cursor-pointer group"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={organizationTabs.includes(tab.value)}
+                                onChange={() => toggleOrganizationTab(tab.value)}
+                                disabled={!canEditThisEmployee}
+                                className="mt-1 w-4 h-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                              />
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-[#e5e4e2] group-hover:text-[#d3bb73] transition-colors">
+                                  {tab.label}
+                                </div>
+                                <div className="text-xs text-[#e5e4e2]/60 mt-0.5">
+                                  {tab.description}
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </>
                   )}
 
                   {hasManageLevel && category.extraPermissions && category.extraPermissions.length > 0 && (
