@@ -31,19 +31,12 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   });
 
   const getAvailableQuantity = (item: EquipmentItem): number => {
-    if (item.cable_stock_quantity !== undefined && item.cable_stock_quantity !== null) {
-      console.log(`Cable ${item.name}: stock=${item.cable_stock_quantity}`);
+    if (item.cable_stock_quantity !== undefined && item.cable_stock_quantity !== null && item.cable_stock_quantity > 0) {
       return item.cable_stock_quantity;
     }
     if (item.equipment_units && Array.isArray(item.equipment_units)) {
-      console.log(`Units for ${item.name}:`, {
-        total: item.equipment_units.length,
-        statuses: item.equipment_units.map(u => u.status),
-        units: item.equipment_units
-      });
       return item.equipment_units.length;
     }
-    console.log(`No units or cable_stock for ${item.name}`);
     return 0;
   };
 
@@ -92,19 +85,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       return;
     }
 
-    console.log('Fetched equipment with units:', data);
-
     if (data) {
-      data.forEach(item => {
-        const availableQty = getAvailableQuantity(item);
-        console.log(`${item.name}:`, {
-          cable_stock_quantity: item.cable_stock_quantity,
-          units: item.equipment_units,
-          units_count: Array.isArray(item.equipment_units) ? item.equipment_units.length : 0,
-          available_count: availableQty
-        });
-      });
-
       setAvailableEquipment(data);
       setFilteredEquipment(data);
     }
