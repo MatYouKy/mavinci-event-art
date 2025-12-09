@@ -341,6 +341,11 @@ export default function EventAgendaTab({
       alert('Agenda została zapisana');
       await fetchAgenda();
       setEditMode(false);
+
+      // Automatyczne generowanie PDF po zapisie
+      setTimeout(() => {
+        handleGeneratePDF();
+      }, 500);
     } catch (err) {
       console.error('Error saving agenda:', err);
       alert('Wystąpił błąd podczas zapisywania agendy');
@@ -378,6 +383,19 @@ export default function EventAgendaTab({
     try {
       setGenerating(true);
 
+      // 0. Usuń poprzedni PDF jeśli istnieje
+      if (generatedPdfPath) {
+        try {
+          // Usuń z storage
+          await supabase.storage.from('event-files').remove([generatedPdfPath]);
+
+          // Usuń z event_files
+          await supabase.from('event_files').delete().eq('file_path', generatedPdfPath);
+        } catch (deleteError) {
+          console.warn('Błąd podczas usuwania poprzedniego PDF:', deleteError);
+        }
+      }
+
       // 1. Zbuduj HTML agendy
       const html = buildAgendaHtml({
         eventName,
@@ -387,6 +405,7 @@ export default function EventAgendaTab({
         clientContact: clientContactInput,
         agendaItems: getSortedAgendaItems(),
         agendaNotes,
+        lastUpdated: new Date().toISOString(),
       });
 
       // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)

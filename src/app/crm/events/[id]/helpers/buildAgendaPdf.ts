@@ -15,6 +15,7 @@ export const buildAgendaHtml = ({
   clientContact,
   agendaItems,
   agendaNotes = [],
+  lastUpdated,
 }: {
   eventName: string;
   eventDate: string;
@@ -23,6 +24,7 @@ export const buildAgendaHtml = ({
   clientContact: string;
   agendaItems: { time: string; title: string; description: string }[];
   agendaNotes?: AgendaNote[];
+  lastUpdated?: string;
 }) => {
   const rows = agendaItems
     .map(
@@ -59,14 +61,40 @@ export const buildAgendaHtml = ({
       .join('');
   };
 
+  const formatLastUpdated = (dateStr?: string): string => {
+    if (!dateStr) return new Date().toLocaleString('pl-PL', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const date = new Date(dateStr);
+    return date.toLocaleString('pl-PL', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   const notesHtml = agendaNotes && agendaNotes.length > 0
     ? `
       <h2>Uwagi</h2>
       <div style="margin-top:8px;line-height:1.6;">
         ${renderNotes(agendaNotes)}
       </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #ddd;font-size:10px;color:#666;">
+        <em>Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}</em>
+      </div>
     `
-    : '';
+    : `
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #ddd;font-size:10px;color:#666;">
+        <em>Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}</em>
+      </div>
+    `;
 
   return `
 <!DOCTYPE html>
