@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List, Eye, Download } from 'lucide-react';
+import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List, Eye, Download, Edit3, Check, X } from 'lucide-react';
 import { dataUriToBlob } from '@/app/crm/events/[id]/helpers/blobPDFHelper';
 import { buildAgendaHtml } from '@/app/crm/events/[id]/helpers/buildAgendaPdf';
 
@@ -50,6 +50,7 @@ interface AgendaItem {
   title: string;
   description: string;
   order_index: number;
+  isEditing?: boolean;
 }
 
 interface AgendaNote {
@@ -138,6 +139,7 @@ export default function EventAgendaTab({
           (items || []).map((item) => ({
             ...item,
             time: isoToTimeInput(item.time) || '',
+            isEditing: false,
           })),
         );
 
@@ -266,7 +268,7 @@ export default function EventAgendaTab({
         if (updateError) throw updateError;
       }
 
-      // items
+      // items - czyścimy isEditing i sortujemy
       await supabase.from('event_agenda_items').delete().eq('agenda_id', currentAgendaId);
 
       if (agendaItems.length > 0) {
@@ -282,6 +284,13 @@ export default function EventAgendaTab({
         );
 
         if (itemsError) throw itemsError;
+
+        // Sortujemy lokalnie po zapisie
+        const cleanItems = sortedItems.map((item) => ({
+          ...item,
+          isEditing: false,
+        }));
+        setAgendaItems(cleanItems);
       }
 
       // notes
@@ -335,6 +344,13 @@ export default function EventAgendaTab({
       setEndTimeInput(isoToTimeInput(endTime));
       setClientContactInput(clientContact || '');
     }
+
+    // Czyścimy flagi edycji
+    const cleanItems = agendaItems.map((item) => ({
+      ...item,
+      isEditing: false,
+    }));
+    setAgendaItems(cleanItems);
     setEditMode(false);
   };
 
@@ -502,34 +518,89 @@ export default function EventAgendaTab({
     };
   }, []);
 
-  const addAgendaItem = (afterIndex?: number) => {
+  const getNextRoundedTime = (): string => {
+    if (agendaItems.length === 0) {
+      const now = new Date();
+      now.setMinutes(0, 0, 0);
+      return now.toTimeString().slice(0, 5);
+    }
+
+    const lastItem = agendaItems[agendaItems.length - 1];
+    if (!lastItem.time) {
+      const now = new Date();
+      now.setMinutes(0, 0, 0);
+      return now.toTimeString().slice(0, 5);
+    }
+
+    const [hours, minutes] = lastItem.time.split(':').map(Number);
+    const nextHour = new Date();
+    nextHour.setHours(hours + 1, 0, 0, 0);
+    return nextHour.toTimeString().slice(0, 5);
+  };
+
+  const addAgendaItem = () => {
     const newItem: AgendaItem = {
-      time: '',
+      time: getNextRoundedTime(),
       title: '',
       description: '',
-      order_index: typeof afterIndex === 'number' ? afterIndex + 1 : agendaItems.length,
+      order_index: agendaItems.length,
+      isEditing: true,
     };
 
-    if (typeof afterIndex === 'number') {
-      const updatedItems = [
-        ...agendaItems.slice(0, afterIndex + 1),
-        newItem,
-        ...agendaItems.slice(afterIndex + 1),
-      ];
-      setAgendaItems(updatedItems);
-    } else {
-      setAgendaItems([...agendaItems, newItem]);
-    }
+    setAgendaItems([...agendaItems, newItem]);
   };
 
   const removeAgendaItem = (index: number) => {
     setAgendaItems(agendaItems.filter((_, i) => i !== index));
   };
 
-  const updateAgendaItem = (index: number, field: keyof AgendaItem, value: string) => {
+  const updateAgendaItem = (index: number, field: keyof AgendaItem, value: any) => {
     const updated = [...agendaItems];
     updated[index] = { ...updated[index], [field]: value };
     setAgendaItems(updated);
+  };
+
+  const toggleItemEdit = (index: number, editing: boolean) => {
+    const updated = [...agendaItems];
+    updated[index] = { ...updated[index], isEditing: editing };
+    setAgendaItems(updated);
+  };
+
+  const handleTimeWheel = (
+    e: React.WheelEvent<HTMLInputElement>,
+    index: number,
+    currentTime: string
+  ) => {
+    e.preventDefault();
+
+    if (!currentTime || !/^\d{2}:\d{2}$/.test(currentTime)) return;
+
+    const [hours, minutes] = currentTime.split(':').map(Number);
+    const target = e.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const inputWidth = rect.width;
+    const isHourSide = clickX < inputWidth / 2;
+
+    let newHours = hours;
+    let newMinutes = minutes;
+
+    if (e.deltaY < 0) {
+      if (isHourSide) {
+        newHours = (hours + 1) % 24;
+      } else {
+        newMinutes = (minutes + 1) % 60;
+      }
+    } else {
+      if (isHourSide) {
+        newHours = (hours - 1 + 24) % 24;
+      } else {
+        newMinutes = (minutes - 1 + 60) % 60;
+      }
+    }
+
+    const newTime = `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+    updateAgendaItem(index, 'time', newTime);
   };
 
   const addNote = (level: number = 0, parentId: string | null = null) => {
@@ -859,7 +930,7 @@ export default function EventAgendaTab({
             </div>
           )}
 
-          {/* TRYB EDYCJI – karty jak wcześniej */}
+          {/* TRYB EDYCJI – karty z indywidualną edycją */}
           {editMode && (
             <div className="space-y-3">
               {agendaItems.length === 0 ? (
@@ -873,61 +944,130 @@ export default function EventAgendaTab({
                   </button>
                 </div>
               ) : (
-                getSortedAgendaItems().map((item) => {
-                  const originalIndex = agendaItems.indexOf(item);
-                  return (
-                    <div key={originalIndex} className="space-y-2">
-                      <div className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
+                <>
+                  {agendaItems.map((item, originalIndex) => {
+                    const isEditing = item.isEditing || false;
+
+                    return (
+                      <div
+                        key={originalIndex}
+                        className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4"
+                      >
                         <Clock className="mt-1 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="time"
-                              value={item.time}
+
+                        {isEditing ? (
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="time"
+                                value={item.time}
+                                onChange={(e) =>
+                                  updateAgendaItem(originalIndex, 'time', e.target.value)
+                                }
+                                onWheel={(e) => handleTimeWheel(e, originalIndex, item.time)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    toggleItemEdit(originalIndex, false);
+                                  }
+                                }}
+                                className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                              />
+                              <input
+                                type="text"
+                                value={item.title}
+                                onChange={(e) =>
+                                  updateAgendaItem(originalIndex, 'title', e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    toggleItemEdit(originalIndex, false);
+                                  }
+                                }}
+                                placeholder="Tytuł etapu..."
+                                className="flex-1 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                              />
+                            </div>
+                            <textarea
+                              value={item.description}
                               onChange={(e) =>
-                                updateAgendaItem(originalIndex, 'time', e.target.value)
+                                updateAgendaItem(originalIndex, 'description', e.target.value)
                               }
-                              className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                            />
-                            <input
-                              type="text"
-                              value={item.title}
-                              onChange={(e) =>
-                                updateAgendaItem(originalIndex, 'title', e.target.value)
-                              }
-                              placeholder="Tytuł etapu..."
-                              className="flex-1 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.ctrlKey) {
+                                  e.preventDefault();
+                                  toggleItemEdit(originalIndex, false);
+                                }
+                              }}
+                              placeholder="Opis etapu..."
+                              rows={2}
+                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                             />
                           </div>
-                          <textarea
-                            value={item.description}
-                            onChange={(e) =>
-                              updateAgendaItem(originalIndex, 'description', e.target.value)
-                            }
-                            placeholder="Opis etapu..."
-                            rows={2}
-                            className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                          />
+                        ) : (
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-[#d3bb73]">{item.time || '--:--'}</span>
+                              <span className="text-[#e5e4e2]">{item.title || '(bez tytułu)'}</span>
+                            </div>
+                            {item.description && (
+                              <p className="text-sm text-[#e5e4e2]/70 whitespace-pre-wrap">
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {isEditing ? (
+                            <>
+                              <button
+                                onClick={() => toggleItemEdit(originalIndex, false)}
+                                className="p-2 text-green-400/60 hover:text-green-400"
+                                title="Zatwierdź (Enter)"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => removeAgendaItem(originalIndex)}
+                                className="p-2 text-red-400/60 hover:text-red-400"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => toggleItemEdit(originalIndex, true)}
+                                className="p-2 text-[#d3bb73]/60 hover:text-[#d3bb73]"
+                                title="Edytuj"
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => removeAgendaItem(originalIndex)}
+                                className="p-2 text-red-400/60 hover:text-red-400"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
-                        <button
-                          onClick={() => removeAgendaItem(originalIndex)}
-                          className="flex-shrink-0 p-2 text-red-400/60 hover:text-red-400"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
                       </div>
-                      <div className="flex justify-center">
-                        <button
-                          onClick={() => addAgendaItem(originalIndex)}
-                          className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-3 py-1.5 text-sm text-[#d3bb73]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
-                        >
-                          <Plus className="h-4 w-4" />
-                          <span>Dodaj kolejny etap</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+
+                  <div className="flex justify-center pt-2">
+                    <button
+                      onClick={() => addAgendaItem()}
+                      className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-4 py-2 text-[#d3bb73]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Dodaj kolejny etap</span>
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           )}
