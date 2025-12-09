@@ -55,6 +55,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningTask, setAssigningTask] = useState<Task | null>(null);
   const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
+  const [activeTimer, setActiveTimer] = useState<any>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { showSnackbar } = useSnackbar();
@@ -92,6 +93,9 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   useEffect(() => {
     fetchTasks();
     fetchEmployees();
+    if (currentEmployee?.id) {
+      checkActiveTimer();
+    }
 
     const tasksChannel = supabase
       .channel(`event_tasks_${eventId}`)
@@ -126,7 +130,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         clearInterval(autoScrollIntervalRef.current);
       }
     };
-  }, [eventId]);
+  }, [eventId, currentEmployee?.id]);
 
   const fetchTasks = async () => {
     try {
@@ -189,6 +193,49 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       setAvailableEmployees(data || []);
     } catch (err) {
       console.error('Error fetching employees:', err);
+    }
+  };
+
+  const checkActiveTimer = async () => {
+    if (!currentEmployee?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('time_entries')
+        .select('*, tasks(title)')
+        .eq('employee_id', currentEmployee.id)
+        .is('end_time', null)
+        .maybeSingle();
+
+      if (error) throw error;
+      setActiveTimer(data);
+    } catch (error) {
+      console.error('Error checking active timer:', error);
+    }
+  };
+
+  const startTimer = async (task: Task) => {
+    if (!currentEmployee?.id) return;
+
+    try {
+      const { error } = await supabase.from('time_entries').insert({
+        employee_id: currentEmployee.id,
+        task_id: task.id,
+        event_id: eventId,
+        title: null,
+        description: null,
+        start_time: new Date().toISOString(),
+        end_time: null,
+        is_billable: false,
+        tags: [],
+      });
+
+      if (error) throw error;
+      showSnackbar(`Timer rozpoczęty dla: ${task.title}`, 'success');
+      checkActiveTimer();
+    } catch (error) {
+      console.error('Error starting timer:', error);
+      showSnackbar('Błąd podczas uruchamiania timera', 'error');
     }
   };
 
@@ -302,7 +349,39 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     }
   };
 
-  const handleMoveTask = async (taskId: string, newColumn: string) => {
+  const handleMoveTask = async (taskId: string, newColumn: string, oldColumn: string) => {
+    if (newColumn === 'in_progress' && oldColumn !== 'in_progress') {
+      if (activeTimer && activeTimer.task_id !== taskId) {
+        showSnackbar('Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia', 'warning');
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .update({
+            board_column: newColumn,
+            status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
+          })
+          .eq('id', taskId);
+
+        if (error) throw error;
+
+        if (!activeTimer) {
+          const task = tasks.find(t => t.id === taskId);
+          if (task) {
+            await startTimer(task);
+          }
+        }
+
+        await fetchTasks();
+      } catch (err) {
+        console.error('Error moving task:', err);
+        showSnackbar('Błąd podczas przenoszenia zadania', 'error');
+      }
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('tasks')
@@ -381,7 +460,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       return;
     }
 
-    await handleMoveTask(draggedTask.id, columnId);
+    const oldColumn = draggedTask.board_column;
+    await handleMoveTask(draggedTask.id, columnId, oldColumn);
     setDraggedTask(null);
   };
 

@@ -309,6 +309,48 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     const oldColumn = draggedTask.board_column;
     const taskId = draggedTask.id;
 
+    if (columnId === 'in_progress' && oldColumn !== 'in_progress') {
+      if (activeTimer && activeTimer.task_id !== taskId) {
+        setDraggedTask(null);
+        setDragOverColumn(null);
+        stopAutoScroll();
+        showSnackbar('Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia', 'warning');
+        return;
+      }
+
+      if (!activeTimer) {
+        setTasks(prevTasks =>
+          prevTasks.map(task =>
+            task.id === taskId ? { ...task, board_column: columnId } : task
+          )
+        );
+        setDraggedTask(null);
+        setDragOverColumn(null);
+        stopAutoScroll();
+
+        try {
+          const { error } = await supabase
+            .from('tasks')
+            .update({ board_column: columnId })
+            .eq('id', taskId);
+
+          if (error) throw error;
+
+          await startTimer(draggedTask);
+        } catch (error) {
+          console.error('Error moving task:', error);
+          showSnackbar('Błąd podczas przenoszenia zadania', 'error');
+
+          setTasks(prevTasks =>
+            prevTasks.map(task =>
+              task.id === taskId ? { ...task, board_column: oldColumn } : task
+            )
+          );
+        }
+        return;
+      }
+    }
+
     setTasks(prevTasks =>
       prevTasks.map(task =>
         task.id === taskId ? { ...task, board_column: columnId } : task
@@ -319,17 +361,12 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     stopAutoScroll();
 
     try {
-      const { error, data } = await supabase
+      const { error } = await supabase
         .from('tasks')
         .update({ board_column: columnId })
-        .eq('id', taskId)
-        .select();
+        .eq('id', taskId);
 
       if (error) throw error;
-
-      if (columnId === 'in_progress' && oldColumn !== 'in_progress' && !activeTimer) {
-        await handleStartTimer(draggedTask);
-      }
     } catch (error) {
       console.error('Error moving task:', error);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
