@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Package } from 'lucide-react';
+import { Plus, Trash2, Package, Search, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface EquipmentItem {
   id: string;
   name: string;
   model: string | null;
-  manufacturer: string | null;
+  brand: string | null;
+  thumbnail_url: string | null;
+  warehouse_categories?: {
+    name: string;
+  };
 }
 
 export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   const [isAdding, setIsAdding] = useState(false);
+  const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [availableEquipment, setAvailableEquipment] = useState<EquipmentItem[]>([]);
+  const [filteredEquipment, setFilteredEquipment] = useState<EquipmentItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [componentType, setComponentType] = useState<'from_warehouse' | 'custom'>('from_warehouse');
   const [newComponent, setNewComponent] = useState({
     component_equipment_id: '',
@@ -21,20 +28,53 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   });
 
   useEffect(() => {
-    if (isAdding) {
+    if (isAdding || showEquipmentModal) {
       fetchAvailableEquipment();
     }
-  }, [isAdding]);
+  }, [isAdding, showEquipmentModal]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredEquipment(availableEquipment);
+    } else {
+      const query = searchQuery.toLowerCase();
+      setFilteredEquipment(
+        availableEquipment.filter(
+          (item) =>
+            item.name.toLowerCase().includes(query) ||
+            item.model?.toLowerCase().includes(query) ||
+            item.brand?.toLowerCase().includes(query) ||
+            item.warehouse_categories?.name.toLowerCase().includes(query)
+        )
+      );
+    }
+  }, [searchQuery, availableEquipment]);
 
   const fetchAvailableEquipment = async () => {
     const { data, error } = await supabase
       .from('equipment_items')
-      .select('id, name, model, manufacturer')
+      .select('id, name, model, brand, thumbnail_url, warehouse_categories(name)')
+      .is('deleted_at', null)
+      .neq('id', equipment.id)
       .order('name');
 
     if (data) {
       setAvailableEquipment(data);
+      setFilteredEquipment(data);
     }
+  };
+
+  const handleSelectEquipment = (equipmentId: string) => {
+    const selected = availableEquipment.find((e) => e.id === equipmentId);
+    if (selected) {
+      setNewComponent((p) => ({
+        ...p,
+        component_equipment_id: equipmentId,
+        component_name: `${selected.name}${selected.model ? ` ${selected.model}` : ''}`,
+      }));
+    }
+    setShowEquipmentModal(false);
+    setSearchQuery('');
   };
 
   const handleAdd = async () => {
@@ -102,18 +142,16 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {componentType === 'from_warehouse' ? (
-              <select
-                value={newComponent.component_equipment_id}
-                onChange={(e) => setNewComponent((p) => ({ ...p, component_equipment_id: e.target.value }))}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              <button
+                type="button"
+                onClick={() => setShowEquipmentModal(true)}
+                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] text-left hover:border-[#d3bb73]/30 flex items-center justify-between"
               >
-                <option value="">Wybierz sprzęt z magazynu</option>
-                {availableEquipment.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}{item.model ? ` ${item.model}` : ''}{item.manufacturer ? ` (${item.manufacturer})` : ''}
-                  </option>
-                ))}
-              </select>
+                <span className={newComponent.component_name ? '' : 'text-[#e5e4e2]/50'}>
+                  {newComponent.component_name || 'Wybierz sprzęt z magazynu'}
+                </span>
+                <Search className="w-4 h-4" />
+              </button>
             ) : (
               <input
                 type="text"
@@ -187,6 +225,84 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
           <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
           <p className="text-[#e5e4e2]/60">Brak komponentów w zestawie</p>
+        </div>
+      )}
+
+      {showEquipmentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f1119] rounded-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b border-[#d3bb73]/10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-[#e5e4e2]">Wybierz sprzęt z magazynu</h3>
+                <button
+                  onClick={() => {
+                    setShowEquipmentModal(false);
+                    setSearchQuery('');
+                  }}
+                  className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg"
+                >
+                  <X className="w-5 h-5 text-[#e5e4e2]" />
+                </button>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Szukaj po nazwie, modelu, marce lub kategorii..."
+                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {filteredEquipment.length === 0 ? (
+                <div className="text-center py-12">
+                  <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                  <p className="text-[#e5e4e2]/60">Nie znaleziono sprzętu</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredEquipment.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelectEquipment(item.id)}
+                      className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 hover:border-[#d3bb73]/30 transition-colors text-left"
+                    >
+                      <div className="flex gap-4">
+                        {item.thumbnail_url ? (
+                          <img
+                            src={item.thumbnail_url}
+                            alt={item.name}
+                            className="w-20 h-20 object-cover rounded-lg"
+                          />
+                        ) : (
+                          <div className="w-20 h-20 bg-[#0f1119] rounded-lg flex items-center justify-center">
+                            <Package className="w-8 h-8 text-[#e5e4e2]/20" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <h4 className="text-[#e5e4e2] font-medium">{item.name}</h4>
+                          {item.model && (
+                            <p className="text-sm text-[#e5e4e2]/60 mt-0.5">{item.model}</p>
+                          )}
+                          {item.brand && (
+                            <p className="text-xs text-[#e5e4e2]/40 mt-1">{item.brand}</p>
+                          )}
+                          {item.warehouse_categories && (
+                            <span className="inline-block mt-2 text-xs px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                              {item.warehouse_categories.name}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
