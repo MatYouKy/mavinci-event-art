@@ -2329,7 +2329,7 @@ export default function EventDetailPage() {
           eventDate={event?.event_date ?? ''}
           startTime={event?.event_date ?? ''}
           endTime={event?.event_end_date ?? ''}
-          clientContact={event?.organization?.name ?? ''}
+          clientContact={event?.organization?.alias || event?.organization?.name ?? ''}
         />
       )}
 

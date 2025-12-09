@@ -1,11 +1,20 @@
-export // helper NA ZEWNĄTRZ komponentu (np. nad EventAgendaTab)
-const buildAgendaHtml = ({
+interface AgendaNote {
+  id?: string;
+  content: string;
+  order_index: number;
+  level: number;
+  parent_id: string | null;
+  children?: AgendaNote[];
+}
+
+export const buildAgendaHtml = ({
   eventName,
   eventDate,
   startTime,
   endTime,
   clientContact,
   agendaItems,
+  agendaNotes = [],
 }: {
   eventName: string;
   eventDate: string;
@@ -13,6 +22,7 @@ const buildAgendaHtml = ({
   endTime: string;
   clientContact: string;
   agendaItems: { time: string; title: string; description: string }[];
+  agendaNotes?: AgendaNote[];
 }) => {
   const rows = agendaItems
     .map(
@@ -28,6 +38,36 @@ const buildAgendaHtml = ({
     )
     .join('');
 
+  const renderNotes = (notes: AgendaNote[]): string => {
+    if (!notes || notes.length === 0) return '';
+
+    return notes
+      .map((note) => {
+        const indent = note.level * 20;
+        const children = note.children && note.children.length > 0 ? renderNotes(note.children) : '';
+
+        return `
+          <div style="margin-left:${indent}px;margin-bottom:6px;">
+            <div style="display:flex;align-items:start;">
+              <span style="margin-right:8px;color:#666;">•</span>
+              <span>${note.content || ''}</span>
+            </div>
+            ${children}
+          </div>
+        `;
+      })
+      .join('');
+  };
+
+  const notesHtml = agendaNotes && agendaNotes.length > 0
+    ? `
+      <h2>Uwagi</h2>
+      <div style="margin-top:8px;line-height:1.6;">
+        ${renderNotes(agendaNotes)}
+      </div>
+    `
+    : '';
+
   return `
 <!DOCTYPE html>
 <html lang="pl">
@@ -40,6 +80,24 @@ const buildAgendaHtml = ({
       font-size: 12px;
       color: #111827;
       margin: 24px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .header-left {
+      flex: 1;
+    }
+    .header-right {
+      flex-shrink: 0;
+      margin-left: 20px;
+    }
+    .logo {
+      max-width: 150px;
+      height: auto;
+      filter: grayscale(100%);
     }
     h1 {
       font-size: 20px;
@@ -70,12 +128,19 @@ const buildAgendaHtml = ({
   </style>
 </head>
 <body>
-  <h1>Agenda wydarzenia</h1>
-  <div class="meta">
-    <div><strong>Nazwa:</strong> ${eventName}</div>
-    <div><strong>Data:</strong> ${eventDate || '-'}</div>
-    <div><strong>Godziny:</strong> ${startTime || '--:--'} – ${endTime || '--:--'}</div>
-    <div><strong>Klient:</strong> ${clientContact || '-'}</div>
+  <div class="header">
+    <div class="header-left">
+      <h1>Agenda wydarzenia</h1>
+      <div class="meta">
+        <div><strong>Nazwa:</strong> ${eventName}</div>
+        <div><strong>Data:</strong> ${eventDate || '-'}</div>
+        <div><strong>Godziny:</strong> ${startTime || '--:--'} – ${endTime || '--:--'}</div>
+        <div><strong>Klient:</strong> ${clientContact || '-'}</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <img src="/logo-mavinci-crm.png" alt="Mavinci CRM" class="logo" />
+    </div>
   </div>
 
   <h2>Harmonogram</h2>
@@ -91,6 +156,8 @@ const buildAgendaHtml = ({
       ${rows || `<tr><td colspan="3" style="padding:8px 10px;border:1px solid #ddd;">Brak etapów</td></tr>`}
     </tbody>
   </table>
+
+  ${notesHtml}
 </body>
 </html>
 `;

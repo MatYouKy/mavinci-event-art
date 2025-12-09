@@ -386,6 +386,7 @@ export default function EventAgendaTab({
         endTime: endTimeInput,
         clientContact: clientContactInput,
         agendaItems: getSortedAgendaItems(),
+        agendaNotes,
       });
 
       // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
