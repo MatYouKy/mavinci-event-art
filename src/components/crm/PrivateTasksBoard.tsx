@@ -94,20 +94,27 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         async (payload) => {
           const updatedTask = payload.new as Task;
 
-          setTasks(prevTasks => {
-            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+          const { data: assignees } = await supabase
+            .from('task_assignees')
+            .select('employee_id')
+            .eq('task_id', updatedTask.id);
 
-            if (taskExists) {
-              return prevTasks.map(task =>
-                task.id === updatedTask.id
-                  ? { ...task, ...updatedTask }
-                  : task
-              );
-            }
+          const assigneesWithEmployees = await Promise.all(
+            (assignees || []).map(async (assignee) => {
+              const { data: employee } = await supabase
+                .from('employees')
+                .select('name, surname, avatar_url, avatar_metadata')
+                .eq('id', assignee.employee_id)
+                .maybeSingle();
 
-            return prevTasks;
-          });
+              return {
+                employee_id: assignee.employee_id,
+                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+              };
+            })
+          );
 
+          let currently_working_employee = null;
           if (updatedTask.currently_working_by) {
             const { data: workingEmployee } = await supabase
               .from('employees')
@@ -115,16 +122,27 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
               .eq('id', updatedTask.currently_working_by)
               .maybeSingle();
 
-            if (workingEmployee) {
-              setTasks(prevTasks =>
-                prevTasks.map(task =>
-                  task.id === updatedTask.id
-                    ? { ...task, currently_working_employee: workingEmployee }
-                    : task
-                )
+            currently_working_employee = workingEmployee;
+          }
+
+          setTasks(prevTasks => {
+            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+
+            if (taskExists) {
+              return prevTasks.map(task =>
+                task.id === updatedTask.id
+                  ? {
+                      ...task,
+                      ...updatedTask,
+                      task_assignees: assigneesWithEmployees,
+                      currently_working_employee,
+                    }
+                  : task
               );
             }
-          }
+
+            return prevTasks;
+          });
         }
       )
       .on(
@@ -153,12 +171,58 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'task_assignees',
+        },
+        async (payload) => {
+          const newAssignee = payload.new as any;
+
+          const { data: employee } = await supabase
+            .from('employees')
+            .select('name, surname, avatar_url, avatar_metadata')
+            .eq('id', newAssignee.employee_id)
+            .maybeSingle();
+
+          if (employee) {
+            setTasks(prevTasks =>
+              prevTasks.map(task =>
+                task.id === newAssignee.task_id
+                  ? {
+                      ...task,
+                      task_assignees: [
+                        ...(task.task_assignees || []),
+                        { employee_id: newAssignee.employee_id, employees: employee }
+                      ]
+                    }
+                  : task
+              )
+            );
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
           schema: 'public',
           table: 'task_assignees',
         },
         (payload) => {
-          fetchTasks();
+          const deletedAssignee = payload.old as any;
+
+          setTasks(prevTasks =>
+            prevTasks.map(task =>
+              task.id === deletedAssignee.task_id
+                ? {
+                    ...task,
+                    task_assignees: (task.task_assignees || []).filter(
+                      a => a.employee_id !== deletedAssignee.employee_id
+                    )
+                  }
+                : task
+            )
+          );
         }
       )
       .subscribe();

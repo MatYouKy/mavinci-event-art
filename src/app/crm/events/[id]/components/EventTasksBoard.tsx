@@ -119,20 +119,21 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         async (payload) => {
           const updatedTask = payload.new as Task;
 
-          setTasks(prevTasks => {
-            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+          const { data: assigneesData } = await supabase
+            .from('task_assignees')
+            .select(`
+              employee:employees!task_assignees_employee_id_fkey(
+                id,
+                name,
+                surname,
+                avatar_url,
+                email,
+                phone_number
+              )
+            `)
+            .eq('task_id', updatedTask.id);
 
-            if (taskExists) {
-              return prevTasks.map(task =>
-                task.id === updatedTask.id
-                  ? { ...task, ...updatedTask }
-                  : task
-              );
-            }
-
-            return prevTasks;
-          });
-
+          let currently_working_employee = null;
           if (updatedTask.currently_working_by) {
             const { data: workingEmployee } = await supabase
               .from('employees')
@@ -140,16 +141,33 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               .eq('id', updatedTask.currently_working_by)
               .maybeSingle();
 
-            if (workingEmployee) {
-              setTasks(prevTasks =>
-                prevTasks.map(task =>
-                  task.id === updatedTask.id
-                    ? { ...task, currently_working_employee: workingEmployee }
-                    : task
-                )
+            currently_working_employee = workingEmployee;
+          }
+
+          const { count } = await supabase
+            .from('task_comments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', updatedTask.id);
+
+          setTasks(prevTasks => {
+            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+
+            if (taskExists) {
+              return prevTasks.map(task =>
+                task.id === updatedTask.id
+                  ? {
+                      ...task,
+                      ...updatedTask,
+                      assignees: assigneesData || [],
+                      currently_working_employee,
+                      comments_count: count || 0,
+                    }
+                  : task
               );
             }
-          }
+
+            return prevTasks;
+          });
         },
       )
       .on(
@@ -180,12 +198,83 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'task_assignees',
         },
-        () => {
-          fetchTasks();
+        async (payload) => {
+          const newAssignee = payload.new as any;
+
+          const { data: employee } = await supabase
+            .from('employees')
+            .select('id, name, surname, avatar_url, email, phone_number')
+            .eq('id', newAssignee.employee_id)
+            .maybeSingle();
+
+          if (employee) {
+            setTasks(prevTasks =>
+              prevTasks.map(task =>
+                task.id === newAssignee.task_id
+                  ? {
+                      ...task,
+                      assignees: [
+                        ...(task.assignees || []),
+                        { employee }
+                      ]
+                    }
+                  : task
+              )
+            );
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'task_assignees',
+        },
+        (payload) => {
+          const deletedAssignee = payload.old as any;
+
+          setTasks(prevTasks =>
+            prevTasks.map(task =>
+              task.id === deletedAssignee.task_id
+                ? {
+                    ...task,
+                    assignees: (task.assignees || []).filter(
+                      a => a.employee.id !== deletedAssignee.employee_id
+                    )
+                  }
+                : task
+            )
+          );
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'task_comments',
+        },
+        async (payload) => {
+          const comment = payload.eventType === 'DELETE' ? payload.old : payload.new;
+          const taskId = comment.task_id;
+
+          const { count } = await supabase
+            .from('task_comments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', taskId);
+
+          setTasks(prevTasks =>
+            prevTasks.map(task =>
+              task.id === taskId
+                ? { ...task, comments_count: count || 0 }
+                : task
+            )
+          );
         },
       )
       .subscribe();
