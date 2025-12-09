@@ -92,6 +92,14 @@ export default function EquipmentDetailPage() {
 
   const loading = eqLoading || unitsLoading;
 
+  console.log('EquipmentDetailPage render:', {
+    equipmentId,
+    eqLoading,
+    eqError,
+    hasEquipment: !!equipment,
+    equipmentName: equipment?.name,
+  });
+
   const unitsCount = equipment?.cable_specs ? equipment.cable_stock_quantity || 0 : units.length;
   const stock = useMemo(() => equipment?.equipment_stock?.[0] ?? null, [equipment]);
   const availableUnits = units.filter((u) => u.status === 'available').length;
@@ -203,6 +211,8 @@ export default function EquipmentDetailPage() {
         { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
       ];
       for (const f of fieldsToLog) await logChange(f.name, f.old, f.new);
+
+      await refetchEquipment();
 
       setIsEditing(false);
       showSnackbar('Zmiany zostały zapisane', 'success');

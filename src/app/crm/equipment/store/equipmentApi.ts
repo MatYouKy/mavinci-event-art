@@ -228,6 +228,7 @@ updateCableQuantity: builder.mutation<
     // szczegóły sprzętu
     getEquipmentDetails: builder.query<any, string>({
       async queryFn(id) {
+        console.log('getEquipmentDetails - fetching equipment:', id);
         const { data, error } = await supabase
           .from('equipment_items')
           .select(`
@@ -238,8 +239,14 @@ updateCableQuantity: builder.mutation<
             equipment_images:equipment_images(*)
           `)
           .eq('id', id)
+          .is('deleted_at', null)
           .single();
-        if (error) return { error: error as any };
+
+        if (error) {
+          console.error('getEquipmentDetails - error:', error);
+          return { error: error as any };
+        }
+        console.log('getEquipmentDetails - data:', data);
         return { data };
       },
       providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
