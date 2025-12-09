@@ -278,11 +278,12 @@ export const logEquipmentEdit = createAsyncThunk(
 // Komponenty zestawu
 export const addEquipmentComponent = createAsyncThunk(
   'equipment/addEquipmentComponent',
-  async ({ equipment_id, component }: { equipment_id: string; component: Omit<EquipmentComponent, 'id' | 'created_at' | 'equipment_id'> }) => {
+  async ({ equipment_id, component }: { equipment_id: string; component: Omit<EquipmentComponent, 'id' | 'created_at' | 'equipment_id'> & { component_equipment_id?: string | null } }) => {
     const { error } = await supabase
       .from('equipment_components')
       .insert({
         equipment_id,
+        component_equipment_id: component.component_equipment_id || null,
         component_name: component.component_name,
         quantity: component.quantity ?? 1,
         description: component.description ?? null,
