@@ -367,14 +367,10 @@ export default function EquipmentDetailPage() {
           onAdd={async (payload: any) => {
             try {
               const { equipment_id, ...component } = payload;
-              console.log('Adding component:', { equipment_id, component });
-              const result = await dispatch(addEquipmentComponent({ equipment_id, component }));
-              console.log('Component added, result:', result);
+              await dispatch(addEquipmentComponent({ equipment_id, component }));
               await refetchEquipment();
-              console.log('Equipment refetched');
               showSnackbar('Komponent dodany pomyślnie', 'success');
             } catch (error) {
-              console.error('Error adding component:', error);
               showSnackbar('Błąd podczas dodawania komponentu', 'error');
             }
           }}
@@ -384,7 +380,6 @@ export default function EquipmentDetailPage() {
               await refetchEquipment();
               showSnackbar('Komponent usunięty', 'success');
             } catch (error) {
-              console.error('Error deleting component:', error);
               showSnackbar('Błąd podczas usuwania komponentu', 'error');
             }
           }}

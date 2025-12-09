@@ -8,6 +8,8 @@ interface EquipmentItem {
   model: string | null;
   brand: string | null;
   thumbnail_url: string | null;
+  cable_stock_quantity?: number | null;
+  equipment_units?: Array<{ id: string; status: string }>;
   warehouse_categories?: {
     name: string;
   };
@@ -24,11 +26,19 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     component_equipment_id: '',
     component_name: '',
     quantity: 1,
-    description: ''
+    description: '',
+    maxQuantity: 999
   });
 
-  console.log('ComponentsTab render - equipment:', equipment);
-  console.log('ComponentsTab render - equipment_components:', equipment?.equipment_components);
+  const getAvailableQuantity = (item: EquipmentItem): number => {
+    if (item.cable_stock_quantity !== undefined && item.cable_stock_quantity !== null) {
+      return item.cable_stock_quantity;
+    }
+    if (item.equipment_units) {
+      return item.equipment_units.filter(u => u.status === 'available').length;
+    }
+    return 0;
+  };
 
   useEffect(() => {
     if (isAdding || showEquipmentModal) {
@@ -56,7 +66,16 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   const fetchAvailableEquipment = async () => {
     const { data, error } = await supabase
       .from('equipment_items')
-      .select('id, name, model, brand, thumbnail_url, warehouse_categories(name)')
+      .select(`
+        id,
+        name,
+        model,
+        brand,
+        thumbnail_url,
+        cable_stock_quantity,
+        warehouse_categories(name),
+        equipment_units(id, status)
+      `)
       .is('deleted_at', null)
       .neq('id', equipment.id)
       .order('name');
@@ -70,10 +89,13 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   const handleSelectEquipment = (equipmentId: string) => {
     const selected = availableEquipment.find((e) => e.id === equipmentId);
     if (selected) {
+      const maxQty = getAvailableQuantity(selected);
       setNewComponent((p) => ({
         ...p,
         component_equipment_id: equipmentId,
         component_name: `${selected.name}${selected.model ? ` ${selected.model}` : ''}`,
+        maxQuantity: maxQty,
+        quantity: Math.min(p.quantity, maxQty)
       }));
     }
     setShowEquipmentModal(false);
@@ -100,7 +122,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       description: newComponent.description || null,
       is_included: true,
     });
-    setNewComponent({ component_equipment_id: '', component_name: '', quantity: 1, description: '' });
+    setNewComponent({ component_equipment_id: '', component_name: '', quantity: 1, description: '', maxQuantity: 999 });
     setComponentType('from_warehouse');
     setIsAdding(false);
   };
@@ -145,16 +167,23 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {componentType === 'from_warehouse' ? (
-              <button
-                type="button"
-                onClick={() => setShowEquipmentModal(true)}
-                className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] text-left hover:border-[#d3bb73]/30 flex items-center justify-between"
-              >
-                <span className={newComponent.component_name ? '' : 'text-[#e5e4e2]/50'}>
-                  {newComponent.component_name || 'Wybierz sprzęt z magazynu'}
-                </span>
-                <Search className="w-4 h-4" />
-              </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEquipmentModal(true)}
+                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] text-left hover:border-[#d3bb73]/30 flex items-center justify-between"
+                >
+                  <span className={newComponent.component_name ? '' : 'text-[#e5e4e2]/50'}>
+                    {newComponent.component_name || 'Wybierz sprzęt z magazynu'}
+                  </span>
+                  <Search className="w-4 h-4" />
+                </button>
+                {newComponent.component_equipment_id && (
+                  <div className="text-xs text-[#d3bb73]">
+                    Dostępne: {newComponent.maxQuantity} szt.
+                  </div>
+                )}
+              </div>
             ) : (
               <input
                 type="text"
@@ -164,14 +193,26 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                 className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
               />
             )}
-            <input
-              type="number"
-              min={1}
-              value={newComponent.quantity}
-              onChange={(e) => setNewComponent((p) => ({ ...p, quantity: parseInt(e.target.value) || 1 }))}
-              placeholder="Ilość"
-              className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
-            />
+            <div className="space-y-2">
+              <input
+                type="number"
+                min={1}
+                max={componentType === 'from_warehouse' ? newComponent.maxQuantity : undefined}
+                value={newComponent.quantity}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 1;
+                  const maxQty = componentType === 'from_warehouse' ? newComponent.maxQuantity : 999;
+                  setNewComponent((p) => ({ ...p, quantity: Math.min(Math.max(val, 1), maxQty) }));
+                }}
+                placeholder="Ilość"
+                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+              {componentType === 'from_warehouse' && newComponent.component_equipment_id && (
+                <div className="text-xs text-[#e5e4e2]/60">
+                  Maks: {newComponent.maxQuantity}
+                </div>
+              )}
+            </div>
             <input
               type="text"
               value={newComponent.description}
@@ -185,7 +226,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               onClick={() => {
                 setIsAdding(false);
                 setComponentType('from_warehouse');
-                setNewComponent({ component_equipment_id: '', component_name: '', quantity: 1, description: '' });
+                setNewComponent({ component_equipment_id: '', component_name: '', quantity: 1, description: '', maxQuantity: 999 });
               }}
               className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
             >
@@ -267,41 +308,56 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredEquipment.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => handleSelectEquipment(item.id)}
-                      className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 hover:border-[#d3bb73]/30 transition-colors text-left"
-                    >
-                      <div className="flex gap-4">
-                        {item.thumbnail_url ? (
-                          <img
-                            src={item.thumbnail_url}
-                            alt={item.name}
-                            className="w-20 h-20 object-cover rounded-lg"
-                          />
-                        ) : (
-                          <div className="w-20 h-20 bg-[#0f1119] rounded-lg flex items-center justify-center">
-                            <Package className="w-8 h-8 text-[#e5e4e2]/20" />
+                  {filteredEquipment.map((item) => {
+                    const availableQty = getAvailableQuantity(item);
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSelectEquipment(item.id)}
+                        disabled={availableQty === 0}
+                        className={`bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 hover:border-[#d3bb73]/30 transition-colors text-left ${
+                          availableQty === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <div className="flex gap-4">
+                          {item.thumbnail_url ? (
+                            <img
+                              src={item.thumbnail_url}
+                              alt={item.name}
+                              className="w-20 h-20 object-cover rounded-lg"
+                            />
+                          ) : (
+                            <div className="w-20 h-20 bg-[#0f1119] rounded-lg flex items-center justify-center">
+                              <Package className="w-8 h-8 text-[#e5e4e2]/20" />
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-[#e5e4e2] font-medium">{item.name}</h4>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                availableQty > 0
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {availableQty} szt.
+                              </span>
+                            </div>
+                            {item.model && (
+                              <p className="text-sm text-[#e5e4e2]/60 mt-0.5">{item.model}</p>
+                            )}
+                            {item.brand && (
+                              <p className="text-xs text-[#e5e4e2]/40 mt-1">{item.brand}</p>
+                            )}
+                            {item.warehouse_categories && (
+                              <span className="inline-block mt-2 text-xs px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                                {item.warehouse_categories.name}
+                              </span>
+                            )}
                           </div>
-                        )}
-                        <div className="flex-1">
-                          <h4 className="text-[#e5e4e2] font-medium">{item.name}</h4>
-                          {item.model && (
-                            <p className="text-sm text-[#e5e4e2]/60 mt-0.5">{item.model}</p>
-                          )}
-                          {item.brand && (
-                            <p className="text-xs text-[#e5e4e2]/40 mt-1">{item.brand}</p>
-                          )}
-                          {item.warehouse_categories && (
-                            <span className="inline-block mt-2 text-xs px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
-                              {item.warehouse_categories.name}
-                            </span>
-                          )}
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
