@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Clock,
   Users,
@@ -12,6 +13,7 @@ import {
   ChevronDown,
   User,
   Briefcase,
+  ChevronRight,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -58,6 +60,7 @@ interface DailyStats {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -413,12 +416,13 @@ export default function AdminDashboard() {
         <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Pracownicy</h3>
         <div className="space-y-3">
           {employeeStats.map((stats) => (
-            <div
+            <button
               key={stats.employee_id}
-              className="bg-[#0f1119] rounded-lg p-4 hover:bg-[#0f1119]/80 transition-colors"
+              onClick={() => router.push(`/crm/time-tracking/${stats.employee_id}`)}
+              className="w-full bg-[#0f1119] rounded-lg p-4 hover:bg-[#0f1119]/80 transition-colors cursor-pointer text-left group"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-1">
                   {stats.avatar_url ? (
                     <img
                       src={stats.avatar_url}
@@ -430,9 +434,10 @@ export default function AdminDashboard() {
                       <User className="w-6 h-6 text-[#d3bb73]" />
                     </div>
                   )}
-                  <div>
-                    <div className="text-[#e5e4e2] font-medium">
+                  <div className="flex-1">
+                    <div className="text-[#e5e4e2] font-medium flex items-center gap-2">
                       {stats.employee_name} {stats.employee_surname}
+                      <ChevronRight className="w-4 h-4 text-[#d3bb73] opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <div className="text-sm text-[#e5e4e2]/60">
                       {stats.entries_count} wpisów • {stats.active_days} dni
@@ -462,7 +467,7 @@ export default function AdminDashboard() {
                   }}
                 />
               </div>
-            </div>
+            </button>
           ))}
 
           {employeeStats.length === 0 && (
