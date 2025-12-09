@@ -27,6 +27,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     description: ''
   });
 
+  console.log('ComponentsTab render - equipment:', equipment);
+  console.log('ComponentsTab render - equipment_components:', equipment?.equipment_components);
+
   useEffect(() => {
     if (isAdding || showEquipmentModal) {
       fetchAvailableEquipment();

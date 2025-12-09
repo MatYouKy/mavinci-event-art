@@ -365,12 +365,28 @@ export default function EquipmentDetailPage() {
           equipment={equipment}
           isEditing={isEditing}
           onAdd={async (payload: any) => {
-            await dispatch(addEquipmentComponent(payload));
-            await refetchEquipment();
+            try {
+              const { equipment_id, ...component } = payload;
+              console.log('Adding component:', { equipment_id, component });
+              const result = await dispatch(addEquipmentComponent({ equipment_id, component }));
+              console.log('Component added, result:', result);
+              await refetchEquipment();
+              console.log('Equipment refetched');
+              showSnackbar('Komponent dodany pomyślnie', 'success');
+            } catch (error) {
+              console.error('Error adding component:', error);
+              showSnackbar('Błąd podczas dodawania komponentu', 'error');
+            }
           }}
           onDelete={async (componentId: string) => {
-            await dispatch(deleteEquipmentComponent({ componentId }));
-            await refetchEquipment();
+            try {
+              await dispatch(deleteEquipmentComponent(componentId));
+              await refetchEquipment();
+              showSnackbar('Komponent usunięty', 'success');
+            } catch (error) {
+              console.error('Error deleting component:', error);
+              showSnackbar('Błąd podczas usuwania komponentu', 'error');
+            }
           }}
         />
       )}
