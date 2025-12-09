@@ -1104,7 +1104,6 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
     try {
       const pdfjsLib = (window as any).pdfjsLib;
       if (!pdfjsLib) {
-        console.log('PDF.js nie załadowane, używam domyślnych wymiarów');
         return;
       }
 

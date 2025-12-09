@@ -38,7 +38,7 @@ export default function TeamPageClient() {
   const canEdit = !employeeLoading && canManageModule && canManageModule('employees');
 
   const fetchTeam = async () => {
-    console.log('[fetchTeam] START');
+
     setLoading(true);
     try {
       // Fetch directly from Supabase instead of API route
@@ -75,14 +75,12 @@ export default function TeamPageClient() {
         facebook: emp.facebook_url,
       }));
 
-      console.log('[fetchTeam] Fetched team members:', teamMembers.length);
       setTeam(teamMembers as TeamMember[]);
     } catch (error) {
       console.error('[fetchTeam] Error:', error);
       setTeam([]);
     }
     setLoading(false);
-    console.log('[fetchTeam] END');
   };
 
   useEffect(() => {

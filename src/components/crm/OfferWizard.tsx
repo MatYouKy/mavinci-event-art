@@ -378,8 +378,6 @@ export default function OfferWizard({
         offerDataToInsert.offer_number = null;
       }
 
-      console.log('Offer data to insert:', offerDataToInsert);
-
       const { data: offerResult, error: offerError } = await supabase
         .from('offers')
         .insert([offerDataToInsert])
@@ -409,8 +407,6 @@ export default function OfferWizard({
         display_order: index + 1,
         notes: null,
       }));
-
-      console.log('Offer items to insert:', itemsToInsert);
 
       const { error: itemsError } = await supabase
         .from('offer_items')

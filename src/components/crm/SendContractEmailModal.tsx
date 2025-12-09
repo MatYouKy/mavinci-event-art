@@ -280,15 +280,8 @@ W razie pytań proszę o kontakt.`,
 
       let attachments: any[] = [];
 
-      console.log('[SendContract] SKIPPING PDF - sending email without attachment for testing');
       showSnackbar('Test: Wysyłam bez załącznika PDF', 'info');
 
-      console.log('[SendContract] Sending email request...', {
-        to: formData.to,
-        subject: formData.subject,
-        hasAttachments: attachments.length > 0,
-        accountId: formData.fromAccountId,
-      });
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
@@ -308,8 +301,6 @@ W razie pytań proszę o kontakt.`,
         }
       );
 
-      console.log('[SendContract] Response received:', response.status, response.statusText);
-
       if (!response.ok) {
         const error = await response.json();
         console.error('[SendContract] Error response:', error);
@@ -317,7 +308,6 @@ W razie pytań proszę o kontakt.`,
       }
 
       const result = await response.json();
-      console.log('[SendContract] Success:', result);
 
       await supabase
         .from('contracts')

@@ -15,7 +15,6 @@ export function useActiveSession(pageUrl: string) {
                        window.location.hostname === '::1';
 
     if (isLocalhost) {
-      console.log('[Active Session] Skipped - running on localhost');
       return;
     }
 

@@ -63,15 +63,7 @@ export default function CalendarMain() {
 
   // Załaduj wydarzenia z RTK Query
   useEffect(() => {
-    console.log('RTK Query state:', {
-      isLoading: eventsLoading,
-      hasError: !!eventsError,
-      error: eventsError,
-      dataLength: eventsData?.length
-    });
-
     if (eventsData) {
-      console.log('Events loaded from RTK:', eventsData.length, eventsData);
       setAllEvents(eventsData);
     } else if (eventsError) {
       console.error('Error loading events from RTK:', eventsError);
@@ -234,9 +226,7 @@ export default function CalendarMain() {
         return;
       }
 
-      console.log('Saving event with data:', eventData);
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('events')
         .insert([
           {
@@ -262,8 +252,6 @@ export default function CalendarMain() {
         alert('Błąd podczas zapisywania wydarzenia: ' + error.message);
         return;
       }
-
-      console.log('Event saved successfully:', data);
       refetchEvents();
       setIsModalOpen(false);
     } catch (err) {

@@ -65,7 +65,6 @@ export default function Team() {
         facebook: emp.facebook_url,
       }));
 
-      console.log('Fetched team members from employees:', transformed);
       setTeamMembers(transformed);
     } catch (error) {
       console.error('Error fetching team members:', error);

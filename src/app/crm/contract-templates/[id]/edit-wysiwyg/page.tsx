@@ -114,8 +114,6 @@ export default function EditTemplateWYSIWYGPage() {
             .split('\n')
             .map((line) => `<pre>${line || '\n'}</pre>`)
             .join('');
-
-          console.log('Auto-converted plain content to HTML with <pre> tags');
         }
 
         setContentHtml(initialHtml);

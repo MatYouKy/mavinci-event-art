@@ -57,8 +57,6 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
         return;
       }
 
-      console.log('Analytics reset result:', result);
-
       setPassword('');
       setStep('confirm');
       onSuccess();

@@ -126,7 +126,6 @@ const mockItems = [
 ];
 
 const html = generateOfferItemsTable(mockItems);
-console.log(html); // Wyświetli HTML tabeli
 ```
 
 ## Rozwiązywanie problemów

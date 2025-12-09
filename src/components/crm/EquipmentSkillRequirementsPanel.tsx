@@ -100,14 +100,9 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
           const minLevel = req.minimum_proficiency || 'basic';
           const minIndex = proficiencyOrder.indexOf(minLevel);
 
-          console.log(`Fetched ${employees.length} employees with skill: ${req.skill.name}`);
-
           const qualified = employees.filter(e => {
             const empIndex = proficiencyOrder.indexOf(e.proficiency_level);
             const isQualified = empIndex >= minIndex;
-
-            // Debug log
-            console.log(`  - Employee: ${e.employee?.name || 'Unknown'}, Level: ${e.proficiency_level} (${empIndex}), Required: ${minLevel} (${minIndex}), Qualified: ${isQualified}`);
 
             return isQualified;
           });
@@ -118,7 +113,6 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             years_of_experience: e.years_of_experience,
           }));
 
-          console.log(`✅ ${qualified.length} qualified employees for ${req.skill.name}`);
         }
       }
 

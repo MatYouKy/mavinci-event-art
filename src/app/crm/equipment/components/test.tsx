@@ -2,7 +2,25 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, CreditCard as Edit, Save, X, Plus, Trash2, Upload, Package, History, Image as ImageIcon, FileText, ShoppingCart, Settings as SettingsIcon, ChevronLeft, ChevronRight, Copy, MoreVertical } from 'lucide-react';
+import {
+  ArrowLeft,
+  CreditCard as Edit,
+  Save,
+  X,
+  Plus,
+  Trash2,
+  Upload,
+  Package,
+  History,
+  Image as ImageIcon,
+  FileText,
+  ShoppingCart,
+  Settings as SettingsIcon,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  MoreVertical,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 import { useDialog } from '@/contexts/DialogContext';
@@ -125,7 +143,9 @@ export default function EquipmentDetailPage() {
   const [selectedConnector, setSelectedConnector] = useState<any>(null);
   const [connectorTooltip, setConnectorTooltip] = useState<any>(null);
   const [connectorTooltipPosition, setConnectorTooltipPosition] = useState({ x: 0, y: 0 });
-  const [activeTab, setActiveTab] = useState<'details' | 'technical' | 'purchase' | 'components' | 'units' | 'gallery' | 'stock' | 'history'>('details');
+  const [activeTab, setActiveTab] = useState<
+    'details' | 'technical' | 'purchase' | 'components' | 'units' | 'gallery' | 'stock' | 'history'
+  >('details');
 
   const [editForm, setEditForm] = useState<any>({});
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
@@ -137,7 +157,9 @@ export default function EquipmentDetailPage() {
 
   // Pobierz dane z Redux zamiast lokalnego state
   const storageLocations = useAppSelector((state: RootState) => state.equipment.storageLocations);
-  const equipmentDetailsFromRedux = useAppSelector((state: RootState) => state.equipment.equipmentDetails[equipmentId]);
+  const equipmentDetailsFromRedux = useAppSelector(
+    (state: RootState) => state.equipment.equipmentDetails[equipmentId],
+  );
 
   useEffect(() => {
     // Sprawdź czy dane są już w Redux
@@ -175,7 +197,7 @@ export default function EquipmentDetailPage() {
       all_warehouse_categories: fullData.warehouse_categories || [],
       equipment_stock: fullData.equipment_stock || [],
       equipment_components: fullData.equipment_components || [],
-      equipment_images: fullData.equipment_images || []
+      equipment_images: fullData.equipment_images || [],
     };
 
     const formData = {
@@ -206,22 +228,19 @@ export default function EquipmentDetailPage() {
     }
   }, [activeTab]);
 
-
   const logEquipmentChange = async (fieldName: string, oldValue: any, newValue: any) => {
     if (!currentEmployee) return;
     if (oldValue === newValue) return;
 
     try {
-      await supabase
-        .from('equipment_edit_history')
-        .insert({
-          equipment_id: equipmentId,
-          employee_id: currentEmployee.id,
-          field_name: fieldName,
-          old_value: oldValue !== null && oldValue !== undefined ? String(oldValue) : null,
-          new_value: newValue !== null && newValue !== undefined ? String(newValue) : null,
-          change_type: 'update',
-        });
+      await supabase.from('equipment_edit_history').insert({
+        equipment_id: equipmentId,
+        employee_id: currentEmployee.id,
+        field_name: fieldName,
+        old_value: oldValue !== null && oldValue !== undefined ? String(oldValue) : null,
+        new_value: newValue !== null && newValue !== undefined ? String(newValue) : null,
+        change_type: 'update',
+      });
     } catch (error) {
       console.error('Error logging change:', error);
     }
@@ -258,21 +277,25 @@ export default function EquipmentDetailPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const dimensions = editForm.dimensions_length || editForm.dimensions_width || editForm.dimensions_height
-        ? {
-            length: parseFloat(editForm.dimensions_length) || null,
-            width: parseFloat(editForm.dimensions_width) || null,
-            height: parseFloat(editForm.dimensions_height) || null,
-          }
-        : null;
+      const dimensions =
+        editForm.dimensions_length || editForm.dimensions_width || editForm.dimensions_height
+          ? {
+              length: parseFloat(editForm.dimensions_length) || null,
+              width: parseFloat(editForm.dimensions_width) || null,
+              height: parseFloat(editForm.dimensions_height) || null,
+            }
+          : null;
 
-      const cableSpecs = editForm.cable_length_meters || editForm.cable_connector_in || editForm.cable_connector_out
-        ? {
-            length_meters: editForm.cable_length_meters ? parseFloat(editForm.cable_length_meters) : null,
-            connector_in: editForm.cable_connector_in || null,
-            connector_out: editForm.cable_connector_out || null,
-          }
-        : null;
+      const cableSpecs =
+        editForm.cable_length_meters || editForm.cable_connector_in || editForm.cable_connector_out
+          ? {
+              length_meters: editForm.cable_length_meters
+                ? parseFloat(editForm.cable_length_meters)
+                : null,
+              connector_in: editForm.cable_connector_in || null,
+              connector_out: editForm.cable_connector_out || null,
+            }
+          : null;
 
       const { error } = await supabase
         .from('equipment_items')
@@ -287,7 +310,9 @@ export default function EquipmentDetailPage() {
           user_manual_url: editForm.user_manual_url || null,
           weight_kg: editForm.weight_kg ? parseFloat(editForm.weight_kg) : null,
           cable_specs: cableSpecs,
-          cable_stock_quantity: editForm.cable_stock_quantity ? parseInt(editForm.cable_stock_quantity) : null,
+          cable_stock_quantity: editForm.cable_stock_quantity
+            ? parseInt(editForm.cable_stock_quantity)
+            : null,
           dimensions_cm: dimensions,
           purchase_date: editForm.purchase_date || null,
           purchase_price: editForm.purchase_price ? parseFloat(editForm.purchase_price) : null,
@@ -304,13 +329,25 @@ export default function EquipmentDetailPage() {
       // Log changes
       const fieldsToLog = [
         { name: 'name', old: equipment?.name, new: editForm.name },
-        { name: 'warehouse_category_id', old: equipment?.warehouse_category_id, new: editForm.warehouse_category_id },
+        {
+          name: 'warehouse_category_id',
+          old: equipment?.warehouse_category_id,
+          new: editForm.warehouse_category_id,
+        },
         { name: 'brand', old: equipment?.brand, new: editForm.brand },
         { name: 'model', old: equipment?.model, new: editForm.model },
         { name: 'description', old: equipment?.description, new: editForm.description },
-        { name: 'weight_kg', old: equipment?.weight_kg, new: editForm.weight_kg ? parseFloat(editForm.weight_kg) : null },
+        {
+          name: 'weight_kg',
+          old: equipment?.weight_kg,
+          new: editForm.weight_kg ? parseFloat(editForm.weight_kg) : null,
+        },
         { name: 'purchase_date', old: equipment?.purchase_date, new: editForm.purchase_date },
-        { name: 'purchase_price', old: equipment?.purchase_price, new: editForm.purchase_price ? parseFloat(editForm.purchase_price) : null },
+        {
+          name: 'purchase_price',
+          old: equipment?.purchase_price,
+          new: editForm.purchase_price ? parseFloat(editForm.purchase_price) : null,
+        },
         { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
       ];
 
@@ -329,7 +366,9 @@ export default function EquipmentDetailPage() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
+  ) => {
     const { name, value } = e.target;
     setEditForm((prev: any) => ({ ...prev, [name]: value }));
   };
@@ -345,14 +384,17 @@ export default function EquipmentDetailPage() {
       showSnackbar('Zdjęcie zostało przesłane', 'success');
     } catch (error) {
       console.error('Error uploading thumbnail:', error);
-      showSnackbar(error instanceof Error ? error.message : 'Błąd podczas przesyłania zdjęcia', 'error');
+      showSnackbar(
+        error instanceof Error ? error.message : 'Błąd podczas przesyłania zdjęcia',
+        'error',
+      );
     }
   };
 
   const handleDelete = async () => {
     const confirmed = await showConfirm(
       `Czy na pewno chcesz usunąć sprzęt "${equipment?.name}"? Ta operacja jest nieodwracalna.`,
-      'Usuń sprzęt'
+      'Usuń sprzęt',
     );
 
     if (!confirmed) return;
@@ -375,7 +417,7 @@ export default function EquipmentDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
       </div>
     );
@@ -383,8 +425,8 @@ export default function EquipmentDetailPage() {
 
   if (!equipment) {
     return (
-      <div className="text-center py-12">
-        <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+      <div className="py-12 text-center">
+        <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
         <p className="text-[#e5e4e2]/60">Nie znaleziono sprzętu</p>
       </div>
     );
@@ -401,19 +443,19 @@ export default function EquipmentDetailPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
-            className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
           >
-            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+            <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
           </button>
           <div>
-            <h2 className="text-2xl font-light text-[#e5e4e2] flex items-center gap-3">
+            <h2 className="flex items-center gap-3 text-2xl font-light text-[#e5e4e2]">
               {equipment.name}
               <span className="text-lg font-normal text-[#d3bb73]">
                 {availableUnits}/{totalUnits}
               </span>
             </h2>
             {(equipment.brand || equipment.model) && (
-              <p className="text-sm text-[#e5e4e2]/60 mt-1">
+              <p className="mt-1 text-sm text-[#e5e4e2]/60">
                 {equipment.brand} {equipment.model}
               </p>
             )}
@@ -426,21 +468,21 @@ export default function EquipmentDetailPage() {
               {
                 label: 'Usuń',
                 onClick: handleDelete,
-                icon: <Trash2 className="w-4 h-4" />,
-                variant: 'danger'
+                icon: <Trash2 className="h-4 w-4" />,
+                variant: 'danger',
               },
               {
                 label: 'Anuluj',
                 onClick: handleCancelEdit,
-                icon: <X className="w-4 h-4" />,
-                variant: 'default'
+                icon: <X className="h-4 w-4" />,
+                variant: 'default',
               },
               {
                 label: saving ? 'Zapisywanie...' : 'Zapisz',
                 onClick: handleSave,
-                icon: <Save className="w-4 h-4" />,
-                variant: 'primary'
-              }
+                icon: <Save className="h-4 w-4" />,
+                variant: 'primary',
+              },
             ]}
           />
         ) : canEdit ? (
@@ -449,15 +491,20 @@ export default function EquipmentDetailPage() {
               {
                 label: 'Edytuj',
                 onClick: handleEdit,
-                icon: <Edit className="w-4 h-4" />,
-                variant: 'primary'
-              }
+                icon: <Edit className="h-4 w-4" />,
+                variant: 'primary',
+              },
             ]}
           />
         ) : null}
       </div>
 
-      <TabCarousel activeTab={activeTab} setActiveTab={setActiveTab} equipment={equipment} units={units} />
+      <TabCarousel
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        equipment={equipment}
+        units={units}
+      />
 
       {activeTab === 'details' && (
         <DetailsTab
@@ -512,45 +559,35 @@ export default function EquipmentDetailPage() {
       )}
 
       {activeTab === 'units' && (
-        <UnitsTab
-          equipment={equipment}
-          units={units}
-          onUpdate={fetchUnits}
-          canEdit={canEdit}
-        />
+        <UnitsTab equipment={equipment} units={units} onUpdate={fetchUnits} canEdit={canEdit} />
       )}
 
       {activeTab === 'gallery' && (
-        <EquipmentGallery
-          equipmentId={equipment.id}
-          canManage={canEdit}
-        />
+        <EquipmentGallery equipmentId={equipment.id} canManage={canEdit} />
       )}
 
-      {activeTab === 'history' && (
-        <HistoryTab history={stockHistory} />
-      )}
+      {activeTab === 'history' && <HistoryTab history={stockHistory} />}
 
       {connectorTooltip && (
         <div
-          className="fixed z-50 pointer-events-none"
+          className="pointer-events-none fixed z-50"
           style={{
             left: `${connectorTooltipPosition.x}px`,
             top: `${connectorTooltipPosition.y}px`,
           }}
         >
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl p-4 max-w-sm ml-2">
+          <div className="ml-2 max-w-sm rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-xl">
             <div className="space-y-2">
               <div className="flex items-start gap-3">
                 {connectorTooltip.thumbnail_url && (
                   <img
                     src={connectorTooltip.thumbnail_url}
                     alt={connectorTooltip.name}
-                    className="w-20 h-20 rounded object-cover flex-shrink-0"
+                    className="h-20 w-20 flex-shrink-0 rounded object-cover"
                   />
                 )}
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-[#e5e4e2] mb-1">{connectorTooltip.name}</h4>
+                <div className="min-w-0 flex-1">
+                  <h4 className="mb-1 font-medium text-[#e5e4e2]">{connectorTooltip.name}</h4>
                   {connectorTooltip.description && (
                     <p className="text-xs text-[#e5e4e2]/60">{connectorTooltip.description}</p>
                   )}
@@ -558,7 +595,7 @@ export default function EquipmentDetailPage() {
               </div>
               {connectorTooltip.common_uses && (
                 <div className="border-t border-[#d3bb73]/10 pt-2">
-                  <div className="text-xs text-[#e5e4e2]/60 mb-1">Typowe zastosowania:</div>
+                  <div className="mb-1 text-xs text-[#e5e4e2]/60">Typowe zastosowania:</div>
                   <p className="text-sm text-[#e5e4e2]">{connectorTooltip.common_uses}</p>
                 </div>
               )}
@@ -612,9 +649,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
     { id: 'history', label: 'Historia' },
   ];
 
-  const tabs = usesSimpleQuantity
-    ? allTabs.filter(tab => tab.id !== 'components')
-    : allTabs;
+  const tabs = usesSimpleQuantity ? allTabs.filter((tab) => tab.id !== 'components') : allTabs;
 
   useEffect(() => {
     const updateVisibleTabs = () => {
@@ -633,7 +668,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
   }, []);
 
   useEffect(() => {
-    const activeIndex = tabs.findIndex(tab => tab.id === activeTab);
+    const activeIndex = tabs.findIndex((tab) => tab.id === activeTab);
     if (activeIndex !== -1) {
       if (activeIndex < currentIndex) {
         setCurrentIndex(activeIndex);
@@ -648,13 +683,13 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
 
   const scrollLeft = () => {
     if (canScrollLeft) {
-      setCurrentIndex(prev => prev - 1);
+      setCurrentIndex((prev) => prev - 1);
     }
   };
 
   const scrollRight = () => {
     if (canScrollRight) {
-      setCurrentIndex(prev => prev + 1);
+      setCurrentIndex((prev) => prev + 1);
     }
   };
 
@@ -667,7 +702,7 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
       const scrollAmount = 200;
       tabsContainerRef.current.scrollBy({
         left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth'
+        behavior: 'smooth',
       });
     }
   };
@@ -677,22 +712,22 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
       <div className="flex items-center">
         <button
           onClick={() => scrollToTab('left')}
-          className="absolute left-0 z-10 p-2 bg-gradient-to-r from-[#0f1119] via-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors md:hidden"
+          className="absolute left-0 z-10 bg-gradient-to-r from-[#0f1119] via-[#0f1119] to-transparent p-2 transition-colors hover:from-[#1c1f33] md:hidden"
         >
-          <ChevronLeft className="w-5 h-5 text-[#d3bb73]" />
+          <ChevronLeft className="h-5 w-5 text-[#d3bb73]" />
         </button>
 
         <div
           ref={tabsContainerRef}
-          className="flex gap-2 flex-1 overflow-x-auto scrollbar-hide scroll-smooth px-10 md:px-2 md:justify-center"
+          className="scrollbar-hide flex flex-1 gap-2 overflow-x-auto scroll-smooth px-10 md:justify-center md:px-2"
         >
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2 text-sm whitespace-nowrap transition-colors flex-shrink-0 ${
+              className={`flex-shrink-0 whitespace-nowrap px-4 py-2 text-sm transition-colors ${
                 activeTab === tab.id
-                  ? 'text-[#d3bb73] border-b-2 border-[#d3bb73]'
+                  ? 'border-b-2 border-[#d3bb73] text-[#d3bb73]'
                   : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
               }`}
             >
@@ -703,9 +738,9 @@ function TabCarousel({ activeTab, setActiveTab, equipment, units }: any) {
 
         <button
           onClick={() => scrollToTab('right')}
-          className="absolute right-0 z-10 p-2 bg-gradient-to-l from-[#0f1119] via-[#0f1119] to-transparent hover:from-[#1c1f33] transition-colors md:hidden"
+          className="absolute right-0 z-10 bg-gradient-to-l from-[#0f1119] via-[#0f1119] to-transparent p-2 transition-colors hover:from-[#1c1f33] md:hidden"
         >
-          <ChevronRight className="w-5 h-5 text-[#d3bb73]" />
+          <ChevronRight className="h-5 w-5 text-[#d3bb73]" />
         </button>
       </div>
     </div>
@@ -723,23 +758,23 @@ function DetailsTab({
   warehouseCategories,
 }: any) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="lg:col-span-1">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           {isEditing ? (
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Miniaturka</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miniaturka</label>
               {editForm.thumbnail_url ? (
                 <div className="space-y-2">
                   <img
                     src={editForm.thumbnail_url}
                     alt={equipment.name}
-                    className="w-full aspect-square object-cover rounded-lg"
+                    className="aspect-square w-full rounded-lg object-cover"
                   />
                   <button
                     type="button"
                     onClick={() => onInputChange({ target: { name: 'thumbnail_url', value: '' } })}
-                    className="w-full text-red-400 hover:text-red-300 text-sm"
+                    className="w-full text-sm text-red-400 hover:text-red-300"
                   >
                     Usuń zdjęcie
                   </button>
@@ -755,9 +790,9 @@ function DetailsTab({
                   />
                   <label
                     htmlFor="thumbnail-upload-edit"
-                    className="flex items-center justify-center gap-2 w-full aspect-square bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]/60 hover:border-[#d3bb73]/30 cursor-pointer transition-colors"
+                    className="flex aspect-square w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2]/60 transition-colors hover:border-[#d3bb73]/30"
                   >
-                    <Upload className="w-8 h-8" />
+                    <Upload className="h-8 w-8" />
                   </label>
                 </div>
               )}
@@ -766,17 +801,17 @@ function DetailsTab({
             <img
               src={equipment.thumbnail_url}
               alt={equipment.name}
-              className="w-full aspect-square object-cover rounded-lg"
+              className="aspect-square w-full rounded-lg object-cover"
             />
           ) : (
-            <div className="w-full aspect-square bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
-              <Package className="w-16 h-16 text-[#d3bb73]" />
+            <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-[#d3bb73]/20">
+              <Package className="h-16 w-16 text-[#d3bb73]" />
             </div>
           )}
 
           <div className="mt-6 space-y-4">
             <div>
-              <div className="text-sm text-[#e5e4e2]/60 mb-1">Kategoria</div>
+              <div className="mb-1 text-sm text-[#e5e4e2]/60">Kategoria</div>
               {isEditing ? (
                 <select
                   name="warehouse_category_id"
@@ -784,26 +819,30 @@ function DetailsTab({
                   onChange={(e) => {
                     onInputChange(e);
                   }}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 >
                   <option value="">Brak</option>
-                  {warehouseCategories?.filter(c => c.level === 1).map((cat) => (
-                    <optgroup key={cat.id} label={cat.name}>
-                      <option value={cat.id}>{cat.name}</option>
-                      {warehouseCategories?.filter(sub => sub.parent_id === cat.id).map(sub => (
-                        <option key={sub.id} value={sub.id}>
-                          &nbsp;&nbsp;└─ {sub.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
+                  {warehouseCategories
+                    ?.filter((c) => c.level === 1)
+                    .map((cat) => (
+                      <optgroup key={cat.id} label={cat.name}>
+                        <option value={cat.id}>{cat.name}</option>
+                        {warehouseCategories
+                          ?.filter((sub) => sub.parent_id === cat.id)
+                          .map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              &nbsp;&nbsp;└─ {sub.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
                 </select>
               ) : equipment.warehouse_categories ? (
-                <div className="inline-block px-3 py-1 rounded bg-blue-500/20 text-blue-400">
+                <div className="inline-block rounded bg-blue-500/20 px-3 py-1 text-blue-400">
                   {(() => {
                     const cat = equipment.warehouse_categories;
                     if (cat.level === 2 && cat.parent_id) {
-                      const parent = warehouseCategories?.find(c => c.id === cat.parent_id);
+                      const parent = warehouseCategories?.find((c) => c.id === cat.parent_id);
                       return parent ? `${parent.name} / ${cat.name}` : cat.name;
                     }
                     return cat.name;
@@ -817,19 +856,19 @@ function DetailsTab({
         </div>
       </div>
 
-      <div className="lg:col-span-2 space-y-6">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Podstawowe informacje</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-6 lg:col-span-2">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Podstawowe informacje</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa</label>
               {isEditing ? (
                 <input
                   type="text"
                   name="name"
                   value={editForm.name}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.name}</div>
@@ -837,14 +876,14 @@ function DetailsTab({
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Marka</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Marka</label>
               {isEditing ? (
                 <input
                   type="text"
                   name="brand"
                   value={editForm.brand || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.brand || '-'}</div>
@@ -852,14 +891,14 @@ function DetailsTab({
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Model</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Model</label>
               {isEditing ? (
                 <input
                   type="text"
                   name="model"
                   value={editForm.model || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.model || '-'}</div>
@@ -867,39 +906,44 @@ function DetailsTab({
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja magazynowa</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Lokalizacja magazynowa</label>
               {isEditing ? (
                 <select
                   name="storage_location_id"
                   value={editForm.storage_location_id || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 >
                   <option value="">Nieokreślona</option>
-                  {fetchStorageLocations && Array.isArray(fetchStorageLocations) && fetchStorageLocations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name}
-                    </option>
-                  ))}
+                  {fetchStorageLocations &&
+                    Array.isArray(fetchStorageLocations) &&
+                    fetchStorageLocations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
                 </select>
               ) : (
                 <div className="text-[#e5e4e2]">
-                  {(fetchStorageLocations && Array.isArray(fetchStorageLocations) && equipment?.storage_location_id)
-                    ? (fetchStorageLocations.find(l => l.id === equipment.storage_location_id)?.name || 'Nieokreślona')
+                  {fetchStorageLocations &&
+                  Array.isArray(fetchStorageLocations) &&
+                  equipment?.storage_location_id
+                    ? fetchStorageLocations.find((l) => l.id === equipment.storage_location_id)
+                        ?.name || 'Nieokreślona'
                     : 'Nieokreślona'}
                 </div>
               )}
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
               {isEditing ? (
                 <textarea
                   name="description"
                   value={editForm.description || ''}
                   onChange={onInputChange}
                   rows={4}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.description || '-'}</div>
@@ -907,14 +951,14 @@ function DetailsTab({
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Notatki</label>
               {isEditing ? (
                 <textarea
                   name="notes"
                   value={editForm.notes || ''}
                   onChange={onInputChange}
                   rows={3}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.notes || '-'}</div>
@@ -924,7 +968,7 @@ function DetailsTab({
         </div>
 
         {/* Panel wymaganych umiejętności */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <EquipmentSkillRequirementsPanel equipmentId={equipmentId} canEdit={canEdit} />
         </div>
       </div>
@@ -932,23 +976,36 @@ function DetailsTab({
   );
 }
 
-function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connectorTypes, setConnectorTooltip, setConnectorTooltipPosition, setShowAddConnectorModal, setConnectorField, onConnectorClick, warehouseCategories }: any) {
-  const currentCategoryId = isEditing && editForm.warehouse_category_id
-    ? editForm.warehouse_category_id
-    : equipment.warehouse_categories?.id;
+function TechnicalTab({
+  equipment,
+  editForm,
+  isEditing,
+  onInputChange,
+  connectorTypes,
+  setConnectorTooltip,
+  setConnectorTooltipPosition,
+  setShowAddConnectorModal,
+  setConnectorField,
+  onConnectorClick,
+  warehouseCategories,
+}: any) {
+  const currentCategoryId =
+    isEditing && editForm.warehouse_category_id
+      ? editForm.warehouse_category_id
+      : equipment.warehouse_categories?.id;
 
   const currentCategory = warehouseCategories?.find((c: any) => c.id === currentCategoryId);
   const usesSimpleQuantity = currentCategory?.uses_simple_quantity || false;
 
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-      <h3 className="text-lg font-medium text-[#e5e4e2] mb-6">Parametry techniczne</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+      <h3 className="mb-6 text-lg font-medium text-[#e5e4e2]">Parametry techniczne</h3>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {usesSimpleQuantity ? (
           <>
             {/* Przewody: tylko długość + wtyki */}
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Długość (m)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Długość (m)</label>
               {isEditing ? (
                 <input
                   type="number"
@@ -956,26 +1013,28 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                   name="cable_length_meters"
                   value={editForm.cable_length_meters || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">
-                  {equipment.cable_specs?.length_meters ? `${equipment.cable_specs.length_meters} m` : '-'}
+                  {equipment.cable_specs?.length_meters
+                    ? `${equipment.cable_specs.length_meters} m`
+                    : '-'}
                 </div>
               )}
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wtyki</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wtyki</label>
               {isEditing ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wejściowy</label>
+                    <label className="mb-2 block text-xs text-[#e5e4e2]/40">Wtyk wejściowy</label>
                     <div className="flex gap-2">
                       <select
                         name="cable_connector_in"
                         value={editForm.cable_connector_in || ''}
                         onChange={onInputChange}
-                        className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                        className="flex-1 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                       >
                         <option value="">Wybierz wtyk</option>
                         {connectorTypes.map((connector: any) => (
@@ -986,23 +1045,26 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                       </select>
                       <button
                         type="button"
-                        onClick={() => { setConnectorField('in'); setShowAddConnectorModal(true); }}
-                        className="px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                        onClick={() => {
+                          setConnectorField('in');
+                          setShowAddConnectorModal(true);
+                        }}
+                        className="rounded-lg bg-[#d3bb73]/20 px-3 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                         title="Dodaj nowy wtyk"
                       >
-                        <Plus className="w-5 h-5" />
+                        <Plus className="h-5 w-5" />
                       </button>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wyjściowy</label>
+                    <label className="mb-2 block text-xs text-[#e5e4e2]/40">Wtyk wyjściowy</label>
                     <div className="flex gap-2">
                       <select
                         name="cable_connector_out"
                         value={editForm.cable_connector_out || ''}
                         onChange={onInputChange}
-                        className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                        className="flex-1 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                       >
                         <option value="">Wybierz wtyk</option>
                         {connectorTypes.map((connector: any) => (
@@ -1013,32 +1075,42 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                       </select>
                       <button
                         type="button"
-                        onClick={() => { setConnectorField('out'); setShowAddConnectorModal(true); }}
-                        className="px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                        onClick={() => {
+                          setConnectorField('out');
+                          setShowAddConnectorModal(true);
+                        }}
+                        className="rounded-lg bg-[#d3bb73]/20 px-3 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                         title="Dodaj nowy wtyk"
                       >
-                        <Plus className="w-5 h-5" />
+                        <Plus className="h-5 w-5" />
                       </button>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wejściowy</label>
+                    <label className="mb-2 block text-xs text-[#e5e4e2]/40">Wtyk wejściowy</label>
                     {equipment.cable_specs?.connector_in ? (
                       <div className="flex items-center gap-3">
-                        {connectorTypes.find(c => c.name === equipment.cable_specs.connector_in)?.thumbnail_url && (
+                        {connectorTypes.find((c) => c.name === equipment.cable_specs.connector_in)
+                          ?.thumbnail_url && (
                           <img
-                            src={connectorTypes.find(c => c.name === equipment.cable_specs.connector_in)?.thumbnail_url}
+                            src={
+                              connectorTypes.find(
+                                (c) => c.name === equipment.cable_specs.connector_in,
+                              )?.thumbnail_url
+                            }
                             alt={equipment.cable_specs.connector_in}
-                            className="w-12 h-12 object-cover rounded border border-[#d3bb73]/20"
+                            className="h-12 w-12 rounded border border-[#d3bb73]/20 object-cover"
                           />
                         )}
                         <button
                           onClick={() => onConnectorClick(equipment.cable_specs.connector_in)}
                           onMouseEnter={(e) => {
-                            const connector = connectorTypes.find(c => c.name === equipment.cable_specs.connector_in);
+                            const connector = connectorTypes.find(
+                              (c) => c.name === equipment.cable_specs.connector_in,
+                            );
                             if (connector) {
                               const rect = e.currentTarget.getBoundingClientRect();
                               setConnectorTooltip(connector);
@@ -1046,7 +1118,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                             }
                           }}
                           onMouseLeave={() => setConnectorTooltip(null)}
-                          className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
+                          className="text-left text-[#d3bb73] underline transition-colors hover:text-[#d3bb73]/80"
                         >
                           {equipment.cable_specs.connector_in}
                         </button>
@@ -1056,20 +1128,27 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                     )}
                   </div>
                   <div>
-                    <label className="block text-xs text-[#e5e4e2]/40 mb-2">Wtyk wyjściowy</label>
+                    <label className="mb-2 block text-xs text-[#e5e4e2]/40">Wtyk wyjściowy</label>
                     {equipment.cable_specs?.connector_out ? (
                       <div className="flex items-center gap-3">
-                        {connectorTypes.find(c => c.name === equipment.cable_specs.connector_out)?.thumbnail_url && (
+                        {connectorTypes.find((c) => c.name === equipment.cable_specs.connector_out)
+                          ?.thumbnail_url && (
                           <img
-                            src={connectorTypes.find(c => c.name === equipment.cable_specs.connector_out)?.thumbnail_url}
+                            src={
+                              connectorTypes.find(
+                                (c) => c.name === equipment.cable_specs.connector_out,
+                              )?.thumbnail_url
+                            }
                             alt={equipment.cable_specs.connector_out}
-                            className="w-12 h-12 object-cover rounded border border-[#d3bb73]/20"
+                            className="h-12 w-12 rounded border border-[#d3bb73]/20 object-cover"
                           />
                         )}
                         <button
                           onClick={() => onConnectorClick(equipment.cable_specs.connector_out)}
                           onMouseEnter={(e) => {
-                            const connector = connectorTypes.find(c => c.name === equipment.cable_specs.connector_out);
+                            const connector = connectorTypes.find(
+                              (c) => c.name === equipment.cable_specs.connector_out,
+                            );
                             if (connector) {
                               const rect = e.currentTarget.getBoundingClientRect();
                               setConnectorTooltip(connector);
@@ -1077,7 +1156,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                             }
                           }}
                           onMouseLeave={() => setConnectorTooltip(null)}
-                          className="text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors underline text-left"
+                          className="text-left text-[#d3bb73] underline transition-colors hover:text-[#d3bb73]/80"
                         >
                           {equipment.cable_specs.connector_out}
                         </button>
@@ -1094,7 +1173,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
           <>
             {/* Normalny sprzęt: waga + wymiary + nr seryjny + kod kreskowy + instrukcja */}
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Waga (kg)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Waga (kg)</label>
               {isEditing ? (
                 <input
                   type="number"
@@ -1102,7 +1181,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                   name="weight_kg"
                   value={editForm.weight_kg || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">
@@ -1112,7 +1191,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wymiary (cm)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wymiary (cm)</label>
               {isEditing ? (
                 <div className="grid grid-cols-3 gap-2">
                   <input
@@ -1122,7 +1201,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                     value={editForm.dimensions_length || ''}
                     onChange={onInputChange}
                     placeholder="Długość"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   />
                   <input
                     type="number"
@@ -1131,7 +1210,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                     value={editForm.dimensions_width || ''}
                     onChange={onInputChange}
                     placeholder="Szerokość"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   />
                   <input
                     type="number"
@@ -1140,7 +1219,7 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
                     value={editForm.dimensions_height || ''}
                     onChange={onInputChange}
                     placeholder="Wysokość"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   />
                 </div>
               ) : (
@@ -1153,14 +1232,14 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Numer seryjny</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Numer seryjny</label>
               {isEditing ? (
                 <input
                   type="text"
                   name="serial_number"
                   value={editForm.serial_number || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
                 <div className="text-[#e5e4e2]">{equipment.serial_number || '-'}</div>
@@ -1168,38 +1247,40 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kod kreskowy</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kod kreskowy</label>
               {isEditing ? (
                 <input
                   type="text"
                   name="barcode"
                   value={editForm.barcode || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : (
-                <div className="text-[#e5e4e2] font-mono">{equipment.barcode || '-'}</div>
+                <div className="font-mono text-[#e5e4e2]">{equipment.barcode || '-'}</div>
               )}
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Instrukcja obsługi (URL)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                Instrukcja obsługi (URL)
+              </label>
               {isEditing ? (
                 <input
                   type="url"
                   name="user_manual_url"
                   value={editForm.user_manual_url || ''}
                   onChange={onInputChange}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               ) : equipment.user_manual_url ? (
                 <a
                   href={equipment.user_manual_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#d3bb73] hover:underline flex items-center gap-2"
+                  className="flex items-center gap-2 text-[#d3bb73] hover:underline"
                 >
-                  <FileText className="w-4 h-4" />
+                  <FileText className="h-4 w-4" />
                   Otwórz instrukcję
                 </a>
               ) : (
@@ -1215,18 +1296,18 @@ function TechnicalTab({ equipment, editForm, isEditing, onInputChange, connector
 
 function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-      <h3 className="text-lg font-medium text-[#e5e4e2] mb-6">Informacje zakupowe</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+      <h3 className="mb-6 text-lg font-medium text-[#e5e4e2]">Informacje zakupowe</h3>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data zakupu</label>
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data zakupu</label>
           {isEditing ? (
             <input
               type="date"
               name="purchase_date"
               value={editForm.purchase_date || ''}
               onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
           ) : (
             <div className="text-[#e5e4e2]">
@@ -1238,14 +1319,14 @@ function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
         </div>
 
         <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Gwarancja do</label>
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Gwarancja do</label>
           {isEditing ? (
             <input
               type="date"
               name="warranty_until"
               value={editForm.warranty_until || ''}
               onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
           ) : (
             <div className="text-[#e5e4e2]">
@@ -1257,7 +1338,7 @@ function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
         </div>
 
         <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena zakupu (zł)</label>
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena zakupu (zł)</label>
           {isEditing ? (
             <input
               type="number"
@@ -1265,7 +1346,7 @@ function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
               name="purchase_price"
               value={editForm.purchase_price || ''}
               onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
           ) : (
             <div className="text-[#e5e4e2]">
@@ -1277,7 +1358,7 @@ function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
         </div>
 
         <div>
-          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Obecna wartość (zł)</label>
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Obecna wartość (zł)</label>
           {isEditing ? (
             <input
               type="number"
@@ -1285,7 +1366,7 @@ function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: any) {
               name="current_value"
               value={editForm.current_value || ''}
               onChange={onInputChange}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
           ) : (
             <div className="text-[#e5e4e2]">
@@ -1327,22 +1408,22 @@ function ComponentMenu({ onDelete }: { onDelete: () => void }) {
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+        className="p-2 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
       >
-        <MoreVertical className="w-4 h-4" />
+        <MoreVertical className="h-4 w-4" />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] shadow-xl">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
               setIsOpen(false);
             }}
-            className="w-full px-4 py-3 text-left text-red-400 hover:bg-[#d3bb73]/10 transition-colors flex items-center gap-2"
+            className="flex w-full items-center gap-2 px-4 py-3 text-left text-red-400 transition-colors hover:bg-[#d3bb73]/10"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="h-4 w-4" />
             Usuń komponent
           </button>
         </div>
@@ -1366,15 +1447,13 @@ function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
     }
 
     try {
-      const { error } = await supabase
-        .from('equipment_components')
-        .insert({
-          equipment_id: equipment.id,
-          component_name: newComponent.component_name,
-          quantity: newComponent.quantity,
-          description: newComponent.description || null,
-          is_included: true,
-        });
+      const { error } = await supabase.from('equipment_components').insert({
+        equipment_id: equipment.id,
+        component_name: newComponent.component_name,
+        quantity: newComponent.quantity,
+        description: newComponent.description || null,
+        is_included: true,
+      });
 
       if (error) throw error;
 
@@ -1391,10 +1470,7 @@ function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
     if (!confirm('Czy na pewno chcesz usunąć ten komponent?')) return;
 
     try {
-      const { error } = await supabase
-        .from('equipment_components')
-        .delete()
-        .eq('id', componentId);
+      const { error } = await supabase.from('equipment_components').delete().eq('id', componentId);
 
       if (error) throw error;
       onUpdate();
@@ -1406,56 +1482,62 @@ function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+      <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
         <h3 className="text-lg font-medium text-[#e5e4e2]">Skład zestawu</h3>
         {isEditing && (
           <button
             onClick={() => setIsAdding(true)}
-            className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:w-auto"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Dodaj komponent
           </button>
         )}
       </div>
 
       {isAdding && (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <h4 className="text-[#e5e4e2] font-medium mb-4">Nowy komponent</h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h4 className="mb-4 font-medium text-[#e5e4e2]">Nowy komponent</h4>
+          <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
             <input
               type="text"
               value={newComponent.component_name}
-              onChange={(e) => setNewComponent(prev => ({ ...prev, component_name: e.target.value }))}
+              onChange={(e) =>
+                setNewComponent((prev) => ({ ...prev, component_name: e.target.value }))
+              }
               placeholder="Nazwa komponentu"
-              className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
             <input
               type="number"
               value={newComponent.quantity}
-              onChange={(e) => setNewComponent(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+              onChange={(e) =>
+                setNewComponent((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))
+              }
               placeholder="Ilość"
               min="1"
-              className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
             <input
               type="text"
               value={newComponent.description}
-              onChange={(e) => setNewComponent(prev => ({ ...prev, description: e.target.value }))}
+              onChange={(e) =>
+                setNewComponent((prev) => ({ ...prev, description: e.target.value }))
+              }
               placeholder="Opis (opcjonalnie)"
-              className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setIsAdding(false)}
-              className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+              className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
             >
               Anuluj
             </button>
             <button
               onClick={handleAddComponent}
-              className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
               Zapisz
             </button>
@@ -1464,8 +1546,8 @@ function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
       )}
 
       {equipment.equipment_components.length === 0 ? (
-        <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-          <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
+          <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
           <p className="text-[#e5e4e2]/60">Brak komponentów w zestawie</p>
         </div>
       ) : (
@@ -1473,30 +1555,28 @@ function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
           {equipment.equipment_components.map((component: Component) => (
             <div
               key={component.id}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4 flex items-center justify-between relative"
+              className="relative flex items-center justify-between rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
             >
               <div className="flex-1 pr-2">
-                <div className="text-[#e5e4e2] font-medium">{component.component_name}</div>
+                <div className="font-medium text-[#e5e4e2]">{component.component_name}</div>
                 {component.description && (
-                  <div className="text-sm text-[#e5e4e2]/60 mt-1">{component.description}</div>
+                  <div className="mt-1 text-sm text-[#e5e4e2]/60">{component.description}</div>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <div className="text-[#d3bb73] font-medium">x{component.quantity}</div>
+                <div className="font-medium text-[#d3bb73]">x{component.quantity}</div>
                 {isEditing && (
                   <>
                     {/* Desktop: Direct button */}
                     <button
                       onClick={() => handleDeleteComponent(component.id)}
-                      className="hidden md:flex p-2 text-red-400 hover:text-red-300 transition-colors"
+                      className="hidden p-2 text-red-400 transition-colors hover:text-red-300 md:flex"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
 
                     {/* Mobile: 3-dot menu */}
-                    <ComponentMenu
-                      onDelete={() => handleDeleteComponent(component.id)}
-                    />
+                    <ComponentMenu onDelete={() => handleDeleteComponent(component.id)} />
                   </>
                 )}
               </div>
@@ -1507,7 +1587,6 @@ function ComponentsTab({ equipment, isEditing, onUpdate }: any) {
     </div>
   );
 }
-
 
 function StockTab({ equipment, stock, onUpdate }: any) {
   const [showModal, setShowModal] = useState(false);
@@ -1529,9 +1608,10 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 
     setSaving(true);
     try {
-      const qty = changeType === 'remove' || changeType === 'damage'
-        ? -Math.abs(parseInt(quantity))
-        : Math.abs(parseInt(quantity));
+      const qty =
+        changeType === 'remove' || changeType === 'damage'
+          ? -Math.abs(parseInt(quantity))
+          : Math.abs(parseInt(quantity));
 
       const { error } = await supabase.rpc('update_equipment_stock_with_history', {
         p_equipment_id: equipment.id,
@@ -1577,8 +1657,8 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 
   if (!stock) {
     return (
-      <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-        <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
+        <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
         <p className="text-[#e5e4e2]/60">Brak danych o stanie magazynowym</p>
       </div>
     );
@@ -1586,60 +1666,60 @@ function StockTab({ equipment, stock, onUpdate }: any) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium text-[#e5e4e2]">Stan magazynowy</h3>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           Zmień stan
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="text-sm text-[#e5e4e2]/60 mb-2">Łącznie</div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 text-sm text-[#e5e4e2]/60">Łącznie</div>
           <div className="text-3xl font-light text-[#e5e4e2]">{stock.total_quantity}</div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
-          <div className="text-sm text-[#e5e4e2]/60 mb-2">Na firmie</div>
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+          <div className="mb-2 text-sm text-[#e5e4e2]/60">Na firmie</div>
           <div className="text-3xl font-light text-[#d3bb73]">
-            {units.filter(u => ['available', 'damaged', 'in_service'].includes(u.status)).length}
+            {units.filter((u) => ['available', 'damaged', 'in_service'].includes(u.status)).length}
           </div>
-          <div className="text-xs text-[#e5e4e2]/40 mt-1">z zakładki Jednostki</div>
+          <div className="mt-1 text-xs text-[#e5e4e2]/40">z zakładki Jednostki</div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-green-500/10 rounded-xl p-6">
-          <div className="text-sm text-[#e5e4e2]/60 mb-2">Dostępne</div>
+        <div className="rounded-xl border border-green-500/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 text-sm text-[#e5e4e2]/60">Dostępne</div>
           <div className="text-3xl font-light text-green-400">{stock.available_quantity}</div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-blue-500/10 rounded-xl p-6">
-          <div className="text-sm text-[#e5e4e2]/60 mb-2">W użyciu</div>
+        <div className="rounded-xl border border-blue-500/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 text-sm text-[#e5e4e2]/60">W użyciu</div>
           <div className="text-3xl font-light text-blue-400">{stock.in_use_quantity}</div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-yellow-500/10 rounded-xl p-6">
-          <div className="text-sm text-[#e5e4e2]/60 mb-2">Zarezerwowane</div>
+        <div className="rounded-xl border border-yellow-500/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 text-sm text-[#e5e4e2]/60">Zarezerwowane</div>
           <div className="text-3xl font-light text-yellow-400">{stock.reserved_quantity}</div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-red-500/10 rounded-xl p-6">
-          <div className="text-sm text-[#e5e4e2]/60 mb-2">Uszkodzone</div>
+        <div className="rounded-xl border border-red-500/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 text-sm text-[#e5e4e2]/60">Uszkodzone</div>
           <div className="text-3xl font-light text-red-400">{stock.damaged_quantity}</div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-orange-500/10 rounded-xl p-6">
-          <div className="text-sm text-[#e5e4e2]/60 mb-2">W serwisie</div>
+        <div className="rounded-xl border border-orange-500/10 bg-[#1c1f33] p-6">
+          <div className="mb-2 text-sm text-[#e5e4e2]/60">W serwisie</div>
           <div className="text-3xl font-light text-orange-400">{stock.in_service_quantity}</div>
         </div>
       </div>
 
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-[#e5e4e2] font-medium">Ustawienia magazynu</h4>
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h4 className="font-medium text-[#e5e4e2]">Ustawienia magazynu</h4>
           {editingStock ? (
             <div className="flex gap-2">
               <button
@@ -1670,15 +1750,17 @@ function StockTab({ equipment, stock, onUpdate }: any) {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <div className="text-sm text-[#e5e4e2]/60 mb-1">Lokalizacja</div>
+            <div className="mb-1 text-sm text-[#e5e4e2]/60">Lokalizacja</div>
             {editingStock ? (
               <input
                 type="text"
                 value={stockEdit.storage_location}
-                onChange={(e) => setStockEdit(prev => ({ ...prev, storage_location: e.target.value }))}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                onChange={(e) =>
+                  setStockEdit((prev) => ({ ...prev, storage_location: e.target.value }))
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 placeholder="np. Regał A, Półka 3"
               />
             ) : (
@@ -1686,13 +1768,18 @@ function StockTab({ equipment, stock, onUpdate }: any) {
             )}
           </div>
           <div>
-            <div className="text-sm text-[#e5e4e2]/60 mb-1">Minimalny poziom</div>
+            <div className="mb-1 text-sm text-[#e5e4e2]/60">Minimalny poziom</div>
             {editingStock ? (
               <input
                 type="number"
                 value={stockEdit.min_stock_level}
-                onChange={(e) => setStockEdit(prev => ({ ...prev, min_stock_level: parseInt(e.target.value) || 0 }))}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                onChange={(e) =>
+                  setStockEdit((prev) => ({
+                    ...prev,
+                    min_stock_level: parseInt(e.target.value) || 0,
+                  }))
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 min="0"
               />
             ) : (
@@ -1703,17 +1790,17 @@ function StockTab({ equipment, stock, onUpdate }: any) {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-md w-full p-6">
-            <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Zmień stan magazynowy</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <h3 className="mb-4 text-xl font-light text-[#e5e4e2]">Zmień stan magazynowy</h3>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typ zmiany</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ zmiany</label>
                 <select
                   value={changeType}
                   onChange={(e) => setChangeType(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 >
                   <option value="add">Dodaj do magazynu</option>
                   <option value="remove">Usuń z magazynu</option>
@@ -1725,40 +1812,40 @@ function StockTab({ equipment, stock, onUpdate }: any) {
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość</label>
                 <input
                   type="number"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   placeholder="0"
                   min="1"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatka</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Notatka</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   placeholder="Opcjonalna notatka..."
                 />
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="mt-6 flex gap-3">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
               >
                 Anuluj
               </button>
               <button
                 onClick={handleStockChange}
                 disabled={saving}
-                className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 {saving ? 'Zapisywanie...' : 'Zapisz'}
               </button>
@@ -1792,7 +1879,7 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   const [showModal, setShowModal] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState(false);
   const [newQuantity, setNewQuantity] = useState(
-    usesSimpleQuantity ? (equipment?.cable_stock_quantity || 0) : units.length
+    usesSimpleQuantity ? equipment?.cable_stock_quantity || 0 : units.length,
   );
 
   console.log('UnitsTab render:', {
@@ -1800,7 +1887,7 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
     canEdit,
     showModal,
     equipment_id: equipment?.id,
-    cable_stock_quantity: equipment?.cable_stock_quantity
+    cable_stock_quantity: equipment?.cable_stock_quantity,
   });
   const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
   const [unitForm, setUnitForm] = useState({
@@ -1886,7 +1973,7 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
     setUploadingThumb(true);
     try {
       const url = await uploadImage(file, 'equipment-units');
-      setUnitForm(prev => ({ ...prev, thumbnail_url: url }));
+      setUnitForm((prev) => ({ ...prev, thumbnail_url: url }));
     } catch (error) {
       console.error('Error uploading thumbnail:', error);
       alert('Błąd podczas przesyłania zdjęcia');
@@ -1915,19 +2002,17 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
 
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('equipment_units')
-          .insert({
-            equipment_id: equipment.id,
-            unit_serial_number: unitForm.unit_serial_number || null,
-            status: unitForm.status,
-            location_id: unitForm.location_id || null,
-            condition_notes: unitForm.condition_notes || null,
-            purchase_date: unitForm.purchase_date || null,
-            last_service_date: unitForm.last_service_date || null,
-            estimated_repair_date: unitForm.estimated_repair_date || null,
-            thumbnail_url: unitForm.thumbnail_url || null,
-          });
+        const { error } = await supabase.from('equipment_units').insert({
+          equipment_id: equipment.id,
+          unit_serial_number: unitForm.unit_serial_number || null,
+          status: unitForm.status,
+          location_id: unitForm.location_id || null,
+          condition_notes: unitForm.condition_notes || null,
+          purchase_date: unitForm.purchase_date || null,
+          last_service_date: unitForm.last_service_date || null,
+          estimated_repair_date: unitForm.estimated_repair_date || null,
+          thumbnail_url: unitForm.thumbnail_url || null,
+        });
 
         if (error) throw error;
       }
@@ -1946,10 +2031,7 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
     if (!confirm('Czy na pewno chcesz usunąć tę jednostkę?')) return;
 
     try {
-      const { error } = await supabase
-        .from('equipment_units')
-        .delete()
-        .eq('id', unitId);
+      const { error } = await supabase.from('equipment_units').delete().eq('id', unitId);
 
       if (error) throw error;
       onUpdate();
@@ -1963,21 +2045,23 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
     if (!confirm('Czy na pewno chcesz zduplikować tę jednostkę?')) return;
 
     try {
-      const newSerialNumber = unit.unit_serial_number ? `${unit.unit_serial_number} (duplikat)` : null;
+      const newSerialNumber = unit.unit_serial_number
+        ? `${unit.unit_serial_number} (duplikat)`
+        : null;
 
-      const { error } = await supabase
-        .from('equipment_units')
-        .insert({
-          equipment_id: unit.equipment_id,
-          unit_serial_number: newSerialNumber,
-          status: unit.status,
-          location_id: unit.location_id,
-          condition_notes: unit.condition_notes ? `${unit.condition_notes} [DUPLIKAT]` : 'Duplikat jednostki',
-          purchase_date: unit.purchase_date,
-          last_service_date: unit.last_service_date,
-          estimated_repair_date: unit.estimated_repair_date,
-          thumbnail_url: unit.thumbnail_url,
-        });
+      const { error } = await supabase.from('equipment_units').insert({
+        equipment_id: unit.equipment_id,
+        unit_serial_number: newSerialNumber,
+        status: unit.status,
+        location_id: unit.location_id,
+        condition_notes: unit.condition_notes
+          ? `${unit.condition_notes} [DUPLIKAT]`
+          : 'Duplikat jednostki',
+        purchase_date: unit.purchase_date,
+        last_service_date: unit.last_service_date,
+        estimated_repair_date: unit.estimated_repair_date,
+        thumbnail_url: unit.thumbnail_url,
+      });
 
       if (error) throw error;
       onUpdate();
@@ -1991,10 +2075,12 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   const fetchUnitEvents = async (unitId: string) => {
     const { data, error } = await supabase
       .from('equipment_unit_events')
-      .select(`
+      .select(
+        `
         *,
         employees(name, surname)
-      `)
+      `,
+      )
       .eq('unit_id', unitId)
       .order('created_at', { ascending: false });
 
@@ -2054,21 +2140,21 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   if (usesSimpleQuantity) {
     return (
       <div className="space-y-6">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
           <div className="text-center">
-            <div className="text-6xl font-light text-[#d3bb73] mb-4">
+            <div className="mb-4 text-6xl font-light text-[#d3bb73]">
               {equipment?.cable_stock_quantity || 0}
             </div>
-            <div className="text-lg text-[#e5e4e2]/60 mb-4">Ilość na stanie (szt.)</div>
+            <div className="mb-4 text-lg text-[#e5e4e2]/60">Ilość na stanie (szt.)</div>
             {canEdit && (
               <button
                 onClick={() => {
                   console.log('Opening modal, showModal will be:', true);
                   setShowModal(true);
                 }}
-                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors mx-auto"
+                className="mx-auto flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 Ustaw ilość
               </button>
             )}
@@ -2079,588 +2165,446 @@ function UnitsTab({ equipment, units, onUpdate, canEdit }: any) {
   }
 
   return (
-      <div className='space-y-6'>
-          <div className='flex justify-between items-center'>
-              <h3 className='text-lg font-medium text-[#e5e4e2]'>
-                  Zarządzanie jednostkami
-              </h3>
-              {canEdit && (
-                  <button
-                      onClick={() => handleOpenModal()}
-                      className='flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors'
-                  >
-                      <Plus className='w-4 h-4' />
-                      Dodaj jednostkę
-                  </button>
-              )}
-          </div>
-          <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-              <div className='bg-[#1c1f33] border border-green-500/10 rounded-xl p-4'>
-                  <div className='text-sm text-[#e5e4e2]/60 mb-1'>Dostępne</div>
-                  <div className='text-2xl font-light text-green-400'>
-                      {groupedUnits.available.length}
-                  </div>
-              </div>
-              <div className='bg-[#1c1f33] border border-red-500/10 rounded-xl p-4'>
-                  <div className='text-sm text-[#e5e4e2]/60 mb-1'>
-                      Uszkodzone
-                  </div>
-                  <div className='text-2xl font-light text-red-400'>
-                      {groupedUnits.damaged.length}
-                  </div>
-              </div>
-              <div className='bg-[#1c1f33] border border-orange-500/10 rounded-xl p-4'>
-                  <div className='text-sm text-[#e5e4e2]/60 mb-1'>Serwis</div>
-                  <div className='text-2xl font-light text-orange-400'>
-                      {groupedUnits.in_service.length}
-                  </div>
-              </div>
-              <div className='bg-[#1c1f33] border border-gray-500/10 rounded-xl p-4'>
-                  <div className='text-sm text-[#e5e4e2]/60 mb-1'>Wycofane</div>
-                  <div className='text-2xl font-light text-gray-400'>
-                      {groupedUnits.retired.length}
-                  </div>
-              </div>
-          </div>
-          {units.length === 0 ? (
-              <div className='text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl'>
-                  <Package className='w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4' />
-                  <p className='text-[#e5e4e2]/60 mb-2'>Brak jednostek</p>
-                  <p className='text-sm text-[#e5e4e2]/40'>
-                      Dodaj pierwszą jednostkę sprzętu
-                  </p>
-              </div>
-          ) : (
-              <div className='space-y-3'>
-                  {units.map((unit: EquipmentUnit) => {
-                      const isUnavailable =
-                          unit.status === 'damaged' ||
-                          unit.status === 'in_service';
-                      return (
-                          <div
-                              key={unit.id}
-                              className={`bg-[#1c1f33] border rounded-xl p-4 ${
-                                  isUnavailable
-                                      ? 'border-red-500/20 opacity-60'
-                                      : 'border-[#d3bb73]/10'
-                              }`}
-                          >
-                              <div className='flex items-start justify-between gap-4'>
-                                  {unit.thumbnail_url && (
-                                      <img
-                                          src={unit.thumbnail_url}
-                                          alt='Miniaturka'
-                                          className='w-20 h-20 object-cover rounded-lg border border-[#d3bb73]/20'
-                                      />
-                                  )}
-                                  <div className='flex-1'>
-                                      <div className='flex items-center gap-3 mb-2 flex-wrap'>
-                                          {unit.unit_serial_number && (
-                                              <span className='font-mono text-[#e5e4e2] font-medium'>
-                                                  SN: {unit.unit_serial_number}
-                                              </span>
-                                          )}
-                                          {!unit.unit_serial_number && (
-                                              <span className='text-[#e5e4e2]/60 italic'>
-                                                  Bez numeru seryjnego
-                                              </span>
-                                          )}
-                                          <span
-                                              className={`px-2 py-1 rounded text-xs ${
-                                                  statusColors[unit.status]
-                                              }`}
-                                          >
-                                              {statusLabels[unit.status]}
-                                          </span>
-                                          {isUnavailable && (
-                                              <span className='px-2 py-1 rounded text-xs bg-red-500/20 text-red-300 border border-red-500/30'>
-                                                  Niedostępny
-                                              </span>
-                                          )}
-                                          {unit.estimated_repair_date &&
-                                              isUnavailable && (
-                                                  <span className='text-xs text-[#e5e4e2]/60'>
-                                                      Szac. dostępność:{' '}
-                                                      {new Date(
-                                                          unit.estimated_repair_date
-                                                      ).toLocaleDateString(
-                                                          'pl-PL'
-                                                      )}
-                                                  </span>
-                                              )}
-                                      </div>
-
-                                      <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
-                                          {unit.storage_locations && (
-                                              <div>
-                                                  <span className='text-[#e5e4e2]/60'>
-                                                      Lokalizacja:
-                                                  </span>{' '}
-                                                  <span className='text-[#e5e4e2]'>
-                                                      {
-                                                          unit.storage_locations
-                                                              .name
-                                                      }
-                                                  </span>
-                                              </div>
-                                          )}
-                                          {unit.purchase_date && (
-                                              <div>
-                                                  <span className='text-[#e5e4e2]/60'>
-                                                      Zakup:
-                                                  </span>{' '}
-                                                  <span className='text-[#e5e4e2]'>
-                                                      {new Date(
-                                                          unit.purchase_date
-                                                      ).toLocaleDateString(
-                                                          'pl-PL'
-                                                      )}
-                                                  </span>
-                                              </div>
-                                          )}
-                                          {unit.last_service_date && (
-                                              <div>
-                                                  <span className='text-[#e5e4e2]/60'>
-                                                      Ostatni serwis:
-                                                  </span>{' '}
-                                                  <span className='text-[#e5e4e2]'>
-                                                      {new Date(
-                                                          unit.last_service_date
-                                                      ).toLocaleDateString(
-                                                          'pl-PL'
-                                                      )}
-                                                  </span>
-                                              </div>
-                                          )}
-                                      </div>
-
-                                      {unit.condition_notes && (
-                                          <div className='mt-2 text-sm text-[#e5e4e2]/60'>
-                                              <span className='font-medium'>
-                                                  Notatki:
-                                              </span>{' '}
-                                              {unit.condition_notes}
-                                          </div>
-                                      )}
-                                  </div>
-
-                                  <div className='flex gap-2 ml-4'>
-                                      <button
-                                          onClick={() => handleShowEvents(unit)}
-                                          className='p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors'
-                                          title='Historia zdarzeń'
-                                      >
-                                          <History className='w-4 h-4' />
-                                      </button>
-                                      {canEdit && (
-                                          <>
-                                              <button
-                                                  onClick={() =>
-                                                      handleDuplicateUnit(unit)
-                                                  }
-                                                  className='p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors'
-                                                  title='Duplikuj jednostkę'
-                                              >
-                                                  <Copy className='w-4 h-4' />
-                                              </button>
-                                              <button
-                                                  onClick={() =>
-                                                      handleOpenModal(unit)
-                                                  }
-                                                  className='p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors'
-                                              >
-                                                  <Edit className='w-4 h-4' />
-                                              </button>
-                                              <button
-                                                  onClick={() =>
-                                                      handleDeleteUnit(unit.id)
-                                                  }
-                                                  className='p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors'
-                                              >
-                                                  <Trash2 className='w-4 h-4' />
-                                              </button>
-                                          </>
-                                      )}
-                                  </div>
-                              </div>
-                          </div>
-                      );
-                  })}
-              </div>
-          )}
-          {showModal &&
-              (() => {
-                  console.log('🔴 RENDERING MODAL - showModal is TRUE', {
-                      usesSimpleQuantity,
-                      newQuantity,
-                  });
-                  return (
-                      <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4'>
-                          <div className='bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto'>
-                              <h3 className='text-xl font-light text-[#e5e4e2] mb-4'>
-                                  {usesSimpleQuantity
-                                      ? 'Ustaw ilość na stanie'
-                                      : editingUnit
-                                      ? 'Edytuj jednostkę'
-                                      : 'Dodaj nową jednostkę'}
-                              </h3>
-
-                              {usesSimpleQuantity ? (
-                                  <div className='space-y-6'>
-                                      <div>
-                                          <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                              Ilość sztuk
-                                          </label>
-                                          <input
-                                              type='number'
-                                              value={newQuantity}
-                                              onChange={(e) => {
-                                                  const val =
-                                                      parseInt(
-                                                          e.target.value
-                                                      ) || 0;
-                                                  console.log(
-                                                      'Input changed to:',
-                                                      val
-                                                  );
-                                                  setNewQuantity(val);
-                                              }}
-                                              min='0'
-                                              className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] text-lg focus:outline-none focus:border-[#d3bb73]/30'
-                                              placeholder='np. 50'
-                                              autoFocus
-                                          />
-                                          <p className='text-sm text-[#e5e4e2]/40 mt-2'>
-                                              Wprowadź łączną ilość sztuk tego
-                                              sprzętu
-                                          </p>
-                                      </div>
-
-                                      <div className='flex gap-3 pt-4'>
-                                          <button
-                                              onClick={() => {
-                                                  setShowModal(false);
-                                                  setNewQuantity(
-                                                      equipment?.cable_stock_quantity ||
-                                                          0
-                                                  );
-                                              }}
-                                              className='flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors'
-                                          >
-                                              Anuluj
-                                          </button>
-                                          <button
-                                              onClick={
-                                                  handleUpdateCableQuantity
-                                              }
-                                              className='flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors'
-                                          >
-                                              Zapisz
-                                          </button>
-                                      </div>
-                                  </div>
-                              ) : (
-                                  <>
-                                      <div className='space-y-4'>
-                                          {unitForm.thumbnail_url && (
-                                              <div className='relative w-32 h-32 mx-auto'>
-                                                  <img
-                                                      src={
-                                                          unitForm.thumbnail_url
-                                                      }
-                                                      alt='Miniaturka'
-                                                      className='w-full h-full object-cover rounded-lg border border-[#d3bb73]/20'
-                                                  />
-                                                  <button
-                                                      onClick={() =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  thumbnail_url:
-                                                                      '',
-                                                              })
-                                                          )
-                                                      }
-                                                      className='absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600'
-                                                  >
-                                                      <X className='w-4 h-4' />
-                                                  </button>
-                                              </div>
-                                          )}
-
-                                          <div>
-                                              <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                  Miniaturka (opcjonalne)
-                                              </label>
-                                              <input
-                                                  type='file'
-                                                  accept='image/*'
-                                                  onChange={
-                                                      handleThumbnailUpload
-                                                  }
-                                                  disabled={uploadingThumb}
-                                                  className='hidden'
-                                                  id='unit-thumbnail-upload'
-                                              />
-                                              <label
-                                                  htmlFor='unit-thumbnail-upload'
-                                                  className={`flex items-center justify-center gap-2 w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] cursor-pointer hover:border-[#d3bb73]/30 transition-colors ${
-                                                      uploadingThumb
-                                                          ? 'opacity-50'
-                                                          : ''
-                                                  }`}
-                                              >
-                                                  <Upload className='w-4 h-4' />
-                                                  {uploadingThumb
-                                                      ? 'Przesyłanie...'
-                                                      : unitForm.thumbnail_url
-                                                      ? 'Zmień zdjęcie'
-                                                      : 'Dodaj zdjęcie'}
-                                              </label>
-                                          </div>
-
-                                          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                                              <div>
-                                                  <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                      Numer seryjny (opcjonalny)
-                                                  </label>
-                                                  <input
-                                                      type='text'
-                                                      value={
-                                                          unitForm.unit_serial_number
-                                                      }
-                                                      onChange={(e) =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  unit_serial_number:
-                                                                      e.target
-                                                                          .value,
-                                                              })
-                                                          )
-                                                      }
-                                                      className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30'
-                                                      placeholder='np. SN123456'
-                                                  />
-                                                  <p className='text-xs text-[#e5e4e2]/40 mt-1'>
-                                                      Pozostaw puste dla sprzętu
-                                                      bez numeru seryjnego
-                                                  </p>
-                                              </div>
-
-                                              <div>
-                                                  <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                      Status
-                                                  </label>
-                                                  <select
-                                                      value={unitForm.status}
-                                                      onChange={(e) =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  status: e
-                                                                      .target
-                                                                      .value as any,
-                                                              })
-                                                          )
-                                                      }
-                                                      className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30'
-                                                  >
-                                                      <option value='available'>
-                                                          Dostępny
-                                                      </option>
-                                                      <option value='damaged'>
-                                                          Uszkodzony
-                                                      </option>
-                                                      <option value='in_service'>
-                                                          Serwis
-                                                      </option>
-                                                      <option value='retired'>
-                                                          Wycofany
-                                                      </option>
-                                                  </select>
-                                              </div>
-
-                                              <div>
-                                                  <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                      Lokalizacja
-                                                  </label>
-                                                  <select
-                                                      value={
-                                                          unitForm.location_id
-                                                      }
-                                                      onChange={(e) =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  location_id:
-                                                                      e.target
-                                                                          .value,
-                                                              })
-                                                          )
-                                                      }
-                                                      className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30'
-                                                  >
-                                                      <option value=''>
-                                                          Brak lokalizacji
-                                                      </option>
-                                                      {locations.map((loc) => (
-                                                          <option
-                                                              key={loc.id}
-                                                              value={loc.id}
-                                                          >
-                                                              {loc.name}
-                                                          </option>
-                                                      ))}
-                                                  </select>
-                                              </div>
-
-                                              <div>
-                                                  <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                      Data zakupu
-                                                  </label>
-                                                  <input
-                                                      type='date'
-                                                      value={
-                                                          unitForm.purchase_date
-                                                      }
-                                                      onChange={(e) =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  purchase_date:
-                                                                      e.target
-                                                                          .value,
-                                                              })
-                                                          )
-                                                      }
-                                                      className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30'
-                                                  />
-                                              </div>
-
-                                              <div>
-                                                  <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                      Ostatni serwis
-                                                  </label>
-                                                  <input
-                                                      type='date'
-                                                      value={
-                                                          unitForm.last_service_date
-                                                      }
-                                                      onChange={(e) =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  last_service_date:
-                                                                      e.target
-                                                                          .value,
-                                                              })
-                                                          )
-                                                      }
-                                                      className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30'
-                                                  />
-                                              </div>
-
-                                              <div>
-                                                  <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                      Szacowana dostępność
-                                                  </label>
-                                                  <input
-                                                      type='date'
-                                                      value={
-                                                          unitForm.estimated_repair_date
-                                                      }
-                                                      onChange={(e) =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  estimated_repair_date:
-                                                                      e.target
-                                                                          .value,
-                                                              })
-                                                          )
-                                                      }
-                                                      className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30'
-                                                      disabled={
-                                                          unitForm.status !==
-                                                              'damaged' &&
-                                                          unitForm.status !==
-                                                              'in_service'
-                                                      }
-                                                  />
-                                                  <p className='text-xs text-[#e5e4e2]/40 mt-1'>
-                                                      Dla jednostek uszkodzonych
-                                                      lub w serwisie
-                                                  </p>
-                                              </div>
-
-                                              <div className='md:col-span-2'>
-                                                  <label className='block text-sm text-[#e5e4e2]/60 mb-2'>
-                                                      Notatki o stanie
-                                                  </label>
-                                                  <textarea
-                                                      value={
-                                                          unitForm.condition_notes
-                                                      }
-                                                      onChange={(e) =>
-                                                          setUnitForm(
-                                                              (prev) => ({
-                                                                  ...prev,
-                                                                  condition_notes:
-                                                                      e.target
-                                                                          .value,
-                                                              })
-                                                          )
-                                                      }
-                                                      rows={3}
-                                                      className='w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30'
-                                                      placeholder='Notatki o stanie technicznym, usterki, naprawy...'
-                                                  />
-                                              </div>
-                                          </div>
-                                      </div>
-
-                                      <div className='flex gap-3 mt-6'>
-                                          <button
-                                              onClick={() =>
-                                                  setShowModal(false)
-                                              }
-                                              className='flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors'
-                                          >
-                                              Anuluj
-                                          </button>
-                                          <button
-                                              onClick={handleSaveUnit}
-                                              disabled={saving}
-                                              className='flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50'
-                                          >
-                                              {saving
-                                                  ? 'Zapisywanie...'
-                                                  : 'Zapisz'}
-                                          </button>
-                                      </div>
-                                  </>
-                              )}
-                          </div>
-                      </div>
-                  );
-              })()}
-          uploadImage
-          {showEventsHistory && selectedUnit && (
-              <UnitEventsModal
-                  unit={selectedUnit}
-                  events={unitEvents}
-                  onClose={() => {
-                      setShowEventsHistory(false);
-                      onUpdate();
-                  }}
-                  onUpdate={() => {
-                      fetchUnitEvents(selectedUnit.id);
-                      onUpdate();
-                  }}
-              />
-          )}
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-medium text-[#e5e4e2]">Zarządzanie jednostkami</h3>
+        {canEdit && (
+          <button
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+          >
+            <Plus className="h-4 w-4" />
+            Dodaj jednostkę
+          </button>
+        )}
       </div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-green-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Dostępne</div>
+          <div className="text-2xl font-light text-green-400">{groupedUnits.available.length}</div>
+        </div>
+        <div className="rounded-xl border border-red-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Uszkodzone</div>
+          <div className="text-2xl font-light text-red-400">{groupedUnits.damaged.length}</div>
+        </div>
+        <div className="rounded-xl border border-orange-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Serwis</div>
+          <div className="text-2xl font-light text-orange-400">
+            {groupedUnits.in_service.length}
+          </div>
+        </div>
+        <div className="rounded-xl border border-gray-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Wycofane</div>
+          <div className="text-2xl font-light text-gray-400">{groupedUnits.retired.length}</div>
+        </div>
+      </div>
+      {units.length === 0 ? (
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
+          <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="mb-2 text-[#e5e4e2]/60">Brak jednostek</p>
+          <p className="text-sm text-[#e5e4e2]/40">Dodaj pierwszą jednostkę sprzętu</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {units.map((unit: EquipmentUnit) => {
+            const isUnavailable = unit.status === 'damaged' || unit.status === 'in_service';
+            return (
+              <div
+                key={unit.id}
+                className={`rounded-xl border bg-[#1c1f33] p-4 ${
+                  isUnavailable ? 'border-red-500/20 opacity-60' : 'border-[#d3bb73]/10'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  {unit.thumbnail_url && (
+                    <img
+                      src={unit.thumbnail_url}
+                      alt="Miniaturka"
+                      className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
+                    />
+                  )}
+                  <div className="flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-3">
+                      {unit.unit_serial_number && (
+                        <span className="font-mono font-medium text-[#e5e4e2]">
+                          SN: {unit.unit_serial_number}
+                        </span>
+                      )}
+                      {!unit.unit_serial_number && (
+                        <span className="italic text-[#e5e4e2]/60">Bez numeru seryjnego</span>
+                      )}
+                      <span className={`rounded px-2 py-1 text-xs ${statusColors[unit.status]}`}>
+                        {statusLabels[unit.status]}
+                      </span>
+                      {isUnavailable && (
+                        <span className="rounded border border-red-500/30 bg-red-500/20 px-2 py-1 text-xs text-red-300">
+                          Niedostępny
+                        </span>
+                      )}
+                      {unit.estimated_repair_date && isUnavailable && (
+                        <span className="text-xs text-[#e5e4e2]/60">
+                          Szac. dostępność:{' '}
+                          {new Date(unit.estimated_repair_date).toLocaleDateString('pl-PL')}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+                      {unit.storage_locations && (
+                        <div>
+                          <span className="text-[#e5e4e2]/60">Lokalizacja:</span>{' '}
+                          <span className="text-[#e5e4e2]">{unit.storage_locations.name}</span>
+                        </div>
+                      )}
+                      {unit.purchase_date && (
+                        <div>
+                          <span className="text-[#e5e4e2]/60">Zakup:</span>{' '}
+                          <span className="text-[#e5e4e2]">
+                            {new Date(unit.purchase_date).toLocaleDateString('pl-PL')}
+                          </span>
+                        </div>
+                      )}
+                      {unit.last_service_date && (
+                        <div>
+                          <span className="text-[#e5e4e2]/60">Ostatni serwis:</span>{' '}
+                          <span className="text-[#e5e4e2]">
+                            {new Date(unit.last_service_date).toLocaleDateString('pl-PL')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {unit.condition_notes && (
+                      <div className="mt-2 text-sm text-[#e5e4e2]/60">
+                        <span className="font-medium">Notatki:</span> {unit.condition_notes}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="ml-4 flex gap-2">
+                    <button
+                      onClick={() => handleShowEvents(unit)}
+                      className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-500/10"
+                      title="Historia zdarzeń"
+                    >
+                      <History className="h-4 w-4" />
+                    </button>
+                    {canEdit && (
+                      <>
+                        <button
+                          onClick={() => handleDuplicateUnit(unit)}
+                          className="rounded-lg p-2 text-purple-400 transition-colors hover:bg-purple-500/10"
+                          title="Duplikuj jednostkę"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenModal(unit)}
+                          className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUnit(unit.id)}
+                          className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {showModal &&
+        (() => {
+          console.log('🔴 RENDERING MODAL - showModal is TRUE', {
+            usesSimpleQuantity,
+            newQuantity,
+          });
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+                <h3 className="mb-4 text-xl font-light text-[#e5e4e2]">
+                  {usesSimpleQuantity
+                    ? 'Ustaw ilość na stanie'
+                    : editingUnit
+                      ? 'Edytuj jednostkę'
+                      : 'Dodaj nową jednostkę'}
+                </h3>
+
+                {usesSimpleQuantity ? (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość sztuk</label>
+                      <input
+                        type="number"
+                        value={newQuantity}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          console.log('Input changed to:', val);
+                          setNewQuantity(val);
+                        }}
+                        min="0"
+                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-3 text-lg text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                        placeholder="np. 50"
+                        autoFocus
+                      />
+                      <p className="mt-2 text-sm text-[#e5e4e2]/40">
+                        Wprowadź łączną ilość sztuk tego sprzętu
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        onClick={() => {
+                          setShowModal(false);
+                          setNewQuantity(equipment?.cable_stock_quantity || 0);
+                        }}
+                        className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
+                      >
+                        Anuluj
+                      </button>
+                      <button
+                        onClick={handleUpdateCableQuantity}
+                        className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                      >
+                        Zapisz
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      {unitForm.thumbnail_url && (
+                        <div className="relative mx-auto h-32 w-32">
+                          <img
+                            src={unitForm.thumbnail_url}
+                            alt="Miniaturka"
+                            className="h-full w-full rounded-lg border border-[#d3bb73]/20 object-cover"
+                          />
+                          <button
+                            onClick={() =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                thumbnail_url: '',
+                              }))
+                            }
+                            className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                          Miniaturka (opcjonalne)
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleThumbnailUpload}
+                          disabled={uploadingThumb}
+                          className="hidden"
+                          id="unit-thumbnail-upload"
+                        />
+                        <label
+                          htmlFor="unit-thumbnail-upload"
+                          className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30 ${
+                            uploadingThumb ? 'opacity-50' : ''
+                          }`}
+                        >
+                          <Upload className="h-4 w-4" />
+                          {uploadingThumb
+                            ? 'Przesyłanie...'
+                            : unitForm.thumbnail_url
+                              ? 'Zmień zdjęcie'
+                              : 'Dodaj zdjęcie'}
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Numer seryjny (opcjonalny)
+                          </label>
+                          <input
+                            type="text"
+                            value={unitForm.unit_serial_number}
+                            onChange={(e) =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                unit_serial_number: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                            placeholder="np. SN123456"
+                          />
+                          <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                            Pozostaw puste dla sprzętu bez numeru seryjnego
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status</label>
+                          <select
+                            value={unitForm.status}
+                            onChange={(e) =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                status: e.target.value as any,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                          >
+                            <option value="available">Dostępny</option>
+                            <option value="damaged">Uszkodzony</option>
+                            <option value="in_service">Serwis</option>
+                            <option value="retired">Wycofany</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Lokalizacja
+                          </label>
+                          <select
+                            value={unitForm.location_id}
+                            onChange={(e) =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                location_id: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                          >
+                            <option value="">Brak lokalizacji</option>
+                            {locations.map((loc) => (
+                              <option key={loc.id} value={loc.id}>
+                                {loc.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Data zakupu
+                          </label>
+                          <input
+                            type="date"
+                            value={unitForm.purchase_date}
+                            onChange={(e) =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                purchase_date: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Ostatni serwis
+                          </label>
+                          <input
+                            type="date"
+                            value={unitForm.last_service_date}
+                            onChange={(e) =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                last_service_date: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Szacowana dostępność
+                          </label>
+                          <input
+                            type="date"
+                            value={unitForm.estimated_repair_date}
+                            onChange={(e) =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                estimated_repair_date: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                            disabled={
+                              unitForm.status !== 'damaged' && unitForm.status !== 'in_service'
+                            }
+                          />
+                          <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                            Dla jednostek uszkodzonych lub w serwisie
+                          </p>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Notatki o stanie
+                          </label>
+                          <textarea
+                            value={unitForm.condition_notes}
+                            onChange={(e) =>
+                              setUnitForm((prev) => ({
+                                ...prev,
+                                condition_notes: e.target.value,
+                              }))
+                            }
+                            rows={3}
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                            placeholder="Notatki o stanie technicznym, usterki, naprawy..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex gap-3">
+                      <button
+                        onClick={() => setShowModal(false)}
+                        className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
+                      >
+                        Anuluj
+                      </button>
+                      <button
+                        onClick={handleSaveUnit}
+                        disabled={saving}
+                        className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                      >
+                        {saving ? 'Zapisywanie...' : 'Zapisz'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      uploadImage
+      {showEventsHistory && selectedUnit && (
+        <UnitEventsModal
+          unit={selectedUnit}
+          events={unitEvents}
+          onClose={() => {
+            setShowEventsHistory(false);
+            onUpdate();
+          }}
+          onUpdate={() => {
+            fetchUnitEvents(selectedUnit.id);
+            onUpdate();
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -2701,7 +2645,7 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
     setUploading(true);
     try {
       const url = await uploadImage(file, 'equipment-events');
-      setEventForm(prev => ({ ...prev, image_url: url }));
+      setEventForm((prev) => ({ ...prev, image_url: url }));
     } catch (error) {
       console.error('Error uploading image:', error);
       alert('Błąd podczas przesyłania zdjęcia');
@@ -2717,24 +2661,28 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
     }
 
     if (eventForm.event_type === 'sold') {
-      if (!confirm('Czy na pewno chcesz oznaczyć tę jednostkę jako sprzedaną? Jednostka zostanie usunięta z systemu.')) {
+      if (
+        !confirm(
+          'Czy na pewno chcesz oznaczyć tę jednostkę jako sprzedaną? Jednostka zostanie usunięta z systemu.',
+        )
+      ) {
         return;
       }
     }
 
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const { error: eventError } = await supabase
-        .from('equipment_unit_events')
-        .insert({
-          unit_id: unit.id,
-          event_type: eventForm.event_type,
-          description: eventForm.description,
-          image_url: eventForm.image_url || null,
-          employee_id: user?.id || null,
-        });
+      const { error: eventError } = await supabase.from('equipment_unit_events').insert({
+        unit_id: unit.id,
+        event_type: eventForm.event_type,
+        description: eventForm.description,
+        image_url: eventForm.image_url || null,
+        employee_id: user?.id || null,
+      });
 
       if (eventError) throw eventError;
 
@@ -2803,58 +2751,68 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <div>
-            <h3 className="text-xl font-light text-[#e5e4e2] mb-1">Historia zdarzeń</h3>
+            <h3 className="mb-1 text-xl font-light text-[#e5e4e2]">Historia zdarzeń</h3>
             <p className="text-sm text-[#e5e4e2]/60">
               {unit.unit_serial_number ? `SN: ${unit.unit_serial_number}` : 'Bez numeru seryjnego'}
             </p>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="mt-2 flex items-center gap-2">
               <span className="text-xs text-[#e5e4e2]/40">Aktualny status:</span>
-              <span className={`px-2 py-1 rounded text-xs ${
-                unit.status === 'available' ? 'bg-green-500/20 text-green-400' :
-                unit.status === 'damaged' ? 'bg-red-500/20 text-red-400' :
-                unit.status === 'in_service' ? 'bg-orange-500/20 text-orange-400' :
-                'bg-gray-500/20 text-gray-400'
-              }`}>
-                {unit.status === 'available' ? 'Dostępny' :
-                 unit.status === 'damaged' ? 'Uszkodzony' :
-                 unit.status === 'in_service' ? 'Serwis' :
-                 'Wycofany'}
+              <span
+                className={`rounded px-2 py-1 text-xs ${
+                  unit.status === 'available'
+                    ? 'bg-green-500/20 text-green-400'
+                    : unit.status === 'damaged'
+                      ? 'bg-red-500/20 text-red-400'
+                      : unit.status === 'in_service'
+                        ? 'bg-orange-500/20 text-orange-400'
+                        : 'bg-gray-500/20 text-gray-400'
+                }`}
+              >
+                {unit.status === 'available'
+                  ? 'Dostępny'
+                  : unit.status === 'damaged'
+                    ? 'Uszkodzony'
+                    : unit.status === 'in_service'
+                      ? 'Serwis'
+                      : 'Wycofany'}
               </span>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowAddEvent(!showAddEvent)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Dodaj zdarzenie
             </button>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg transition-colors"
+              className="rounded-lg p-2 transition-colors hover:bg-[#e5e4e2]/10"
             >
-              <X className="w-5 h-5 text-[#e5e4e2]" />
+              <X className="h-5 w-5 text-[#e5e4e2]" />
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
           {showAddEvent && (
-            <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-xl p-4 mb-6">
-              <h4 className="text-[#e5e4e2] font-medium mb-4">Nowe zdarzenie</h4>
+            <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+              <h4 className="mb-4 font-medium text-[#e5e4e2]">Nowe zdarzenie</h4>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typ zdarzenia</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ zdarzenia</label>
                     <select
                       value={eventForm.event_type}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, event_type: e.target.value as any }))}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                      onChange={(e) =>
+                        setEventForm((prev) => ({ ...prev, event_type: e.target.value as any }))
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                     >
                       <option value="note">Notatka</option>
                       <option value="damage">Uszkodzenie (zmienia status)</option>
@@ -2864,23 +2822,25 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                       <option value="sold">Sprzedaż (usuwa jednostkę)</option>
                     </select>
                     {eventForm.event_type === 'damage' && (
-                      <p className="text-xs text-red-400 mt-1">
+                      <p className="mt-1 text-xs text-red-400">
                         Status zostanie zmieniony na "Uszkodzony"
                       </p>
                     )}
                     {eventForm.event_type === 'repair' && (
-                      <p className="text-xs text-green-400 mt-1">
+                      <p className="mt-1 text-xs text-green-400">
                         Status zostanie zmieniony na "Dostępny"
                       </p>
                     )}
                     {eventForm.event_type === 'sold' && (
-                      <p className="text-xs text-red-400 mt-1">
+                      <p className="mt-1 text-xs text-red-400">
                         UWAGA: Jednostka zostanie całkowicie usunięta z systemu!
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zdjęcie (opcjonalne)</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Zdjęcie (opcjonalne)
+                    </label>
                     <input
                       type="file"
                       accept="image/*"
@@ -2891,10 +2851,14 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     />
                     <label
                       htmlFor="event-image-upload"
-                      className={`flex items-center justify-center gap-2 w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] cursor-pointer hover:border-[#d3bb73]/30 transition-colors ${uploading ? 'opacity-50' : ''}`}
+                      className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30 ${uploading ? 'opacity-50' : ''}`}
                     >
-                      <Upload className="w-4 h-4" />
-                      {uploading ? 'Przesyłanie...' : eventForm.image_url ? 'Zmień zdjęcie' : 'Dodaj zdjęcie'}
+                      <Upload className="h-4 w-4" />
+                      {uploading
+                        ? 'Przesyłanie...'
+                        : eventForm.image_url
+                          ? 'Zmień zdjęcie'
+                          : 'Dodaj zdjęcie'}
                     </label>
                   </div>
                 </div>
@@ -2904,24 +2868,26 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     <img
                       src={eventForm.image_url}
                       alt="Preview"
-                      className="w-full max-h-48 object-contain rounded-lg"
+                      className="max-h-48 w-full rounded-lg object-contain"
                     />
                     <button
-                      onClick={() => setEventForm(prev => ({ ...prev, image_url: '' }))}
-                      className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                      onClick={() => setEventForm((prev) => ({ ...prev, image_url: '' }))}
+                      className="absolute right-2 top-2 rounded-lg bg-red-500 p-1 text-white hover:bg-red-600"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis zdarzenia</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis zdarzenia</label>
                   <textarea
                     value={eventForm.description}
-                    onChange={(e) => setEventForm(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) =>
+                      setEventForm((prev) => ({ ...prev, description: e.target.value }))
+                    }
                     rows={4}
-                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                     placeholder="Opisz szczegóły zdarzenia..."
                   />
                 </div>
@@ -2929,14 +2895,14 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowAddEvent(false)}
-                    className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                    className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                   >
                     Anuluj
                   </button>
                   <button
                     onClick={handleAddEvent}
                     disabled={saving}
-                    className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                    className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                   >
                     {saving ? 'Zapisywanie...' : 'Dodaj'}
                   </button>
@@ -2946,8 +2912,8 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
           )}
 
           {events.length === 0 ? (
-            <div className="text-center py-12">
-              <History className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <div className="py-12 text-center">
+              <History className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak zdarzeń</p>
             </div>
           ) : (
@@ -2955,10 +2921,10 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
               {events.map((event: UnitEvent) => (
                 <div
                   key={event.id}
-                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-xl p-4"
+                  className="rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-3 flex-wrap">
+                  <div className="mb-2 flex items-start justify-between">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className={`font-medium ${eventTypeColors[event.event_type]}`}>
                         {eventTypeLabels[event.event_type]}
                       </span>
@@ -2973,7 +2939,7 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     </div>
                   </div>
 
-                  <p className="text-[#e5e4e2] mb-2">{event.description}</p>
+                  <p className="mb-2 text-[#e5e4e2]">{event.description}</p>
 
                   {event.old_status && event.new_status && (
                     <div className="text-sm text-[#e5e4e2]/60">
@@ -2985,7 +2951,7 @@ function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     <img
                       src={event.image_url}
                       alt="Zdjęcie zdarzenia"
-                      className="mt-3 w-full max-h-64 object-contain rounded-lg border border-[#d3bb73]/10"
+                      className="mt-3 max-h-64 w-full rounded-lg border border-[#d3bb73]/10 object-contain"
                     />
                   )}
                 </div>
@@ -3047,41 +3013,42 @@ function HistoryTab({ history }: { history: any[] }) {
       <h3 className="text-lg font-medium text-[#e5e4e2]">Historia zdarzeń</h3>
 
       {history.length === 0 ? (
-        <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-          <History className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
+          <History className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
           <p className="text-[#e5e4e2]/60">Brak historii zdarzeń</p>
         </div>
       ) : (
         <div className="space-y-3">
           {history.map((event) => (
-            <div
-              key={event.id}
-              className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4"
-            >
+            <div key={event.id} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="mb-2 flex items-center gap-3">
                     <span className={`font-medium ${getEventTypeColor(event.event_type)}`}>
                       {getEventTypeLabel(event.event_type)}
                     </span>
                     {event.equipment_units && (
-                      <span className="text-[#e5e4e2]/60 text-sm">
-                        {event.equipment_units.unit_serial_number || event.equipment_units.internal_id}
+                      <span className="text-sm text-[#e5e4e2]/60">
+                        {event.equipment_units.unit_serial_number ||
+                          event.equipment_units.internal_id}
                       </span>
                     )}
                   </div>
                   {event.new_status && (
-                    <div className="text-sm text-[#e5e4e2]/60 mb-1">
+                    <div className="mb-1 text-sm text-[#e5e4e2]/60">
                       Status: {getStatusLabel(event.new_status)}
                     </div>
                   )}
                   {event.notes && (
-                    <div className="text-sm text-[#e5e4e2]/60 mb-1">{event.notes}</div>
+                    <div className="mb-1 text-sm text-[#e5e4e2]/60">{event.notes}</div>
                   )}
                   <div className="text-xs text-[#e5e4e2]/40">
                     {new Date(event.event_date).toLocaleString('pl-PL')}
                     {event.employees && (
-                      <span> • {event.employees.name} {event.employees.surname}</span>
+                      <span>
+                        {' '}
+                        • {event.employees.name} {event.employees.surname}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -3094,7 +3061,13 @@ function HistoryTab({ history }: { history: any[] }) {
   );
 }
 
-function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string) => void }) {
+function AddConnectorModal({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (name: string) => void;
+}) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [commonUses, setCommonUses] = useState('');
@@ -3124,15 +3097,13 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('connector_types')
-        .insert({
-          name: name.trim(),
-          description: description.trim() || null,
-          common_uses: commonUses.trim() || null,
-          thumbnail_url: thumbnailUrl || null,
-          is_active: true,
-        });
+      const { error } = await supabase.from('connector_types').insert({
+        name: name.trim(),
+        description: description.trim() || null,
+        common_uses: commonUses.trim() || null,
+        thumbnail_url: thumbnailUrl || null,
+        is_active: true,
+      });
 
       if (error) throw error;
 
@@ -3147,58 +3118,62 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-md w-full">
-        <div className="p-6 border-b border-[#d3bb73]/10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj nowy wtyk</h3>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa wtyczki *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa wtyczki *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="np. XLR Male"
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis (opcjonalnie)</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis (opcjonalnie)</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="np. Wtyk XLR męski, 3-pinowy"
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typowe zastosowania (opcjonalnie)</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+              Typowe zastosowania (opcjonalnie)
+            </label>
             <textarea
               value={commonUses}
               onChange={(e) => setCommonUses(e.target.value)}
               placeholder="np. Mikrofony, sygnały audio balanced, DMX"
               rows={3}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Zdjęcie wtyczki (opcjonalnie)</label>
-            <div className="flex gap-4 items-start">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+              Zdjęcie wtyczki (opcjonalnie)
+            </label>
+            <div className="flex items-start gap-4">
               {thumbnailUrl && (
-                <div className="w-20 h-20 rounded-lg overflow-hidden bg-[#0f1119] border border-[#d3bb73]/10">
-                  <img src={thumbnailUrl} alt="Miniaturka" className="w-full h-full object-cover" />
+                <div className="h-20 w-20 overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]">
+                  <img src={thumbnailUrl} alt="Miniaturka" className="h-full w-full object-cover" />
                 </div>
               )}
               <label className="flex-1 cursor-pointer">
-                <div className="border-2 border-dashed border-[#d3bb73]/20 rounded-lg p-4 text-center hover:border-[#d3bb73]/40 transition-colors">
-                  <Upload className="w-6 h-6 text-[#e5e4e2]/40 mx-auto mb-2" />
+                <div className="rounded-lg border-2 border-dashed border-[#d3bb73]/20 p-4 text-center transition-colors hover:border-[#d3bb73]/40">
+                  <Upload className="mx-auto mb-2 h-6 w-6 text-[#e5e4e2]/40" />
                   <div className="text-sm text-[#e5e4e2]/60">
                     {uploadingThumbnail ? 'Wgrywanie...' : 'Kliknij aby dodać zdjęcie'}
                   </div>
@@ -3214,18 +3189,18 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
             </div>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4">
+          <div className="flex justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+              className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2.5 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
             >
               Anuluj
             </button>
             <button
               type="submit"
               disabled={saving || !name.trim()}
-              className="px-6 py-2.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+              className="rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
               {saving ? 'Dodawanie...' : 'Dodaj wtyk'}
             </button>
@@ -3236,65 +3211,76 @@ function AddConnectorModal({ onClose, onAdd }: { onClose: () => void; onAdd: (na
   );
 }
 
-function ConnectorPreviewModal({ connector, onClose, onEdit }: { connector: any; onClose: () => void; onEdit: () => void }) {
+function ConnectorPreviewModal({
+  connector,
+  onClose,
+  onEdit,
+}: {
+  connector: any;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
-        className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-lg w-full"
+        className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-[#d3bb73]/10 flex justify-between items-center">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">{connector.name}</h3>
           <button
             onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="space-y-4 p-6">
           {connector.thumbnail_url && (
-            <div className="w-full aspect-video rounded-lg overflow-hidden bg-[#0f1119] border border-[#d3bb73]/10">
+            <div className="aspect-video w-full overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]">
               <img
                 src={connector.thumbnail_url}
                 alt={connector.name}
-                className="w-full h-full object-contain"
+                className="h-full w-full object-contain"
               />
             </div>
           )}
 
           {connector.description && (
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
               <p className="text-[#e5e4e2]">{connector.description}</p>
             </div>
           )}
 
           {connector.common_uses && (
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typowe zastosowania</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typowe zastosowania</label>
               <p className="text-[#e5e4e2]/80">{connector.common_uses}</p>
             </div>
           )}
 
           {!connector.description && !connector.common_uses && !connector.thumbnail_url && (
-            <div className="text-center text-[#e5e4e2]/40 py-8">
+            <div className="py-8 text-center text-[#e5e4e2]/40">
               Brak dodatkowych informacji o tym wtyku
             </div>
           )}
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end">
+        <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={onEdit}
-            className="px-6 py-2.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+            className="rounded-lg bg-[#d3bb73]/20 px-6 py-2.5 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
           >
             Edytuj wtyk
           </button>
           <button
             onClick={onClose}
-            className="px-6 py-2.5 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2.5 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
           >
             Zamknij
           </button>

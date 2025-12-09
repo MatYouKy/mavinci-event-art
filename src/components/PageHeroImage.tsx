@@ -96,7 +96,6 @@ export function PageHeroImage({
   };
 
   const handleSaveOpacity = async () => {
-    console.log('[PageHeroImage] handleSaveOpacity - editState.opacity:', editState.opacity);
     setOpacity(editState.opacity);
     await saveOpacity(editState.opacity);
     setIsEditingOpacity(false);
@@ -109,8 +108,6 @@ export function PageHeroImage({
       posY: editState.posY,
       scale: editState.scale,
     };
-
-    console.log('[PageHeroImage] handleSavePosition - saving position:', newPosition);
 
     setPosition(newPosition);
     await savePosition(newPosition);

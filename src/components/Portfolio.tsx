@@ -28,7 +28,6 @@ export default function Portfolio() {
         throw error;
       }
 
-      console.log('Fetched portfolio projects:', data);
       setProjects(data || []);
     } catch (error) {
       console.error('Error fetching projects:', error);

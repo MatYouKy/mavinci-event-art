@@ -13,9 +13,7 @@ export function NotificationExamples() {
       actionUrl: '/crm/calendar',
     });
 
-    if (result.success) {
-      console.log(`Wysłano do ${result.recipientsCount} użytkowników`);
-    }
+}
   };
 
   // Przykład 2: Wyślij do pracowników z konkretnym uprawnieniem
@@ -31,7 +29,7 @@ export function NotificationExamples() {
     });
 
     if (result.success) {
-      console.log(`Wysłano do ${result.recipientsCount} użytkowników z uprawnieniem events_manage`);
+      `Wysłano do ${result.recipientsCount} użytkowników z uprawnieniem events_manage`);
     }
   };
 
@@ -47,9 +45,6 @@ export function NotificationExamples() {
       actionUrl: '/crm/tasks/task-uuid-456',
     });
 
-    if (result.success) {
-      console.log('Wysłano notyfikację do użytkownika');
-    }
   };
 
   // Przykład 4: Wyślij do wielu konkretnych użytkowników (tablica)
@@ -66,10 +61,6 @@ export function NotificationExamples() {
         actionUrl: '/crm/events/event-uuid-789',
       }
     );
-
-    if (result.success) {
-      console.log(`Wysłano do ${result.recipientsCount} użytkowników`);
-    }
   };
 
   // Przykład 5: Wyślij notyfikację o błędzie do adminów
@@ -81,10 +72,6 @@ export function NotificationExamples() {
       type: 'error',
       actionUrl: '/crm/settings',
     });
-
-    if (result.success) {
-      console.log('Wysłano alert do adminów');
-    }
   };
 
   // Przykład 6: Wyślij sukces do managera
@@ -98,10 +85,6 @@ export function NotificationExamples() {
       relatedEntityId: 'offer-uuid-123',
       actionUrl: '/crm/offers/offer-uuid-123',
     });
-
-    if (result.success) {
-      console.log('Wysłano powiadomienie o sukcesie');
-    }
   };
 
   return null;

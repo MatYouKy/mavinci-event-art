@@ -412,7 +412,6 @@ export function useHeroImage(
 
         if (existing || section.includes('zespol') || section.includes('team')) {
           if (!existing) {
-            console.log('[useHeroImage] Creating new record with opacity:', valueToSave);
             const { error } = await supabase.from(pageTableName).insert({
               section: 'hero',
               name: `Hero ${section}`,

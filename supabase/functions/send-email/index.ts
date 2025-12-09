@@ -51,9 +51,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    console.log('[send-email] Request received');
+
     const requestBody = await req.json();
-    console.log('[send-email] Request body keys:', Object.keys(requestBody));
 
     const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig, attachments }: EmailRequest = requestBody;
 

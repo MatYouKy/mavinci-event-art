@@ -57,12 +57,7 @@ export default function CableDetailPage() {
   // edit form
   const [editForm, setEditForm] = useState<any>({});
 
-  // Debug: log when cable data changes
-  useEffect(() => {
-    if (cable) {
-      console.log('Cable data updated:', cable);
-    }
-  }, [cable]);
+
 
   const handleEdit = () => {
     if (!cable) return;
@@ -98,14 +93,11 @@ export default function CableDetailPage() {
         notes: editForm.notes || null,
       });
 
-      console.log('Saving cable with payload:', payload);
       const result = await updateCable({ id: cableId, payload }).unwrap();
-      console.log('Save result:', result);
 
       setIsEditing(false);
       showSnackbar('Zapisano zmiany', 'success');
     } catch (e: any) {
-      console.error('Error saving cable:', e);
       showSnackbar('Błąd podczas zapisywania', 'error');
     } finally {
       setSaving(false);

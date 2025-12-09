@@ -44,12 +44,10 @@ export default function NotificationCenter() {
           table: 'notification_recipients',
         },
         (payload) => {
-          console.log('[NotificationCenter] Real-time event:', payload);
           fetchNotifications();
         }
       )
       .subscribe((status) => {
-        console.log('[NotificationCenter] Subscription status:', status);
       });
 
     return () => {

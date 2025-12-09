@@ -33,6 +33,7 @@ const availableEventTabs = [
   { value: 'contract', label: 'Umowa', description: 'Zarządzanie umowami' },
   { value: 'equipment', label: 'Sprzęt', description: 'Lista sprzętu przypisanego do wydarzenia' },
   { value: 'team', label: 'Zespół', description: 'Pracownicy przypisani do wydarzenia' },
+  { value: 'agenda', label: 'Agenda', description: 'Zarządzanie agenda wydarzenia' },
   { value: 'logistics', label: 'Logistyka', description: 'Pojazdy i transport' },
   { value: 'subcontractors', label: 'Podwykonawcy', description: 'Zewnętrzni wykonawcy' },
   { value: 'files', label: 'Pliki', description: 'Dokumenty i załączniki' },

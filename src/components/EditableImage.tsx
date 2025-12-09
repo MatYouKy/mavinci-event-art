@@ -425,7 +425,6 @@ export function EditableImage({
             return;
           }
         } catch (err) {
-          console.log('Używam starych tabel');
         }
 
         const { error } = await supabase

@@ -392,8 +392,6 @@ function AddEmailAccountModal({
 
     setSaving(true);
     try {
-      console.log('Attempting to insert email account:', { ...formData, employee_id: employeeId });
-
       // Use RPC function as workaround for schema cache issue
       const { data, error } = await supabase.rpc('add_email_account', {
         p_employee_id: employeeId,
@@ -414,8 +412,6 @@ function AddEmailAccountModal({
         p_is_default: formData.is_default || false,
         p_is_active: formData.is_active !== false
       });
-
-      console.log('Insert result:', { data, error });
 
       if (error) {
         console.error('Supabase error details:', error);

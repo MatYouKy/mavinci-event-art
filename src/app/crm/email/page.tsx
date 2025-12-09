@@ -122,7 +122,6 @@ export default function EmailPage() {
       });
 
       const result = await response.json();
-      console.log('Fetch result:', result);
 
       if (!result.success) {
         throw new Error(result.error || 'Nie udało się pobrać wiadomości');
