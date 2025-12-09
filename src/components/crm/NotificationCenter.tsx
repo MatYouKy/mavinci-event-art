@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle } from 'lucide-react';
+import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle, MessageSquare } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -228,8 +228,12 @@ export default function NotificationCenter() {
     }
   };
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
+  const getTypeIcon = (notification: Notification) => {
+    if (notification.title === 'Nowy komentarz w zadaniu' || notification.category === 'task_comment') {
+      return <MessageSquare className="w-4 h-4" />;
+    }
+
+    switch (notification.type) {
       case 'success':
         return '✅';
       case 'error':
@@ -348,8 +352,8 @@ export default function NotificationCenter() {
                             notification.type
                           )}`}
                         >
-                          <span className="text-sm">
-                            {getTypeIcon(notification.type)}
+                          <span className="text-sm flex items-center justify-center">
+                            {getTypeIcon(notification)}
                           </span>
                         </div>
 

@@ -202,13 +202,22 @@ export default function KitsManagementModal({
         return;
       }
       setKitItems([...kitItems, { equipment_id: itemId, cable_id: null, quantity: 1, notes: '' }]);
+      showSnackbar('Dodano do zestawu', 'success');
     } else {
       if (kitItems.some(item => item.cable_id === itemId)) {
         showSnackbar('Ten przewód jest już w zestawie', 'warning');
         return;
       }
       setKitItems([...kitItems, { equipment_id: null, cable_id: itemId, quantity: 1, notes: '' }]);
+      showSnackbar('Dodano do zestawu', 'success');
     }
+
+    setTimeout(() => {
+      const addedItemsSection = document.getElementById('kit-items-list');
+      if (addedItemsSection) {
+        addedItemsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   };
 
   const handleRemoveKitItem = (index: number) => {
@@ -612,8 +621,10 @@ export default function KitsManagementModal({
                 </div>
               </div>
 
-              <div className="border-t border-[#d3bb73]/10 pt-6">
-                <h5 className="text-[#e5e4e2] font-medium mb-4">Pozycje w zestawie</h5>
+              <div className="border-t border-[#d3bb73]/10 pt-6" id="kit-items-list">
+                <h5 className="text-[#e5e4e2] font-medium mb-4">
+                  Pozycje w zestawie ({kitItems.length})
+                </h5>
 
                 {kitItems.length > 0 && (
                   <div className="space-y-3 mb-4">
@@ -726,15 +737,9 @@ export default function KitsManagementModal({
                       filteredEquipment.map((item) => {
                         const isAdded = kitItems.some(ki => ki.equipment_id === item.id);
                         return (
-                          <button
+                          <div
                             key={item.id}
-                            onClick={() => !isAdded && handleAddKitItem(item.id, 'equipment')}
-                            disabled={isAdded}
-                            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors ${
-                              isAdded
-                                ? 'opacity-50 cursor-not-allowed'
-                                : 'hover:bg-[#1c1f33]'
-                            }`}
+                            className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-[#1c1f33] transition-colors"
                           >
                             {item.thumbnail_url ? (
                               <img
@@ -756,23 +761,27 @@ export default function KitsManagementModal({
                                 Dostępne: {item.equipment_units?.filter(u => u.status === 'available').length || 0} szt.
                               </div>
                             </div>
-                            {isAdded && <span className="text-xs text-green-400">✓ Dodano</span>}
-                          </button>
+                            {isAdded ? (
+                              <span className="text-xs text-green-400 font-medium px-3 py-1.5">✓ Dodano</span>
+                            ) : (
+                              <button
+                                onClick={() => handleAddKitItem(item.id, 'equipment')}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium"
+                              >
+                                <Plus className="w-4 h-4" />
+                                Dodaj
+                              </button>
+                            )}
+                          </div>
                         );
                       })
                     ) : (
                       filteredCables.map((item) => {
                         const isAdded = kitItems.some(ki => ki.cable_id === item.id);
                         return (
-                          <button
+                          <div
                             key={item.id}
-                            onClick={() => !isAdded && handleAddKitItem(item.id, 'cable')}
-                            disabled={isAdded}
-                            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors ${
-                              isAdded
-                                ? 'opacity-50 cursor-not-allowed'
-                                : 'hover:bg-[#1c1f33]'
-                            }`}
+                            className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-[#1c1f33] transition-colors"
                           >
                             {item.thumbnail_url ? (
                               <img
@@ -794,8 +803,18 @@ export default function KitsManagementModal({
                                 Dostępne: {item.stock_quantity} m
                               </div>
                             </div>
-                            {isAdded && <span className="text-xs text-green-400">✓ Dodano</span>}
-                          </button>
+                            {isAdded ? (
+                              <span className="text-xs text-green-400 font-medium px-3 py-1.5">✓ Dodano</span>
+                            ) : (
+                              <button
+                                onClick={() => handleAddKitItem(item.id, 'cable')}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium"
+                              >
+                                <Plus className="w-4 h-4" />
+                                Dodaj
+                              </button>
+                            )}
+                          </div>
                         );
                       })
                     )}
