@@ -571,12 +571,17 @@ export default function EventAgendaTab({
     index: number,
     currentTime: string
   ) => {
+    const target = e.currentTarget;
+
+    if (document.activeElement !== target) {
+      return;
+    }
+
     e.preventDefault();
 
     if (!currentTime || !/^\d{2}:\d{2}$/.test(currentTime)) return;
 
     const [hours, minutes] = currentTime.split(':').map(Number);
-    const target = e.currentTarget;
     const rect = target.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const inputWidth = rect.width;
