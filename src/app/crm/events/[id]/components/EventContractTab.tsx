@@ -7,8 +7,8 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { numberToWords } from '@/lib/offerTemplateHelpers';
 import '@/styles/contractA4.css';
-import ResponsiveActionBar from './ResponsiveActionBar';
-import SendContractEmailModal from './SendContractEmailModal';
+import ResponsiveActionBar from '../../../../../components/crm/ResponsiveActionBar';
+import SendContractEmailModal from '../../../../../components/crm/SendContractEmailModal';
 
 interface Props {
   eventId: string;
@@ -343,7 +343,10 @@ export function EventContractTab({ eventId }: Props) {
 
     const extractNumber = (value: string) => {
       if (!value) return 0;
-      const cleaned = value.replace(/\s/g, '').replace(',', '.').replace(/[^\d.]/g, '');
+      const cleaned = value
+        .replace(/\s/g, '')
+        .replace(',', '.')
+        .replace(/[^\d.]/g, '');
       const num = parseFloat(cleaned);
       return isNaN(num) ? 0 : Math.round(num);
     };
@@ -505,7 +508,9 @@ export function EventContractTab({ eventId }: Props) {
     if (!generatedPdfPath) return;
 
     try {
-      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(generatedPdfPath, 3600);
 
       if (data?.signedUrl) {
         window.open(data.signedUrl, '_blank');
@@ -520,7 +525,9 @@ export function EventContractTab({ eventId }: Props) {
     if (!generatedPdfPath) return;
 
     try {
-      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(generatedPdfPath, 3600);
 
       if (data?.signedUrl) {
         const response = await fetch(data.signedUrl);
@@ -587,7 +594,7 @@ export function EventContractTab({ eventId }: Props) {
         const statusDateField = `${newStatus}_at`;
         const updateData: any = {
           status: newStatus,
-          content: contractContent
+          content: contractContent,
         };
 
         if (newStatus !== 'draft') {
@@ -718,7 +725,18 @@ export function EventContractTab({ eventId }: Props) {
     }
 
     return baseActions;
-  }, [editMode, canEdit, canSendEmail, generatedPdfPath, modifiedAfterGeneration, handleCancel, handleSave, handlePrint, handleShowPdf, handleDownloadPdf]);
+  }, [
+    editMode,
+    canEdit,
+    canSendEmail,
+    generatedPdfPath,
+    modifiedAfterGeneration,
+    handleCancel,
+    handleSave,
+    handlePrint,
+    handleShowPdf,
+    handleDownloadPdf,
+  ]);
 
   if (loading) {
     return (
@@ -823,150 +841,150 @@ export function EventContractTab({ eventId }: Props) {
           </div>
         </div>
 
-      {editMode && (
-        <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Edycja zmiennych</h3>
-          <div className="grid max-h-96 grid-cols-2 gap-4 overflow-y-auto">
-            {Object.entries(editedVariables).map(([key, value]) => (
-              <div key={key}>
-                <label className="mb-1 block text-sm text-[#e5e4e2]/60">
-                  {key.replace(/_/g, ' ')}
-                </label>
-                <input
-                  type="text"
-                  value={value}
-                  onChange={(e) =>
-                    setEditedVariables({ ...editedVariables, [key]: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="contract-a4-container">
-        {(() => {
-          try {
-            const parsed = JSON.parse(contractContent);
-            const pages = parsed.pages || (Array.isArray(parsed) ? parsed : null);
-            const settings = parsed.settings || {
-              logoScale: 80,
-              logoPositionX: 50,
-              logoPositionY: 0,
-              lineHeight: 1.6,
-            };
-
-            if (pages && Array.isArray(pages)) {
-              return pages.map((pageContent: string, pageIndex: number) => (
-                <div key={pageIndex} className="contract-a4-page">
-                  {pageIndex === 0 && (
-                    <>
-                      <div
-                        className={`contract-header-logo ${
-                          settings.logoPositionX <= 33
-                            ? 'justify-start'
-                            : settings.logoPositionX >= 67
-                              ? 'justify-end'
-                              : 'justify-center'
-                        }`}
-                        style={{
-                          marginTop: `${settings.logoPositionY}mm`,
-                        }}
-                      >
-                        <img
-                          src="/erulers_logo_vect.png"
-                          alt="EVENT RULERS"
-                          style={{
-                            maxWidth: `${settings.logoScale}%`,
-                            height: 'auto',
-                          }}
-                        />
-                      </div>
-
-                      <div className="contract-current-date">
-                        Olsztyn,{' '}
-                        {new Date().toLocaleDateString('pl-PL', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </div>
-                    </>
-                  )}
-
-                  <div
-                    className="contract-content"
-                    style={{
-                      lineHeight: String(settings.lineHeight),
-                      minHeight: pageIndex === 0 ? '160mm' : '250mm',
-                    }}
-                    dangerouslySetInnerHTML={{ __html: pageContent }}
+        {editMode && (
+          <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Edycja zmiennych</h3>
+            <div className="grid max-h-96 grid-cols-2 gap-4 overflow-y-auto">
+              {Object.entries(editedVariables).map(([key, value]) => (
+                <div key={key}>
+                  <label className="mb-1 block text-sm text-[#e5e4e2]/60">
+                    {key.replace(/_/g, ' ')}
+                  </label>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) =>
+                      setEditedVariables({ ...editedVariables, [key]: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
                   />
-
-                  <div className="contract-footer">
-                    <div className="footer-logo">
-                      <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
-                    </div>
-                    <div className="footer-info">
-                      <p>
-                        <span className="font-bold">EVENT RULERS</span> –{' '}
-                        <span className="italic">Więcej niż Wodzireje!</span>
-                      </p>
-                      <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                      <p>tel: 698-212-279</p>
-                    </div>
-                  </div>
-
-                  {pages.length > 1 && (
-                    <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
-                      {pageIndex + 1} z {pages.length}
-                    </div>
-                  )}
                 </div>
-              ));
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="contract-a4-container">
+          {(() => {
+            try {
+              const parsed = JSON.parse(contractContent);
+              const pages = parsed.pages || (Array.isArray(parsed) ? parsed : null);
+              const settings = parsed.settings || {
+                logoScale: 80,
+                logoPositionX: 50,
+                logoPositionY: 0,
+                lineHeight: 1.6,
+              };
+
+              if (pages && Array.isArray(pages)) {
+                return pages.map((pageContent: string, pageIndex: number) => (
+                  <div key={pageIndex} className="contract-a4-page">
+                    {pageIndex === 0 && (
+                      <>
+                        <div
+                          className={`contract-header-logo ${
+                            settings.logoPositionX <= 33
+                              ? 'justify-start'
+                              : settings.logoPositionX >= 67
+                                ? 'justify-end'
+                                : 'justify-center'
+                          }`}
+                          style={{
+                            marginTop: `${settings.logoPositionY}mm`,
+                          }}
+                        >
+                          <img
+                            src="/erulers_logo_vect.png"
+                            alt="EVENT RULERS"
+                            style={{
+                              maxWidth: `${settings.logoScale}%`,
+                              height: 'auto',
+                            }}
+                          />
+                        </div>
+
+                        <div className="contract-current-date">
+                          Olsztyn,{' '}
+                          {new Date().toLocaleDateString('pl-PL', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </div>
+                      </>
+                    )}
+
+                    <div
+                      className="contract-content"
+                      style={{
+                        lineHeight: String(settings.lineHeight),
+                        minHeight: pageIndex === 0 ? '160mm' : '250mm',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: pageContent }}
+                    />
+
+                    <div className="contract-footer">
+                      <div className="footer-logo">
+                        <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                      </div>
+                      <div className="footer-info">
+                        <p>
+                          <span className="font-bold">EVENT RULERS</span> –{' '}
+                          <span className="italic">Więcej niż Wodzireje!</span>
+                        </p>
+                        <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                        <p>tel: 698-212-279</p>
+                      </div>
+                    </div>
+
+                    {pages.length > 1 && (
+                      <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
+                        {pageIndex + 1} z {pages.length}
+                      </div>
+                    )}
+                  </div>
+                ));
+              }
+            } catch (e) {
+              // Fallback dla starych szablonów
             }
-          } catch (e) {
-            // Fallback dla starych szablonów
-          }
-          return (
-            <div className="contract-a4-page">
-              <div className="contract-header-logo">
-                <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
-              </div>
-
-              <div className="contract-current-date">
-                Olsztyn,{' '}
-                {new Date().toLocaleDateString('pl-PL', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              </div>
-
-              <div
-                className="contract-content"
-                dangerouslySetInnerHTML={{ __html: contractContent }}
-              />
-
-              <div className="contract-footer">
-                <div className="footer-logo">
+            return (
+              <div className="contract-a4-page">
+                <div className="contract-header-logo">
                   <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
                 </div>
-                <div className="footer-info">
-                  <p>
-                    <strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em>
-                  </p>
-                  <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                  <p>tel: 698-212-279</p>
+
+                <div className="contract-current-date">
+                  Olsztyn,{' '}
+                  {new Date().toLocaleDateString('pl-PL', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })}
+                </div>
+
+                <div
+                  className="contract-content"
+                  dangerouslySetInnerHTML={{ __html: contractContent }}
+                />
+
+                <div className="contract-footer">
+                  <div className="footer-logo">
+                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                  </div>
+                  <div className="footer-info">
+                    <p>
+                      <strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em>
+                    </p>
+                    <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                    <p>tel: 698-212-279</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            );
+          })()}
+        </div>
       </div>
-    </div>
 
       {showSendEmailModal && contractId && (
         <SendContractEmailModal

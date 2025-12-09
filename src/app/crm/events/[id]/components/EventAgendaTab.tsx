@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List, Eye, Download, Edit3, Check, X } from 'lucide-react';
-import { dataUriToBlob } from '@/app/crm/events/[id]/helpers/blobPDFHelper';
 import { buildAgendaHtml } from '@/app/crm/events/[id]/helpers/buildAgendaPdf';
+import { supabaseServer } from '@/lib/supabaseServer';
 
 // YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00.000Z
 const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
@@ -42,6 +42,9 @@ interface EventAgendaTabProps {
   startTime: string;   // ISO albo HH:MM
   endTime: string;
   clientContact: string;
+  contactName: string;
+  contactNumber: string;
+  createdById: string;
 }
 
 interface AgendaItem {
@@ -69,6 +72,9 @@ export default function EventAgendaTab({
   startTime,
   endTime,
   clientContact,
+  contactName,
+  contactNumber,
+  createdById,
 }: EventAgendaTabProps) {
   const { employee } = useCurrentEmployee();
 
@@ -83,6 +89,7 @@ export default function EventAgendaTab({
   const [agendaNotes, setAgendaNotes] = useState<AgendaNote[]>([]);
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
+  const [createdByEmployee, setCreatedByEmployee] = useState<{ name: string; phone_number: string } | null>(null);
 
   const normalizedEventDate = useMemo(() => isoToDateInput(eventDate), [eventDate]);
 
@@ -90,11 +97,14 @@ export default function EventAgendaTab({
   const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
   const [clientContactInput, setClientContactInput] = useState(clientContact || '');
 
+
+
   const canManage =
     employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
 
   useEffect(() => {
     fetchAgenda();
+    fetchCreatedByEmployee();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
@@ -105,6 +115,18 @@ export default function EventAgendaTab({
       setClientContactInput(clientContact || '');
     }
   }, [startTime, endTime, clientContact, agendaId]);
+
+
+  const fetchCreatedByEmployee = async () => {
+    const { data: Author } = await supabaseServer
+    .from('employees')  
+    .select('name, surname, phone_number')
+    .eq('id', createdById)
+    .maybeSingle();
+
+    setCreatedByEmployee({ name: `${Author?.name} ${Author?.surname}` || '', phone_number: Author?.phone_number || '' });
+  };
+
 
   const fetchAgenda = async () => {
     try {
@@ -402,10 +424,14 @@ export default function EventAgendaTab({
         eventDate: normalizedEventDate, // YYYY-MM-DD
         startTime: startTimeInput,
         endTime: endTimeInput,
-        clientContact: clientContactInput,
+        clientContact: clientContact,
+        contactName: contactName,
+        contactNumber: contactNumber,
         agendaItems: getSortedAgendaItems(),
         agendaNotes,
         lastUpdated: new Date().toISOString(),
+        authorName: createdByEmployee?.name || '',
+        authorNumber: createdByEmployee?.phone_number || '',
       });
 
       // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
@@ -417,7 +443,7 @@ export default function EventAgendaTab({
       element.innerHTML = html;
 
       const opt: any = {
-        margin: 10,
+        margin: [10, 10, 20, 10],  // większy bottom (20 mm)
         filename: `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2 },
@@ -848,74 +874,6 @@ export default function EventAgendaTab({
 
       <div className="space-y-6">
         {/* Podstawowe informacje */}
-        <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-          <h3 className="text-lg font-medium text-[#e5e4e2]">
-            Podstawowe informacje (z wydarzenia)
-          </h3>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa wydarzenia</label>
-              <input
-                type="text"
-                value={eventName}
-                readOnly
-                className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
-              />
-            </div>
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data wydarzenia</label>
-              <input
-                type="date"
-                value={normalizedEventDate}
-                readOnly
-                className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina rozpoczęcia</label>
-              {editMode && canManage ? (
-                <input
-                  type="time"
-                  value={startTimeInput}
-                  onChange={(e) => setStartTimeInput(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                />
-              ) : (
-                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/80">
-                  {startTimeInput || '--:--'}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Godzina zakończenia</label>
-              {editMode && canManage ? (
-                <input
-                  type="time"
-                  value={endTimeInput}
-                  onChange={(e) => setEndTimeInput(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                />
-              ) : (
-                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/80">
-                  {endTimeInput || '--:--'}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kontakt do klienta</label>
-              <input
-                type="text"
-                value={clientContactInput}
-                readOnly
-                className="w-full cursor-not-allowed rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]/70"
-              />
-            </div>
-          </div>
-        </div>
 
         {/* Harmonogram */}
         <div className="space-y-4 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">

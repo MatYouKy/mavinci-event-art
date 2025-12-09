@@ -13,18 +13,26 @@ export const buildAgendaHtml = ({
   startTime,
   endTime,
   clientContact,
+  contactName,
+  contactNumber,
   agendaItems,
   agendaNotes = [],
   lastUpdated,
+  authorName,
+  authorNumber,
 }: {
   eventName: string;
   eventDate: string;
   startTime: string;
   endTime: string;
   clientContact: string;
+  contactName: string;
+  contactNumber: string;
   agendaItems: { time: string; title: string; description: string }[];
   agendaNotes?: AgendaNote[];
   lastUpdated?: string;
+  authorName: string;
+  authorNumber: string;
 }) => {
   const rows = agendaItems
     .map(
@@ -46,7 +54,8 @@ export const buildAgendaHtml = ({
     return notes
       .map((note) => {
         const indent = note.level * 20;
-        const children = note.children && note.children.length > 0 ? renderNotes(note.children) : '';
+        const children =
+          note.children && note.children.length > 0 ? renderNotes(note.children) : '';
 
         return `
           <div style="margin-left:${indent}px;margin-bottom:6px;">
@@ -62,13 +71,14 @@ export const buildAgendaHtml = ({
   };
 
   const formatLastUpdated = (dateStr?: string): string => {
-    if (!dateStr) return new Date().toLocaleString('pl-PL', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    if (!dateStr)
+      return new Date().toLocaleString('pl-PL', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
 
     const date = new Date(dateStr);
     return date.toLocaleString('pl-PL', {
@@ -76,24 +86,19 @@ export const buildAgendaHtml = ({
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
-  const notesHtml = agendaNotes && agendaNotes.length > 0
-    ? `
-      <h2>Uwagi</h2>
+  const notesHtml =
+    agendaNotes && agendaNotes.length > 0
+      ? `
+      <h2 style="padding-top: 16px; border-top: 0.5px solid #333;">Uwagi</h2>
       <div style="margin-top:8px;line-height:1.6;margin-bottom:24px;">
         ${renderNotes(agendaNotes)}
       </div>
     `
-    : '';
-
-  const footerHtml = `
-    <div class="footer">
-      Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}
-    </div>
-  `;
+      : '';
 
   return `
 <!DOCTYPE html>
@@ -105,33 +110,28 @@ export const buildAgendaHtml = ({
     html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
+      height: 100vh;
     }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 12px;
       color: #111827;
-      padding: 24px;
+      padding: 24px 24px 0 24px;
       display: flex;
       flex-direction: column;
       min-height: 297mm;
+      height: 100%;
     }
     .page-container {
+      height: calc(297mm - 120px);
+      position: relative;
       flex: 1;
       display: flex;
       flex-direction: column;
     }
     .content {
       flex: 1;
-    }
-    .footer {
-      margin-top: auto;
-      padding-top: 16px;
-      border-top: 2px solid #000;
-      text-align: center;
-      font-size: 12px;
-      color: #333;
-      font-weight: 500;
+      height: 100%;
     }
     .header {
       display: flex;
@@ -141,27 +141,39 @@ export const buildAgendaHtml = ({
     }
     .header-left {
       flex: 1;
+      padding-right: 16px;
     }
     .header-right {
       flex-shrink: 0;
-      margin-left: 20px;
+      min-width: 220px;
+      text-align: right;
     }
     .logo {
       max-width: 150px;
       height: auto;
       filter: grayscale(100%);
+      margin-top: 12px;
+      margin-left: auto;
+      display: block;
     }
     h1 {
       font-size: 20px;
-      margin: 0 0 4px;
+      margin: 0 0 8px;
     }
     h2 {
       font-size: 14px;
-      margin: 16px 0 8px;
+      margin: 8px 0;
     }
     .meta {
       margin-bottom: 12px;
       font-size: 12px;
+      line-height: 1.5;
+    }
+    .meta-row {
+      margin-bottom: 2px;
+    }
+    .meta-right {
+      margin-bottom: 8px;
     }
     table {
       border-collapse: collapse;
@@ -186,14 +198,22 @@ export const buildAgendaHtml = ({
         <div class="header-left">
           <h1>Agenda wydarzenia</h1>
           <div class="meta">
-            <div><strong>Nazwa:</strong> ${eventName}</div>
-            <div><strong>Data:</strong> ${eventDate || '-'}</div>
-            <div><strong>Godziny:</strong> ${startTime || '--:--'} – ${endTime || '--:--'}</div>
-            <div><strong>Klient:</strong> ${clientContact || '-'}</div>
+            <div class="meta-row"><strong>Nazwa:</strong> ${eventName}</div>
+            <div class="meta-row"><strong>Klient:</strong> ${clientContact || '-'}</div>
+            <div class="meta-row"><strong>Osoba kontaktowa:</strong> ${contactName || '-'}</div>
+            <div class="meta-row"><strong>Telefon kontaktowy:</strong> ${contactNumber || '-'}</div>
+            <div class="meta-row"><strong>Data:</strong> ${eventDate || '-'}</div>
+            <div class="meta-row"><strong>Godziny:</strong> ${startTime || '--:--'} – ${endTime || '--:--'}</div>
           </div>
         </div>
         <div class="header-right">
-          <img src="/logo-mavinci-crm.png" alt="Mavinci CRM" class="logo" />
+          <div class="meta meta-right">
+            <img src="/logo-mavinci-crm.png" alt="Mavinci CRM" class="logo" />
+            <div class="meta-row"><strong>Sprzedawca:</strong> ${authorName || '-'}</div>
+            <div class="meta-row"><strong>Telefon sprzedawcy:</strong> ${authorNumber || '-'}</div>
+            <div class="meta-row"><strong>Ostatnia aktualizacja:</strong> ${formatLastUpdated(lastUpdated)}</div>
+          </div>
+          
         </div>
       </div>
 
@@ -207,14 +227,14 @@ export const buildAgendaHtml = ({
           </tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="3" style="padding:8px 10px;border:1px solid #ddd;">Brak etapów</td></tr>`}
+          ${
+            rows ||
+            `<tr><td colspan="3" style="padding:8px 10px;border:1px solid #ddd;">Brak etapów</td></tr>`
+          }
         </tbody>
       </table>
-
       ${notesHtml}
     </div>
-
-    ${footerHtml}
   </div>
 </body>
 </html>

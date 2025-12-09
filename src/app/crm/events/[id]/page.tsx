@@ -44,16 +44,16 @@ const toLocalDatetimeString = (utcDate: string | null): string => {
   const localDate = new Date(date.getTime() - offset * 60 * 1000);
   return localDate.toISOString().slice(0, 16);
 };
-import EventTasksBoard from '@/components/crm/EventTasksBoard';
+import EventTasksBoard from '@/app/crm/events/[id]/components/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
-import EventFilesExplorer from '@/components/crm/EventFilesExplorer';
-import EventSubcontractorsPanel from '@/components/crm/EventSubcontractorsPanel';
-import EventLogisticsPanel from '@/components/crm/EventLogisticsPanel';
+import EventFilesExplorer from '@/app/crm/events/[id]/components/EventFilesExplorer';
+import EventSubcontractorsPanel from '@/app/crm/events/[id]/components/EventSubcontractorsPanel';
+import EventLogisticsPanel from '@/app/crm/events/[id]/components/EventLogisticsPanel';
 import OfferWizard from '@/components/crm/OfferWizard';
-import EventFinancesTab from '@/components/crm/EventFinancesTab';
-import EventAgendaTab from '@/components/crm/EventAgendaTab';
+import EventFinancesTab from '@/app/crm/events/[id]/components/EventFinancesTab';
+import EventAgendaTab from '@/app/crm/events/[id]/components/EventAgendaTab';
 import EventStatusEditor from '@/components/crm/EventStatusEditor';
-import { EventContractTab } from '@/components/crm/EventContractTab';
+import { EventContractTab } from '@/app/crm/events/[id]/components/EventContractTab';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from '@/components/crm/LocationSelector';
@@ -1084,6 +1084,9 @@ export default function EventDetailPage() {
       alert('Wystąpił błąd');
     }
   };
+
+  console.log('event', event);
+  console.log('event.created_by', event?.created_by);
 
   const handleRemoveEmployee = async (employeeId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć tego pracownika z eventu?')) return;
@@ -2324,12 +2327,15 @@ export default function EventDetailPage() {
 
       {activeTab === 'agenda' && (
         <EventAgendaTab
+          contactName={event?.contact_person?.full_name ?? ''}
+          contactNumber={event?.contact_person?.phone ?? ''}
           eventId={eventId}
           eventName={event?.name ?? ''}
           eventDate={event?.event_date ?? ''}
           startTime={event?.event_date ?? ''}
           endTime={event?.event_end_date ?? ''}
-          clientContact={event?.organization?.alias || event?.organization?.name ?? ''}
+          clientContact={(event?.organization?.alias || event?.organization?.name) ?? ''}
+          createdById={event?.created_by ?? ''}
         />
       )}
 
