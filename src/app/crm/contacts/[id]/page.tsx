@@ -409,7 +409,10 @@ export default function OrganizationDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Czy na pewno chcesz usunąć ten kontakt?')) return;
+    const entityName = entityType === 'organization' ? 'tę organizację' : 'ten kontakt';
+    const successMessage = entityType === 'organization' ? 'Organizacja usunięta' : 'Kontakt usunięty';
+
+    if (!confirm(`Czy na pewno chcesz usunąć ${entityName}?`)) return;
 
     try {
       const tableToDelete = entityType === 'contact' ? 'contacts' : 'organizations';
@@ -422,7 +425,7 @@ export default function OrganizationDetailPage() {
 
       if (error) throw error;
 
-      showSnackbar('Kontakt usunięty', 'success');
+      showSnackbar(successMessage, 'success');
       router.push('/crm/contacts');
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd podczas usuwania', 'error');
@@ -988,13 +991,22 @@ export default function OrganizationDetailPage() {
             </div>
           </div>
           {!editMode ? (
-            <button
-              onClick={handleEdit}
-              className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 font-medium"
-            >
-              <Edit className="w-5 h-5" />
-              <span>Edytuj</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleEdit}
+                className="px-4 py-2 bg-[#d3bb73] text-[#0f1119] rounded-lg hover:bg-[#c4a859] transition-colors flex items-center space-x-2 font-medium"
+              >
+                <Edit className="w-5 h-5" />
+                <span>Edytuj</span>
+              </button>
+              <button
+                onClick={() => handleDelete()}
+                className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors flex items-center space-x-2 font-medium"
+              >
+                <Trash2 className="w-5 h-5" />
+                <span>Usuń</span>
+              </button>
+            </div>
           ) : (
             <div className="flex items-center space-x-2">
               <button
