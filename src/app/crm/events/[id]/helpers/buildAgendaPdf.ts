@@ -83,18 +83,19 @@ export const buildAgendaHtml = ({
   const notesHtml = agendaNotes && agendaNotes.length > 0
     ? `
       <h2>Uwagi</h2>
-      <div style="margin-top:8px;line-height:1.6;">
+      <div style="margin-top:8px;line-height:1.6;margin-bottom:24px;">
         ${renderNotes(agendaNotes)}
       </div>
-      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #ddd;font-size:10px;color:#666;">
-        <em>Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}</em>
-      </div>
     `
-    : `
-      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #ddd;font-size:10px;color:#666;">
-        <em>Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}</em>
+    : '';
+
+  const footerHtml = `
+    <div style="margin-top:40px;padding-top:16px;border-top:2px solid #000;">
+      <div style="font-size:12px;color:#333;text-align:center;font-weight:500;">
+        Ostatnia aktualizacja: ${formatLastUpdated(lastUpdated)}
       </div>
-    `;
+    </div>
+  `;
 
   return `
 <!DOCTYPE html>
@@ -186,6 +187,8 @@ export const buildAgendaHtml = ({
   </table>
 
   ${notesHtml}
+
+  ${footerHtml}
 </body>
 </html>
 `;
