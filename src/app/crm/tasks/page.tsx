@@ -23,6 +23,13 @@ interface Task {
   updated_at: string;
   employees_created?: { name: string; surname: string } | null;
   employees_assigned?: { name: string; surname: string } | null;
+  currently_working_by?: string | null;
+  currently_working_employee?: {
+    name: string;
+    surname: string;
+    avatar_url: string | null;
+    avatar_metadata?: any;
+  } | null;
   task_assignees: { employee_id: string; employees: { name: string; surname: string; avatar_url: string | null; avatar_metadata?: any } }[];
 }
 
@@ -163,6 +170,17 @@ export default function TasksPage() {
             })
           );
 
+          let currently_working_employee = null;
+          if (task.currently_working_by) {
+            const { data: workingEmployee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', task.currently_working_by)
+              .maybeSingle();
+
+            currently_working_employee = workingEmployee;
+          }
+
           // Get comments count
           const { count } = await supabase
             .from('task_comments')
@@ -171,6 +189,7 @@ export default function TasksPage() {
 
           return {
             ...task,
+            currently_working_employee,
             task_assignees: assigneesWithEmployees,
             comments_count: count || 0,
           };
@@ -538,7 +557,10 @@ export default function TasksPage() {
         try {
           const { error } = await supabase
             .from('tasks')
-            .update({ board_column: columnId })
+            .update({
+              board_column: columnId,
+              currently_working_by: currentEmployee?.id || null
+            })
             .eq('id', taskId);
 
           if (error) throw error;
@@ -558,6 +580,28 @@ export default function TasksPage() {
       }
     }
 
+    if ((columnId === 'review' || columnId === 'completed') && oldColumn === 'in_progress') {
+      if (activeTimer && activeTimer.task_id === taskId) {
+        const shouldStopTimer = await showConfirm(
+          'Zatrzymać czas pracy?',
+          'Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?'
+        );
+
+        if (shouldStopTimer) {
+          try {
+            await supabase
+              .from('time_entries')
+              .update({ end_time: new Date().toISOString() })
+              .eq('id', activeTimer.id);
+
+            await checkActiveTimer();
+          } catch (error) {
+            console.error('Error stopping timer:', error);
+          }
+        }
+      }
+    }
+
     setTasks(prevTasks =>
       prevTasks.map(task =>
         task.id === taskId ? { ...task, board_column: columnId } : task
@@ -568,9 +612,15 @@ export default function TasksPage() {
     stopAutoScroll();
 
     try {
+      const updateData: any = { board_column: columnId };
+
+      if (columnId !== 'in_progress') {
+        updateData.currently_working_by = null;
+      }
+
       const { error } = await supabase
         .from('tasks')
-        .update({ board_column: columnId })
+        .update(updateData)
         .eq('id', taskId);
 
       if (error) throw error;

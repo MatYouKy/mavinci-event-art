@@ -13,6 +13,13 @@ interface Task {
   board_column?: string;
   due_date: string | null;
   comments_count?: number;
+  currently_working_by?: string | null;
+  currently_working_employee?: {
+    name: string;
+    surname: string;
+    avatar_url: string | null;
+    avatar_metadata?: any;
+  } | null;
   task_assignees?: {
     employee_id: string;
     employees: {
@@ -161,6 +168,13 @@ export default function TaskCard({
         >
           {priorityLabels[task.priority]}
         </span>
+
+        {task.currently_working_employee && (
+          <div className="flex items-center gap-1 text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded border border-green-500/30">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            {task.currently_working_employee.name} {task.currently_working_employee.surname}
+          </div>
+        )}
 
         {task.due_date && (
           <div className="flex items-center gap-1 text-xs text-[#e5e4e2]/60">

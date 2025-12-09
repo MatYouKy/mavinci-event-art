@@ -19,6 +19,13 @@ interface Task {
   created_at: string;
   updated_at: string;
   is_private: boolean;
+  currently_working_by?: string | null;
+  currently_working_employee?: {
+    name: string;
+    surname: string;
+    avatar_url: string | null;
+    avatar_metadata?: any;
+  } | null;
   task_assignees?: { employee_id: string; employees: { name: string; surname: string; avatar_url: string | null; avatar_metadata?: any } }[];
 }
 
@@ -153,9 +160,21 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             })
           );
 
+          let currently_working_employee = null;
+          if (task.currently_working_by) {
+            const { data: workingEmployee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', task.currently_working_by)
+              .maybeSingle();
+
+            currently_working_employee = workingEmployee;
+          }
+
           return {
             ...task,
             task_assignees: assigneesWithEmployees,
+            currently_working_employee,
           };
         })
       );
@@ -331,7 +350,10 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         try {
           const { error } = await supabase
             .from('tasks')
-            .update({ board_column: columnId })
+            .update({
+              board_column: columnId,
+              currently_working_by: employeeId
+            })
             .eq('id', taskId);
 
           if (error) throw error;
@@ -351,6 +373,28 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       }
     }
 
+    if ((columnId === 'review' || columnId === 'completed') && oldColumn === 'in_progress') {
+      if (activeTimer && activeTimer.task_id === taskId) {
+        const shouldStopTimer = await showConfirm(
+          'Zatrzymać czas pracy?',
+          'Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?'
+        );
+
+        if (shouldStopTimer) {
+          try {
+            await supabase
+              .from('time_entries')
+              .update({ end_time: new Date().toISOString() })
+              .eq('id', activeTimer.id);
+
+            await checkActiveTimer();
+          } catch (error) {
+            console.error('Error stopping timer:', error);
+          }
+        }
+      }
+    }
+
     setTasks(prevTasks =>
       prevTasks.map(task =>
         task.id === taskId ? { ...task, board_column: columnId } : task
@@ -361,9 +405,15 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     stopAutoScroll();
 
     try {
+      const updateData: any = { board_column: columnId };
+
+      if (columnId !== 'in_progress') {
+        updateData.currently_working_by = null;
+      }
+
       const { error } = await supabase
         .from('tasks')
-        .update({ board_column: columnId })
+        .update(updateData)
         .eq('id', taskId);
 
       if (error) throw error;

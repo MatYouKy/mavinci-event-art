@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import TaskCard from '../../../../../components/crm/TaskCard';
 
@@ -28,6 +29,13 @@ interface Task {
   event_id: string | null;
   created_at: string;
   updated_at: string;
+  currently_working_by?: string | null;
+  currently_working_employee?: {
+    name: string;
+    surname: string;
+    avatar_url: string | null;
+    avatar_metadata?: any;
+  } | null;
   assignees?: Array<{
     employee: {
       id: string;
@@ -59,6 +67,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const { currentEmployee } = useCurrentEmployee();
 
   const [formData, setFormData] = useState({
@@ -150,6 +159,12 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               email,
               phone_number
             )
+          ),
+          currently_working_employee:employees!tasks_currently_working_by_fkey(
+            name,
+            surname,
+            avatar_url,
+            avatar_metadata
           )
         `,
         )
@@ -362,6 +377,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           .update({
             board_column: newColumn,
             status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
+            currently_working_by: currentEmployee?.id || null,
           })
           .eq('id', taskId);
 
@@ -382,13 +398,41 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       return;
     }
 
+    if ((newColumn === 'review' || newColumn === 'completed') && oldColumn === 'in_progress') {
+      if (activeTimer && activeTimer.task_id === taskId) {
+        const shouldStopTimer = await showConfirm(
+          'Zatrzymać czas pracy?',
+          'Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?'
+        );
+
+        if (shouldStopTimer) {
+          try {
+            await supabase
+              .from('time_entries')
+              .update({ end_time: new Date().toISOString() })
+              .eq('id', activeTimer.id);
+
+            await checkActiveTimer();
+          } catch (error) {
+            console.error('Error stopping timer:', error);
+          }
+        }
+      }
+    }
+
     try {
+      const updateData: any = {
+        board_column: newColumn,
+        status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
+      };
+
+      if (newColumn !== 'in_progress') {
+        updateData.currently_working_by = null;
+      }
+
       const { error } = await supabase
         .from('tasks')
-        .update({
-          board_column: newColumn,
-          status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
-        })
+        .update(updateData)
         .eq('id', taskId);
 
       if (error) throw error;
