@@ -111,13 +111,70 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'tasks',
+          filter: `event_id=eq.${eventId}`,
+        },
+        async (payload) => {
+          const updatedTask = payload.new as Task;
+
+          setTasks(prevTasks => {
+            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+
+            if (taskExists) {
+              return prevTasks.map(task =>
+                task.id === updatedTask.id
+                  ? { ...task, ...updatedTask }
+                  : task
+              );
+            }
+
+            return prevTasks;
+          });
+
+          if (updatedTask.currently_working_by) {
+            const { data: workingEmployee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', updatedTask.currently_working_by)
+              .maybeSingle();
+
+            if (workingEmployee) {
+              setTasks(prevTasks =>
+                prevTasks.map(task =>
+                  task.id === updatedTask.id
+                    ? { ...task, currently_working_employee: workingEmployee }
+                    : task
+                )
+              );
+            }
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
           schema: 'public',
           table: 'tasks',
           filter: `event_id=eq.${eventId}`,
         },
         () => {
           fetchTasks();
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'tasks',
+          filter: `event_id=eq.${eventId}`,
+        },
+        (payload) => {
+          const deletedTaskId = payload.old.id;
+          setTasks(prevTasks => prevTasks.filter(t => t.id !== deletedTaskId));
         },
       )
       .on(
@@ -371,6 +428,19 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         return;
       }
 
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === taskId
+            ? {
+                ...task,
+                board_column: newColumn,
+                status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
+                currently_working_by: currentEmployee?.id || null,
+              }
+            : task
+        )
+      );
+
       try {
         const { error } = await supabase
           .from('tasks')
@@ -389,11 +459,17 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             await startTimer(task);
           }
         }
-
-        await fetchTasks();
       } catch (err) {
         console.error('Error moving task:', err);
         showSnackbar('Błąd podczas przenoszenia zadania', 'error');
+
+        setTasks(prevTasks =>
+          prevTasks.map(task =>
+            task.id === taskId
+              ? { ...task, board_column: oldColumn }
+              : task
+          )
+        );
       }
       return;
     }
@@ -420,6 +496,19 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       }
     }
 
+    setTasks(prevTasks =>
+      prevTasks.map(task =>
+        task.id === taskId
+          ? {
+              ...task,
+              board_column: newColumn,
+              status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
+              currently_working_by: newColumn !== 'in_progress' ? null : task.currently_working_by,
+            }
+          : task
+      )
+    );
+
     try {
       const updateData: any = {
         board_column: newColumn,
@@ -436,10 +525,15 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         .eq('id', taskId);
 
       if (error) throw error;
-      await fetchTasks();
     } catch (err) {
       console.error('Error moving task:', err);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
+
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === taskId ? { ...task, board_column: oldColumn } : task
+        )
+      );
     }
   };
 

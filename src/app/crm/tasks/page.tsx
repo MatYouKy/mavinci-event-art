@@ -103,13 +103,67 @@ export default function TasksPage() {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'tasks',
+        },
+        async (payload) => {
+          const updatedTask = payload.new as Task;
+
+          setTasks(prevTasks => {
+            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+
+            if (taskExists) {
+              return prevTasks.map(task =>
+                task.id === updatedTask.id
+                  ? { ...task, ...updatedTask }
+                  : task
+              );
+            }
+
+            return prevTasks;
+          });
+
+          if (updatedTask.currently_working_by) {
+            const { data: workingEmployee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', updatedTask.currently_working_by)
+              .maybeSingle();
+
+            if (workingEmployee) {
+              setTasks(prevTasks =>
+                prevTasks.map(task =>
+                  task.id === updatedTask.id
+                    ? { ...task, currently_working_employee: workingEmployee }
+                    : task
+                )
+              );
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
           schema: 'public',
           table: 'tasks',
         },
         (payload) => {
-          console.log('Tasks realtime event:', payload);
           fetchTasks();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'tasks',
+        },
+        (payload) => {
+          const deletedTaskId = payload.old.id;
+          setTasks(prevTasks => prevTasks.filter(t => t.id !== deletedTaskId));
         }
       )
       .on(
@@ -120,7 +174,6 @@ export default function TasksPage() {
           table: 'task_assignees',
         },
         (payload) => {
-          console.log('Task assignees realtime event:', payload);
           fetchTasks();
         }
       )
