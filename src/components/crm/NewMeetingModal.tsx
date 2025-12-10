@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Users, FileText, Link, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import LocationAutocomplete from './LocationAutocomplete';
+import RelatedEventsSelector from './RelatedEventsSelector';
 
 interface NewMeetingModalProps {
   isOpen: boolean;
@@ -28,14 +29,13 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
   const [timeEnd, setTimeEnd] = useState('10:00');
   const [isAllDay, setIsAllDay] = useState(false);
   const [notes, setNotes] = useState('');
-  const [eventId, setEventId] = useState<string | null>(null);
+  const [relatedEventIds, setRelatedEventIds] = useState<string[]>([]);
   const [color, setColor] = useState('#d3bb73');
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]);
   const [showEmployeeList, setShowEmployeeList] = useState(false);
   const [showContactList, setShowContactList] = useState(false);
   const [participantSearch, setParticipantSearch] = useState('');
@@ -58,7 +58,6 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
       }
       fetchEmployees();
       fetchContacts();
-      fetchEvents();
     }
   }, [isOpen, initialDate]);
 
@@ -76,16 +75,6 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
       .select('id, name')
       .order('name');
     if (data) setContacts(data);
-  };
-
-  const fetchEvents = async () => {
-    const { data } = await supabase
-      .from('events')
-      .select('id, name')
-      .is('deleted_at', null)
-      .order('event_date', { ascending: false })
-      .limit(100);
-    if (data) setEvents(data);
   };
 
   const handleAddEmployee = (emp: any) => {
@@ -157,7 +146,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
           datetime_end: datetimeEnd,
           is_all_day: isAllDay,
           notes: notes || null,
-          event_id: eventId,
+          related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : null,
           color,
           created_by: session.user.id,
         })
@@ -202,7 +191,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
     setTimeEnd('10:00');
     setIsAllDay(false);
     setNotes('');
-    setEventId(null);
+    setRelatedEventIds([]);
     setColor('#d3bb73');
     setParticipants([]);
     onClose();
@@ -245,25 +234,19 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Lokalizacja (miejsce)</label>
-              <LocationAutocomplete
-                value={locationId}
-                onChange={setLocationId}
-                placeholder="Wybierz lokalizację"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Lub wpisz adres</label>
-              <input
-                type="text"
-                value={locationText}
-                onChange={(e) => setLocationText(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                placeholder="np. ul. Kwiatowa 5, Warszawa"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Lokalizacja</label>
+            <LocationAutocomplete
+              value={locationText}
+              onChange={(textValue, locId) => {
+                setLocationText(textValue);
+                setLocationId(locId || null);
+              }}
+              placeholder="Wybierz lub wpisz lokalizację"
+            />
+            <p className="text-xs text-[#e5e4e2]/50 mt-1">
+              Wybierz z listy lub wpisz dowolny adres
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -422,19 +405,12 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Powiązane wydarzenie (opcjonalnie)</label>
-            <select
-              value={eventId || ''}
-              onChange={(e) => setEventId(e.target.value || null)}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-            >
-              <option value="">Brak</option>
-              {events.map(ev => (
-                <option key={ev.id} value={ev.id}>
-                  {ev.name}
-                </option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Powiązane wydarzenia (opcjonalnie)</label>
+            <RelatedEventsSelector
+              value={relatedEventIds}
+              onChange={setRelatedEventIds}
+              placeholder="Wyszukaj wydarzenia..."
+            />
           </div>
 
           <div>
