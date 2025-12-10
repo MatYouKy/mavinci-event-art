@@ -26,6 +26,8 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from './LocationSelector';
 import OfferWizard from './OfferWizard';
 import { EquipmentStep } from './EventWizardSteps';
+import ParticipantsAutocomplete from './ParticipantsAutocomplete';
+import RelatedEventsSelector from './RelatedEventsSelector';
 
 interface EventWizardProps {
   isOpen: boolean;
@@ -92,6 +94,8 @@ export default function EventWizard({
     email: '',
     phone: '',
   });
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [relatedEventIds, setRelatedEventIds] = useState<string[]>([]);
 
   // Krok 2: Oferta (opcjonalnie)
   const [createOffer, setCreateOffer] = useState(false);
@@ -407,6 +411,8 @@ export default function EventWizard({
             description: eventData.description || null,
             status: eventData.status,
             created_by: session?.user?.id || null,
+            participants: participants.length > 0 ? participants : [],
+            related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : [],
           },
         ])
         .select()
@@ -468,6 +474,8 @@ export default function EventWizard({
           budget: eventData.budget ? parseFloat(eventData.budget) : null,
           description: eventData.description || null,
           status: eventData.status,
+          participants: participants.length > 0 ? participants : [],
+          related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : [],
         })
         .eq('id', createdEventId);
 
@@ -572,6 +580,8 @@ export default function EventWizard({
     });
     setShowNewContactForm(false);
     setNewContact({ first_name: '', last_name: '', email: '', phone: '' });
+    setParticipants([]);
+    setRelatedEventIds([]);
     setCreateOffer(false);
     setAssignEquipment(false);
     setAssignTeam(false);
@@ -971,6 +981,35 @@ export default function EventWizard({
                   className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
                   placeholder="Dodatkowe informacje o evencie..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Uczestnicy
+                </label>
+                <ParticipantsAutocomplete
+                  value={participants}
+                  onChange={setParticipants}
+                  placeholder="Dodaj uczestników (pracownicy, kontakty lub wpisz nazwę)..."
+                />
+                <p className="text-xs text-[#e5e4e2]/50 mt-1">
+                  Wybierz pracowników, kontakty lub wpisz imię i nazwisko ręcznie
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  Powiązane wydarzenia
+                </label>
+                <RelatedEventsSelector
+                  value={relatedEventIds}
+                  onChange={setRelatedEventIds}
+                  currentEventId={createdEventId || undefined}
+                  placeholder="Wyszukaj powiązane wydarzenia..."
+                />
+                <p className="text-xs text-[#e5e4e2]/50 mt-1">
+                  Powiąż wydarzenia które są ze sobą związane (np. cykl szkoleń, wydarzenia dla tego samego klienta)
+                </p>
               </div>
             </div>
           )}

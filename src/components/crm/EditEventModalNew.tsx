@@ -5,6 +5,8 @@ import { X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import LocationSelector from './LocationSelector';
 import ClientSelectorTabs from './ClientSelectorTabs';
+import ParticipantsAutocomplete from './ParticipantsAutocomplete';
+import RelatedEventsSelector from './RelatedEventsSelector';
 
 interface EditEventModalProps {
   isOpen: boolean;
@@ -43,6 +45,8 @@ export default function EditEventModalNew({
     budget: event.budget?.toString() || '',
     status: event.status,
   });
+  const [participants, setParticipants] = useState<any[]>(event.participants || []);
+  const [relatedEventIds, setRelatedEventIds] = useState<string[]>(event.related_event_ids || []);
 
   useEffect(() => {
     if (isOpen) {
@@ -87,6 +91,8 @@ export default function EditEventModalNew({
       location_id: formData.location_id && formData.location_id.trim() !== '' ? formData.location_id : null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
+      participants: participants.length > 0 ? participants : [],
+      related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : [],
     };
     onSave(dataToSave);
   };
@@ -222,6 +228,35 @@ export default function EditEventModalNew({
                 <option value="cancelled">Anulowane</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Uczestnicy
+            </label>
+            <ParticipantsAutocomplete
+              value={participants}
+              onChange={setParticipants}
+              placeholder="Dodaj uczestników (pracownicy, kontakty lub wpisz nazwę)..."
+            />
+            <p className="text-xs text-[#e5e4e2]/50 mt-1">
+              Wybierz pracowników, kontakty lub wpisz imię i nazwisko ręcznie
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+              Powiązane wydarzenia
+            </label>
+            <RelatedEventsSelector
+              value={relatedEventIds}
+              onChange={setRelatedEventIds}
+              currentEventId={event.id}
+              placeholder="Wyszukaj powiązane wydarzenia..."
+            />
+            <p className="text-xs text-[#e5e4e2]/50 mt-1">
+              Powiąż wydarzenia które są ze sobą związane (np. cykl szkoleń, wydarzenia dla tego samego klienta)
+            </p>
           </div>
 
           <div className="flex gap-3 pt-4">
