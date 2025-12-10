@@ -23,6 +23,7 @@ import WeekView from './WeekView';
 import DayView from './DayView';
 import EmployeeView from './EmployeeView';
 import EventWizard from '../EventWizard';
+import NewMeetingModal from '../NewMeetingModal';
 import { useGetEventsListQuery } from '@/store/api/eventsApi';
 
 export default function CalendarMain() {
@@ -32,6 +33,7 @@ export default function CalendarMain() {
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [view, setView] = useState<CalendarView>('month');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [modalInitialDate, setModalInitialDate] = useState<Date | undefined>();
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -64,11 +66,62 @@ export default function CalendarMain() {
   // Załaduj wydarzenia z RTK Query
   useEffect(() => {
     if (eventsData) {
-      setAllEvents(eventsData);
+      fetchMeetingsAndMerge(eventsData);
     } else if (eventsError) {
       console.error('Error loading events from RTK:', eventsError);
     }
   }, [eventsData, eventsLoading, eventsError]);
+
+  const fetchMeetingsAndMerge = async (baseEvents: CalendarEvent[]) => {
+    try {
+      const { data: meetingsData, error } = await supabase
+        .from('meetings')
+        .select(`
+          id,
+          title,
+          datetime_start,
+          datetime_end,
+          is_all_day,
+          color,
+          notes,
+          location_text,
+          event_id,
+          locations(id, name),
+          meeting_participants(
+            employee_id,
+            contact_id,
+            employees(id, name, surname),
+            contacts(id, name)
+          )
+        `)
+        .is('deleted_at', null);
+
+      if (error) {
+        console.error('Error fetching meetings:', error);
+        setAllEvents(baseEvents);
+        return;
+      }
+
+      const meetingsAsEvents: CalendarEvent[] = (meetingsData || []).map((meeting: any) => ({
+        id: meeting.id,
+        name: meeting.title,
+        event_date: meeting.datetime_start,
+        event_end_date: meeting.datetime_end || meeting.datetime_start,
+        status: 'meeting' as any,
+        color: meeting.color || '#d3bb73',
+        location: meeting.locations?.name || meeting.location_text || '',
+        organization: null,
+        category: { name: 'Spotkanie', color: meeting.color || '#d3bb73' },
+        is_meeting: true,
+        meeting_data: meeting,
+      }));
+
+      setAllEvents([...baseEvents, ...meetingsAsEvents]);
+    } catch (err) {
+      console.error('Error in fetchMeetingsAndMerge:', err);
+      setAllEvents(baseEvents);
+    }
+  };
 
   useEffect(() => {
     applyFilters();
@@ -210,6 +263,11 @@ export default function CalendarMain() {
     setIsModalOpen(true);
   };
 
+  const handleNewMeeting = (date?: Date) => {
+    setModalInitialDate(date);
+    setIsMeetingModalOpen(true);
+  };
+
   const handleSaveEvent = async (eventData: any) => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -257,6 +315,14 @@ export default function CalendarMain() {
     } catch (err) {
       console.error('Error:', err);
       alert('Wystąpił błąd podczas zapisywania wydarzenia');
+    }
+  };
+
+  const handleEventClick = (event: CalendarEvent) => {
+    if ((event as any).is_meeting) {
+      alert(`Spotkanie: ${event.name}\n\nData: ${new Date(event.event_date).toLocaleString('pl-PL')}\nLokalizacja: ${event.location || 'Brak'}\n\nNotatki: ${(event as any).meeting_data?.notes || 'Brak'}`);
+    } else {
+      router.push(`/crm/events/${event.id}`);
     }
   };
 
@@ -370,6 +436,14 @@ export default function CalendarMain() {
               </button>
             ))}
           </div>
+
+          <button
+            onClick={() => handleNewMeeting()}
+            className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+          >
+            <CalendarIcon className="w-4 h-4" />
+            <span className="hidden md:inline">Spotkanie</span>
+          </button>
 
           <button
             onClick={() => handleNewEvent()}
@@ -513,7 +587,7 @@ export default function CalendarMain() {
           currentDate={currentDate}
           events={events}
           onDateClick={handleNewEvent}
-          onEventClick={(event) => router.push(`/crm/events/${event.id}`)}
+          onEventClick={handleEventClick}
           onEventHover={handleEventHover}
           onShowAllEvents={(date) => {
             setAllEventsModalDate(date);
@@ -527,7 +601,7 @@ export default function CalendarMain() {
           currentDate={currentDate}
           events={events}
           onDateClick={handleNewEvent}
-          onEventClick={(event) => router.push(`/crm/events/${event.id}`)}
+          onEventClick={handleEventClick}
           onEventHover={handleEventHover}
         />
       )}
@@ -537,7 +611,7 @@ export default function CalendarMain() {
           currentDate={currentDate}
           events={events}
           onDateClick={handleNewEvent}
-          onEventClick={(event) => router.push(`/crm/events/${event.id}`)}
+          onEventClick={handleEventClick}
           onEventHover={handleEventHover}
         />
       )}
@@ -547,7 +621,7 @@ export default function CalendarMain() {
           currentDate={currentDate}
           events={events}
           onDateClick={handleNewEvent}
-          onEventClick={(event) => router.push(`/crm/events/${event.id}`)}
+          onEventClick={handleEventClick}
           employees={employees}
         />
       )}
@@ -560,7 +634,7 @@ export default function CalendarMain() {
             top: `${tooltipPosition.y}px`,
           }}
           onClick={() => {
-            router.push(`/crm/events/${hoveredEvent.id}`);
+            handleEventClick(hoveredEvent);
           }}
           onMouseEnter={() => {
             if (tooltipTimeoutRef.current) {
@@ -649,7 +723,7 @@ export default function CalendarMain() {
                     key={event.id}
                     className="p-4 bg-[#0f1119] rounded-lg hover:bg-[#0f1119]/50 transition-colors cursor-pointer"
                     onClick={() => {
-                      router.push(`/crm/events/${event.id}`);
+                      handleEventClick(event);
                       setShowAllEventsModal(false);
                     }}
                   >
@@ -713,6 +787,15 @@ export default function CalendarMain() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={refetchEvents}
+        initialDate={modalInitialDate}
+      />
+
+      <NewMeetingModal
+        isOpen={isMeetingModalOpen}
+        onClose={() => setIsMeetingModalOpen(false)}
+        onSuccess={() => {
+          refetchEvents();
+        }}
         initialDate={modalInitialDate}
       />
     </div>
