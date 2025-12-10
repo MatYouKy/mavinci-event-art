@@ -32,6 +32,7 @@ interface EventWizardProps {
   onClose: () => void;
   onSuccess: () => void;
   initialDate?: Date;
+  initialClientType?: 'business' | 'individual' | null;
 }
 
 interface Organization {
@@ -58,6 +59,7 @@ export default function EventWizard({
   onClose,
   onSuccess,
   initialDate,
+  initialClientType,
 }: EventWizardProps) {
   const { showSnackbar } = useSnackbar();
   const [currentStep, setCurrentStep] = useState(1);
@@ -78,7 +80,7 @@ export default function EventWizard({
     status: 'offer_sent',
   });
 
-  const [clientType, setClientType] = useState<'business' | 'individual'>('business');
+  const [clientType, setClientType] = useState<'business' | 'individual'>(initialClientType || 'business');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);

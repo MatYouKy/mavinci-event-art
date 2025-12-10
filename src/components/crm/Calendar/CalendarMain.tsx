@@ -24,6 +24,7 @@ import DayView from './DayView';
 import EmployeeView from './EmployeeView';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
+import EventTypeSelector from './EventTypeSelector';
 import { useGetEventsListQuery } from '@/store/api/eventsApi';
 
 export default function CalendarMain() {
@@ -34,6 +35,8 @@ export default function CalendarMain() {
   const [view, setView] = useState<CalendarView>('month');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [showTypeSelector, setShowTypeSelector] = useState(false);
+  const [selectedClientType, setSelectedClientType] = useState<'business' | 'individual' | null>(null);
   const [modalInitialDate, setModalInitialDate] = useState<Date | undefined>();
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -260,7 +263,18 @@ export default function CalendarMain() {
 
   const handleNewEvent = (date?: Date) => {
     setModalInitialDate(date);
-    setIsModalOpen(true);
+    setShowTypeSelector(true);
+  };
+
+  const handleEventTypeSelect = (type: 'business' | 'individual' | 'meeting') => {
+    setShowTypeSelector(false);
+
+    if (type === 'meeting') {
+      setIsMeetingModalOpen(true);
+    } else {
+      setSelectedClientType(type);
+      setIsModalOpen(true);
+    }
   };
 
   const handleNewMeeting = (date?: Date) => {
@@ -783,11 +797,21 @@ export default function CalendarMain() {
         </div>
       )}
 
+      <EventTypeSelector
+        isOpen={showTypeSelector}
+        onClose={() => setShowTypeSelector(false)}
+        onSelectType={handleEventTypeSelect}
+      />
+
       <EventWizard
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedClientType(null);
+        }}
         onSuccess={refetchEvents}
         initialDate={modalInitialDate}
+        initialClientType={selectedClientType}
       />
 
       <NewMeetingModal
