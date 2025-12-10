@@ -27,7 +27,6 @@ import LocationSelector from './LocationSelector';
 import OfferWizard from './OfferWizard';
 import { EquipmentStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
-import RelatedEventsSelector from './RelatedEventsSelector';
 
 interface EventWizardProps {
   isOpen: boolean;
@@ -95,7 +94,6 @@ export default function EventWizard({
     phone: '',
   });
   const [participants, setParticipants] = useState<any[]>([]);
-  const [relatedEventIds, setRelatedEventIds] = useState<string[]>([]);
 
   // Krok 2: Oferta (opcjonalnie)
   const [createOffer, setCreateOffer] = useState(false);
@@ -412,7 +410,6 @@ export default function EventWizard({
             status: eventData.status,
             created_by: session?.user?.id || null,
             participants: participants.length > 0 ? participants : [],
-            related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : [],
           },
         ])
         .select()
@@ -475,7 +472,6 @@ export default function EventWizard({
           description: eventData.description || null,
           status: eventData.status,
           participants: participants.length > 0 ? participants : [],
-          related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : [],
         })
         .eq('id', createdEventId);
 
@@ -997,20 +993,6 @@ export default function EventWizard({
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                  Powiązane wydarzenia
-                </label>
-                <RelatedEventsSelector
-                  value={relatedEventIds}
-                  onChange={setRelatedEventIds}
-                  currentEventId={createdEventId || undefined}
-                  placeholder="Wyszukaj powiązane wydarzenia..."
-                />
-                <p className="text-xs text-[#e5e4e2]/50 mt-1">
-                  Powiąż wydarzenia które są ze sobą związane (np. cykl szkoleń, wydarzenia dla tego samego klienta)
-                </p>
-              </div>
             </div>
           )}
 
