@@ -233,7 +233,7 @@ export default function EquipmentDetailPage() {
     if (!confirmed) return;
 
     try {
-      await dispatch(softDeleteEquipmentItem({ equipmentId }));
+      await dispatch(softDeleteEquipmentItem(equipmentId));
       showSnackbar('Sprzęt został usunięty', 'success');
       router.push('/crm/equipment');
     } catch {
