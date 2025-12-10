@@ -146,11 +146,7 @@ export default function ParticipantsAutocomplete({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setInputValue(newValue);
-    if (newValue && newValue.length >= 2) {
-      setShowDropdown(true);
-    } else {
-      setShowDropdown(false);
-    }
+    setShowDropdown(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -173,7 +169,7 @@ export default function ParticipantsAutocomplete({
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            onFocus={() => inputValue && inputValue.length >= 2 && setShowDropdown(true)}
+            onFocus={() => setShowDropdown(true)}
             placeholder={placeholder}
             className="w-full pl-10 pr-10 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
           />
@@ -191,7 +187,7 @@ export default function ParticipantsAutocomplete({
           )}
         </div>
 
-        {showDropdown && inputValue && inputValue.length >= 2 && (
+        {showDropdown && (
           <div
             ref={dropdownRef}
             className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl max-h-80 overflow-hidden"
@@ -255,7 +251,9 @@ export default function ParticipantsAutocomplete({
                     ))
                   ) : (
                     <div className="px-4 py-8 text-center text-[#e5e4e2]/50 text-sm">
-                      Brak pracowników pasujących do "{inputValue}"
+                      {inputValue
+                        ? `Brak pracowników pasujących do "${inputValue}"`
+                        : 'Brak pracowników w systemie'}
                     </div>
                   )}
                 </>
@@ -288,23 +286,27 @@ export default function ParticipantsAutocomplete({
                     ))
                   ) : (
                     <div className="px-4 py-8 text-center text-[#e5e4e2]/50 text-sm">
-                      Brak kontaktów pasujących do "{inputValue}"
+                      {inputValue
+                        ? `Brak kontaktów pasujących do "${inputValue}"`
+                        : 'Brak kontaktów w systemie'}
                     </div>
                   )}
                 </>
               )}
             </div>
 
-            <div className="px-4 py-3 border-t border-[#d3bb73]/20 bg-[#0f1117]">
-              <button
-                type="button"
-                onClick={handleAddManual}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 text-[#d3bb73] rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Dodaj "{inputValue}" jako uczestnika
-              </button>
-            </div>
+            {inputValue && (
+              <div className="px-4 py-3 border-t border-[#d3bb73]/20 bg-[#0f1117]">
+                <button
+                  type="button"
+                  onClick={handleAddManual}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 text-[#d3bb73] rounded-lg transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Dodaj "{inputValue}" jako uczestnika
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -348,7 +350,7 @@ export default function ParticipantsAutocomplete({
 
       {value.length === 0 && (
         <div className="text-center py-4 text-[#e5e4e2]/50 text-sm">
-          Brak uczestników. Rozpocznij wpisywanie aby dodać.
+          Brak uczestników. Kliknij w pole aby wybrać z listy lub wpisz ręcznie.
         </div>
       )}
     </div>

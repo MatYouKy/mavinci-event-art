@@ -118,11 +118,7 @@ export default function RelatedEventsSelector({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setInputValue(newValue);
-    if (newValue && newValue.length >= 2) {
-      setShowDropdown(true);
-    } else {
-      setShowDropdown(false);
-    }
+    setShowDropdown(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -166,7 +162,7 @@ export default function RelatedEventsSelector({
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            onFocus={() => inputValue && inputValue.length >= 2 && setShowDropdown(true)}
+            onFocus={() => setShowDropdown(true)}
             placeholder={placeholder}
             className="w-full pl-10 pr-10 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
           />
@@ -184,7 +180,7 @@ export default function RelatedEventsSelector({
           )}
         </div>
 
-        {showDropdown && inputValue && inputValue.length >= 2 && (
+        {showDropdown && (
           <div
             ref={dropdownRef}
             className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl max-h-96 overflow-y-auto"
@@ -234,7 +230,9 @@ export default function RelatedEventsSelector({
               ))
             ) : (
               <div className="px-4 py-8 text-center text-[#e5e4e2]/50 text-sm">
-                Brak wydarzeń pasujących do "{inputValue}"
+                {inputValue
+                  ? `Brak wydarzeń pasujących do "${inputValue}"`
+                  : 'Brak dostępnych wydarzeń do powiązania'}
               </div>
             )}
           </div>
