@@ -28,7 +28,7 @@ export default function LocationAutocomplete({
   const [locations, setLocations] = useState<Location[]>([]);
   const [filteredLocations, setFilteredLocations] = useState<Location[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [inputValue, setInputValue] = useState(value);
+  const [inputValue, setInputValue] = useState(value || '');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -38,11 +38,11 @@ export default function LocationAutocomplete({
   }, []);
 
   useEffect(() => {
-    setInputValue(value);
+    setInputValue(value || '');
   }, [value]);
 
   useEffect(() => {
-    if (inputValue.length >= 2) {
+    if (inputValue && inputValue.length >= 2) {
       const filtered = locations.filter((loc) =>
         loc.name.toLowerCase().includes(inputValue.toLowerCase()) ||
         loc.city?.toLowerCase().includes(inputValue.toLowerCase()) ||
@@ -148,7 +148,7 @@ export default function LocationAutocomplete({
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          onFocus={() => inputValue.length >= 2 && setShowDropdown(true)}
+          onFocus={() => inputValue && inputValue.length >= 2 && setShowDropdown(true)}
           placeholder={placeholder}
           className={`w-full pl-10 pr-10 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50 ${className}`}
         />
@@ -203,7 +203,7 @@ export default function LocationAutocomplete({
         </div>
       )}
 
-      {showDropdown && filteredLocations.length === 0 && inputValue.length >= 2 && (
+      {showDropdown && filteredLocations.length === 0 && inputValue && inputValue.length >= 2 && (
         <div
           ref={dropdownRef}
           className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl p-4"
