@@ -586,15 +586,23 @@ Deno.serve(async (req: Request) => {
         });
 
       if (!eventUploadError) {
+        const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
+          p_event_id: offer.event_id,
+          p_subfolder_name: 'Oferty',
+          p_required_permission: 'offers_create',
+          p_created_by: currentEmployee?.id || offer.created_by,
+        });
+
         await supabase.from('event_files').insert([
           {
             event_id: offer.event_id,
-            folder_id: null,
+            folder_id: folderId,
             name: eventFileName,
             original_name: eventFileName,
             file_path: eventFilePath,
             file_size: pdfBytes.length,
             mime_type: 'application/pdf',
+            document_type: 'offer',
             thumbnail_url: null,
             uploaded_by: currentEmployee?.id || offer.created_by,
           },

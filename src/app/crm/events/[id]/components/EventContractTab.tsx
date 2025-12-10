@@ -467,15 +467,23 @@ export function EventContractTab({ eventId }: Props) {
         });
 
       if (!uploadError) {
+        const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
+          p_event_id: eventId,
+          p_subfolder_name: 'Umowy',
+          p_required_permission: 'contracts_manage',
+          p_created_by: employee?.id,
+        });
+
         await supabase.from('event_files').insert([
           {
             event_id: eventId,
-            folder_id: null,
+            folder_id: folderId,
             name: fileName,
             original_name: fileName,
             file_path: storagePath,
             file_size: pdfBlob.size,
             mime_type: 'application/pdf',
+            document_type: 'contract',
             thumbnail_url: null,
             uploaded_by: employee?.id,
           },
