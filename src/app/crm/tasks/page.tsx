@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '@/components/crm/TaskCard';
 
 interface Task {
@@ -72,6 +73,11 @@ export default function TasksPage() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const isMobile = useMobile(1024);
+  const [activeColumnIndex, setActiveColumnIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const columns = [
     { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30' },
@@ -788,6 +794,33 @@ export default function TasksPage() {
     return tasks.filter(task => task.board_column === columnId);
   };
 
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe && activeColumnIndex < columns.length - 1) {
+      setActiveColumnIndex(prev => prev + 1);
+    }
+
+    if (isRightSwipe && activeColumnIndex > 0) {
+      setActiveColumnIndex(prev => prev - 1);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -798,8 +831,28 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4 px-2">
+      <div className="flex items-center justify-between mb-4 px-2 flex-wrap gap-3">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>
+
+        {isMobile && (
+          <div className="flex items-center gap-2 w-full lg:w-auto order-3 lg:order-none">
+            <select
+              value={columns[activeColumnIndex].id}
+              onChange={(e) => {
+                const index = columns.findIndex(col => col.id === e.target.value);
+                if (index !== -1) setActiveColumnIndex(index);
+              }}
+              className="flex-1 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            >
+              {columns.map((col) => (
+                <option key={col.id} value={col.id}>
+                  {col.label} ({getTasksByColumn(col.id).length})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {canCreateTasks && (
           <button
             onClick={() => handleOpenModal()}
@@ -811,9 +864,21 @@ export default function TasksPage() {
         )}
       </div>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-x-auto pb-4">
-        <div className="flex gap-4 px-2" style={{ minWidth: 'min-content' }}>
-          {columns.map(column => (
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-x-auto pb-4"
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      >
+        <div
+          className={`flex gap-4 px-2 transition-transform duration-300 ${isMobile ? 'transform' : ''}`}
+          style={{
+            minWidth: 'min-content',
+            transform: isMobile ? `translateX(-${activeColumnIndex * 100}%)` : undefined,
+          }}
+        >
+          {(isMobile ? [columns[activeColumnIndex]] : columns).map(column => (
             <div
               key={column.id}
               onDragOver={(e) => handleDragOver(e, column.id)}
@@ -824,7 +889,11 @@ export default function TasksPage() {
                   ? 'border-[#d3bb73] bg-[#d3bb73]/5'
                   : column.color
               }`}
-              style={{ width: '320px', maxHeight: 'calc(100vh - 200px)' }}
+              style={{
+                width: isMobile ? '100%' : '320px',
+                minHeight: '500px',
+                maxHeight: 'calc(100vh - 350px)',
+              }}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
@@ -899,6 +968,23 @@ export default function TasksPage() {
           ))}
         </div>
       </div>
+
+      {isMobile && (
+        <div className="flex justify-center gap-2 py-4">
+          {columns.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setActiveColumnIndex(index)}
+              className={`w-2 h-2 rounded-full transition-all ${
+                index === activeColumnIndex
+                  ? 'bg-[#d3bb73] w-8'
+                  : 'bg-[#e5e4e2]/20'
+              }`}
+              aria-label={`Przejdź do sekcji ${index + 1}`}
+            />
+          ))}
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

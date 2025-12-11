@@ -10,8 +10,6 @@ import {
   User,
   GripVertical,
   UserPlus,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -798,18 +796,6 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     }
   };
 
-  const handlePrevColumn = () => {
-    if (activeColumnIndex > 0) {
-      setActiveColumnIndex(prev => prev - 1);
-    }
-  };
-
-  const handleNextColumn = () => {
-    if (activeColumnIndex < columns.length - 1) {
-      setActiveColumnIndex(prev => prev + 1);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -825,15 +811,6 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
         {isMobile && (
           <div className="flex items-center gap-2 w-full lg:w-auto order-3 lg:order-none">
-            <button
-              onClick={handlePrevColumn}
-              disabled={activeColumnIndex === 0}
-              className="p-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Poprzednia sekcja"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
             <select
               value={columns[activeColumnIndex].id}
               onChange={(e) => {
@@ -848,15 +825,6 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                 </option>
               ))}
             </select>
-
-            <button
-              onClick={handleNextColumn}
-              disabled={activeColumnIndex === columns.length - 1}
-              className="p-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Następna sekcja"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
           </div>
         )}
 
@@ -893,7 +861,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                 className={`rounded-xl border bg-[#1c1f33] p-4 ${column.color} flex-shrink-0 transition-all ${
                   dragOverColumn === column.id ? 'scale-[1.02] ring-2 ring-[#d3bb73]/50' : ''
                 }`}
-                style={{ width: isMobile ? '100%' : '320px' }}
+                style={{ width: isMobile ? '100%' : '320px', minHeight: '500px' }}
                 onDragOver={(e) => handleDragOver(e, column.id)}
                 onDrop={(e) => handleDrop(e, column.id)}
                 onDragLeave={() => setDragOverColumn(null)}
@@ -949,6 +917,23 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           })}
         </div>
       </div>
+
+      {isMobile && (
+        <div className="flex justify-center gap-2 py-4">
+          {columns.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setActiveColumnIndex(index)}
+              className={`w-2 h-2 rounded-full transition-all ${
+                index === activeColumnIndex
+                  ? 'bg-[#d3bb73] w-8'
+                  : 'bg-[#e5e4e2]/20'
+              }`}
+              aria-label={`Przejdź do sekcji ${index + 1}`}
+            />
+          ))}
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
