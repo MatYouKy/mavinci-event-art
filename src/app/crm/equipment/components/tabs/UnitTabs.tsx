@@ -881,7 +881,7 @@ export function UnitsTab({
                         </label>
                         <input
                           type="text"
-                          value={unitForm.unit_serial_number}
+                          value={unitForm.unit_serial_number || ''}
                           onChange={(e) =>
                             setUnitForm((prev) => ({
                               ...prev,

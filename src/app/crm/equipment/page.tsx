@@ -4,13 +4,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight,
-  FolderTree, Layers, MapPin, Cable
+  FolderTree, Layers, MapPin, Cable, Copy
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ThreeDotMenu } from '@/components/UI/ThreeDotMenu/ThreeDotMenu';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { supabase } from '@/lib/supabase';
 
 // ⬇️ RTK Query – feed + kategorie + delete
 import {
@@ -154,16 +155,58 @@ export default function EquipmentPage() {
   const handleDelete = async (id: string) => {
     const ok = await showConfirm('Czy na pewno chcesz usunąć?', 'Usuń');
     if (!ok) return;
-  
+
     try {
       await deleteEquipment(id).unwrap();
       showSnackbar('Usunięto', 'success');
-  
+
       // po usunięciu odśwież bieżący feed od strony 0
       setPage(0);
       refetch();
     } catch {
       showSnackbar('Błąd podczas usuwania', 'error');
+    }
+  };
+
+  const handleDuplicate = async (id: string) => {
+    const ok = await showConfirm('Czy na pewno chcesz zduplikować ten przedmiot?', 'Duplikuj');
+    if (!ok) return;
+
+    try {
+      const { data: original, error: fetchError } = await supabase
+        .from('equipment_items')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const { name, warehouse_category_id, brand, model, description, thumbnail_url,
+              dimensions_cm, weight_kg, power_consumption_w, storage_location_id } = original;
+
+      const { error: insertError } = await supabase
+        .from('equipment_items')
+        .insert({
+          name: `${name} (kopia)`,
+          warehouse_category_id,
+          brand,
+          model,
+          description,
+          thumbnail_url,
+          dimensions_cm,
+          weight_kg,
+          power_consumption_w,
+          storage_location_id,
+        });
+
+      if (insertError) throw insertError;
+
+      showSnackbar('Przedmiot zduplikowany pomyślnie', 'success');
+      setPage(0);
+      refetch();
+    } catch (error) {
+      console.error('Error duplicating equipment:', error);
+      showSnackbar('Błąd podczas duplikowania', 'error');
     }
   };
 
@@ -401,6 +444,14 @@ export default function EquipmentPage() {
     <ResponsiveActionBar
       actions={[
         {
+          label: 'Duplikuj',
+          onClick: () => {
+            void handleDuplicate(item.id);
+          },
+          icon: <Copy className="w-4 h-4" />,
+          variant: 'default',
+        },
+        {
           label: deleting ? 'Usuwanie…' : 'Usuń',
           onClick: () => {
             // ignorujemy Promise żeby zgadzał się typ () => void
@@ -516,6 +567,14 @@ export default function EquipmentPage() {
   >
     <ResponsiveActionBar
       actions={[
+        {
+          label: 'Duplikuj',
+          onClick: () => {
+            void handleDuplicate(item.id);
+          },
+          icon: <Copy className="w-4 h-4" />,
+          variant: 'default',
+        },
         {
           label: deleting ? 'Usuwanie…' : 'Usuń',
           onClick: () => {
