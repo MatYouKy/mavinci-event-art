@@ -277,6 +277,7 @@ export function UnitsTab({
           .eq('id', editingUnit.id);
 
         if (error) throw error;
+        showSnackbar?.('Jednostka zaktualizowana pomyślnie', 'success');
       } else {
         const { error } = await supabase
           .from('equipment_units')
@@ -293,13 +294,15 @@ export function UnitsTab({
           });
 
         if (error) throw error;
+        showSnackbar?.('Jednostka dodana pomyślnie', 'success');
       }
 
       setShowModal(false);
-      onUpdate();
-    } catch (error) {
+      await onUpdate();
+    } catch (error: any) {
       console.error('Error saving unit:', error);
-      alert('Błąd podczas zapisywania jednostki');
+      const errorMessage = error?.message || 'Błąd podczas zapisywania jednostki';
+      showSnackbar?.(errorMessage, 'error');
     } finally {
       setSaving(false);
     }
@@ -743,29 +746,29 @@ export function UnitsTab({
                         )}
                       </div>
 
-                      {flags.requires_serial && (
-                        <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                            Numer seryjny (opcjonalny)
-                          </label>
-                          <input
-                            type="text"
-                            value={unitForm.unit_serial_number}
-                            onChange={(e) =>
-                              setUnitForm((prev) => ({
-                                ...prev,
-                                unit_serial_number: e.target.value,
-                              }))
-                            }
-                            disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
-                            placeholder="np. SN123456"
-                          />
-                          <p className="text-xs text-[#e5e4e2]/40 mt-1">
-                            Pozostaw puste dla sprzętu bez numeru seryjnego
-                          </p>
-                        </div>
-                      )}
+                      <div>
+                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          Numer seryjny{flags.requires_serial ? ' (wymagany)' : ' (opcjonalny)'}
+                        </label>
+                        <input
+                          type="text"
+                          value={unitForm.unit_serial_number}
+                          onChange={(e) =>
+                            setUnitForm((prev) => ({
+                              ...prev,
+                              unit_serial_number: e.target.value,
+                            }))
+                          }
+                          disabled={!canEditHere || flags.disable_units}
+                          className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                          placeholder="np. SN123456"
+                        />
+                        <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                          {flags.requires_serial
+                            ? 'To pole jest wymagane dla tej kategorii sprzętu'
+                            : 'Pozostaw puste dla sprzętu bez numeru seryjnego'}
+                        </p>
+                      </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
