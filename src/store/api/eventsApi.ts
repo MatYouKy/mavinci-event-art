@@ -62,16 +62,32 @@ export interface GetEventsListParams {
 export const eventsApi = createApi({
   reducerPath: 'eventsApi',
   baseQuery: fakeBaseQuery(),
-  tagTypes: ['Events', 'EventDetails'],
+  tagTypes: [
+    'Events',
+    'EventDetails',
+    'EventEquipment',
+    'EventEmployees',
+    'EventOffers',
+    'EventFiles',
+    'EventTasks',
+    'EventChecklists',
+    'EventAuditLog',
+    'EventSubcontractors',
+    'EventVehicles',
+    'EventAgenda',
+    'EventFinances',
+    'EventContracts',
+  ],
   endpoints: (builder) => ({
     // Pobierz listę wydarzeń (kalendarz)
     getEventsList: builder.query<CalendarEvent[], GetEventsListParams | void>({
-      async queryFn(params = {}) {
+      async queryFn(params) {
         try {
+          const parameters = params || {};
           const { data, error } = await supabase.rpc('get_events_list', {
-            start_date: params.start_date || null,
-            end_date: params.end_date || null,
-            status_filter: params.status_filter || null,
+            start_date: parameters.start_date || null,
+            end_date: parameters.end_date || null,
+            status_filter: parameters.status_filter || null,
           });
 
           if (error) {
@@ -205,6 +221,383 @@ export const eventsApi = createApi({
         { type: 'Events', id: 'LIST' },
       ],
     }),
+
+    // ============ EQUIPMENT ENDPOINTS ============
+    getEventEquipment: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_equipment')
+            .select(
+              `
+              *,
+              item:equipment_items(*, category:equipment_categories(name, uses_simple_quantity)),
+              kit:equipment_kits(*),
+              cable:cables(*)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: true });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventEquipment', id: eventId }],
+    }),
+
+    addEventEquipment: builder.mutation<any, { eventId: string; equipmentData: any }>({
+      async queryFn({ eventId, equipmentData }) {
+        try {
+          const { data, error } = await supabase
+            .from('event_equipment')
+            .insert({ event_id: eventId, ...equipmentData })
+            .select()
+            .single();
+
+          if (error) throw error;
+          return { data };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEquipment', id: eventId }],
+    }),
+
+    updateEventEquipment: builder.mutation<any, { id: string; eventId: string; data: any }>({
+      async queryFn({ id, eventId, data }) {
+        try {
+          const { error } = await supabase.from('event_equipment').update(data).eq('id', id);
+
+          if (error) throw error;
+          return { data: null };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEquipment', id: eventId }],
+    }),
+
+    removeEventEquipment: builder.mutation<void, { id: string; eventId: string }>({
+      async queryFn({ id, eventId }) {
+        try {
+          const { error } = await supabase.from('event_equipment').delete().eq('id', id);
+
+          if (error) throw error;
+          return { data: undefined };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEquipment', id: eventId }],
+    }),
+
+    // ============ EMPLOYEES ENDPOINTS ============
+    getEventEmployees: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_employee_assignments')
+            .select(
+              `
+              *,
+              employee:employees(id, name, surname, avatar_url, avatar_position)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: true });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventEmployees', id: eventId }],
+    }),
+
+    addEventEmployee: builder.mutation<any, { eventId: string; employeeId: string; role?: string }>({
+      async queryFn({ eventId, employeeId, role }) {
+        try {
+          const { data, error } = await supabase
+            .from('event_employee_assignments')
+            .insert({ event_id: eventId, employee_id: employeeId, role })
+            .select()
+            .single();
+
+          if (error) throw error;
+          return { data };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
+    }),
+
+    removeEventEmployee: builder.mutation<void, { eventId: string; employeeId: string }>({
+      async queryFn({ eventId, employeeId }) {
+        try {
+          const { error } = await supabase
+            .from('event_employee_assignments')
+            .delete()
+            .eq('event_id', eventId)
+            .eq('employee_id', employeeId);
+
+          if (error) throw error;
+          return { data: undefined };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
+    }),
+
+    // ============ OFFERS ENDPOINTS ============
+    getEventOffers: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('offers')
+            .select(
+              `
+              *,
+              organization:organizations!organization_id(name),
+              contact:contacts!contact_id(first_name, last_name, full_name),
+              creator:employees!created_by(name, surname)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventOffers', id: eventId }],
+    }),
+
+    // ============ AUDIT LOG ENDPOINTS ============
+    getEventAuditLog: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_audit_log')
+            .select(
+              `
+              *,
+              user:employees!user_id(name, surname, avatar_url)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventAuditLog', id: eventId }],
+    }),
+
+    // ============ TASKS ENDPOINTS ============
+    getEventTasks: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('tasks')
+            .select(
+              `
+              *,
+              creator:employees!created_by(name, surname, avatar_url),
+              assignees:task_assignees(
+                id,
+                employee:employees(id, name, surname, avatar_url)
+              )
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventTasks', id: eventId }],
+    }),
+
+    // ============ FILES ENDPOINTS ============
+    getEventFiles: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_files')
+            .select(
+              `
+              *,
+              uploaded_by_employee:employees!uploaded_by(name, surname)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventFiles', id: eventId }],
+    }),
+
+    // ============ VEHICLES ENDPOINTS ============
+    getEventVehicles: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_vehicles')
+            .select(
+              `
+              *,
+              vehicle:vehicles(*),
+              driver:employees!driver_id(id, name, surname, avatar_url),
+              trailer:vehicles!trailer_id(*)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: true });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventVehicles', id: eventId }],
+    }),
+
+    // ============ SUBCONTRACTORS ENDPOINTS ============
+    getEventSubcontractors: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_subcontractor_assignments')
+            .select(
+              `
+              *,
+              subcontractor:subcontractors(*)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: true });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventSubcontractors', id: eventId }],
+    }),
+
+    // ============ AGENDA ENDPOINTS ============
+    getEventAgenda: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_agendas')
+            .select('*')
+            .eq('event_id', eventId)
+            .order('start_time', { ascending: true });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventAgenda', id: eventId }],
+    }),
+
+    addAgendaItem: builder.mutation<any, { eventId: string; agendaData: any }>({
+      async queryFn({ eventId, agendaData }) {
+        try {
+          const { data, error } = await supabase
+            .from('event_agendas')
+            .insert({ event_id: eventId, ...agendaData })
+            .select()
+            .single();
+
+          if (error) throw error;
+          return { data };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
+    }),
+
+    updateAgendaItem: builder.mutation<any, { id: string; eventId: string; data: any }>({
+      async queryFn({ id, eventId, data }) {
+        try {
+          const { error } = await supabase.from('event_agendas').update(data).eq('id', id);
+
+          if (error) throw error;
+          return { data: null };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
+    }),
+
+    deleteAgendaItem: builder.mutation<void, { id: string; eventId: string }>({
+      async queryFn({ id, eventId }) {
+        try {
+          const { error } = await supabase.from('event_agendas').delete().eq('id', id);
+
+          if (error) throw error;
+          return { data: undefined };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
+    }),
+
+    // ============ CONTRACTS ENDPOINTS ============
+    getEventContracts: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('contracts')
+            .select(
+              `
+              *,
+              event:events(name),
+              organization:organizations(name, alias),
+              contact:contacts(first_name, last_name, full_name),
+              creator:employees!created_by(name, surname)
+            `,
+            )
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+          return { data: data || [] };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventContracts', id: eventId }],
+    }),
   }),
 });
 
@@ -214,4 +607,22 @@ export const {
   useCreateEventMutation,
   useUpdateEventMutation,
   useDeleteEventMutation,
+  useGetEventEquipmentQuery,
+  useAddEventEquipmentMutation,
+  useUpdateEventEquipmentMutation,
+  useRemoveEventEquipmentMutation,
+  useGetEventEmployeesQuery,
+  useAddEventEmployeeMutation,
+  useRemoveEventEmployeeMutation,
+  useGetEventOffersQuery,
+  useGetEventAuditLogQuery,
+  useGetEventTasksQuery,
+  useGetEventFilesQuery,
+  useGetEventVehiclesQuery,
+  useGetEventSubcontractorsQuery,
+  useGetEventAgendaQuery,
+  useAddAgendaItemMutation,
+  useUpdateAgendaItemMutation,
+  useDeleteAgendaItemMutation,
+  useGetEventContractsQuery,
 } = eventsApi;
