@@ -79,13 +79,19 @@ export default function EquipmentDetailPage() {
     isFetching: eqLoading,
     isError: eqError,
     refetch: refetchEquipment,
-  } = useGetEquipmentDetailsQuery(equipmentId, { skip: !equipmentId });
+  } = useGetEquipmentDetailsQuery(equipmentId, {
+    skip: !equipmentId,
+    refetchOnMountOrArgChange: true,
+  });
 
   const {
     data: units = [],
     isFetching: unitsLoading,
     refetch: refetchUnits,
-  } = useGetUnitsByEquipmentQuery(equipmentId, { skip: !equipmentId });
+  } = useGetUnitsByEquipmentQuery(equipmentId, {
+    skip: !equipmentId,
+    refetchOnMountOrArgChange: true,
+  });
 
   // RTK Query mutation
   const [updateEquipmentMutation] = useUpdateEquipmentItemMutation();

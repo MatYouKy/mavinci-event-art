@@ -74,7 +74,7 @@ interface Offer {
   offer_items?: OfferItem[];
 }
 
-export const statusColors: Record<string, string> = {
+const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   sent: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   accepted: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -82,7 +82,7 @@ export const statusColors: Record<string, string> = {
   expired: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 };
 
-export const statusLabels: Record<string, string> = {
+const statusLabels: Record<string, string> = {
   draft: 'Szkic',
   sent: 'Wysłana',
   accepted: 'Zaakceptowana',
