@@ -21,6 +21,22 @@
  */
 
 export interface Employee {
+  can_edit_equipment: any;
+  can_edit_equipment: any;
+  can_edit_files: any;
+  can_invite_members: any;
+  can_view_budget: any;
+  can_edit_tasks: any;
+  can_edit_agenda: any;
+  can_edit_event: any;
+  employee: any;
+  employee: any;
+  employee: any;
+  employee: any;
+  employee: any;
+  employee: any;
+  status: string;
+  responsibilities: string;
   id: string;
   name: string;
   surname: string;

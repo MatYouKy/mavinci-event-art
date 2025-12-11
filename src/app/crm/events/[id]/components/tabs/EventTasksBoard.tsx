@@ -16,7 +16,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMobile } from '@/hooks/useMobile';
-import TaskCard from '../../../../../components/crm/TaskCard';
+import TaskCard from '../../../../../../components/crm/TaskCard';
 
 interface Task {
   id: string;
@@ -127,7 +127,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
           const { data: assigneesData } = await supabase
             .from('task_assignees')
-            .select(`
+            .select(
+              `
               employee:employees!task_assignees_employee_id_fkey(
                 id,
                 name,
@@ -136,7 +137,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                 email,
                 phone_number
               )
-            `)
+            `,
+            )
             .eq('task_id', updatedTask.id);
 
           let currently_working_employee = null;
@@ -155,11 +157,11 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .select('*', { count: 'exact', head: true })
             .eq('task_id', updatedTask.id);
 
-          setTasks(prevTasks => {
-            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+          setTasks((prevTasks) => {
+            const taskExists = prevTasks.some((t) => t.id === updatedTask.id);
 
             if (taskExists) {
-              return prevTasks.map(task =>
+              return prevTasks.map((task) =>
                 task.id === updatedTask.id
                   ? {
                       ...task,
@@ -168,7 +170,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                       currently_working_employee,
                       comments_count: count || 0,
                     }
-                  : task
+                  : task,
               );
             }
 
@@ -198,7 +200,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         },
         (payload) => {
           const deletedTaskId = payload.old.id;
-          setTasks(prevTasks => prevTasks.filter(t => t.id !== deletedTaskId));
+          setTasks((prevTasks) => prevTasks.filter((t) => t.id !== deletedTaskId));
         },
       )
       .on(
@@ -218,18 +220,15 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .maybeSingle();
 
           if (employee) {
-            setTasks(prevTasks =>
-              prevTasks.map(task =>
+            setTasks((prevTasks) =>
+              prevTasks.map((task) =>
                 task.id === newAssignee.task_id
                   ? {
                       ...task,
-                      assignees: [
-                        ...(task.assignees || []),
-                        { employee }
-                      ]
+                      assignees: [...(task.assignees || []), { employee }],
                     }
-                  : task
-              )
+                  : task,
+              ),
             );
           }
         },
@@ -244,17 +243,17 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         (payload) => {
           const deletedAssignee = payload.old as any;
 
-          setTasks(prevTasks =>
-            prevTasks.map(task =>
+          setTasks((prevTasks) =>
+            prevTasks.map((task) =>
               task.id === deletedAssignee.task_id
                 ? {
                     ...task,
                     assignees: (task.assignees || []).filter(
-                      a => a.employee.id !== deletedAssignee.employee_id
-                    )
+                      (a) => a.employee.id !== deletedAssignee.employee_id,
+                    ),
                   }
-                : task
-            )
+                : task,
+            ),
           );
         },
       )
@@ -274,12 +273,10 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .select('*', { count: 'exact', head: true })
             .eq('task_id', taskId);
 
-          setTasks(prevTasks =>
-            prevTasks.map(task =>
-              task.id === taskId
-                ? { ...task, comments_count: count || 0 }
-                : task
-            )
+          setTasks((prevTasks) =>
+            prevTasks.map((task) =>
+              task.id === taskId ? { ...task, comments_count: count || 0 } : task,
+            ),
           );
         },
       )
@@ -519,12 +516,15 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const handleMoveTask = async (taskId: string, newColumn: string, oldColumn: string) => {
     if (newColumn === 'in_progress' && oldColumn !== 'in_progress') {
       if (activeTimer && activeTimer.task_id !== taskId) {
-        showSnackbar('Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia', 'warning');
+        showSnackbar(
+          'Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia',
+          'warning',
+        );
         return;
       }
 
-      setTasks(prevTasks =>
-        prevTasks.map(task =>
+      setTasks((prevTasks) =>
+        prevTasks.map((task) =>
           task.id === taskId
             ? {
                 ...task,
@@ -532,8 +532,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                 status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
                 currently_working_by: currentEmployee?.id || null,
               }
-            : task
-        )
+            : task,
+        ),
       );
 
       try {
@@ -549,7 +549,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         if (error) throw error;
 
         if (!activeTimer) {
-          const task = tasks.find(t => t.id === taskId);
+          const task = tasks.find((t) => t.id === taskId);
           if (task) {
             await startTimer(task);
           }
@@ -558,12 +558,10 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         console.error('Error moving task:', err);
         showSnackbar('Błąd podczas przenoszenia zadania', 'error');
 
-        setTasks(prevTasks =>
-          prevTasks.map(task =>
-            task.id === taskId
-              ? { ...task, board_column: oldColumn }
-              : task
-          )
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === taskId ? { ...task, board_column: oldColumn } : task,
+          ),
         );
       }
       return;
@@ -573,7 +571,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       if (activeTimer && activeTimer.task_id === taskId) {
         const shouldStopTimer = await showConfirm(
           'Zatrzymać czas pracy?',
-          'Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?'
+          'Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?',
         );
 
         if (shouldStopTimer) {
@@ -591,8 +589,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       }
     }
 
-    setTasks(prevTasks =>
-      prevTasks.map(task =>
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
         task.id === taskId
           ? {
               ...task,
@@ -600,8 +598,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               status: newColumn as 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled',
               currently_working_by: newColumn !== 'in_progress' ? null : task.currently_working_by,
             }
-          : task
-      )
+          : task,
+      ),
     );
 
     try {
@@ -614,20 +612,15 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         updateData.currently_working_by = null;
       }
 
-      const { error } = await supabase
-        .from('tasks')
-        .update(updateData)
-        .eq('id', taskId);
+      const { error } = await supabase.from('tasks').update(updateData).eq('id', taskId);
 
       if (error) throw error;
     } catch (err) {
       console.error('Error moving task:', err);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
 
-      setTasks(prevTasks =>
-        prevTasks.map(task =>
-          task.id === taskId ? { ...task, board_column: oldColumn } : task
-        )
+      setTasks((prevTasks) =>
+        prevTasks.map((task) => (task.id === taskId ? { ...task, board_column: oldColumn } : task)),
       );
     }
   };
@@ -788,11 +781,11 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe && activeColumnIndex < columns.length - 1) {
-      setActiveColumnIndex(prev => prev + 1);
+      setActiveColumnIndex((prev) => prev + 1);
     }
 
     if (isRightSwipe && activeColumnIndex > 0) {
-      setActiveColumnIndex(prev => prev - 1);
+      setActiveColumnIndex((prev) => prev - 1);
     }
   };
 
@@ -806,18 +799,18 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-light text-[#e5e4e2]">Zadania wydarzenia</h2>
 
         {isMobile && (
-          <div className="flex items-center gap-2 w-full lg:w-auto order-3 lg:order-none">
+          <div className="order-3 flex w-full items-center gap-2 lg:order-none lg:w-auto">
             <select
               value={columns[activeColumnIndex].id}
               onChange={(e) => {
-                const index = columns.findIndex(col => col.id === e.target.value);
+                const index = columns.findIndex((col) => col.id === e.target.value);
                 if (index !== -1) setActiveColumnIndex(index);
               }}
-              className="flex-1 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               {columns.map((col) => (
                 <option key={col.id} value={col.id}>
@@ -924,10 +917,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             <button
               key={index}
               onClick={() => setActiveColumnIndex(index)}
-              className={`w-2 h-2 rounded-full transition-all ${
-                index === activeColumnIndex
-                  ? 'bg-[#d3bb73] w-8'
-                  : 'bg-[#e5e4e2]/20'
+              className={`h-2 w-2 rounded-full transition-all ${
+                index === activeColumnIndex ? 'w-8 bg-[#d3bb73]' : 'bg-[#e5e4e2]/20'
               }`}
               aria-label={`Przejdź do sekcji ${index + 1}`}
             />

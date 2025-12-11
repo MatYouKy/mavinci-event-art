@@ -26,8 +26,8 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import AddEventVehicleModal from '../../../../../components/crm/AddEventVehicleModal';
-import VehicleHandoverModal from '../../../../../components/crm/VehicleHandoverModal';
+import AddEventVehicleModal from '../../../../../../components/crm/AddEventVehicleModal';
+import VehicleHandoverModal from '../../../../../../components/crm/VehicleHandoverModal';
 
 interface EventLogisticsProps {
   eventId: string;

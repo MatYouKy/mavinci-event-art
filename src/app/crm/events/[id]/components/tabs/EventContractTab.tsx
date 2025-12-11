@@ -7,21 +7,9 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { numberToWords } from '@/lib/offerTemplateHelpers';
 import '@/styles/contractA4.css';
-import ResponsiveActionBar from '../../../../../components/crm/ResponsiveActionBar';
-import SendContractEmailModal from '../../../../../components/crm/SendContractEmailModal';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import SendContractEmailModal from '@/components/crm/SendContractEmailModal';
 
-interface Props {
-  eventId: string;
-}
-
-const replaceVariables = (template: string, variables: Record<string, string>): string => {
-  let result = template;
-  Object.entries(variables).forEach(([key, value]) => {
-    const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-    result = result.replace(regex, value || '');
-  });
-  return result;
-};
 
 type ContractStatus =
   | 'draft'
@@ -31,7 +19,7 @@ type ContractStatus =
   | 'signed_returned'
   | 'cancelled';
 
-export function EventContractTab({ eventId }: Props) {
+export function EventContractTab({ eventId }: { eventId: string }) {
   const { showSnackbar } = useSnackbar();
   const { isAdmin, employee } = useCurrentEmployee();
   const [loading, setLoading] = useState(true);

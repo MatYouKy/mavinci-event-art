@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 interface AddEmployeeModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  isOpen: boolean;
 }
 
 interface AccessLevel {
@@ -15,7 +16,7 @@ interface AccessLevel {
   description: string | null;
 }
 
-export default function AddEmployeeModal({ onClose, onSuccess }: AddEmployeeModalProps) {
+export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmployeeModalProps) {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [accessLevels, setAccessLevels] = useState<AccessLevel[]>([]);
@@ -31,6 +32,8 @@ export default function AddEmployeeModal({ onClose, onSuccess }: AddEmployeeModa
     occupation: '',
   });
   const [error, setError] = useState('');
+
+  if (!isOpen) return null;
 
   useEffect(() => {
     fetchAccessLevels();
