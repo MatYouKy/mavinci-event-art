@@ -40,6 +40,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   const [showCompatibleModal, setShowCompatibleModal] = useState(false);
   const [compatibilityType, setCompatibilityType] = useState<'required' | 'recommended' | 'optional'>('optional');
   const [compatibilityNotes, setCompatibilityNotes] = useState('');
+  const [showComponentDetailModal, setShowComponentDetailModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState<any>(null);
 
   const getAvailableQuantity = (item: EquipmentItem): number => {
     if (item.cable_stock_quantity !== undefined && item.cable_stock_quantity !== null && item.cable_stock_quantity > 0) {
@@ -491,51 +493,79 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
 
       {equipment.equipment_components?.length ? (
         <div className="space-y-3">
-          {equipment.equipment_components.map((c: any) => (
-            <div key={c.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4">
-              <div className="flex items-start gap-4">
-                {c.thumbnail_url && (
-                  <img
-                    src={c.thumbnail_url}
-                    alt={c.component_name}
-                    className="w-20 h-20 object-cover rounded-lg border border-[#d3bb73]/20"
-                  />
-                )}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="text-[#e5e4e2] font-medium">{c.component_name}</div>
-                    {c.component_equipment_id ? (
-                      <span className="text-xs px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
-                        Z magazynu
-                      </span>
-                    ) : c.is_integral && (
-                      <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
-                        Integralny
-                      </span>
+          {equipment.equipment_components.map((c: any) => {
+            const thumbnailUrl = c.thumbnail_url || c.equipment_items?.thumbnail_url;
+            const hasDetails = c.technical_specs && Object.keys(c.technical_specs).length > 0;
+
+            return (
+              <div key={c.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4">
+                <div className="flex items-start gap-4">
+                  <button
+                    onClick={() => {
+                      setSelectedComponent(c);
+                      setShowComponentDetailModal(true);
+                    }}
+                    className="flex-shrink-0 hover:opacity-80 transition-opacity"
+                  >
+                    {thumbnailUrl ? (
+                      <img
+                        src={thumbnailUrl}
+                        alt={c.component_name}
+                        className="w-20 h-20 object-cover rounded-lg border border-[#d3bb73]/20"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 bg-[#0f1119] rounded-lg flex items-center justify-center border border-[#d3bb73]/20">
+                        <Package className="w-8 h-8 text-[#e5e4e2]/20" />
+                      </div>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedComponent(c);
+                      setShowComponentDetailModal(true);
+                    }}
+                    className="flex-1 text-left hover:bg-[#d3bb73]/5 rounded-lg p-2 -m-2 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="text-[#e5e4e2] font-medium">{c.component_name}</div>
+                      {c.component_equipment_id ? (
+                        <span className="text-xs px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                          Z magazynu
+                        </span>
+                      ) : c.is_integral && (
+                        <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
+                          Integralny
+                        </span>
+                      )}
+                    </div>
+                    {c.description && <div className="text-sm text-[#e5e4e2]/60 mt-1">{c.description}</div>}
+                    {hasDetails && (
+                      <div className="mt-2 space-y-1">
+                        {Object.entries(c.technical_specs).slice(0, 2).map(([key, value]: [string, any]) => (
+                          <div key={key} className="text-xs text-[#e5e4e2]/60">
+                            <span className="font-medium">{key}:</span> {value}
+                          </div>
+                        ))}
+                        {Object.keys(c.technical_specs).length > 2 && (
+                          <div className="text-xs text-[#d3bb73] italic cursor-pointer hover:underline">
+                            +{Object.keys(c.technical_specs).length - 2} więcej parametrów (kliknij aby zobaczyć)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="text-[#d3bb73] font-medium">x{c.quantity}</div>
+                    {isEditing && (
+                      <button onClick={() => onDelete(c.id)} className="p-2 text-red-400 hover:text-red-300">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
-                  {c.description && <div className="text-sm text-[#e5e4e2]/60 mt-1">{c.description}</div>}
-                  {c.technical_specs && Object.keys(c.technical_specs).length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {Object.entries(c.technical_specs).map(([key, value]: [string, any]) => (
-                        <div key={key} className="text-xs text-[#e5e4e2]/60">
-                          <span className="font-medium">{key}:</span> {value}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-[#d3bb73] font-medium">x{c.quantity}</div>
-                  {isEditing && (
-                    <button onClick={() => onDelete(c.id)} className="p-2 text-red-400 hover:text-red-300">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
@@ -852,6 +882,125 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showComponentDetailModal && selectedComponent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f1119] rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-[#d3bb73]/10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-[#e5e4e2]">
+                  Szczegóły komponentu
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowComponentDetailModal(false);
+                    setSelectedComponent(null);
+                  }}
+                  className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg"
+                >
+                  <X className="w-5 h-5 text-[#e5e4e2]" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {(selectedComponent.thumbnail_url || selectedComponent.equipment_items?.thumbnail_url) && (
+                <div className="flex justify-center">
+                  <img
+                    src={selectedComponent.thumbnail_url || selectedComponent.equipment_items?.thumbnail_url}
+                    alt={selectedComponent.component_name}
+                    className="max-w-full h-auto max-h-96 object-contain rounded-lg border border-[#d3bb73]/20"
+                  />
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className="text-lg font-medium text-[#e5e4e2]">
+                    {selectedComponent.component_name}
+                  </h4>
+                  {selectedComponent.component_equipment_id ? (
+                    <span className="text-xs px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                      Z magazynu
+                    </span>
+                  ) : selectedComponent.is_integral && (
+                    <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
+                      Integralny
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm text-[#e5e4e2]/60">
+                  Ilość: <span className="text-[#d3bb73] font-medium">x{selectedComponent.quantity}</span>
+                </div>
+              </div>
+
+              {selectedComponent.description && (
+                <div>
+                  <h5 className="text-sm font-medium text-[#e5e4e2] mb-2">Opis</h5>
+                  <p className="text-sm text-[#e5e4e2]/80">{selectedComponent.description}</p>
+                </div>
+              )}
+
+              {selectedComponent.technical_specs && Object.keys(selectedComponent.technical_specs).length > 0 && (
+                <div>
+                  <h5 className="text-sm font-medium text-[#e5e4e2] mb-3">Parametry techniczne</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {Object.entries(selectedComponent.technical_specs).map(([key, value]: [string, any]) => (
+                      <div
+                        key={key}
+                        className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3"
+                      >
+                        <div className="text-xs text-[#e5e4e2]/60 mb-1">{key}</div>
+                        <div className="text-sm text-[#e5e4e2] font-medium">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedComponent.component_equipment_id && selectedComponent.equipment_items && (
+                <div className="border-t border-[#d3bb73]/10 pt-6">
+                  <h5 className="text-sm font-medium text-[#e5e4e2] mb-3">
+                    Informacje o produkcie z magazynu
+                  </h5>
+                  <div className="space-y-2 text-sm">
+                    {selectedComponent.equipment_items.name && (
+                      <div>
+                        <span className="text-[#e5e4e2]/60">Nazwa: </span>
+                        <span className="text-[#e5e4e2]">{selectedComponent.equipment_items.name}</span>
+                      </div>
+                    )}
+                    {selectedComponent.equipment_items.model && (
+                      <div>
+                        <span className="text-[#e5e4e2]/60">Model: </span>
+                        <span className="text-[#e5e4e2]">{selectedComponent.equipment_items.model}</span>
+                      </div>
+                    )}
+                    {selectedComponent.equipment_items.brand && (
+                      <div>
+                        <span className="text-[#e5e4e2]/60">Marka: </span>
+                        <span className="text-[#e5e4e2]">{selectedComponent.equipment_items.brand}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-4 border-t border-[#d3bb73]/10">
+                <button
+                  onClick={() => {
+                    setShowComponentDetailModal(false);
+                    setSelectedComponent(null);
+                  }}
+                  className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
+                  Zamknij
+                </button>
+              </div>
             </div>
           </div>
         </div>

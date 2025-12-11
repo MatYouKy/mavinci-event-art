@@ -393,6 +393,7 @@ export default function EquipmentDetailPage() {
           units={units}
           locations={storageLocations}
           canEdit={canEdit}
+          onUpdate={refreshAll}
           // ✅ pass flags derived from current category special_properties
           customFlags={categoryFlags}
           onUpsertUnit={async (payload: any) => {

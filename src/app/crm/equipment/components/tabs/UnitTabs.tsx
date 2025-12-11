@@ -174,6 +174,8 @@ export function UnitsTab({
   const [selectedUnit, setSelectedUnit] = useState<EquipmentUnit | null>(null);
   const [unitEvents, setUnitEvents] = useState<EquipmentUnit[]>([]);
   const [showEventsHistory, setShowEventsHistory] = useState(false);
+  const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
+  const [bulkActionInProgress, setBulkActionInProgress] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -375,6 +377,88 @@ export function UnitsTab({
     setShowEventsHistory(true);
   };
 
+  const handleToggleSelectUnit = (unitId: string) => {
+    setSelectedUnitIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(unitId)) {
+        newSet.delete(unitId);
+      } else {
+        newSet.add(unitId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllUnits = () => {
+    if (selectedUnitIds.size === units.length) {
+      setSelectedUnitIds(new Set());
+    } else {
+      setSelectedUnitIds(new Set(units.map((u: EquipmentUnit) => u.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedUnitIds.size === 0) return;
+    if (!confirm(`Czy na pewno chcesz usunąć ${selectedUnitIds.size} jednostek?`)) return;
+
+    setBulkActionInProgress(true);
+    try {
+      const { error } = await supabase
+        .from('equipment_units')
+        .delete()
+        .in('id', Array.from(selectedUnitIds));
+
+      if (error) throw error;
+
+      setSelectedUnitIds(new Set());
+      await onUpdate();
+      showSnackbar?.(`Usunięto ${selectedUnitIds.size} jednostek`, 'success');
+    } catch (error) {
+      console.error('Error bulk deleting units:', error);
+      showSnackbar?.('Błąd podczas usuwania jednostek', 'error');
+    } finally {
+      setBulkActionInProgress(false);
+    }
+  };
+
+  const handleBulkDuplicate = async () => {
+    if (selectedUnitIds.size === 0) return;
+    if (!confirm(`Czy na pewno chcesz zduplikować ${selectedUnitIds.size} jednostek?`)) return;
+
+    setBulkActionInProgress(true);
+    try {
+      const unitsToDuplicate = units.filter((u: EquipmentUnit) => selectedUnitIds.has(u.id));
+      const insertData = unitsToDuplicate.map((unit: EquipmentUnit) => ({
+        equipment_id: unit.equipment_id,
+        unit_serial_number: unit.unit_serial_number
+          ? `${unit.unit_serial_number} (duplikat)`
+          : null,
+        status: unit.status,
+        location_id: unit.location_id,
+        condition_notes: unit.condition_notes
+          ? `${unit.condition_notes} [DUPLIKAT]`
+          : 'Duplikat jednostki',
+        purchase_date: unit.purchase_date,
+        last_service_date: unit.last_service_date,
+        estimated_repair_date: unit.estimated_repair_date,
+        thumbnail_url: unit.thumbnail_url,
+      }));
+
+      const { error } = await supabase.from('equipment_units').insert(insertData);
+
+      if (error) throw error;
+
+      setSelectedUnitIds(new Set());
+      await onUpdate();
+      showSnackbar?.(`Zduplikowano ${selectedUnitIds.size} jednostek`, 'success');
+    } catch (error) {
+      console.error('Error bulk duplicating units:', error);
+      showSnackbar?.('Błąd podczas duplikowania jednostek', 'error');
+    } finally {
+      setBulkActionInProgress(false);
+    }
+  };
+
   const groupedUnits = {
     available: units.filter((u: EquipmentUnit) => u.status === 'available'),
     damaged: units.filter((u: EquipmentUnit) => u.status === 'damaged'),
@@ -475,16 +559,51 @@ export function UnitsTab({
       </div>
 
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium text-[#e5e4e2]">Zarządzanie jednostkami</h3>
-        {canEditHere && !flags.disable_units && (
-          <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Dodaj jednostkę
-          </button>
-        )}
+        <div className="flex items-center gap-4">
+          <h3 className="text-lg font-medium text-[#e5e4e2]">Zarządzanie jednostkami</h3>
+          {units.length > 0 && canEditHere && !flags.disable_units && (
+            <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60 cursor-pointer hover:text-[#e5e4e2]">
+              <input
+                type="checkbox"
+                checked={selectedUnitIds.size === units.length}
+                onChange={handleSelectAllUnits}
+                className="w-4 h-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+              />
+              Zaznacz wszystkie
+            </label>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedUnitIds.size > 0 && canEditHere && !flags.disable_units && (
+            <>
+              <button
+                onClick={handleBulkDuplicate}
+                disabled={bulkActionInProgress}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50"
+              >
+                <Copy className="w-4 h-4" />
+                Duplikuj ({selectedUnitIds.size})
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkActionInProgress}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                Usuń ({selectedUnitIds.size})
+              </button>
+            </>
+          )}
+          {canEditHere && !flags.disable_units && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj jednostkę
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -521,9 +640,19 @@ export function UnitsTab({
                 key={unit.id}
                 className={`bg-[#1c1f33] border rounded-xl p-4 ${
                   isUnavailable ? 'border-red-500/20 opacity-60' : 'border-[#d3bb73]/10'
-                }`}
+                } ${selectedUnitIds.has(unit.id) ? 'ring-2 ring-[#d3bb73]' : ''}`}
               >
                 <div className="flex items-start justify-between gap-4">
+                  {canEditHere && !flags.disable_units && (
+                    <div className="flex items-center pt-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedUnitIds.has(unit.id)}
+                        onChange={() => handleToggleSelectUnit(unit.id)}
+                        className="w-5 h-5 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                      />
+                    </div>
+                  )}
                   {unit.thumbnail_url && (
                     <img
                       src={unit.thumbnail_url}
