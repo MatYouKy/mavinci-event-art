@@ -170,7 +170,6 @@ export default function EditEventClientModal({
         .insert([{
           first_name: newIndividualData.first_name,
           last_name: newIndividualData.last_name,
-          full_name: `${newIndividualData.first_name} ${newIndividualData.last_name}`,
           email: newIndividualData.email,
           phone: newIndividualData.phone,
           contact_type: 'individual',
@@ -207,7 +206,6 @@ export default function EditEventClientModal({
         .insert([{
           first_name: newBusinessContactData.first_name,
           last_name: newBusinessContactData.last_name,
-          full_name: `${newBusinessContactData.first_name} ${newBusinessContactData.last_name}`,
           email: newBusinessContactData.email,
           phone: newBusinessContactData.phone,
           position: newBusinessContactData.position,
