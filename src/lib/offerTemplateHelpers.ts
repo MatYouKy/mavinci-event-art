@@ -160,6 +160,28 @@ ${listItems}
 }
 
 /**
+ * Replaces variable placeholders in template content with actual values
+ * @param template - Template content with {{variable_name}} placeholders
+ * @param variables - Map of variable names to their values
+ * @returns Content with all placeholders replaced
+ */
+export function replaceVariables(
+  template: string,
+  variables: Record<string, string>
+): string {
+  if (!template) return '';
+
+  let result = template;
+
+  for (const [key, value] of Object.entries(variables)) {
+    const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+    result = result.replace(placeholder, value || '');
+  }
+
+  return result;
+}
+
+/**
  * Replaces the {{OFFER_ITEMS_TABLE}} placeholder in template content
  * @param content - Template content with placeholders
  * @param items - Array of offer items

@@ -5,7 +5,7 @@ import { FileText, Download, Edit, Save, X, Mail, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { numberToWords } from '@/lib/offerTemplateHelpers';
+import { numberToWords, replaceVariables } from '@/lib/offerTemplateHelpers';
 import '@/styles/contractA4.css';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import SendContractEmailModal from '@/components/crm/SendContractEmailModal';
