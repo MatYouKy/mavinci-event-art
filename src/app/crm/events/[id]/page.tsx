@@ -1219,20 +1219,26 @@ export default function EventDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-              {event.client_type === 'business' && (
+              {event.client_type === 'business' && event.organization && (
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
-                  {event.organization
-                    ? event.organization.alias || event.organization.name
-                    : 'Brak klienta'}
+                  {event.organization.alias || event.organization.name}
                 </div>
               )}
-              {event.contact_person && (
+              {event.client_type === 'individual' && event.contact_person && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
-                    {event.contact_person.contact_type === 'individual' ? 'Klient: ' : 'Kontakt: '}
-                    {event.contact_person.full_name ||
+                    Klient: {event.contact_person.full_name ||
+                      `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                  </span>
+                </div>
+              )}
+              {event.client_type === 'business' && event.contact_person && (
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  <span>
+                    Kontakt: {event.contact_person.full_name ||
                       `${event.contact_person.first_name} ${event.contact_person.last_name}`}
                   </span>
                 </div>
@@ -1568,43 +1574,70 @@ export default function EventDetailPage() {
                         Edytuj
                       </button>
                     </div>
-                    {event.client_type === 'business' && (
-                      <div className="flex items-start gap-3">
-                        <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
-                        <div>
-                          <p className="text-sm text-[#e5e4e2]/60">Klient</p>
-                          <p className="text-[#e5e4e2]">
-                            {event.organization
-                              ? event.organization.alias || event.organization.name
-                              : 'Brak klienta'}
-                          </p>
+                    {event.client_type === 'business' ? (
+                      <>
+                        <div className="flex items-start gap-3">
+                          <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+                          <div>
+                            <p className="text-sm text-[#e5e4e2]/60">Klient (Firma)</p>
+                            <p className="text-[#e5e4e2]">
+                              {event.organization
+                                ? event.organization.alias || event.organization.name
+                                : 'Brak klienta'}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {event.contact_person && (
+                        {event.contact_person && (
+                          <div className="flex items-start gap-3">
+                            <User className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+                            <div>
+                              <p className="text-sm text-[#e5e4e2]/60">Osoba kontaktowa</p>
+                              <p className="text-[#e5e4e2]">
+                                {event.contact_person.full_name ||
+                                  `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                              </p>
+                              {event.contact_person.email && (
+                                <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                                  <Mail className="h-3 w-3" />
+                                  <span>{event.contact_person.email}</span>
+                                </div>
+                              )}
+                              {event.contact_person.phone && (
+                                <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                                  <Phone className="h-3 w-3" />
+                                  <span>{event.contact_person.phone}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
                       <div className="flex items-start gap-3">
                         <User className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                         <div>
-                          <p className="text-sm text-[#e5e4e2]/60">
-                            {event.contact_person.contact_type === 'individual'
-                              ? 'Klient indywidualny'
-                              : 'Osoba kontaktowa'}
-                          </p>
-                          <p className="text-[#e5e4e2]">
-                            {event.contact_person.full_name ||
-                              `${event.contact_person.first_name} ${event.contact_person.last_name}`}
-                          </p>
-                          {event.contact_person.email && (
-                            <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                              <Mail className="h-3 w-3" />
-                              <span>{event.contact_person.email}</span>
-                            </div>
-                          )}
-                          {event.contact_person.phone && (
-                            <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                              <Phone className="h-3 w-3" />
-                              <span>{event.contact_person.phone}</span>
-                            </div>
+                          <p className="text-sm text-[#e5e4e2]/60">Klient</p>
+                          {event.contact_person ? (
+                            <>
+                              <p className="text-[#e5e4e2]">
+                                {event.contact_person.full_name ||
+                                  `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                              </p>
+                              {event.contact_person.email && (
+                                <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                                  <Mail className="h-3 w-3" />
+                                  <span>{event.contact_person.email}</span>
+                                </div>
+                              )}
+                              {event.contact_person.phone && (
+                                <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                                  <Phone className="h-3 w-3" />
+                                  <span>{event.contact_person.phone}</span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-[#e5e4e2]">Brak klienta</p>
                           )}
                         </div>
                       </div>
