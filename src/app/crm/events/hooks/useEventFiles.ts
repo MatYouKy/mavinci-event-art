@@ -1,4 +1,4 @@
-import { useGetEventFilesQuery } from '@/store/api/eventsApi';
+import { useGetEventFilesQuery } from '@/app/crm/events/store/api/eventsApi';
 
 export function useEventFiles(eventId: string) {
   const {

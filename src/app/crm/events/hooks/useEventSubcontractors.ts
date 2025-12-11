@@ -1,4 +1,4 @@
-import { useGetEventSubcontractorsQuery } from '@/store/api/eventsApi';
+import { useGetEventSubcontractorsQuery } from '@/app/crm/events/store/api/eventsApi';
 
 export function useEventSubcontractors(eventId: string) {
   const {

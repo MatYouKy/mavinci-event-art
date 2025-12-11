@@ -25,7 +25,7 @@ import EmployeeView from './EmployeeView';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
 import EventTypeSelector from './EventTypeSelector';
-import { useGetEventsListQuery } from '@/store/api/eventsApi';
+import { useGetEventsListQuery } from '@/app/crm/events/store/api/eventsApi';
 
 export default function CalendarMain() {
   const router = useRouter();
@@ -36,7 +36,9 @@ export default function CalendarMain() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
-  const [selectedClientType, setSelectedClientType] = useState<'business' | 'individual' | null>(null);
+  const [selectedClientType, setSelectedClientType] = useState<'business' | 'individual' | null>(
+    null,
+  );
   const [modalInitialDate, setModalInitialDate] = useState<Date | undefined>();
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -59,7 +61,12 @@ export default function CalendarMain() {
   });
 
   // RTK Query - pobierz wydarzenia
-  const { data: eventsData, isLoading: eventsLoading, error: eventsError, refetch: refetchEvents } = useGetEventsListQuery();
+  const {
+    data: eventsData,
+    isLoading: eventsLoading,
+    error: eventsError,
+    refetch: refetchEvents,
+  } = useGetEventsListQuery();
 
   useEffect(() => {
     fetchCurrentEmployee();
@@ -79,7 +86,8 @@ export default function CalendarMain() {
     try {
       const { data: meetingsData, error } = await supabase
         .from('meetings')
-        .select(`
+        .select(
+          `
           id,
           title,
           datetime_start,
@@ -96,7 +104,8 @@ export default function CalendarMain() {
             employees(id, name, surname),
             contacts(id, name)
           )
-        `)
+        `,
+        )
         .is('deleted_at', null);
 
       if (error) {
@@ -135,7 +144,9 @@ export default function CalendarMain() {
 
   const fetchCurrentEmployee = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (session?.user?.id) {
         const { data } = await supabase
           .from('employees')
@@ -169,25 +180,31 @@ export default function CalendarMain() {
     let filtered = [...allEvents];
 
     if (filters.statuses.length > 0) {
-      filtered = filtered.filter(e => filters.statuses.includes(e.status));
+      filtered = filtered.filter((e) => filters.statuses.includes(e.status));
     }
 
     if (filters.categories.length > 0) {
-      filtered = filtered.filter(e => e.category_id && filters.categories.includes(e.category_id));
+      filtered = filtered.filter(
+        (e) => e.category_id && filters.categories.includes(e.category_id),
+      );
     }
 
     if (filters.clients.length > 0) {
-      filtered = filtered.filter(e => e.organization_id && filters.clients.includes(e.organization_id));
+      filtered = filtered.filter(
+        (e) => e.organization_id && filters.clients.includes(e.organization_id),
+      );
     }
 
     if (filters.myEvents && currentEmployee) {
-      filtered = filtered.filter(e => e.created_by === currentEmployee.id);
+      filtered = filtered.filter((e) => e.created_by === currentEmployee.id);
     }
 
     if (filters.assignedToMe && currentEmployee) {
-      filtered = filtered.filter(e => {
+      filtered = filtered.filter((e) => {
         // Sprawdź czy jest przypisany jako członek zespołu
-        const isAssignedEmployee = e.employees?.some((emp: any) => emp.employee_id === currentEmployee.id);
+        const isAssignedEmployee = e.employees?.some(
+          (emp: any) => emp.employee_id === currentEmployee.id,
+        );
         // Sprawdź czy jest przypisany jako kierowca
         const isDriver = e.vehicles?.some((v: any) => v.driver_id === currentEmployee.id);
         return isAssignedEmployee || isDriver;
@@ -195,8 +212,8 @@ export default function CalendarMain() {
     }
 
     if (filters.employees.length > 0) {
-      filtered = filtered.filter(e =>
-        e.employees?.some((emp: any) => filters.employees.includes(emp.employee_id))
+      filtered = filtered.filter((e) =>
+        e.employees?.some((emp: any) => filters.employees.includes(emp.employee_id)),
       );
     }
 
@@ -204,15 +221,13 @@ export default function CalendarMain() {
   };
 
   const toggleFilter = (type: string, value: any) => {
-    setFilters(prev => {
+    setFilters((prev) => {
       const key = type as keyof typeof prev;
       if (typeof prev[key] === 'boolean') {
         return { ...prev, [key]: !prev[key] };
       }
       const arr = prev[key] as string[];
-      const newArr = arr.includes(value)
-        ? arr.filter(v => v !== value)
-        : [...arr, value];
+      const newArr = arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
       return { ...prev, [key]: newArr };
     });
   };
@@ -284,7 +299,10 @@ export default function CalendarMain() {
 
   const handleSaveEvent = async (eventData: any) => {
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
       if (sessionError) {
         console.error('Session error:', sessionError);
@@ -334,7 +352,9 @@ export default function CalendarMain() {
 
   const handleEventClick = (event: CalendarEvent) => {
     if ((event as any).is_meeting) {
-      alert(`Spotkanie: ${event.name}\n\nData: ${new Date(event.event_date).toLocaleString('pl-PL')}\nLokalizacja: ${event.location || 'Brak'}\n\nNotatki: ${(event as any).meeting_data?.notes || 'Brak'}`);
+      alert(
+        `Spotkanie: ${event.name}\n\nData: ${new Date(event.event_date).toLocaleString('pl-PL')}\nLokalizacja: ${event.location || 'Brak'}\n\nNotatki: ${(event as any).meeting_data?.notes || 'Brak'}`,
+      );
     } else {
       router.push(`/crm/events/${event.id}`);
     }
@@ -389,29 +409,29 @@ export default function CalendarMain() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
           <button
             onClick={() => handleDateChange('prev')}
-            className="p-2 text-[#e5e4e2] hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="h-5 w-5" />
           </button>
 
-          <h2 className="text-xl md:text-2xl font-light text-[#e5e4e2] min-w-[200px] text-center">
+          <h2 className="min-w-[200px] text-center text-xl font-light text-[#e5e4e2] md:text-2xl">
             {getDateLabel()}
           </h2>
 
           <button
             onClick={() => handleDateChange('next')}
-            className="p-2 text-[#e5e4e2] hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="h-5 w-5" />
           </button>
 
           <button
             onClick={handleToday}
-            className="px-3 py-2 text-sm text-[#e5e4e2] hover:bg-[#1c1f33] rounded-lg transition-colors hidden md:block"
+            className="hidden rounded-lg px-3 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#1c1f33] md:block"
           >
             Dziś
           </button>
@@ -420,57 +440,68 @@ export default function CalendarMain() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors md:px-4 md:text-sm ${
               hasActiveFilters()
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#d3bb73]/10 border border-[#d3bb73]/10'
+                : 'border border-[#d3bb73]/10 bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#d3bb73]/10'
             }`}
           >
-            <Filter className="w-4 h-4" />
+            <Filter className="h-4 w-4" />
             <span className="hidden md:inline">Filtry</span>
             {hasActiveFilters() && (
-              <span className="bg-[#1c1f33] text-[#d3bb73] px-1.5 py-0.5 rounded text-xs">
-                {filters.statuses.length + filters.categories.length + filters.clients.length + filters.employees.length + (filters.myEvents ? 1 : 0) + (filters.assignedToMe ? 1 : 0)}
+              <span className="rounded bg-[#1c1f33] px-1.5 py-0.5 text-xs text-[#d3bb73]">
+                {filters.statuses.length +
+                  filters.categories.length +
+                  filters.clients.length +
+                  filters.employees.length +
+                  (filters.myEvents ? 1 : 0) +
+                  (filters.assignedToMe ? 1 : 0)}
               </span>
             )}
           </button>
 
-          <div className="flex bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg overflow-hidden">
+          <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
             {(['month', 'week', 'day', 'employee'] as CalendarView[]).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`px-3 md:px-4 py-2 text-xs md:text-sm font-light transition-colors ${
+                className={`px-3 py-2 text-xs font-light transition-colors md:px-4 md:text-sm ${
                   view === v
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
                 }`}
               >
-                {v === 'month' ? 'Miesiąc' : v === 'week' ? 'Tydzień' : v === 'day' ? 'Dzień' : 'Pracownicy'}
+                {v === 'month'
+                  ? 'Miesiąc'
+                  : v === 'week'
+                    ? 'Tydzień'
+                    : v === 'day'
+                      ? 'Dzień'
+                      : 'Pracownicy'}
               </button>
             ))}
           </div>
 
           <button
             onClick={() => handleNewMeeting()}
-            className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 md:px-4 md:text-sm"
           >
-            <CalendarIcon className="w-4 h-4" />
+            <CalendarIcon className="h-4 w-4" />
             <span className="hidden md:inline">Spotkanie</span>
           </button>
 
           <button
             onClick={() => handleNewEvent()}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:px-4 md:text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             <span className="hidden md:inline">Nowe wydarzenie</span>
           </button>
         </div>
       </div>
 
       {showFilters && (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 space-y-6">
+        <div className="space-y-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-light text-[#e5e4e2]">Filtry</h3>
             {hasActiveFilters() && (
@@ -483,26 +514,26 @@ export default function CalendarMain() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-3">
               <label className="block text-sm text-[#e5e4e2]/60">Szybkie filtry</label>
               <div className="space-y-2">
                 <button
                   onClick={() => toggleFilter('myEvents', null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                     filters.myEvents
-                      ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                      : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                      ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
                   }`}
                 >
                   Moje wydarzenia
                 </button>
                 <button
                   onClick={() => toggleFilter('assignedToMe', null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                     filters.assignedToMe
-                      ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                      : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                      ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
                   }`}
                 >
                   Przypisane do mnie
@@ -512,15 +543,15 @@ export default function CalendarMain() {
 
             <div className="space-y-3">
               <label className="block text-sm text-[#e5e4e2]/60">Status</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="max-h-48 space-y-2 overflow-y-auto">
                 {Object.entries(STATUS_LABELS).map(([status, label]) => (
                   <button
                     key={status}
                     onClick={() => toggleFilter('statuses', status)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       filters.statuses.includes(status)
-                        ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                        : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                        ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                        : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
                     }`}
                   >
                     {label}
@@ -531,18 +562,21 @@ export default function CalendarMain() {
 
             <div className="space-y-3">
               <label className="block text-sm text-[#e5e4e2]/60">Kategoria</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="max-h-48 space-y-2 overflow-y-auto">
                 {categories.map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => toggleFilter('categories', cat.id)}
-                    className={`w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       filters.categories.includes(cat.id)
-                        ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                        : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                        ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                        : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
                     }`}
                   >
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                    <div
+                      className="h-3 w-3 flex-shrink-0 rounded-full"
+                      style={{ backgroundColor: cat.color }}
+                    />
                     {cat.name}
                   </button>
                 ))}
@@ -551,15 +585,15 @@ export default function CalendarMain() {
 
             <div className="space-y-3">
               <label className="block text-sm text-[#e5e4e2]/60">Pracownik</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="max-h-48 space-y-2 overflow-y-auto">
                 {employees.map((emp) => (
                   <button
                     key={emp.id}
                     onClick={() => toggleFilter('employees', emp.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       filters.employees.includes(emp.id)
-                        ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                        : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                        ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                        : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
                     }`}
                   >
                     {emp.nickname || `${emp.name} ${emp.surname}`}
@@ -571,15 +605,15 @@ export default function CalendarMain() {
             {currentEmployee?.permissions?.includes('events_manage') && (
               <div className="space-y-3">
                 <label className="block text-sm text-[#e5e4e2]/60">Klient</label>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <div className="max-h-48 space-y-2 overflow-y-auto">
                   {clients.map((client) => (
                     <button
                       key={client.id}
                       onClick={() => toggleFilter('clients', client.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                      className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                         filters.clients.includes(client.id)
-                          ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]'
-                          : 'bg-[#0f1119] text-[#e5e4e2] border border-[#d3bb73]/10 hover:bg-[#d3bb73]/5'
+                          ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                          : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
                       }`}
                     >
                       {client.company_name || `${client.first_name} ${client.last_name}`}
@@ -590,7 +624,7 @@ export default function CalendarMain() {
             )}
           </div>
 
-          <div className="pt-4 border-t border-[#d3bb73]/10 text-sm text-[#e5e4e2]/60">
+          <div className="border-t border-[#d3bb73]/10 pt-4 text-sm text-[#e5e4e2]/60">
             Pokazuje {events.length} z {allEvents.length} wydarzeń
           </div>
         </div>
@@ -642,7 +676,7 @@ export default function CalendarMain() {
 
       {hoveredEvent && (
         <div
-          className="fixed bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg shadow-2xl p-4 min-w-[280px] cursor-pointer hover:border-[#d3bb73]/50 transition-colors z-50"
+          className="fixed z-50 min-w-[280px] cursor-pointer rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] p-4 shadow-2xl transition-colors hover:border-[#d3bb73]/50"
           style={{
             left: `${tooltipPosition.x}px`,
             top: `${tooltipPosition.y}px`,
@@ -660,10 +694,10 @@ export default function CalendarMain() {
           }}
         >
           <div className="space-y-2">
-            <h4 className="text-sm font-medium text-[#e5e4e2] mb-3">{hoveredEvent.name}</h4>
+            <h4 className="mb-3 text-sm font-medium text-[#e5e4e2]">{hoveredEvent.name}</h4>
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-              <Building2 className="w-3 h-3" />
+              <Building2 className="h-3 w-3" />
               <span>
                 {hoveredEvent.client?.company_name ||
                   `${hoveredEvent.client?.first_name || ''} ${hoveredEvent.client?.last_name || ''}`.trim() ||
@@ -672,7 +706,7 @@ export default function CalendarMain() {
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-              <Clock className="w-3 h-3" />
+              <Clock className="h-3 w-3" />
               <span>
                 {new Date(hoveredEvent.event_date).toLocaleString('pl-PL', {
                   day: 'numeric',
@@ -684,13 +718,13 @@ export default function CalendarMain() {
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-              <MapPin className="w-3 h-3" />
+              <MapPin className="h-3 w-3" />
               <span>{hoveredEvent.location}</span>
             </div>
 
-            <div className="pt-2 border-t border-[#d3bb73]/10">
+            <div className="border-t border-[#d3bb73]/10 pt-2">
               <span
-                className={`inline-block px-2 py-1 rounded text-xs border ${
+                className={`inline-block rounded border px-2 py-1 text-xs ${
                   STATUS_COLORS[hoveredEvent.status]
                 }`}
               >
@@ -707,8 +741,8 @@ export default function CalendarMain() {
 
       {showAllEventsModal && allEventsModalDate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-[#d3bb73]/20">
+          <div className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
               <div>
                 <h3 className="text-xl font-light text-[#e5e4e2]">
                   Wydarzenia -{' '}
@@ -718,15 +752,15 @@ export default function CalendarMain() {
                     year: 'numeric',
                   })}
                 </h3>
-                <p className="text-sm text-[#e5e4e2]/60 mt-1">
+                <p className="mt-1 text-sm text-[#e5e4e2]/60">
                   {getEventsForDate(allEventsModalDate).length} wydarzeń
                 </p>
               </div>
               <button
                 onClick={() => setShowAllEventsModal(false)}
-                className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
               >
-                <X className="w-5 h-5 text-[#e5e4e2]" />
+                <X className="h-5 w-5 text-[#e5e4e2]" />
               </button>
             </div>
 
@@ -735,7 +769,7 @@ export default function CalendarMain() {
                 {getEventsForDate(allEventsModalDate).map((event) => (
                   <div
                     key={event.id}
-                    className="p-4 bg-[#0f1119] rounded-lg hover:bg-[#0f1119]/50 transition-colors cursor-pointer"
+                    className="cursor-pointer rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/50"
                     onClick={() => {
                       handleEventClick(event);
                       setShowAllEventsModal(false);
@@ -743,18 +777,18 @@ export default function CalendarMain() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
-                        <h4 className="text-sm font-medium text-[#e5e4e2] mb-2">{event.name}</h4>
+                        <h4 className="mb-2 text-sm font-medium text-[#e5e4e2]">{event.name}</h4>
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                            <Building2 className="w-3 h-3" />
+                            <Building2 className="h-3 w-3" />
                             <span>
-                              {event.organization ? (event.organization.alias || event.organization.name) :
-                                event.contact_person?.full_name ||
-                                'Brak klienta'}
+                              {event.organization
+                                ? event.organization.alias || event.organization.name
+                                : event.contact_person?.full_name || 'Brak klienta'}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                            <Clock className="w-3 h-3" />
+                            <Clock className="h-3 w-3" />
                             <span>
                               {new Date(event.event_date).toLocaleString('pl-PL', {
                                 hour: '2-digit',
@@ -763,13 +797,13 @@ export default function CalendarMain() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                            <MapPin className="w-3 h-3" />
+                            <MapPin className="h-3 w-3" />
                             <span>{event.location}</span>
                           </div>
                         </div>
                       </div>
                       <span
-                        className={`px-2 py-1 rounded text-xs border ${
+                        className={`rounded border px-2 py-1 text-xs ${
                           STATUS_COLORS[event.status]
                         }`}
                       >
@@ -781,15 +815,15 @@ export default function CalendarMain() {
               </div>
             </div>
 
-            <div className="p-6 border-t border-[#d3bb73]/20">
+            <div className="border-t border-[#d3bb73]/20 p-6">
               <button
                 onClick={() => {
                   setShowAllEventsModal(false);
                   handleNewEvent(allEventsModalDate);
                 }}
-                className="w-full flex items-center justify-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-3 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 Dodaj nowe wydarzenie tego dnia
               </button>
             </div>

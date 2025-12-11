@@ -1,4 +1,4 @@
-import { useGetEventOffersQuery } from '@/store/api/eventsApi';
+import { useGetEventOffersQuery } from '@/app/crm/events/store/api/eventsApi';
 
 export function useEventOffers(eventId: string) {
   const {

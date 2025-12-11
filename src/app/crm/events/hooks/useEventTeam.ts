@@ -3,7 +3,7 @@ import {
   useGetEventEmployeesQuery,
   useAddEventEmployeeMutation,
   useRemoveEventEmployeeMutation,
-} from '@/store/api/eventsApi';
+} from '@/app/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export function useEventTeam(eventId: string) {

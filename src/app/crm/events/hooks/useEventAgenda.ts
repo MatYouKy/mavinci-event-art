@@ -4,7 +4,7 @@ import {
   useAddAgendaItemMutation,
   useUpdateAgendaItemMutation,
   useDeleteAgendaItemMutation,
-} from '@/store/api/eventsApi';
+} from '@/app/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export function useEventAgenda(eventId: string) {

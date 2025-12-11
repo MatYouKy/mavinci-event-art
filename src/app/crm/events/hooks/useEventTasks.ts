@@ -1,4 +1,4 @@
-import { useGetEventTasksQuery } from '@/store/api/eventsApi';
+import { useGetEventTasksQuery } from '@/app/crm/events/store/api/eventsApi';
 
 export function useEventTasks(eventId: string) {
   const {

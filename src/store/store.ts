@@ -1,6 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { api } from './api/api';
-import { eventsApi } from './api/eventsApi';
+import { eventsApi } from '../app/crm/events/store/api/eventsApi';
 import { analyticsApi } from './api/analyticsApi';
 import authReducer from './slices/authSlice';
 import contactsReducer from './slices/contactsSlice';
@@ -24,7 +24,7 @@ export const store = configureStore({
       .concat(api.middleware)
       .concat(eventsApi.middleware)
       .concat(equipmentApi.middleware)
-      .concat(analyticsApi.middleware)
+      .concat(analyticsApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

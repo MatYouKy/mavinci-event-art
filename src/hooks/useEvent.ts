@@ -3,7 +3,7 @@ import {
   useGetEventDetailsQuery,
   useUpdateEventMutation,
   useDeleteEventMutation,
-} from '@/store/api/eventsApi';
+} from '@/app/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -51,7 +51,13 @@ export function useEvent(eventId: string) {
   }, [eventId, deleteEvent, showSnackbar, router]);
 
   const logChange = useCallback(
-    async (action: string, description: string, fieldName?: string, oldValue?: any, newValue?: any) => {
+    async (
+      action: string,
+      description: string,
+      fieldName?: string,
+      oldValue?: any,
+      newValue?: any,
+    ) => {
       try {
         await supabase.from('event_audit_log').insert([
           {

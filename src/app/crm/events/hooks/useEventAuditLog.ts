@@ -1,4 +1,4 @@
-import { useGetEventAuditLogQuery } from '@/store/api/eventsApi';
+import { useGetEventAuditLogQuery } from '@/app/crm/events/store/api/eventsApi';
 
 export function useEventAuditLog(eventId: string) {
   const {
