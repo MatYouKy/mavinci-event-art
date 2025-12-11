@@ -3,47 +3,26 @@ import { useState } from 'react';
 import { IEvent } from '../../../page';
 import { Edit, Save } from 'lucide-react';
 import { logChange } from '../../../helpers/logChange';
+import { useEvent } from '@/app/crm/events/hooks/useEvent';
+import { useParams } from 'next/navigation';
 
 export const EventDestailsDescription = ({
-  event,
+  eventDescription,
   hasLimitedAccess,
-  setEvent,
+  handleSaveDescription,
 }: {
-  event: IEvent;
+  eventDescription: string;
   hasLimitedAccess: boolean;
-  setEvent: (event: IEvent) => void;
+  handleSaveDescription: (description: string) => void;
 }) => {
-  const [editedDescription, setEditedDescription] = useState('');
+  const [editedDescription, setEditedDescription] = useState(eventDescription);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const handleSaveDescription = async () => {
-    if (!event) return;
 
-    try {
-      const { error } = await supabase
-        .from('events')
-        .update({ description: editedDescription })
-        .eq('id', event.id);
-
-      if (error) {
-        console.error('Error updating description:', error);
-        alert('Błąd podczas zapisywania opisu');
-        return;
-      }
-
-      setEvent({ ...event, description: editedDescription });
-      setIsEditingDescription(false);
-      await logChange(
-        'updated',
-        'Zaktualizowano opis eventu',
-        'description',
-        event.description,
-        editedDescription,
-      );
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
-    }
+  const handleSaveDescriptionClick = async () => {
+    setIsEditingDescription(false);
+    await handleSaveDescription(editedDescription);
   };
+
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -51,7 +30,7 @@ export const EventDestailsDescription = ({
         {!isEditingDescription && !hasLimitedAccess && (
           <button
             onClick={() => {
-              setEditedDescription(event.description || '');
+              setEditedDescription(eventDescription || '');
               setIsEditingDescription(true);
             }}
             className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
@@ -69,13 +48,13 @@ export const EventDestailsDescription = ({
             placeholder="Dodaj opis eventu..."
           />
           <div className="flex gap-2">
-            <button
-              onClick={handleSaveDescription}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-            >
-              <Save className="h-4 w-4" />
-              Zapisz
-            </button>
+              <button
+                onClick={handleSaveDescriptionClick}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              >
+                <Save className="h-4 w-4" />
+                Zapisz
+              </button>
             <button
               onClick={() => setIsEditingDescription(false)}
               className="rounded-lg px-4 py-2 text-sm text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
@@ -85,7 +64,7 @@ export const EventDestailsDescription = ({
           </div>
         </div>
       ) : (
-        <p className="leading-relaxed text-[#e5e4e2]/80">{event.description || 'Brak opisu'}</p>
+        <p className="leading-relaxed text-[#e5e4e2]/80">{eventDescription || 'Brak opisu'}</p>
       )}
     </div>
   );

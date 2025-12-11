@@ -1,6 +1,13 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase';
 
+export type EventsApiErrorStatus = 'CUSTOM_ERROR' | 'FETCH_ERROR' | 'NOT_FOUND';
+
+export interface EventsApiError {
+  status: EventsApiErrorStatus;
+  message: string;
+}
+
 export interface CalendarEvent {
   id: string;
   name: string;
@@ -23,6 +30,8 @@ export interface CalendarEvent {
     alias?: string | null;
   } | null;
   contact_person?: {
+    phone: any;
+    email: any;
     id: string;
     first_name: string;
     last_name: string;
@@ -43,6 +52,9 @@ export interface CalendarEvent {
 }
 
 export interface EventDetails extends CalendarEvent {
+  client_type: string;
+  requires_subcontractors: boolean;
+  location_details: any;
   creator?: {
     id: string;
     name: string;
@@ -61,7 +73,7 @@ export interface GetEventsListParams {
 
 export const eventsApi = createApi({
   reducerPath: 'eventsApi',
-  baseQuery: fakeBaseQuery(),
+  baseQuery: fakeBaseQuery<EventsApiError>(),
   tagTypes: [
     'Events',
     'EventDetails',
@@ -92,7 +104,7 @@ export const eventsApi = createApi({
 
           if (error) {
             console.error('Error fetching events list:', error);
-            return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            return { error: { status: 'CUSTOM_ERROR', error: error.message } as unknown as EventsApiError };
           }
 
           // RPC zwraca JSON array, więc rzutujemy na array
@@ -101,7 +113,7 @@ export const eventsApi = createApi({
           return { data: events };
         } catch (error: any) {
           console.error('Exception in getEventsList:', error);
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result) =>
@@ -113,6 +125,20 @@ export const eventsApi = createApi({
           : [{ type: 'Events', id: 'LIST' }],
     }),
 
+    getEventById: builder.query<EventDetails, string>({
+
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase.from('events').select('*').eq('id', eventId).single();
+          if (error) throw error;
+          return { data: data as EventDetails };
+        } catch (error: any) {
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
+        }
+      },
+      providesTags: (result, error, id) => [{ type: 'EventDetails', id }],
+    }),
+
     // Pobierz szczegóły wydarzenia
     getEventDetails: builder.query<EventDetails, string>({
       async queryFn(eventId) {
@@ -120,17 +146,26 @@ export const eventsApi = createApi({
           const { data, error } = await supabase.rpc('get_event_details', {
             event_id: eventId,
           });
-
+    
           if (error) {
             console.error('Error fetching event details:', error);
-            return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            return {
+              error: {
+                status: 'CUSTOM_ERROR',
+                error: error.message,
+              } as unknown as EventsApiError,
+            };
           }
-
-          if (!data || data.error) {
-            return { error: { status: 'NOT_FOUND', error: 'Event not found' } };
+    
+          if (!data || (data as any).error) {
+            return {
+              error: {
+                status: 'NOT_FOUND',
+                error: 'Event not found',
+              } as unknown as EventsApiError,
+            };
           }
-
-          // Połącz event z relacjami
+    
           const eventDetails: EventDetails = {
             ...data.event,
             organization: data.organization || null,
@@ -142,11 +177,16 @@ export const eventsApi = createApi({
             vehicles: data.vehicles || [],
             offers: data.offers || [],
           };
-
+    
           return { data: eventDetails };
         } catch (error: any) {
           console.error('Exception in getEventDetails:', error);
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return {
+            error: {
+              status: 'FETCH_EXCEPTION',
+              error: error?.message ?? 'Unexpected error',
+            } as unknown as EventsApiError,
+          };
         }
       },
       providesTags: (result, error, id) => [{ type: 'EventDetails', id }],
@@ -163,12 +203,12 @@ export const eventsApi = createApi({
             .single();
 
           if (error) {
-            return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            return { error: { status: 'CUSTOM_ERROR', error: error.message } as unknown as EventsApiError };
           }
 
           return { data: data as CalendarEvent };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: [{ type: 'Events', id: 'LIST' }],
@@ -186,12 +226,12 @@ export const eventsApi = createApi({
             .single();
 
           if (error) {
-            return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            return { error: { status: 'CUSTOM_ERROR', error: error.message } as unknown as EventsApiError };
           }
 
           return { data: updated as CalendarEvent };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { id }) => [
@@ -208,12 +248,12 @@ export const eventsApi = createApi({
           const { error } = await supabase.from('events').delete().eq('id', id);
 
           if (error) {
-            return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            return { error: { status: 'CUSTOM_ERROR', error: error.message } as unknown as EventsApiError };
           }
 
           return { data: undefined };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, id) => [
@@ -242,7 +282,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventEquipment', id: eventId }],
@@ -260,7 +300,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEquipment', id: eventId }],
@@ -274,7 +314,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: null };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEquipment', id: eventId }],
@@ -288,7 +328,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: undefined };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEquipment', id: eventId }],
@@ -312,7 +352,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventEmployees', id: eventId }],
@@ -330,7 +370,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
@@ -348,7 +388,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: undefined };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
@@ -374,7 +414,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventOffers', id: eventId }],
@@ -399,7 +439,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventAuditLog', id: eventId }],
@@ -427,7 +467,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventTasks', id: eventId }],
@@ -451,7 +491,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventFiles', id: eventId }],
@@ -477,7 +517,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventVehicles', id: eventId }],
@@ -501,7 +541,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventSubcontractors', id: eventId }],
@@ -520,7 +560,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventAgenda', id: eventId }],
@@ -538,7 +578,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
@@ -552,7 +592,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: null };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
@@ -566,7 +606,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: undefined };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
@@ -593,7 +633,7 @@ export const eventsApi = createApi({
           if (error) throw error;
           return { data: data || [] };
         } catch (error: any) {
-          return { error: { status: 'FETCH_ERROR', error: error.message } };
+          return { error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError };
         }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventContracts', id: eventId }],
@@ -625,4 +665,6 @@ export const {
   useUpdateAgendaItemMutation,
   useDeleteAgendaItemMutation,
   useGetEventContractsQuery,
+  useGetEventByIdQuery,
+  useLazyGetEventByIdQuery,
 } = eventsApi;

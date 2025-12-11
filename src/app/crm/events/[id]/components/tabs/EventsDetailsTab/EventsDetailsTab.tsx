@@ -13,34 +13,47 @@ import {
 } from 'lucide-react';
 import React, { FC, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { IEvent } from '../../../page';
 import EditEventClientModal from '@/components/crm/EditEventClientModal';
 import { supabase } from '@/lib/supabase';
 import { logChange } from '../../../helpers/logChange';
 import { EventDestailsDescription } from './EventDetailsDescription';
 import { EventDetailsNotes } from './EventDetailsNotes';
+import { useEvent } from '@/app/crm/events/hooks/useEvent';
 
 interface EventsDetailsTabProps {
-  event: IEvent;
   hasLimitedAccess: boolean;
   canManageTeam: boolean;
   isUserAdmin: boolean;
-  setEvent: (event: IEvent) => void;
-  setHasSubcontractors: (hasSubcontractors: boolean) => void;
-  fetchEventDetails: () => void;
 }
 
 export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
-  event,
   hasLimitedAccess,
   canManageTeam,
   isUserAdmin,
-  setEvent,
-  setHasSubcontractors,
-  fetchEventDetails,
 }) => {
+  const { event, updateEvent } = useEvent();
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
+
+  const handleUpdateDescription = async (description: string) => {
+    try {
+      await updateEvent({ description });
+    } catch (err) {
+      console.error('Error updating description:', err);
+    }
+  };
+
+  const handleUpdateNotes = async (notes: string) => {
+    try {
+      await updateEvent({ notes });
+    } catch (err) {
+      console.error('Error updating notes:', err);
+    }
+  };
+
+  console.log('event.location_details', event.location_details);
+  console.log('event.location', event.location);
+
   return (
     <>
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -128,8 +141,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
               )}
             </div>
           </div>
-
-          {/* Zapotrzebowanie na podwykonawców */}
+{/* 
           {!hasLimitedAccess && (canManageTeam || isUserAdmin) && (
             <div className="flex items-start gap-3">
               <UserCheck className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
@@ -148,8 +160,8 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
 
                         if (error) throw error;
 
-                        setEvent({ ...event, requires_subcontractors: newValue });
-                        setHasSubcontractors(newValue);
+                        // setEvent({ ...event, requires_subcontractors: newValue });
+                        // setHasSubcontractors(newValue);
 
                         await logChange(
                           event.id,
@@ -179,7 +191,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                 </label>
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
           {!hasLimitedAccess && (
@@ -276,21 +288,16 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             currentContactPersonId={event.contact_person_id}
             onSuccess={() => {
               setShowEditClientModal(false);
-              fetchEventDetails();
             }}
           />
         )}
       </div>
       <EventDestailsDescription
-        event={event}
+        handleSaveDescription={handleUpdateDescription}
+        eventDescription={event.description}
         hasLimitedAccess={hasLimitedAccess}
-        setEvent={setEvent}
       />
-      <EventDetailsNotes  
-        event={event}
-        setEvent={setEvent}
-      />
+      <EventDetailsNotes eventDetailsNotes={event.notes} handleUpdateNotes={handleUpdateNotes} />
     </>
   );
 };
-

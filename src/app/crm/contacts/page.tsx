@@ -30,7 +30,7 @@ import {
   selectShouldRefetch,
 } from '@/store/slices/contactsSlice';
 
-interface UnifiedContact {
+export interface UnifiedContact {
   id: string;
   type: 'organization' | 'contact' | 'individual';
   source: 'organizations' | 'contacts';

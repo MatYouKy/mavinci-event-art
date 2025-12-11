@@ -1,47 +1,19 @@
 import { Edit, Save } from 'lucide-react';
 import React, { useState } from 'react';
-import { IEvent } from '../../../page';
-import { supabase } from '@/lib/supabase';
-import { logChange } from '../../../helpers/logChange';
-
 interface EventDetailsNotesProps {
-  event: IEvent;
-  setEvent: (event: IEvent) => void;
+  eventDetailsNotes: string;
+  handleUpdateNotes: (notes: string) => void;
 }
 
-export const EventDetailsNotes = ({ event, setEvent }: EventDetailsNotesProps) => {
-  const [editedNotes, setEditedNotes] = useState(event.notes || '');
+export const EventDetailsNotes = ({ eventDetailsNotes, handleUpdateNotes }: EventDetailsNotesProps) => {
+  const [editedNotes, setEditedNotes] = useState(eventDetailsNotes);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
 
   const handleSaveNotes = async () => {
-    if (!event) return;
-
-    try {
-      const { error } = await supabase
-        .from('events')
-        .update({ notes: editedNotes })
-        .eq('id', event.id);
-
-      if (error) {
-        console.error('Error updating notes:', error);
-        alert('Błąd podczas zapisywania notatek');
-        return;
-      }
-
-      setEvent({ ...event, notes: editedNotes });
-      setIsEditingNotes(false);
-      await logChange(
-        'updated',
-        'Zaktualizowano notatki eventu',
-        'notes',
-        event.notes,
-        editedNotes,
-      );
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
-    }
+    await handleUpdateNotes(editedNotes);
+    setIsEditingNotes(false);
   };
+
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -49,7 +21,7 @@ export const EventDetailsNotes = ({ event, setEvent }: EventDetailsNotesProps) =
         {!isEditingNotes && (
           <button
             onClick={() => {
-              setEditedNotes(event.notes || '');
+              setEditedNotes(eventDetailsNotes);
               setIsEditingNotes(true);
             }}
             className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
@@ -83,7 +55,7 @@ export const EventDetailsNotes = ({ event, setEvent }: EventDetailsNotesProps) =
           </div>
         </div>
       ) : (
-        <p className="leading-relaxed text-[#e5e4e2]/80">{event.notes || 'Brak notatek'}</p>
+        <p className="leading-relaxed text-[#e5e4e2]/80">{eventDetailsNotes || 'Brak notatek'}</p>
       )}
     </div>
   );

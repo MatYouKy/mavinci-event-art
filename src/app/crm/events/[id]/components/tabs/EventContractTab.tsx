@@ -9,6 +9,8 @@ import { numberToWords, replaceVariables } from '@/lib/offerTemplateHelpers';
 import '@/styles/contractA4.css';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import SendContractEmailModal from '@/components/crm/SendContractEmailModal';
+import { UnifiedContact } from '@/store/slices/contactsSlice';
+import { ILocation } from '@/app/crm/locations/page';
 
 
 type ContractStatus =
@@ -93,8 +95,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .limit(1)
         .maybeSingle();
 
-      const contact = event.contacts;
-      const organization = event.organizations;
+      const contact = event.contacts as unknown as UnifiedContact | null;
+      const organization = event.organizations as unknown as UnifiedContact | null;
 
       setClientEmail(contact?.email || organization?.email || '');
       setClientName(contact?.full_name || organization?.name || '');
@@ -114,7 +116,40 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         });
       }
 
-      const template = event.event_categories?.contract_templates;
+      // Safely extract contract_template object from event.event_categories
+      // event.event_categories can be an array, so pick the first element if it's an array
+      let template = null;
+      if (Array.isArray(event.event_categories) && event.event_categories.length > 0) {
+        // "contract_templates" is an array, pick template with id === contract_template_id if exists
+        const category = event.event_categories[0];
+        if (category.contract_templates && category.contract_template_id) {
+          template = category.contract_templates.find(
+            (tpl: any) => tpl.id === category.contract_template_id
+          );
+          // Attach page_settings if exists (SupaBase *select* joins, etc workaround)
+          if (template && template.page_settings === undefined && category.contract_templates) {
+            template.page_settings = template.page_settings ?? null;
+          }
+        }
+      } else if (
+        event.event_categories && 
+        typeof event.event_categories === 'object' && 
+        'contract_template' in event.event_categories
+      ) {
+        // handles the case where event.event_categories is a single object
+        template = (event.event_categories as any).contract_template;
+      }
+
+      // Normalize template as expected type or null
+      template = template
+        ? (template as {
+            id: string;
+            name: string;
+            content: string;
+            content_html: string;
+            page_settings: any;
+          })
+        : null;
 
       if (!template) {
         setTemplateExists(false);
@@ -196,7 +231,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         });
       };
 
-      const location = event.locations;
+      const location = event.locations as unknown as ILocation;
 
       const parseLocationString = (locationStr: string) => {
         if (!locationStr) return { address: '', city: '', postal: '' };
@@ -380,6 +415,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     setEditedVariables(variables);
     setEditMode(false);
   };
+
+  console.log('event', event);
 
   const handlePrint = async () => {
     let currentContractId = contractId;

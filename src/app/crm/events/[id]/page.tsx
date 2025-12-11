@@ -28,7 +28,6 @@ import {
   Truck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 import EventTasksBoard from '@/app/crm/events/[id]/components/tabs/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
@@ -51,8 +50,15 @@ import { EventContractTab } from './components/tabs/EventContractTab';
 import { AddChecklistModal } from './components/Modals/AddChecklistModal';
 import AddEmployeeModal from '@/components/crm/AddEmployeeModal';
 import { AddEquipmentModal } from './components/Modals/AddEquipmentModal';
+import { TeamMembersList } from './components/AddMembersList';
+import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
+import { useEvent } from '@/app/crm/events/hooks/useEvent';
+import { useGetEventByIdQuery, useGetEventDetailsQuery, useLazyGetEventByIdQuery } from '../store/api/eventsApi';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { logChange } from './helpers/logChange';
 
 export interface IEvent {
+  actual_revenue: any;
   location_id: null;
   expected_revenue: any;
   location_details: any;
@@ -70,6 +76,15 @@ export interface IEvent {
   organization_id: string | null;
   contact_person_id: string | null;
   client_type: 'individual' | 'business';
+  event_categories?: {
+    contract_template?: {
+      id: string;
+      name: string;
+      content: string;
+      content_html: string;
+      page_settings: any;
+    };
+  };
   category_id: string;
   created_by: string;
   requires_subcontractors: boolean;
@@ -189,11 +204,14 @@ export default function EventDetailPage() {
   const { showSnackbar } = useSnackbar();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
 
-  const [event, setEvent] = useState<IEvent | null>(null);
+  const { data: event, isLoading, error } = useGetEventByIdQuery(eventId, {
+    refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
+  });
+
+
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
     | 'overview'
     | 'equipment'
@@ -209,7 +227,6 @@ export default function EventDetailPage() {
     | 'history'
   >('overview');
 
-
   const [isEditingCategory, setIsEditingCategory] = useState(false);
 
   const [categories, setCategories] = useState<any[]>([]);
@@ -223,13 +240,10 @@ export default function EventDetailPage() {
   const [allowedEventTabs, setAllowedEventTabs] = useState<string[]>([]);
   const [hasSubcontractors, setHasSubcontractors] = useState(false);
 
-  const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
-  const [availableEquipment, setAvailableEquipment] = useState<any[]>([]);
-  const [availableKits, setAvailableKits] = useState<any[]>([]);
+
   const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
-  const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
-  const [editingQuantity, setEditingQuantity] = useState<string | null>(null);
+
   const [equipmentAvailability, setEquipmentAvailability] = useState<{
     [key: string]: { available: number; reserved: number };
   }>({});
@@ -240,12 +254,11 @@ export default function EventDetailPage() {
   const [selectedOffer, setSelectedOffer] = useState<any>(null);
   const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
   const [auditLog, setAuditLog] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
+
   const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
 
   useEffect(() => {
     if (eventId) {
-      fetchEventDetails();
       fetchAuditLog(eventId);
       fetchOffers();
       fetchCategories();
@@ -346,172 +359,6 @@ export default function EventDetailPage() {
     }
   };
 
-  const fetchEventDetails = async () => {
-    try {
-      setLoading(true);
-
-      // Sprawdź status przypisania użytkownika do wydarzenia
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      let assignmentStatus: 'pending' | 'accepted' | 'rejected' | null = null;
-      let limitedAccess = false;
-
-      if (session?.user?.id) {
-        const { data: assignment } = await supabase
-          .from('employee_assignments')
-          .select('status')
-          .eq('event_id', eventId)
-          .eq('employee_id', session.user.id)
-          .maybeSingle();
-
-        if (assignment) {
-          assignmentStatus = assignment.status;
-          limitedAccess = assignment.status === 'pending';
-        }
-      }
-
-      setUserAssignmentStatus(assignmentStatus);
-      setHasLimitedAccess(limitedAccess);
-
-      const { data: eventData, error: eventError } = await supabase
-        .from('events')
-        .select(
-          `
-          *,
-          organization:organizations(id, name, alias),
-          contact_person:contacts(
-            id,
-            first_name,
-            last_name,
-            full_name,
-            contact_type,
-            email,
-            phone
-          ),
-          category:event_categories(
-            id,
-            name,
-            color,
-            icon:custom_icons(id, name, svg_code, preview_color)
-          ),
-          creator:employees!events_created_by_fkey(id, name, surname, avatar_url),
-          location_details:locations!location_id(
-            id,
-            name,
-            address,
-            city,
-            postal_code,
-            country,
-            formatted_address,
-            latitude,
-            longitude,
-            google_maps_url
-          )
-        `,
-        )
-        .eq('id', eventId)
-        .maybeSingle();
-
-      if (eventError) {
-        console.error('Error fetching event:', eventError);
-        setError(`Błąd pobierania wydarzenia: ${eventError.message || JSON.stringify(eventError)}`);
-        setEvent(null);
-        setLoading(false);
-        return;
-      }
-
-      if (!eventData) {
-        console.log('Event not found');
-        setError('Wydarzenie nie zostało znalezione lub nie masz dostępu do tego wydarzenia');
-        setEvent(null);
-        setLoading(false);
-        return;
-      }
-
-      setEvent(eventData);
-
-      // Ustaw czy pokazać zakładkę podwykonawców na podstawie pola requires_subcontractors
-      setHasSubcontractors(eventData?.requires_subcontractors || false);
-
-      // Jeśli użytkownik ma ograniczony dostęp (pending), nie pobieraj szczegółów
-      if (limitedAccess) {
-        setEquipment([]);
-        setEmployees([]);
-        setChecklists([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data: equipmentData, error: equipmentError } = await supabase
-        .from('event_equipment')
-        .select(
-          `
-          *,
-          equipment:equipment_items(
-            name,
-            brand,
-            model,
-            cable_specs,
-            thumbnail_url,
-            category:warehouse_categories(name)
-          ),
-          kit:equipment_kits(
-            name,
-            items:equipment_kit_items(
-              quantity,
-              equipment:equipment_items(
-                name,
-                brand,
-                model,
-                cable_specs,
-                thumbnail_url,
-                category:warehouse_categories(name)
-              )
-            )
-          )
-        `,
-        )
-        .eq('event_id', eventId);
-
-      if (!equipmentError && equipmentData) {
-        setEquipment(equipmentData);
-      } else {
-        setEquipment([]);
-      }
-
-      const { data: employeesData, error: employeesError } = await supabase
-        .from('employee_assignments')
-        .select(
-          `
-          id,
-          employee_id,
-          role,
-          responsibilities,
-          status,
-          invited_at,
-          responded_at,
-          notes,
-          employee:employee_id(id, name, surname, nickname, occupation, avatar_url, avatar_metadata, email, phone_number)
-        `,
-        )
-        .eq('event_id', eventId);
-
-      if (!employeesError && employeesData) {
-        setEmployees(employeesData as any);
-      } else {
-        setEmployees([]);
-      }
-
-      setChecklists([]);
-    } catch (error) {
-      console.error('Error fetching event details:', error);
-      setEvent(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchEquipmentAvailability = async () => {
     if (!event?.event_date) return;
 
@@ -538,39 +385,6 @@ export default function EventDetailPage() {
       setEquipmentAvailability(availability);
     } catch (error) {
       console.error('Error fetching availability:', error);
-    }
-  };
-
-  const handleUpdateQuantity = async (
-    eventEquipmentId: string,
-    equipmentId: string,
-    newQuantity: number,
-  ) => {
-    try {
-      const avail = equipmentAvailability[equipmentId];
-      if (avail && newQuantity > avail.available + avail.reserved) {
-        alert(`Dostępna ilość: ${avail.available + avail.reserved} szt.`);
-        return;
-      }
-
-      const { error } = await supabase
-        .from('event_equipment')
-        .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
-        .eq('id', eventEquipmentId);
-
-      if (error) {
-        console.error('Error updating quantity:', error);
-        alert('Błąd podczas aktualizacji ilości');
-        return;
-      }
-
-      setEditingQuantity(null);
-      await fetchEventDetails();
-      await fetchEquipmentAvailability();
-      await logChange('equipment_updated', `Zaktualizowano ilość sprzętu na ${newQuantity}`);
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
     }
   };
 
@@ -633,58 +447,12 @@ export default function EventDetailPage() {
 
       if (error) throw error;
 
-      await fetchEventDetails();
       setIsEditingCategory(false);
     } catch (err) {
       console.error('Error updating category:', err);
       alert('Błąd podczas aktualizacji kategorii');
     }
   };
-
-  const logChange = async (
-    action: string,
-    description: string,
-    fieldName?: string,
-    oldValue?: string,
-    newValue?: string,
-  ) => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
-
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('id, name, surname, nickname')
-        .eq('id', session.user.id)
-        .single();
-
-      if (!employee) {
-        console.warn('Employee not found for user:', session.user.id);
-        return;
-      }
-
-      await supabase.from('event_audit_log').insert([
-        {
-          event_id: eventId,
-          user_id: employee.id,
-          user_name: employee.nickname || `${employee.name} ${employee.surname}`,
-          action,
-          field_name: fieldName,
-          old_value: oldValue,
-          new_value: newValue,
-          description,
-        },
-      ]);
-
-      fetchAuditLog(eventId);
-    } catch (err) {
-      console.error('Error logging change:', err);
-    }
-  };
-
-
 
   const handleDeleteEvent = async () => {
     if (!event) return;
@@ -713,147 +481,6 @@ export default function EventDetailPage() {
     }
   };
 
-  const fetchAvailableEquipment = async () => {
-    try {
-      let availability = null;
-
-      // Jeśli wydarzenie ma daty, sprawdź dostępność w zakresie dat
-      if (event.event_date && event.event_end_date) {
-        const { data: availData, error: availError } = await supabase.rpc(
-          'check_equipment_availability_for_event',
-          {
-            p_event_id: eventId,
-            p_start_date: event.event_date,
-            p_end_date: event.event_end_date,
-          },
-        );
-
-        if (availError) {
-          console.error('Error checking availability:', availError);
-          return;
-        }
-
-        availability = availData;
-      } else {
-        // Brak dat - pokaż całą dostępność (wszystkie jednostki)
-        const { data: items } = await supabase.from('equipment_items').select('id, name');
-
-        const { data: kits } = await supabase.from('equipment_kits').select('id, name');
-
-        // Utwórz syntetyczną listę dostępności pokazującą całą ilość
-        const itemAvail = await Promise.all(
-          (items || []).map(async (item: any) => {
-            const { count } = await supabase
-              .from('equipment_units')
-              .select('*', { count: 'exact', head: true })
-              .eq('equipment_id', item.id)
-              .in('status', ['available', 'reserved', 'in_use']);
-
-            return {
-              item_id: item.id,
-              item_type: 'item',
-              item_name: item.name,
-              total_quantity: count || 0,
-              reserved_quantity: 0,
-              available_quantity: count || 0,
-            };
-          }),
-        );
-
-        const kitAvail = (kits || []).map((kit: any) => ({
-          item_id: kit.id,
-          item_type: 'kit',
-          item_name: kit.name,
-          total_quantity: 1,
-          reserved_quantity: 0,
-          available_quantity: 1,
-        }));
-
-        availability = [...itemAvail, ...kitAvail];
-      }
-
-      console.log('Availability data:', availability);
-
-      // Stwórz mapę dostępności
-      const availabilityMap = new Map(
-        (availability || []).map((item: any) => [`${item.item_type}-${item.item_id}`, item]),
-      );
-
-      console.log('Availability map:', availabilityMap);
-
-      // Pobierz wszystkie items
-      const { data: items, error: itemsError } = await supabase
-        .from('equipment_items')
-        .select(
-          `
-          *,
-          category:warehouse_categories(name)
-        `,
-        )
-        .order('name');
-
-      if (!itemsError && items) {
-        // Filtruj sprzęt który jest już dodany do wydarzenia
-        const alreadyAddedIds = equipment
-          .filter((eq) => eq.equipment_id)
-          .map((eq) => eq.equipment_id);
-
-        const availableItems = items
-          .filter((item) => !alreadyAddedIds.includes(item.id))
-          .map((item) => {
-            const avail = availabilityMap.get(`item-${item.id}`);
-            return {
-              ...item,
-              available_count: avail?.available_quantity || 0,
-              total_quantity: avail?.total_quantity || 0,
-              reserved_quantity: avail?.reserved_quantity || 0,
-            };
-          })
-          .filter((item) => item.available_count > 0);
-
-        setAvailableEquipment(availableItems);
-      }
-
-      // Pobierz zestawy
-      const { data: kits, error: kitsError } = await supabase
-        .from('equipment_kits')
-        .select(
-          `
-          *,
-          items:equipment_kit_items(
-            equipment_id,
-            quantity,
-            equipment:equipment_items(
-              id,
-              name,
-              category:warehouse_categories(name)
-            )
-          )
-        `,
-        )
-        .order('name');
-
-      if (!kitsError && kits) {
-        const alreadyAddedKitIds = equipment.filter((eq) => eq.kit_id).map((eq) => eq.kit_id);
-
-        const availableKitsWithAvail = kits
-          .filter((kit) => !alreadyAddedKitIds.includes(kit.id))
-          .map((kit) => {
-            const avail = availabilityMap.get(`kit-${kit.id}`);
-            return {
-              ...kit,
-              available_count: avail?.available_quantity || 0,
-            };
-          })
-          .filter((kit) => kit.available_count > 0);
-
-        setAvailableKits(availableKitsWithAvail);
-      }
-    } catch (error) {
-      console.error('Error fetching available equipment:', error);
-    }
-  };
-
   const fetchAvailableEmployees = async () => {
     const { data, error } = await supabase.from('employees').select('*').order('name');
 
@@ -862,49 +489,6 @@ export default function EventDetailPage() {
       const alreadyAddedIds = employees.map((emp) => emp.employee_id);
       const availableEmp = data.filter((emp) => !alreadyAddedIds.includes(emp.id));
       setAvailableEmployees(availableEmp);
-    }
-  };
-
-  const handleAddEquipment = async (
-    selectedItems: Array<{ id: string; quantity: number; notes: string; type: 'item' | 'kit' }>,
-  ) => {
-    try {
-      const itemsToInsert: any[] = [];
-
-      for (const selected of selectedItems) {
-        if (selected.type === 'kit') {
-          itemsToInsert.push({
-            event_id: eventId,
-            kit_id: selected.id,
-            equipment_id: null,
-            quantity: selected.quantity,
-            notes: selected.notes,
-          });
-        } else {
-          itemsToInsert.push({
-            event_id: eventId,
-            kit_id: null,
-            equipment_id: selected.id,
-            quantity: selected.quantity,
-            notes: selected.notes,
-          });
-        }
-      }
-
-      const { error } = await supabase.from('event_equipment').insert(itemsToInsert);
-
-      if (error) {
-        console.error('Error adding equipment:', error);
-        alert('Błąd podczas dodawania sprzętu');
-        return;
-      }
-
-      setShowAddEquipmentModal(false);
-      fetchEventDetails();
-      await logChange('equipment_added', `Dodano ${itemsToInsert.length} pozycji sprzętu`);
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
     }
   };
 
@@ -948,31 +532,11 @@ export default function EventDetailPage() {
       }
 
       setShowAddEmployeeModal(false);
-      fetchEventDetails();
-      await logChange(
-        'employee_added',
-        `Dodano pracownika do zespołu (ID: ${employeeId}, rola: ${role})`,
-      );
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
-    }
-  };
-
-  const handleRemoveEquipment = async (equipmentId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć ten sprzęt z eventu?')) return;
-
-    try {
-      const { error } = await supabase.from('event_equipment').delete().eq('id', equipmentId);
-
-      if (error) {
-        console.error('Error removing equipment:', error);
-        alert('Błąd podczas usuwania sprzętu');
-        return;
-      }
-
-      fetchEventDetails();
-      await logChange('equipment_removed', `Usunięto sprzęt z eventu (ID: ${equipmentId})`);
+    
+      // await logChange(
+      //   'employee_added',
+      //   `Dodano pracownika do zespołu (ID: ${employeeId}, rola: ${role})`,
+      // );
     } catch (err) {
       console.error('Error:', err);
       alert('Wystąpił błąd');
@@ -994,8 +558,7 @@ export default function EventDetailPage() {
         return;
       }
 
-      fetchEventDetails();
-      await logChange('employee_removed', `Usunięto pracownika z eventu (ID: ${employeeId})`);
+      // await logChange('employee_removed', `Usunięto pracownika z eventu (ID: ${employeeId})`);
     } catch (err) {
       console.error('Error:', err);
       alert('Wystąpił błąd');
@@ -1015,7 +578,7 @@ export default function EventDetailPage() {
     console.log('Checklist functionality disabled - table does not exist');
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
@@ -1023,15 +586,21 @@ export default function EventDetailPage() {
     );
   }
 
+  {error && (
+    <div className="p-4 text-sm text-red-400">
+      {error.message}
+    </div>
+  )}
+
   if (!event) {
     return (
       <div className="flex h-screen flex-col items-center justify-center space-y-4">
         <div className="text-lg font-medium text-red-400">
-          {error || 'Event nie został znaleziony'}
+          {error.message || 'Event nie został znaleziony'}
         </div>
-        {error && (
+        {error.message && (
           <div className="max-w-md text-center text-sm text-[#e5e4e2]/60">
-            Sprawdź konsolę przeglądarki (F12) aby zobaczyć więcej szczegółów
+            Sprawdź konsolę przeglądarki (F12), aby zobaczyć więcej szczegółów.
           </div>
         )}
         <button
@@ -1155,7 +724,7 @@ export default function EventDetailPage() {
             eventId={event.id}
             currentStatus={event.status}
             onStatusChange={(newStatus) => {
-              setEvent((prev) => (prev ? { ...prev, status: newStatus } : null));
+              console.log('newStatus', newStatus);
             }}
           />
           <button
@@ -1276,8 +845,6 @@ export default function EventDetailPage() {
                                 responded_at: new Date().toISOString(),
                               })
                               .eq('id', assignment.id);
-
-                            await fetchEventDetails();
                           }
                         }}
                         className="rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-2 text-green-400 transition-colors hover:bg-green-500/30"
@@ -1320,16 +887,10 @@ export default function EventDetailPage() {
               </div>
             )}
             <EventsDetailsTab
-              event={event}
               hasLimitedAccess={hasLimitedAccess}
               canManageTeam={canManageTeam}
               isUserAdmin={isUserAdmin}
-              setEvent={setEvent}
-              setHasSubcontractors={setHasSubcontractors}
-              fetchEventDetails={fetchEventDetails}
             />
-
-
           </div>
 
           <div className="space-y-6">
@@ -1391,512 +952,7 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {activeTab === 'equipment' && (
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-lg font-light text-[#e5e4e2]">Sprzęt</h2>
-            <button
-              onClick={() => {
-                fetchAvailableEquipment();
-                setShowAddEquipmentModal(true);
-              }}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-            >
-              <Plus className="h-4 w-4" />
-              Dodaj sprzęt
-            </button>
-          </div>
-
-          {equipment.length === 0 ? (
-            <div className="py-12 text-center">
-              <Package className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
-              <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Ręcznie dodany sprzęt */}
-              {equipment.filter((item) => !item.auto_added).length > 0 && (
-                <div className="space-y-2">
-                  {equipment
-                    .filter((item) => !item.auto_added)
-                    .map((item) => {
-                      const isExpanded = expandedKits.has(item.id);
-                      const isKit = !!item.kit;
-
-                      return (
-                        <div key={item.id}>
-                          <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20">
-                            {isKit && (
-                              <button
-                                onClick={() => {
-                                  const newExpanded = new Set(expandedKits);
-                                  if (isExpanded) {
-                                    newExpanded.delete(item.id);
-                                  } else {
-                                    newExpanded.add(item.id);
-                                  }
-                                  setExpandedKits(newExpanded);
-                                }}
-                                className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
-                              >
-                                <ChevronDown
-                                  className={`h-4 w-4 transition-transform ${
-                                    isExpanded ? 'rotate-180' : ''
-                                  }`}
-                                />
-                              </button>
-                            )}
-
-                            <div className="flex min-w-0 flex-1 items-center gap-3">
-                              {isKit ? (
-                                <span className="text-base">🎁</span>
-                              ) : item.equipment?.thumbnail_url ? (
-                                <img
-                                  src={item.equipment.thumbnail_url}
-                                  alt={item.equipment.name}
-                                  className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
-                                  <Package className="h-5 w-5 text-[#e5e4e2]/30" />
-                                </div>
-                              )}
-                              <div className="flex min-w-0 flex-col">
-                                <span className="truncate font-medium text-[#e5e4e2]">
-                                  {item.kit ? item.kit.name : item.equipment?.name || 'Nieznany'}
-                                </span>
-                                {!isKit && item.equipment && (
-                                  <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                                    {item.equipment.brand && <span>{item.equipment.brand}</span>}
-                                    {item.equipment.model && (
-                                      <>
-                                        {item.equipment.brand && <span>•</span>}
-                                        <span>{item.equipment.model}</span>
-                                      </>
-                                    )}
-                                    {item.equipment.cable_specs && (
-                                      <>
-                                        {(item.equipment.brand || item.equipment.model) && (
-                                          <span>•</span>
-                                        )}
-                                        {item.equipment.cable_specs.connector_in &&
-                                        item.equipment.cable_specs.connector_out ? (
-                                          <span>
-                                            {item.equipment.cable_specs.connector_in} →{' '}
-                                            {item.equipment.cable_specs.connector_out}
-                                          </span>
-                                        ) : (
-                                          item.equipment.cable_specs.type && (
-                                            <span>{item.equipment.cable_specs.type}</span>
-                                          )
-                                        )}
-                                        {item.equipment.cable_specs.length_meters && (
-                                          <span>{item.equipment.cable_specs.length_meters}m</span>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-                              {!isKit && item.equipment?.category && (
-                                <span className="hidden md:inline">
-                                  {item.equipment.category.name}
-                                </span>
-                              )}
-                              {!isKit &&
-                                item.equipment_id &&
-                                equipmentAvailability[item.equipment_id] && (
-                                  <div className="hidden flex-col items-end text-xs lg:flex">
-                                    <span className="text-[#d3bb73]">
-                                      {equipmentAvailability[item.equipment_id].available +
-                                        equipmentAvailability[item.equipment_id].reserved}{' '}
-                                      dostępne
-                                    </span>
-                                  </div>
-                                )}
-                              {editingQuantity === item.id ? (
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    defaultValue={item.quantity}
-                                    className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1 text-sm text-[#e5e4e2]"
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        const newQuantity = parseInt(
-                                          (e.target as HTMLInputElement).value,
-                                        );
-                                        if (newQuantity > 0) {
-                                          handleUpdateQuantity(
-                                            item.id,
-                                            item.equipment_id,
-                                            newQuantity,
-                                          );
-                                        }
-                                      } else if (e.key === 'Escape') {
-                                        setEditingQuantity(null);
-                                      }
-                                    }}
-                                    onBlur={(e) => {
-                                      const newQuantity = parseInt(e.target.value);
-                                      if (newQuantity > 0 && newQuantity !== item.quantity) {
-                                        handleUpdateQuantity(
-                                          item.id,
-                                          item.equipment_id,
-                                          newQuantity,
-                                        );
-                                      } else {
-                                        setEditingQuantity(null);
-                                      }
-                                    }}
-                                    autoFocus
-                                  />
-                                  <span className="text-[#e5e4e2]/60">szt.</span>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => !isKit && setEditingQuantity(item.id)}
-                                  className={`font-medium text-[#e5e4e2] ${!isKit ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
-                                  disabled={isKit}
-                                >
-                                  {item.quantity} szt.
-                                </button>
-                              )}
-                            </div>
-
-                            <button
-                              onClick={() => handleRemoveEquipment(item.id)}
-                              className="text-red-400/60 transition-colors hover:text-red-400"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          {isKit && isExpanded && item.kit?.items && (
-                            <div className="ml-9 mt-1 space-y-1">
-                              {item.kit.items.map((kitItem: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-3 rounded border border-[#d3bb73]/5 bg-[#0f1119]/50 px-4 py-2 text-sm"
-                                >
-                                  {kitItem.equipment.thumbnail_url ? (
-                                    <img
-                                      src={kitItem.equipment.thumbnail_url}
-                                      alt={kitItem.equipment.name}
-                                      className="h-8 w-8 rounded border border-[#d3bb73]/10 object-cover"
-                                    />
-                                  ) : (
-                                    <div className="flex h-8 w-8 items-center justify-center rounded border border-[#d3bb73]/10 bg-[#1c1f33]">
-                                      <Package className="h-4 w-4 text-[#e5e4e2]/30" />
-                                    </div>
-                                  )}
-                                  <div className="flex min-w-0 flex-1 flex-col">
-                                    <span className="text-[#e5e4e2]/80">
-                                      {kitItem.equipment.name}
-                                    </span>
-                                    <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/40">
-                                      {kitItem.equipment.brand && (
-                                        <span>{kitItem.equipment.brand}</span>
-                                      )}
-                                      {kitItem.equipment.model && (
-                                        <>
-                                          {kitItem.equipment.brand && <span>•</span>}
-                                          <span>{kitItem.equipment.model}</span>
-                                        </>
-                                      )}
-                                      {kitItem.equipment.cable_specs && (
-                                        <>
-                                          {(kitItem.equipment.brand || kitItem.equipment.model) && (
-                                            <span>•</span>
-                                          )}
-                                          {kitItem.equipment.cable_specs.connector_in &&
-                                          kitItem.equipment.cable_specs.connector_out ? (
-                                            <span>
-                                              {kitItem.equipment.cable_specs.connector_in} →{' '}
-                                              {kitItem.equipment.cable_specs.connector_out}
-                                            </span>
-                                          ) : (
-                                            kitItem.equipment.cable_specs.type && (
-                                              <span>{kitItem.equipment.cable_specs.type}</span>
-                                            )
-                                          )}
-                                          {kitItem.equipment.cable_specs.length_meters && (
-                                            <span>
-                                              {kitItem.equipment.cable_specs.length_meters}m
-                                            </span>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="hidden text-xs text-[#e5e4e2]/50 md:inline">
-                                    {kitItem.equipment.category?.name}
-                                  </span>
-                                  <span className="font-medium text-[#e5e4e2]/60">
-                                    {kitItem.quantity * item.quantity} szt.
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-
-              {/* Separator między ręcznie dodanym a automatycznym */}
-              {equipment.filter((item) => !item.auto_added).length > 0 &&
-                equipment.filter((item) => item.auto_added).length > 0 && (
-                  <div className="my-6 flex items-center gap-4">
-                    <div className="h-px flex-1 bg-[#d3bb73]/10"></div>
-                    <span className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                      Z produktów oferty
-                    </span>
-                    <div className="h-px flex-1 bg-[#d3bb73]/10"></div>
-                  </div>
-                )}
-
-              {/* Automatycznie dodany sprzęt z oferty */}
-              {equipment.filter((item) => item.auto_added).length > 0 && (
-                <div className="space-y-2">
-                  {equipment
-                    .filter((item) => item.auto_added)
-                    .map((item) => {
-                      const isExpanded = expandedKits.has(item.id);
-                      const isKit = !!item.kit;
-
-                      return (
-                        <div key={item.id}>
-                          <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20">
-                            {isKit && (
-                              <button
-                                onClick={() => {
-                                  const newExpanded = new Set(expandedKits);
-                                  if (isExpanded) {
-                                    newExpanded.delete(item.id);
-                                  } else {
-                                    newExpanded.add(item.id);
-                                  }
-                                  setExpandedKits(newExpanded);
-                                }}
-                                className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
-                              >
-                                <ChevronDown
-                                  className={`h-4 w-4 transition-transform ${
-                                    isExpanded ? 'rotate-180' : ''
-                                  }`}
-                                />
-                              </button>
-                            )}
-
-                            <div className="flex min-w-0 flex-1 items-center gap-3">
-                              {isKit ? (
-                                <span className="text-base">🎁</span>
-                              ) : item.equipment?.thumbnail_url ? (
-                                <img
-                                  src={item.equipment.thumbnail_url}
-                                  alt={item.equipment.name}
-                                  className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
-                                  <Package className="h-5 w-5 text-[#e5e4e2]/30" />
-                                </div>
-                              )}
-                              <div className="flex min-w-0 flex-col">
-                                <span className="truncate font-medium text-[#e5e4e2]">
-                                  {item.kit ? item.kit.name : item.equipment?.name || 'Nieznany'}
-                                </span>
-                                {!isKit && item.equipment && (
-                                  <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                                    {item.equipment.brand && <span>{item.equipment.brand}</span>}
-                                    {item.equipment.model && (
-                                      <>
-                                        {item.equipment.brand && <span>•</span>}
-                                        <span>{item.equipment.model}</span>
-                                      </>
-                                    )}
-                                    {item.equipment.cable_specs && (
-                                      <>
-                                        {(item.equipment.brand || item.equipment.model) && (
-                                          <span>•</span>
-                                        )}
-                                        {item.equipment.cable_specs.connector_in &&
-                                        item.equipment.cable_specs.connector_out ? (
-                                          <span>
-                                            {item.equipment.cable_specs.connector_in} →{' '}
-                                            {item.equipment.cable_specs.connector_out}
-                                          </span>
-                                        ) : (
-                                          item.equipment.cable_specs.type && (
-                                            <span>{item.equipment.cable_specs.type}</span>
-                                          )
-                                        )}
-                                        {item.equipment.cable_specs.length_meters && (
-                                          <span>{item.equipment.cable_specs.length_meters}m</span>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-                              {!isKit && item.equipment?.category && (
-                                <span className="hidden md:inline">
-                                  {item.equipment.category.name}
-                                </span>
-                              )}
-                              {!isKit &&
-                                item.equipment_id &&
-                                equipmentAvailability[item.equipment_id] && (
-                                  <div className="hidden flex-col items-end text-xs lg:flex">
-                                    <span className="text-[#d3bb73]">
-                                      {equipmentAvailability[item.equipment_id].available +
-                                        equipmentAvailability[item.equipment_id].reserved}{' '}
-                                      dostępne
-                                    </span>
-                                  </div>
-                                )}
-                              {editingQuantity === item.id ? (
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    defaultValue={item.quantity}
-                                    className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1 text-sm text-[#e5e4e2]"
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        const newQuantity = parseInt(
-                                          (e.target as HTMLInputElement).value,
-                                        );
-                                        if (newQuantity > 0) {
-                                          handleUpdateQuantity(
-                                            item.id,
-                                            item.equipment_id,
-                                            newQuantity,
-                                          );
-                                        }
-                                      } else if (e.key === 'Escape') {
-                                        setEditingQuantity(null);
-                                      }
-                                    }}
-                                    onBlur={(e) => {
-                                      const newQuantity = parseInt(e.target.value);
-                                      if (newQuantity > 0 && newQuantity !== item.quantity) {
-                                        handleUpdateQuantity(
-                                          item.id,
-                                          item.equipment_id,
-                                          newQuantity,
-                                        );
-                                      } else {
-                                        setEditingQuantity(null);
-                                      }
-                                    }}
-                                    autoFocus
-                                  />
-                                  <span className="text-[#e5e4e2]/60">szt.</span>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => !isKit && setEditingQuantity(item.id)}
-                                  className={`font-medium text-[#e5e4e2] ${!isKit ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
-                                  disabled={isKit}
-                                >
-                                  {item.quantity} szt.
-                                </button>
-                              )}
-                            </div>
-
-                            <button
-                              onClick={() => handleRemoveEquipment(item.id)}
-                              className="text-red-400/60 transition-colors hover:text-red-400"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          {isKit && isExpanded && item.kit?.items && (
-                            <div className="ml-9 mt-1 space-y-1">
-                              {item.kit.items.map((kitItem: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-3 rounded border border-[#d3bb73]/5 bg-[#0f1119]/50 px-4 py-2 text-sm"
-                                >
-                                  {kitItem.equipment.thumbnail_url ? (
-                                    <img
-                                      src={kitItem.equipment.thumbnail_url}
-                                      alt={kitItem.equipment.name}
-                                      className="h-8 w-8 rounded border border-[#d3bb73]/10 object-cover"
-                                    />
-                                  ) : (
-                                    <div className="flex h-8 w-8 items-center justify-center rounded border border-[#d3bb73]/10 bg-[#1c1f33]">
-                                      <Package className="h-4 w-4 text-[#e5e4e2]/30" />
-                                    </div>
-                                  )}
-                                  <div className="flex min-w-0 flex-1 flex-col">
-                                    <span className="text-[#e5e4e2]/80">
-                                      {kitItem.equipment.name}
-                                    </span>
-                                    <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/40">
-                                      {kitItem.equipment.brand && (
-                                        <span>{kitItem.equipment.brand}</span>
-                                      )}
-                                      {kitItem.equipment.model && (
-                                        <>
-                                          {kitItem.equipment.brand && <span>•</span>}
-                                          <span>{kitItem.equipment.model}</span>
-                                        </>
-                                      )}
-                                      {kitItem.equipment.cable_specs && (
-                                        <>
-                                          {(kitItem.equipment.brand || kitItem.equipment.model) && (
-                                            <span>•</span>
-                                          )}
-                                          {kitItem.equipment.cable_specs.connector_in &&
-                                          kitItem.equipment.cable_specs.connector_out ? (
-                                            <span>
-                                              {kitItem.equipment.cable_specs.connector_in} →{' '}
-                                              {kitItem.equipment.cable_specs.connector_out}
-                                            </span>
-                                          ) : (
-                                            kitItem.equipment.cable_specs.type && (
-                                              <span>{kitItem.equipment.cable_specs.type}</span>
-                                            )
-                                          )}
-                                          {kitItem.equipment.cable_specs.length_meters && (
-                                            <span>
-                                              {kitItem.equipment.cable_specs.length_meters}m
-                                            </span>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="hidden text-xs text-[#e5e4e2]/50 md:inline">
-                                    {kitItem.equipment.category?.name}
-                                  </span>
-                                  <span className="font-medium text-[#e5e4e2]/60">
-                                    {kitItem.quantity * item.quantity} szt.
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* {activeTab === 'equipment' && <EventEquipmentTab equipment={equipment} />} */}
 
       {activeTab === 'team' && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -2215,24 +1271,14 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {showAddEquipmentModal && (
-        <AddEquipmentModal
-          isOpen={showAddEquipmentModal}
-          onClose={() => setShowAddEquipmentModal(false)}
-          onAdd={handleAddEquipment}
-          availableEquipment={availableEquipment}
-          availableKits={availableKits}
-        />
-      )}
-
-      {showAddEmployeeModal && (
+      {/* {showAddEmployeeModal && (
         <AddEmployeeModal
           isOpen={showAddEmployeeModal}
           onClose={() => setShowAddEmployeeModal(false)}
           onAdd={handleAddEmployee}
           availableEmployees={availableEmployees}
         />
-      )}
+      )} */}
 
       {showAddChecklistModal && (
         <AddChecklistModal
@@ -2259,8 +1305,7 @@ export default function EventDetailPage() {
               }
 
               setShowEditEventModal(false);
-              fetchEventDetails();
-              await logChange('updated', 'Zaktualizowano podstawowe informacje eventu');
+              await logChange(eventId, 'updated', 'Zaktualizowano podstawowe informacje eventu');
             } catch (err) {
               console.error('Error:', err);
               alert('Wystąpił błąd');
@@ -2276,12 +1321,11 @@ export default function EventDetailPage() {
           eventId={eventId}
           organizationId={event.organization_id}
           contactId={event.contact_person_id}
-          clientType={event.client_type}
+          clientType={event?.client_type || 'business'}
           onSuccess={() => {
             setShowCreateOfferModal(false);
             fetchOffers();
-            setActiveTab('offer');
-            fetchEventDetails(); // Odśwież dane eventu aby zaktualizować budżet
+            setActiveTab('offer'); // Odśwież dane eventu aby zaktualizować budżet
           }}
         />
       )}

@@ -1,6 +1,13 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 export interface UnifiedContact {
+  nip: string;
+  postal_code: string;
+  address: string;
+  pesel: string;
+  last_name: string;
+  first_name: string;
+  full_name: any;
   id: string;
   type: 'organization' | 'contact' | 'individual';
   source: 'organizations' | 'contacts';

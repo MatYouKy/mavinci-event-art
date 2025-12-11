@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import GoogleMapsPicker from '@/components/crm/GoogleMapsPicker';
 
-interface Location {
+export interface ILocation {
   id: string;
   name: string;
   address?: string;
@@ -38,10 +38,10 @@ type SortDirection = 'asc' | 'desc';
 export default function LocationsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [locations, setLocations] = useState<ILocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [editingLocation, setEditingLocation] = useState<ILocation | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
@@ -87,7 +87,7 @@ export default function LocationsPage() {
 
   // Filtrowanie i sortowanie
   const filteredAndSortedLocations = useMemo(() => {
-    let filtered = locations;
+    let filtered = locations as unknown as ILocation[];
 
     // Wyszukiwanie
     if (searchQuery) {
@@ -131,7 +131,7 @@ export default function LocationsPage() {
   // Lista unikalnych miast
   const cities = useMemo(() => {
     const citySet = new Set<string>();
-    locations.forEach((loc) => {
+    (locations as unknown as ILocation[]).forEach((loc: ILocation) => {
       if (loc.city) citySet.add(loc.city);
     });
     return Array.from(citySet).sort();
@@ -146,7 +146,7 @@ export default function LocationsPage() {
     }
   };
 
-  const handleOpenModal = (location?: Location) => {
+  const handleOpenModal = (location?: ILocation) => {
     if (location) {
       setEditingLocation(location);
       setFormData({
@@ -645,7 +645,7 @@ function LocationCardGrid({
   onDelete,
   onClick,
 }: {
-  location: Location;
+  location: ILocation;
   onEdit: () => void;
   onDelete: () => void;
   onClick: () => void;
@@ -736,7 +736,7 @@ function LocationCardList({
   onDelete,
   onClick,
 }: {
-  location: Location;
+  location: ILocation;
   onEdit: () => void;
   onDelete: () => void;
   onClick: () => void;
@@ -818,8 +818,8 @@ function LocationTable({
   onEdit,
   onDelete,
 }: {
-  locations: Location[];
-  onEdit: (location: Location) => void;
+  locations: ILocation[];
+  onEdit: (location: ILocation) => void;
   onDelete: (id: string) => void;
 }) {
   return (

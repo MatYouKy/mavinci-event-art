@@ -5,19 +5,12 @@ import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { EditIcon, Trash2, User, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import { Employee } from '@/lib/permissions';
 
-
 interface TeamMembersListProps {
-  employees: Employee[];
+  employees: Employee[] | any[];
   onRemove: (id: string) => void;
 }
 
-export function TeamMembersList({
-  employees,
-  onRemove,
-}: {
-  employees: Employee[];
-  onRemove: (id: string) => void;
-}) {
+export function TeamMembersList({ employees, onRemove }: TeamMembersListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');

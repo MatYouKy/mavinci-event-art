@@ -1,25 +1,31 @@
+// useEvent.ts
+
 import { useCallback } from 'react';
+import { useSelector } from 'react-redux';
+import { eventsApi } from '@/app/crm/events/store/api/eventsApi';
+import type { RootState } from '@/store/store';
 import {
-  useGetEventDetailsQuery,
   useUpdateEventMutation,
   useDeleteEventMutation,
 } from '@/app/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export function useEvent(eventId: string) {
+export function useEvent() {
+  const eventId = useParams().id as string;
+  
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
 
-  const {
-    data: event,
-    isLoading,
-    error,
-    refetch,
-  } = useGetEventDetailsQuery(eventId, {
-    skip: !eventId,
-  });
+  // 🔥 TYLKO ODCZYT z cache RTK Query – ZERO zapytań
+  const queryState = useSelector((state: RootState) =>
+    eventsApi.endpoints.getEventById.select(eventId)(state),
+  );
+
+  const event = queryState?.data;
+  const loading = queryState?.isLoading ?? false;
+  const error = queryState?.error;
 
   const [updateEvent, { isLoading: isUpdating }] = useUpdateEventMutation();
   const [deleteEvent, { isLoading: isDeleting }] = useDeleteEventMutation();
@@ -28,10 +34,16 @@ export function useEvent(eventId: string) {
     async (data: any) => {
       try {
         await updateEvent({ id: eventId, data }).unwrap();
+        // ⬆️ invalidatesTags => spowoduje REFRESH tylko tam,
+        // gdzie faktycznie użyto useGetEventDetailsQuery(eventId),
+        // czyli w głównym komponencie
         showSnackbar('Wydarzenie zaktualizowane', 'success');
         return true;
       } catch (error: any) {
-        showSnackbar(`Błąd: ${error.message}`, 'error');
+        showSnackbar(
+          `Błąd: ${error?.message ?? 'Nie udało się zaktualizować wydarzenia'}`,
+          'error',
+        );
         return false;
       }
     },
@@ -45,7 +57,10 @@ export function useEvent(eventId: string) {
       router.push('/crm/events');
       return true;
     } catch (error: any) {
-      showSnackbar(`Błąd: ${error.message}`, 'error');
+      showSnackbar(
+        `Błąd: ${error?.message ?? 'Nie udało się usunąć wydarzenia'}`,
+        'error',
+      );
       return false;
     }
   }, [eventId, deleteEvent, showSnackbar, router]);
@@ -78,9 +93,8 @@ export function useEvent(eventId: string) {
 
   return {
     event,
-    isLoading,
+    loading,
     error,
-    refetch,
     updateEvent: handleUpdateEvent,
     deleteEvent: handleDeleteEvent,
     logChange,
