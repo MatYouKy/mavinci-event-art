@@ -10,11 +10,14 @@ import {
   User,
   GripVertical,
   UserPlus,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '../../../../../components/crm/TaskCard';
 
 interface Task {
@@ -69,6 +72,11 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { currentEmployee } = useCurrentEmployee();
+
+  const isMobile = useMobile(1024);
+  const [activeColumnIndex, setActiveColumnIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -763,6 +771,45 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     return tasks.filter((task) => task.board_column === columnId);
   };
 
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe && activeColumnIndex < columns.length - 1) {
+      setActiveColumnIndex(prev => prev + 1);
+    }
+
+    if (isRightSwipe && activeColumnIndex > 0) {
+      setActiveColumnIndex(prev => prev - 1);
+    }
+  };
+
+  const handlePrevColumn = () => {
+    if (activeColumnIndex > 0) {
+      setActiveColumnIndex(prev => prev - 1);
+    }
+  };
+
+  const handleNextColumn = () => {
+    if (activeColumnIndex < columns.length - 1) {
+      setActiveColumnIndex(prev => prev + 1);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -773,8 +820,46 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-light text-[#e5e4e2]">Zadania wydarzenia</h2>
+
+        {isMobile && (
+          <div className="flex items-center gap-2 w-full lg:w-auto order-3 lg:order-none">
+            <button
+              onClick={handlePrevColumn}
+              disabled={activeColumnIndex === 0}
+              className="p-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Poprzednia sekcja"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <select
+              value={columns[activeColumnIndex].id}
+              onChange={(e) => {
+                const index = columns.findIndex(col => col.id === e.target.value);
+                if (index !== -1) setActiveColumnIndex(index);
+              }}
+              className="flex-1 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            >
+              {columns.map((col) => (
+                <option key={col.id} value={col.id}>
+                  {col.label} ({getColumnTasks(col.id).length})
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={handleNextColumn}
+              disabled={activeColumnIndex === columns.length - 1}
+              className="p-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Następna sekcja"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
         {canManage && (
           <button
             onClick={() => handleOpenModal()}
@@ -786,17 +871,29 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         )}
       </div>
 
-      <div className="overflow-x-auto pb-4" ref={scrollContainerRef}>
-        <div className="flex min-w-max gap-4">
-          {columns.map((column) => {
+      <div
+        className="overflow-x-auto pb-4"
+        ref={scrollContainerRef}
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      >
+        <div
+          className={`flex min-w-max gap-4 transition-transform duration-300 ${isMobile ? 'transform' : ''}`}
+          style={{
+            transform: isMobile ? `translateX(-${activeColumnIndex * 100}%)` : undefined,
+          }}
+        >
+          {(isMobile ? [columns[activeColumnIndex]] : columns).map((column) => {
             const columnTasks = getColumnTasks(column.id);
 
             return (
               <div
                 key={column.id}
-                className={`rounded-xl border bg-[#1c1f33] p-4 ${column.color} w-80 flex-shrink-0 transition-all ${
+                className={`rounded-xl border bg-[#1c1f33] p-4 ${column.color} flex-shrink-0 transition-all ${
                   dragOverColumn === column.id ? 'scale-[1.02] ring-2 ring-[#d3bb73]/50' : ''
                 }`}
+                style={{ width: isMobile ? '100%' : '320px' }}
                 onDragOver={(e) => handleDragOver(e, column.id)}
                 onDrop={(e) => handleDrop(e, column.id)}
                 onDragLeave={() => setDragOverColumn(null)}

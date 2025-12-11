@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar, Play, Clock } from 'lucide-react';
+import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar, Play, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useMobile } from '@/hooks/useMobile';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 
 interface Task {
@@ -48,6 +49,11 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [taskToStart, setTaskToStart] = useState<Task | null>(null);
   const [activeTimer, setActiveTimer] = useState<any>(null);
+
+  const isMobile = useMobile(1024);
+  const [activeColumnIndex, setActiveColumnIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -665,6 +671,45 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     return tasks.filter(task => task.board_column === columnId);
   };
 
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe && activeColumnIndex < columns.length - 1) {
+      setActiveColumnIndex(prev => prev + 1);
+    }
+
+    if (isRightSwipe && activeColumnIndex > 0) {
+      setActiveColumnIndex(prev => prev - 1);
+    }
+  };
+
+  const handlePrevColumn = () => {
+    if (activeColumnIndex > 0) {
+      setActiveColumnIndex(prev => prev - 1);
+    }
+  };
+
+  const handleNextColumn = () => {
+    if (activeColumnIndex < columns.length - 1) {
+      setActiveColumnIndex(prev => prev + 1);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -685,8 +730,46 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4 px-2">
+      <div className="flex items-center justify-between mb-4 px-2 flex-wrap gap-3">
         <h3 className="text-lg font-light text-[#e5e4e2]">Moja tablica zadań</h3>
+
+        {isMobile && (
+          <div className="flex items-center gap-2 w-full lg:w-auto order-3 lg:order-none">
+            <button
+              onClick={handlePrevColumn}
+              disabled={activeColumnIndex === 0}
+              className="p-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Poprzednia sekcja"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <select
+              value={columns[activeColumnIndex].id}
+              onChange={(e) => {
+                const index = columns.findIndex(col => col.id === e.target.value);
+                if (index !== -1) setActiveColumnIndex(index);
+              }}
+              className="flex-1 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+            >
+              {columns.map((col, idx) => (
+                <option key={col.id} value={col.id}>
+                  {col.label} ({getTasksByColumn(col.id).length})
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={handleNextColumn}
+              disabled={activeColumnIndex === columns.length - 1}
+              className="p-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Następna sekcja"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
         <button
           onClick={() => handleOpenModal()}
           className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
@@ -696,9 +779,21 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         </button>
       </div>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-x-auto pb-4">
-        <div className="flex gap-4 px-2" style={{ minWidth: 'min-content' }}>
-          {columns.map(column => (
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-x-auto pb-4"
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      >
+        <div
+          className={`flex gap-4 px-2 transition-transform duration-300 ${isMobile ? 'transform' : ''}`}
+          style={{
+            minWidth: 'min-content',
+            transform: isMobile ? `translateX(-${activeColumnIndex * 100}%)` : undefined,
+          }}
+        >
+          {(isMobile ? [columns[activeColumnIndex]] : columns).map(column => (
             <div
               key={column.id}
               onDragOver={(e) => handleDragOver(e, column.id)}
@@ -709,7 +804,10 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                   ? 'border-[#d3bb73] bg-[#d3bb73]/5'
                   : column.color
               }`}
-              style={{ width: '320px', maxHeight: 'calc(100vh - 400px)' }}
+              style={{
+                width: isMobile ? '100%' : '320px',
+                maxHeight: 'calc(100vh - 400px)',
+              }}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
