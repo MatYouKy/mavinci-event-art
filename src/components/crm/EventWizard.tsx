@@ -1221,7 +1221,7 @@ export default function EventWizard({
           eventId={createdEventId}
           organizationId={eventData.organization_id}
           contactId={eventData.contact_person_id}
-          clientType={eventData.client_type}
+          clientType={clientType}
           onSuccess={async () => {
             setShowOfferWizard(false);
             showSnackbar('Oferta utworzona pomyślnie!', 'success');

@@ -21,7 +21,9 @@ export function useOfferWizardLogic(opts: {
 }) {
   const { showDialog } = useDialog();
 
-  const initialStep = opts.defaults?.clientType && (opts.defaults.organizationId || opts.defaults.contactId) ? 2 : 1;
+  const hasOrganization = opts.defaults?.organizationId && opts.defaults.organizationId.trim() !== '';
+  const hasContact = opts.defaults?.contactId && opts.defaults.contactId.trim() !== '';
+  const initialStep = opts.defaults?.clientType && (hasOrganization || hasContact) ? 2 : 1;
   const [step, setStep] = useState(initialStep);
   const [loading, setLoading] = useState(false);
 

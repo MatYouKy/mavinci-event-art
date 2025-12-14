@@ -171,9 +171,9 @@ export default function OfferWizard({
     eventId,
     employeeId: employee?.id,
     defaults: {
-      clientType: 'business',
-      organizationId: '',
-      contactId: '',
+      clientType: propClientType || 'business',
+      organizationId: propOrganizationId || '',
+      contactId: propContactId || '',
     },
     onSuccess,
     onClose,
