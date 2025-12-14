@@ -1,268 +1,481 @@
-import React, { useState } from 'react';
-import { ChevronDown, Package, Plus } from 'lucide-react';
-import { Equipment } from '@/app/crm/equipment/types/equipment.types';
-import { supabase } from '@/lib/supabase';
-import { IEvent } from '../../page';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, Package, Plus, Trash2 } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
-interface EventEquipmentTabProps {
-  equipment: Equipment[];
-  event: IEvent;
+import { useEventEquipment } from '../../../hooks';
+import { useEvent } from '../../../hooks/useEvent';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import type { AvailabilityUI } from '@/app/crm/events/hooks/useEventEquipment';
+
+type SelectedItem = { id: string; quantity: number; notes: string; type: 'item' | 'kit' };
+type ItemType = 'item' | 'kit';
+type AvailKey = `${ItemType}-${string}`;
+
+const keyOf = (type: ItemType, id: string) => `${type}-${id}` as AvailKey;
+
+const num = (v: any, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+function mergeSameSelections(selected: SelectedItem[]) {
+  const map = new Map<string, SelectedItem>();
+  for (const s of selected) {
+    const k = keyOf(s.type, s.id);
+    const prev = map.get(k);
+    if (!prev) map.set(k, { ...s });
+    else map.set(k, { ...prev, quantity: prev.quantity + s.quantity });
+  }
+  return [...map.values()];
 }
 
-export const EventEquipmentTab = ({ equipment, event }: EventEquipmentTabProps) => {
-  const [availableEquipment, setAvailableEquipment] = useState<any[]>([]);
-  const [availableKits, setAvailableKits] = useState<any[]>([]);
+function buildExistingMap(equipmentRows: any[]) {
+  const map = new Map<string, any>();
+  for (const row of equipmentRows || []) {
+    const eqId = row?.equipment_id ?? row?.equipment?.id ?? row?.equipment?.equipment_id;
+    const kitId = row?.kit_id ?? row?.kit?.id ?? row?.kit?.kit_id;
+
+    if (eqId) map.set(keyOf('item', eqId), row);
+    if (kitId) map.set(keyOf('kit', kitId), row);
+  }
+  return map;
+}
+
+function getKeyForEventRow(row: any): AvailKey | null {
+  const eqId = row?.equipment_id ?? row?.equipment?.id ?? row?.equipment?.equipment_id;
+  if (eqId) return keyOf('item', eqId);
+
+  const kitId = row?.kit_id ?? row?.kit?.id ?? row?.kit?.kit_id;
+  if (kitId) return keyOf('kit', kitId);
+
+  return null;
+}
+
+function getUiLimits(avail?: AvailabilityUI | null) {
+  if (!avail) {
+    return {
+      used: 0,
+      availableInTerm: 0,
+      maxAdd: 0,
+      maxSet: 0,
+      total: 0,
+      reserved: 0,
+    };
+  }
+
+  const used = num((avail as any).used_by_this_event, 0);
+  const availableInTerm = num(
+    (avail as any).available_in_term,
+    num((avail as any).available_quantity, 0),
+  );
+  const maxAdd = num((avail as any).max_add, Math.max(0, availableInTerm - used));
+  const maxSet = num((avail as any).max_set, used + maxAdd);
+
+  return {
+    used,
+    availableInTerm,
+    maxAdd, // ile jeszcze możesz DOŁOŻYĆ
+    maxSet, // max ile możesz ustawić w evencie
+    total: num((avail as any).total_quantity, 0),
+    reserved: num((avail as any).reserved_quantity, 0),
+  };
+}
+
+function normalizeStatus(s?: string) {
+  return String(s || '')
+    .toLowerCase()
+    .trim();
+}
+
+function getStatusBadge(statusRaw?: string) {
+  const status = normalizeStatus(statusRaw);
+
+  // ✅ “draft powinien rezerwować” – więc pokazujemy to wyraźnie
+  if (status === 'draft') {
+    return {
+      label: 'DRAFT (rezerwuje)',
+      cls: 'bg-[#d3bb73]/15 text-[#d3bb73] border-[#d3bb73]/30',
+    };
+  }
+  if (status === 'reserved') {
+    return {
+      label: 'ZAREZERWOWANE',
+      cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+    };
+  }
+  if (status === 'in_use') {
+    return { label: 'W UŻYCIU', cls: 'bg-sky-500/10 text-sky-300 border-sky-500/20' };
+  }
+  if (status === 'released') {
+    return { label: 'ZWOLNIONE', cls: 'bg-[#e5e4e2]/10 text-[#e5e4e2]/60 border-[#e5e4e2]/15' };
+  }
+  if (status === 'cancelled') {
+    return { label: 'ANULOWANE', cls: 'bg-red-500/10 text-red-300 border-red-500/20' };
+  }
+
+  // fallback
+  return {
+    label: statusRaw ? statusRaw : '—',
+    cls: 'bg-[#e5e4e2]/10 text-[#e5e4e2]/60 border-[#e5e4e2]/15',
+  };
+}
+
+export const EventEquipmentTab = () => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
-  const [editingQuantity, setEditingQuantity] = useState<string | null>(null);
 
-  const fetchAvailableEquipment = async () => {
-    try {
-      let availability = null;
+  const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
+  const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
-      // Jeśli wydarzenie ma daty, sprawdź dostępność w zakresie dat
-      if (event.event_date && event.event_end_date) {
-        const { data: availData, error: availError } = await supabase.rpc(
-          'check_equipment_availability_for_event',
-          {
-            p_event_id: event.id,
-            p_start_date: event.event_date,
-            p_end_date: event.event_end_date,
-          },
-        );
+  const { showSnackbar } = useSnackbar();
+  const { event } = useEvent();
 
-        if (availError) {
-          console.error('Error checking availability:', availError);
-          return;
-        }
+  const {
+    equipment,
+    availableEquipment,
+    availableKits,
+    availabilityByKey,
+    fetchAvailableEquipment,
+    addEquipment,
+    updateEquipment,
+    removeEquipment,
+    refetch,
+  } = useEventEquipment(event.id, {
+    id: event.id,
+    event_date: event.event_date,
+    event_end_date: event.event_end_date,
+  });
 
-        availability = availData;
-      } else {
-        // Brak dat - pokaż całą dostępność (wszystkie jednostki)
-        const { data: items } = await supabase.from('equipment_items').select('id, name');
+  useEffect(() => {
+    if (!event?.id) return;
+    fetchAvailableEquipment();
+  }, [event?.id, event?.event_date, event?.event_end_date, fetchAvailableEquipment]);
 
-        const { data: kits } = await supabase.from('equipment_kits').select('id, name');
+  const handleRemoveEquipment = async (row: any) => {
+    const isAuto = !!row?.auto_added;
 
-        // Utwórz syntetyczną listę dostępności pokazującą całą ilość
-        const itemAvail = await Promise.all(
-          (items || []).map(async (item: any) => {
-            const { count } = await supabase
-              .from('equipment_units')
-              .select('*', { count: 'exact', head: true })
-              .eq('equipment_id', item.id)
-              .in('status', ['available', 'reserved', 'in_use']);
+    // ✅ AUTO: "usuń z eventu" = oznacz jako removed_from_offer + quantity=0
+    if (isAuto) {
+      if (!confirm('Usunąć tę pozycję z eventu (pochodzi z oferty)?')) return;
 
-            return {
-              item_id: item.id,
-              item_type: 'item',
-              item_name: item.name,
-              total_quantity: count || 0,
-              reserved_quantity: 0,
-              available_quantity: count || 0,
-            };
-          }),
-        );
+      const ok = await updateEquipment(row.id, {
+        removed_from_offer: true,
+        is_overridden: true,
+        quantity: 0,
+      });
 
-        const kitAvail = (kits || []).map((kit: any) => ({
-          item_id: kit.id,
-          item_type: 'kit',
-          item_name: kit.name,
-          total_quantity: 1,
-          reserved_quantity: 0,
-          available_quantity: 1,
-        }));
-
-        availability = [...itemAvail, ...kitAvail];
+      if (ok) {
+        await refetch();
+        await fetchAvailableEquipment();
       }
-
-      console.log('Availability data:', availability);
-
-      // Stwórz mapę dostępności
-      const availabilityMap = new Map(
-        (availability || []).map((item: any) => [`${item.item_type}-${item.item_id}`, item]),
-      );
-
-      console.log('Availability map:', availabilityMap);
-
-      // Pobierz wszystkie items
-      const { data: items, error: itemsError } = await supabase
-        .from('equipment_items')
-        .select(
-          `
-          *,
-          category:warehouse_categories(name)
-        `,
-        )
-        .order('name');
-
-      if (!itemsError && items) {
-        // Filtruj sprzęt który jest już dodany do wydarzenia
-        const alreadyAddedIds = equipment
-          .filter((eq) => eq.equipment_id)
-          .map((eq) => eq.equipment_id);
-
-        const availableItems = items
-          .filter((item) => !alreadyAddedIds.includes(item.id))
-          .map((item) => {
-            const avail = availabilityMap.get(`item-${item.id}`);
-            return {
-              ...item,
-              available_count: avail?.available_quantity || 0,
-              total_quantity: avail?.total_quantity || 0,
-              reserved_quantity: avail?.reserved_quantity || 0,
-            };
-          })
-          .filter((item) => item.available_count > 0);
-
-        setAvailableEquipment(availableItems);
-      }
-
-      // Pobierz zestawy
-      const { data: kits, error: kitsError } = await supabase
-        .from('equipment_kits')
-        .select(
-          `
-          *,
-          items:equipment_kit_items(
-            equipment_id,
-            quantity,
-            equipment:equipment_items(
-              id,
-              name,
-              category:warehouse_categories(name)
-            )
-          )
-        `,
-        )
-        .order('name');
-
-      if (!kitsError && kits) {
-        const alreadyAddedKitIds = equipment.filter((eq) => eq.kit_id).map((eq) => eq.kit_id);
-
-        const availableKitsWithAvail = kits
-          .filter((kit) => !alreadyAddedKitIds.includes(kit.id))
-          .map((kit) => {
-            const avail = availabilityMap.get(`kit-${kit.id}`);
-            return {
-              ...kit,
-              available_count: avail?.available_quantity || 0,
-            };
-          })
-          .filter((kit) => kit.available_count > 0);
-
-        setAvailableKits(availableKitsWithAvail);
-      }
-    } catch (error) {
-      console.error('Error fetching available equipment:', error);
+      return;
     }
-  };
 
-  const handleUpdateQuantity = async (
-    eventEquipmentId: string,
-    equipmentId: string,
-    newQuantity: number,
-  ) => {
-    try {
-      const avail = equipmentAvailability[equipmentId];
-      if (avail && newQuantity > avail.available + avail.reserved) {
-        alert(`Dostępna ilość: ${avail.available + avail.reserved} szt.`);
-        return;
-      }
-
-      const { error } = await supabase
-        .from('event_equipment')
-        .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
-        .eq('id', eventEquipmentId);
-
-      if (error) {
-        console.error('Error updating quantity:', error);
-        alert('Błąd podczas aktualizacji ilości');
-        return;
-      }
-
-      setEditingQuantity(null);
-      await fetchEventDetails();
-      await fetchEquipmentAvailability();
-      await logChange('equipment_updated', `Zaktualizowano ilość sprzętu na ${newQuantity}`);
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
-    }
-  };
-
-  const handleRemoveEquipment = async (equipmentId: string) => {
+    // ✅ MANUAL: normalny delete
     if (!confirm('Czy na pewno chcesz usunąć ten sprzęt z eventu?')) return;
 
-    try {
-      const { error } = await supabase.from('event_equipment').delete().eq('id', equipmentId);
-
-      if (error) {
-        console.error('Error removing equipment:', error);
-        alert('Błąd podczas usuwania sprzętu');
-        return;
-      }
-
-      fetchEventDetails();
-      await logChange('equipment_removed', `Usunięto sprzęt z eventu (ID: ${equipmentId})`);
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
+    const ok = await removeEquipment(row.id);
+    if (ok) {
+      await refetch();
+      await fetchAvailableEquipment();
     }
   };
 
-  const handleAddEquipment = async (
-    selectedItems: Array<{ id: string; quantity: number; notes: string; type: 'item' | 'kit' }>,
-  ) => {
-    try {
-      const itemsToInsert: any[] = [];
+  const handleRestoreAutoRow = async (row: any) => {
+    if (!confirm('Przywrócić tę pozycję z oferty do eventu?')) return;
 
-      for (const selected of selectedItems) {
-        if (selected.type === 'kit') {
-          itemsToInsert.push({
-            event_id: eventId,
-            kit_id: selected.id,
-            equipment_id: null,
-            quantity: selected.quantity,
-            notes: selected.notes,
-          });
-        } else {
-          itemsToInsert.push({
-            event_id: eventId,
-            kit_id: null,
-            equipment_id: selected.id,
-            quantity: selected.quantity,
-            notes: selected.notes,
-          });
-        }
-      }
+    // wracamy do stanu auto (nieusuniętego)
+    // quantity: jeśli masz gdzieś "oryginalną" ilość z oferty – tu ją ustaw.
+    // Jeśli nie masz, przyjmij 1 albo zostaw aktualną (ale przy removed było 0).
+    const ok = await updateEquipment(row.id, {
+      removed_from_offer: false,
+      // jeśli chcesz, żeby nadal było "auto" i nie override:
+      is_overridden: false,
+      quantity: Math.max(1, Number(row.quantity || 1)),
+    });
 
-      const { error } = await supabase.from('event_equipment').insert(itemsToInsert);
-
-      if (error) {
-        console.error('Error adding equipment:', error);
-        alert('Błąd podczas dodawania sprzętu');
-        return;
-      }
-
-      setShowAddEquipmentModal(false);
-      fetchEventDetails();
-      await logChange('equipment_added', `Dodano ${itemsToInsert.length} pozycji sprzętu`);
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
+    if (ok) {
+      await refetch();
+      await fetchAvailableEquipment();
     }
   };
 
+  const handleUpdateQuantity = async (rowId: string, newQty: number, maxSet: number) => {
+    const safe = Math.max(1, Math.min(newQty, maxSet || 1));
+
+    if (safe !== newQty) {
+      showSnackbar(`Maksymalnie możesz ustawić: ${maxSet} szt.`, 'error');
+      return;
+    }
+
+    const ok = await updateEquipment(rowId, { quantity: safe });
+    if (ok) {
+      setEditingQuantityId(null);
+      await refetch();
+      await fetchAvailableEquipment(); // ✅ po update: prawda z backendu
+    }
+  };
+
+  const handleAddEquipment = async (selectedItems: SelectedItem[]) => {
+    if (!event?.id) return;
+
+    const merged = mergeSameSelections(selectedItems);
+    const existingMap = buildExistingMap(equipment);
+
+    const toInsert: SelectedItem[] = [];
+    const toUpdate: Array<{ rowId: string; newQty: number }> = [];
+
+    for (const s of merged) {
+      const k = keyOf(s.type, s.id);
+      const existingRow = existingMap.get(k);
+
+      const avail = (availabilityByKey as Record<string, AvailabilityUI> | undefined)?.[k];
+      const { used, maxAdd, maxSet } = getUiLimits(avail);
+
+      const currentQty = existingRow?.quantity ?? used ?? 0;
+      const finalQty = currentQty + s.quantity;
+
+      if (maxSet > 0 && finalQty > maxSet) {
+        showSnackbar(
+          `Brak dostępności: max ${maxSet} szt. (do dodania zostało ${maxAdd}).`,
+          'error',
+        );
+        return;
+      }
+
+      if (!existingRow) toInsert.push(s);
+      else toUpdate.push({ rowId: existingRow.id, newQty: finalQty });
+    }
+
+    if (toInsert.length) {
+      const ok = await addEquipment(toInsert);
+      if (!ok) return;
+    }
+
+    for (const u of toUpdate) {
+      await updateEquipment(u.rowId, { quantity: u.newQty });
+    }
+
+    if (toUpdate.length) showSnackbar('Pozycje były już na liście — zwiększono ilości.', 'info');
+
+    await refetch();
+    await fetchAvailableEquipment();
+  };
+
+  const manualRows = useMemo(
+    () => (equipment || []).filter((r: any) => !r.auto_added),
+    [equipment],
+  );
+  const autoRows = useMemo(() => (equipment || []).filter((r: any) => r.auto_added), [equipment]);
+
+  const renderRow = (row: any, editable: boolean) => {
+    const isExpanded = expandedKits.has(row.id);
+    const isKit = !!row.kit;
+
+    const aKey = getKeyForEventRow(row);
+    const avail = aKey ? (availabilityByKey as any)?.[aKey] : undefined;
+
+    const { maxAdd, maxSet, reserved, total } = getUiLimits(avail);
+    const availableToAdd = maxAdd;
+
+    const badge = getStatusBadge(row?.status);
+
+    const isAuto = !!row.auto_added;
+    const isOverridden = !!row.is_overridden;
+    const isRemovedFromOffer = !!row.removed_from_offer;
+
+    return (
+      <div key={row.id}>
+        <div
+          className={`flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20 ${
+            isRemovedFromOffer ? 'opacity-50' : ''
+          }`}
+        >
+          {isKit && (
+            <button
+              onClick={() => {
+                const next = new Set(expandedKits);
+                if (isExpanded) next.delete(row.id);
+                else next.add(row.id);
+                setExpandedKits(next);
+              }}
+              className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+            >
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+          )}
+
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {isKit ? (
+              <span className="text-base">🎁</span>
+            ) : row.equipment?.thumbnail_url ? (
+              <img
+                src={row.equipment.thumbnail_url}
+                alt={row.equipment.name}
+                className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                <Package className="h-5 w-5 text-[#e5e4e2]/30" />
+              </div>
+            )}
+
+            <div className="flex min-w-0 flex-col">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium text-[#e5e4e2]">
+                  {row.kit ? row.kit.name : row.equipment?.name || 'Nieznany'}
+                </span>
+
+                {/* ✅ STATUS rezerwacji */}
+                <span
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase ${badge.cls}`}
+                >
+                  {badge.label}
+                </span>
+              </div>
+
+              {!isKit && row.equipment && (
+                <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                  {row.equipment.brand && <span>{row.equipment.brand}</span>}
+                  {row.equipment.model && (
+                    <>
+                      {row.equipment.brand && <span>•</span>}
+                      <span>{row.equipment.model}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {isRemovedFromOffer && (
+            <span className="shrink-0 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] uppercase text-red-300">
+              USUNIĘTE Z OFERTY
+            </span>
+          )}
+
+          <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+            {!isKit && row.equipment?.category && (
+              <span className="hidden md:inline">{row.equipment.category.name}</span>
+            )}
+
+            {/* ✅ zawsze z availability */}
+            {aKey && (
+              <div className="hidden flex-col items-end text-xs lg:flex">
+                <span className="text-[#d3bb73]">{availableToAdd} dostępne do dodania</span>
+                <span className="text-[#e5e4e2]/45">
+                  max: {maxSet} • zarezerw.: {reserved} • magazyn: {total}
+                </span>
+              </div>
+            )}
+
+            {/* ilość */}
+            {editable && !isKit ? (
+              editingQuantityId === row.id ? (
+                <span className="inline-flex items-center gap-2">
+                  <button
+                    className="rounded bg-[#d3bb73] px-2 py-0.5 text-black hover:bg-[#e5c97a]"
+                    onClick={() => handleUpdateQuantity(row.id, draftQuantity, maxSet)}
+                    title="Zapisz"
+                  >
+                    ✓
+                  </button>
+
+                  <button
+                    className="rounded border border-[#d3bb73]/30 px-2 py-0.5 text-[#e5e4e2]/70 hover:text-red-400"
+                    onClick={() => {
+                      setEditingQuantityId(null);
+                      setDraftQuantity(row.quantity);
+                    }}
+                    title="Anuluj"
+                  >
+                    ✕
+                  </button>
+
+                  <input
+                    type="number"
+                    min={1}
+                    max={maxSet || 1}
+                    value={draftQuantity}
+                    onChange={(e) => setDraftQuantity(Number(e.target.value))}
+                    className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-sm text-[#e5e4e2]"
+                    autoFocus
+                  />
+                  <span className="text-[#e5e4e2]/60">szt.</span>
+                  <span className="text-[#e5e4e2]/40">max {maxSet || 1}</span>
+                </span>
+              ) : (
+                <span
+                  className="cursor-pointer text-[#e5e4e2] hover:text-[#d3bb73]"
+                  onClick={() => {
+                    setEditingQuantityId(row.id);
+                    setDraftQuantity(row.quantity);
+                  }}
+                >
+                  {row.quantity} <span className="text-[#e5e4e2]/60">szt.</span>
+                </span>
+              )
+            ) : (
+              <span className="text-[#e5e4e2]">
+                {row.quantity} <span className="text-[#e5e4e2]/60">szt.</span>
+              </span>
+            )}
+          </div>
+
+          {/* ✅ usuwanie tylko manual (auto ma być synchronizowane przez ofertę) */}
+          {/* akcje */}
+          {!isRemovedFromOffer ? (
+            <button
+              onClick={() => handleRemoveEquipment(row)}
+              className="text-red-400/60 transition-colors hover:text-red-400"
+              title={isAuto ? 'Usuń z eventu (z oferty)' : 'Usuń z eventu'}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => handleRestoreAutoRow(row)}
+              className="rounded border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              title="Przywróć z oferty"
+            >
+              Przywróć
+            </button>
+          )}
+        </div>
+
+        {isKit && isExpanded && row.kit?.items && (
+          <div className="ml-9 mt-1 space-y-1">
+            {row.kit.items.map((kitItem: any, idx: number) => (
+              <div
+                key={idx}
+                className="flex items-center gap-3 rounded border border-[#d3bb73]/5 bg-[#0f1119]/50 px-4 py-2 text-sm"
+              >
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-[#e5e4e2]/80">{kitItem.equipment.name}</span>
+                  <span className="text-xs text-[#e5e4e2]/45">
+                    {kitItem.equipment.category?.name}
+                  </span>
+                </div>
+
+                <span className="font-medium text-[#e5e4e2]/60">
+                  {kitItem.quantity * row.quantity} szt.
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-lg font-light text-[#e5e4e2]">Sprzęt</h2>
+
         <button
-          onClick={() => {
-            fetchAvailableEquipment();
-            setShowAddEquipmentModal(true);
-          }}
+          onClick={() => setShowAddEquipmentModal(true)}
           className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
           <Plus className="h-4 w-4" />
@@ -270,466 +483,33 @@ export const EventEquipmentTab = ({ equipment, event }: EventEquipmentTabProps) 
         </button>
       </div>
 
-      {equipment.length === 0 ? (
+      {(equipment || []).length === 0 ? (
         <div className="py-12 text-center">
           <Package className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
           <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Ręcznie dodany sprzęt */}
-          {equipment.filter((item: any) => !item.auto_added).length > 0 && (
-            <div className="space-y-2">
-              {equipment
-                .filter((item: any) => !item.auto_added)
-                .map((item: any) => {
-                  const isExpanded = expandedKits.has(item.id);
-                  const isKit = !!item.kit;
+          {manualRows.length > 0 && (
+            <div className="space-y-2">{manualRows.map((r: any) => renderRow(r, true))}</div>
+          )}
 
-                  return (
-                    <div key={item.id}>
-                      <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20">
-                        {isKit && (
-                          <button
-                            onClick={() => {
-                              const newExpanded = new Set(expandedKits);
-                              if (isExpanded) {
-                                newExpanded.delete(item.id);
-                              } else {
-                                newExpanded.add(item.id);
-                              }
-                              setExpandedKits(newExpanded);
-                            }}
-                            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
-                          >
-                            <ChevronDown
-                              className={`h-4 w-4 transition-transform ${
-                                isExpanded ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
-                        )}
-
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          {isKit ? (
-                            <span className="text-base">🎁</span>
-                          ) : item.equipment?.thumbnail_url ? (
-                            <img
-                              src={item.equipment.thumbnail_url}
-                              alt={item.equipment.name}
-                              className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
-                              <Package className="h-5 w-5 text-[#e5e4e2]/30" />
-                            </div>
-                          )}
-                          <div className="flex min-w-0 flex-col">
-                            <span className="truncate font-medium text-[#e5e4e2]">
-                              {item.kit ? item.kit.name : item.equipment?.name || 'Nieznany'}
-                            </span>
-                            {!isKit && item.equipment && (
-                              <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                                {item.equipment.brand && <span>{item.equipment.brand}</span>}
-                                {item.equipment.model && (
-                                  <>
-                                    {item.equipment.brand && <span>•</span>}
-                                    <span>{item.equipment.model}</span>
-                                  </>
-                                )}
-                                {item.equipment.cable_specs && (
-                                  <>
-                                    {(item.equipment.brand || item.equipment.model) && (
-                                      <span>•</span>
-                                    )}
-                                    {item.equipment.cable_specs.connector_in &&
-                                    item.equipment.cable_specs.connector_out ? (
-                                      <span>
-                                        {item.equipment.cable_specs.connector_in} →{' '}
-                                        {item.equipment.cable_specs.connector_out}
-                                      </span>
-                                    ) : (
-                                      item.equipment.cable_specs.type && (
-                                        <span>{item.equipment.cable_specs.type}</span>
-                                      )
-                                    )}
-                                    {item.equipment.cable_specs.length_meters && (
-                                      <span>{item.equipment.cable_specs.length_meters}m</span>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-                          {!isKit && item.equipment?.category && (
-                            <span className="hidden md:inline">{item.equipment.category.name}</span>
-                          )}
-                          {!isKit &&
-                            item.equipment_id &&
-                            equipmentAvailability[item.equipment_id] && (
-                              <div className="hidden flex-col items-end text-xs lg:flex">
-                                <span className="text-[#d3bb73]">
-                                  {equipmentAvailability[item.equipment_id].available +
-                                    equipmentAvailability[item.equipment_id].reserved}{' '}
-                                  dostępne
-                                </span>
-                              </div>
-                            )}
-                          {editingQuantity === item.id ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="1"
-                                defaultValue={item.quantity}
-                                className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1 text-sm text-[#e5e4e2]"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    const newQuantity = parseInt(
-                                      (e.target as HTMLInputElement).value,
-                                    );
-                                    if (newQuantity > 0) {
-                                      handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
-                                    }
-                                  } else if (e.key === 'Escape') {
-                                    setEditingQuantity(null);
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  const newQuantity = parseInt(e.target.value);
-                                  if (newQuantity > 0 && newQuantity !== item.quantity) {
-                                    handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
-                                  } else {
-                                    setEditingQuantity(null);
-                                  }
-                                }}
-                                autoFocus
-                              />
-                              <span className="text-[#e5e4e2]/60">szt.</span>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => !isKit && setEditingQuantity(item.id)}
-                              className={`font-medium text-[#e5e4e2] ${!isKit ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
-                              disabled={isKit}
-                            >
-                              {item.quantity} szt.
-                            </button>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => handleRemoveEquipment(item.id)}
-                          className="text-red-400/60 transition-colors hover:text-red-400"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      {isKit && isExpanded && item.kit?.items && (
-                        <div className="ml-9 mt-1 space-y-1">
-                          {item.kit.items.map((kitItem: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className="flex items-center gap-3 rounded border border-[#d3bb73]/5 bg-[#0f1119]/50 px-4 py-2 text-sm"
-                            >
-                              {kitItem.equipment.thumbnail_url ? (
-                                <img
-                                  src={kitItem.equipment.thumbnail_url}
-                                  alt={kitItem.equipment.name}
-                                  className="h-8 w-8 rounded border border-[#d3bb73]/10 object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-8 w-8 items-center justify-center rounded border border-[#d3bb73]/10 bg-[#1c1f33]">
-                                  <Package className="h-4 w-4 text-[#e5e4e2]/30" />
-                                </div>
-                              )}
-                              <div className="flex min-w-0 flex-1 flex-col">
-                                <span className="text-[#e5e4e2]/80">{kitItem.equipment.name}</span>
-                                <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/40">
-                                  {kitItem.equipment.brand && (
-                                    <span>{kitItem.equipment.brand}</span>
-                                  )}
-                                  {kitItem.equipment.model && (
-                                    <>
-                                      {kitItem.equipment.brand && <span>•</span>}
-                                      <span>{kitItem.equipment.model}</span>
-                                    </>
-                                  )}
-                                  {kitItem.equipment.cable_specs && (
-                                    <>
-                                      {(kitItem.equipment.brand || kitItem.equipment.model) && (
-                                        <span>•</span>
-                                      )}
-                                      {kitItem.equipment.cable_specs.connector_in &&
-                                      kitItem.equipment.cable_specs.connector_out ? (
-                                        <span>
-                                          {kitItem.equipment.cable_specs.connector_in} →{' '}
-                                          {kitItem.equipment.cable_specs.connector_out}
-                                        </span>
-                                      ) : (
-                                        kitItem.equipment.cable_specs.type && (
-                                          <span>{kitItem.equipment.cable_specs.type}</span>
-                                        )
-                                      )}
-                                      {kitItem.equipment.cable_specs.length_meters && (
-                                        <span>{kitItem.equipment.cable_specs.length_meters}m</span>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              <span className="hidden text-xs text-[#e5e4e2]/50 md:inline">
-                                {kitItem.equipment.category?.name}
-                              </span>
-                              <span className="font-medium text-[#e5e4e2]/60">
-                                {kitItem.quantity * item.quantity} szt.
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+          {manualRows.length > 0 && autoRows.length > 0 && (
+            <div className="my-6 flex items-center gap-4">
+              <div className="h-px flex-1 bg-[#d3bb73]/10" />
+              <span className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
+                Z produktów oferty
+              </span>
+              <div className="h-px flex-1 bg-[#d3bb73]/10" />
             </div>
           )}
 
-          {/* Separator między ręcznie dodanym a automatycznym */}
-          {equipment.filter((item) => !item.auto_added).length > 0 &&
-            equipment.filter((item) => item.auto_added).length > 0 && (
-              <div className="my-6 flex items-center gap-4">
-                <div className="h-px flex-1 bg-[#d3bb73]/10"></div>
-                <span className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                  Z produktów oferty
-                </span>
-                <div className="h-px flex-1 bg-[#d3bb73]/10"></div>
-              </div>
-            )}
-
-          {/* Automatycznie dodany sprzęt z oferty */}
-          {equipment.filter((item) => item.auto_added).length > 0 && (
-            <div className="space-y-2">
-              {equipment
-                .filter((item) => item.auto_added)
-                .map((item) => {
-                  const isExpanded = expandedKits.has(item.id);
-                  const isKit = !!item.kit;
-
-                  return (
-                    <div key={item.id}>
-                      <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20">
-                        {isKit && (
-                          <button
-                            onClick={() => {
-                              const newExpanded = new Set(expandedKits);
-                              if (isExpanded) {
-                                newExpanded.delete(item.id);
-                              } else {
-                                newExpanded.add(item.id);
-                              }
-                              setExpandedKits(newExpanded);
-                            }}
-                            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
-                          >
-                            <ChevronDown
-                              className={`h-4 w-4 transition-transform ${
-                                isExpanded ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
-                        )}
-
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          {isKit ? (
-                            <span className="text-base">🎁</span>
-                          ) : item.equipment?.thumbnail_url ? (
-                            <img
-                              src={item.equipment.thumbnail_url}
-                              alt={item.equipment.name}
-                              className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
-                              <Package className="h-5 w-5 text-[#e5e4e2]/30" />
-                            </div>
-                          )}
-                          <div className="flex min-w-0 flex-col">
-                            <span className="truncate font-medium text-[#e5e4e2]">
-                              {item.kit ? item.kit.name : item.equipment?.name || 'Nieznany'}
-                            </span>
-                            {!isKit && item.equipment && (
-                              <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                                {item.equipment.brand && <span>{item.equipment.brand}</span>}
-                                {item.equipment.model && (
-                                  <>
-                                    {item.equipment.brand && <span>•</span>}
-                                    <span>{item.equipment.model}</span>
-                                  </>
-                                )}
-                                {item.equipment.cable_specs && (
-                                  <>
-                                    {(item.equipment.brand || item.equipment.model) && (
-                                      <span>•</span>
-                                    )}
-                                    {item.equipment.cable_specs.connector_in &&
-                                    item.equipment.cable_specs.connector_out ? (
-                                      <span>
-                                        {item.equipment.cable_specs.connector_in} →{' '}
-                                        {item.equipment.cable_specs.connector_out}
-                                      </span>
-                                    ) : (
-                                      item.equipment.cable_specs.type && (
-                                        <span>{item.equipment.cable_specs.type}</span>
-                                      )
-                                    )}
-                                    {item.equipment.cable_specs.length_meters && (
-                                      <span>{item.equipment.cable_specs.length_meters}m</span>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-                          {!isKit && item.equipment?.category && (
-                            <span className="hidden md:inline">{item.equipment.category.name}</span>
-                          )}
-                          {!isKit &&
-                            item.equipment_id &&
-                            equipmentAvailability[item.equipment_id] && (
-                              <div className="hidden flex-col items-end text-xs lg:flex">
-                                <span className="text-[#d3bb73]">
-                                  {equipmentAvailability[item.equipment_id].available +
-                                    equipmentAvailability[item.equipment_id].reserved}{' '}
-                                  dostępne
-                                </span>
-                              </div>
-                            )}
-                          {editingQuantity === item.id ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="1"
-                                defaultValue={item.quantity}
-                                className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1 text-sm text-[#e5e4e2]"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    const newQuantity = parseInt(
-                                      (e.target as HTMLInputElement).value,
-                                    );
-                                    if (newQuantity > 0) {
-                                      handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
-                                    }
-                                  } else if (e.key === 'Escape') {
-                                    setEditingQuantity(null);
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  const newQuantity = parseInt(e.target.value);
-                                  if (newQuantity > 0 && newQuantity !== item.quantity) {
-                                    handleUpdateQuantity(item.id, item.equipment_id, newQuantity);
-                                  } else {
-                                    setEditingQuantity(null);
-                                  }
-                                }}
-                                autoFocus
-                              />
-                              <span className="text-[#e5e4e2]/60">szt.</span>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => !isKit && setEditingQuantity(item.id)}
-                              className={`font-medium text-[#e5e4e2] ${!isKit ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
-                              disabled={isKit}
-                            >
-                              {item.quantity} szt.
-                            </button>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => handleRemoveEquipment(item.id)}
-                          className="text-red-400/60 transition-colors hover:text-red-400"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      {isKit && isExpanded && item.kit?.items && (
-                        <div className="ml-9 mt-1 space-y-1">
-                          {item.kit.items.map((kitItem: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className="flex items-center gap-3 rounded border border-[#d3bb73]/5 bg-[#0f1119]/50 px-4 py-2 text-sm"
-                            >
-                              {kitItem.equipment.thumbnail_url ? (
-                                <img
-                                  src={kitItem.equipment.thumbnail_url}
-                                  alt={kitItem.equipment.name}
-                                  className="h-8 w-8 rounded border border-[#d3bb73]/10 object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-8 w-8 items-center justify-center rounded border border-[#d3bb73]/10 bg-[#1c1f33]">
-                                  <Package className="h-4 w-4 text-[#e5e4e2]/30" />
-                                </div>
-                              )}
-                              <div className="flex min-w-0 flex-1 flex-col">
-                                <span className="text-[#e5e4e2]/80">{kitItem.equipment.name}</span>
-                                <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/40">
-                                  {kitItem.equipment.brand && (
-                                    <span>{kitItem.equipment.brand}</span>
-                                  )}
-                                  {kitItem.equipment.model && (
-                                    <>
-                                      {kitItem.equipment.brand && <span>•</span>}
-                                      <span>{kitItem.equipment.model}</span>
-                                    </>
-                                  )}
-                                  {kitItem.equipment.cable_specs && (
-                                    <>
-                                      {(kitItem.equipment.brand || kitItem.equipment.model) && (
-                                        <span>•</span>
-                                      )}
-                                      {kitItem.equipment.cable_specs.connector_in &&
-                                      kitItem.equipment.cable_specs.connector_out ? (
-                                        <span>
-                                          {kitItem.equipment.cable_specs.connector_in} →{' '}
-                                          {kitItem.equipment.cable_specs.connector_out}
-                                        </span>
-                                      ) : (
-                                        kitItem.equipment.cable_specs.type && (
-                                          <span>{kitItem.equipment.cable_specs.type}</span>
-                                        )
-                                      )}
-                                      {kitItem.equipment.cable_specs.length_meters && (
-                                        <span>{kitItem.equipment.cable_specs.length_meters}m</span>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              <span className="hidden text-xs text-[#e5e4e2]/50 md:inline">
-                                {kitItem.equipment.category?.name}
-                              </span>
-                              <span className="font-medium text-[#e5e4e2]/60">
-                                {kitItem.quantity * item.quantity} szt.
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
+          {autoRows.length > 0 && (
+            <div className="space-y-2">{autoRows.map((r: any) => renderRow(r, true))}</div>
           )}
         </div>
       )}
+
       {showAddEquipmentModal && (
         <AddEquipmentModal
           isOpen={showAddEquipmentModal}
@@ -737,6 +517,7 @@ export const EventEquipmentTab = ({ equipment, event }: EventEquipmentTabProps) 
           onAdd={handleAddEquipment}
           availableEquipment={availableEquipment}
           availableKits={availableKits}
+          availabilityByKey={availabilityByKey}
         />
       )}
     </div>

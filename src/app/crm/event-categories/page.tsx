@@ -4,38 +4,19 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Plus, Pencil, Trash2, X, Palette, Image, Sparkles } from 'lucide-react';
 import PermissionGuard from '@/components/crm/PermissionGuard';
-
-interface CustomIcon {
-  id: string;
-  name: string;
-  svg_code: string;
-  preview_color: string;
-}
-
-interface EventCategory {
-  id: string;
-  name: string;
-  color: string;
-  description: string | null;
-  is_active: boolean;
-  icon_id: string | null;
-  icon?: CustomIcon;
-  contract_template_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
+import { ICustomIcon, IEventCategory } from './types';
 
 export default function EventCategoriesPage() {
-  const [categories, setCategories] = useState<EventCategory[]>([]);
-  const [icons, setIcons] = useState<CustomIcon[]>([]);
+  const [categories, setCategories] = useState<IEventCategory[]>([]);
+  const [icons, setIcons] = useState<ICustomIcon[]>([]);
   const [contractTemplates, setContractTemplates] = useState<{id: string; name: string}[]>([]);
   const [offerTemplateCategories, setOfferTemplateCategories] = useState<{id: string; name: string; color: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showIconModal, setShowIconModal] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<EventCategory | null>(null);
-  const [editingIcon, setEditingIcon] = useState<CustomIcon | null>(null);
+  const [editingCategory, setEditingCategory] = useState<IEventCategory | null>(null);
+  const [editingIcon, setEditingIcon] = useState<ICustomIcon | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     color: '#3B82F6',
@@ -135,7 +116,7 @@ export default function EventCategoriesPage() {
     }
   };
 
-  const handleOpenModal = (category?: EventCategory) => {
+  const handleOpenModal = (category?: IEventCategory) => {
     if (category) {
       setEditingCategory(category);
       setFormData({
@@ -172,10 +153,11 @@ export default function EventCategoriesPage() {
       is_active: true,
       icon_id: '',
       contract_template_id: '',
+      default_offer_template_category_id: '',
     });
   };
 
-  const handleOpenIconModal = (icon?: CustomIcon) => {
+  const handleOpenIconModal = (icon?: ICustomIcon) => {
     if (icon) {
       setEditingIcon(icon);
       setIconFormData({

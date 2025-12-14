@@ -428,8 +428,6 @@ export default function EquipmentPage() {
                     onClick={() => {
                       if (item.is_kit) {
                         router.push(`/crm/equipment/kits?edit=${item.id}`);
-                      } else if (item.is_cable) {
-                        router.push(`/crm/equipment/cables/${item.id}`);
                       } else {
                         router.push(`/crm/equipment/${item.id}`);
                       }
@@ -512,8 +510,6 @@ export default function EquipmentPage() {
                     onClick={() => {
                       if (item.is_kit) {
                         router.push(`/crm/equipment/kits?edit=${item.id}`);
-                      } else if (item.is_cable) {
-                        router.push(`/crm/equipment/cables/${item.id}`);
                       } else {
                         router.push(`/crm/equipment/${item.id}`);
                       }

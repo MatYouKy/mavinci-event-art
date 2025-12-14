@@ -51,9 +51,6 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
     }
   };
 
-  console.log('event.location_details', event.location_details);
-  console.log('event.location', event.location);
-
   return (
     <>
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">

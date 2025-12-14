@@ -222,9 +222,18 @@ export default function OfferDetailPage() {
 
     try {
       const { error: offerError } = await supabase.from('offers').delete().eq('id', offerId);
+      const { error: cleanupError } = await supabase.rpc('delete_offer_with_cleanup', {
+        p_offer_id: offerId,
+      });
 
       if (offerError) {
         console.error('Error deleting offer:', offerError);
+        showSnackbar('Błąd podczas usuwania oferty', 'error');
+        return;
+      }
+
+      if (cleanupError) {
+        console.error('Error deleting offer:', cleanupError);
         showSnackbar('Błąd podczas usuwania oferty', 'error');
         return;
       }

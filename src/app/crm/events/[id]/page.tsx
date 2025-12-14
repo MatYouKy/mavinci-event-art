@@ -19,7 +19,6 @@ import {
   X,
   User,
   Tag,
-  ChevronDown,
   Mail,
   Edit as EditIcon,
   AlertCircle,
@@ -34,7 +33,7 @@ import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import EventFilesExplorer from '@/app/crm/events/[id]/components/tabs/EventFilesExplorer';
 import EventSubcontractorsPanel from '@/app/crm/events/[id]/components/tabs/EventSubcontractorsPanel';
 import EventLogisticsPanel from '@/app/crm/events/[id]/components/tabs/EventLogisticsPanel';
-import OfferWizard from '@/components/crm/OfferWizard';
+import OfferWizard from '@/app/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import EventFinancesTab from '@/app/crm/events/[id]/components/tabs/EventFinancesTab';
 import EventAgendaTab from '@/app/crm/events/[id]/components/tabs/EventAgendaTab';
 import EventStatusEditor from '@/components/crm/EventStatusEditor';
@@ -53,7 +52,11 @@ import { AddEquipmentModal } from './components/Modals/AddEquipmentModal';
 import { TeamMembersList } from './components/AddMembersList';
 import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
 import { useEvent } from '@/app/crm/events/hooks/useEvent';
-import { useGetEventByIdQuery, useGetEventDetailsQuery, useLazyGetEventByIdQuery } from '../store/api/eventsApi';
+import {
+  useGetEventByIdQuery,
+  useGetEventDetailsQuery,
+  useLazyGetEventByIdQuery,
+} from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { logChange } from './helpers/logChange';
 
@@ -204,10 +207,13 @@ export default function EventDetailPage() {
   const { showSnackbar } = useSnackbar();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
 
-  const { data: event, isLoading, error } = useGetEventByIdQuery(eventId, {
+  const {
+    data: event,
+    isLoading,
+    error,
+  } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
-
 
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -401,7 +407,7 @@ export default function EventDetailPage() {
         .eq('event_id', eventId)
         .order('created_at', { ascending: false });
 
-      console.log('Fetched offers for event:', data);
+      // console.log('Fetched offers for event:', data);
 
       if (!error && data) {
         setOffers(data);
@@ -532,7 +538,7 @@ export default function EventDetailPage() {
       }
 
       setShowAddEmployeeModal(false);
-    
+
       // await logChange(
       //   'employee_added',
       //   `Dodano pracownika do zespołu (ID: ${employeeId}, rola: ${role})`,
@@ -542,9 +548,6 @@ export default function EventDetailPage() {
       alert('Wystąpił błąd');
     }
   };
-
-  console.log('event', event);
-  console.log('event.created_by', event?.created_by);
 
   const handleRemoveEmployee = async (employeeId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć tego pracownika z eventu?')) return;
@@ -586,11 +589,9 @@ export default function EventDetailPage() {
     );
   }
 
-  {error && (
-    <div className="p-4 text-sm text-red-400">
-      {error.message}
-    </div>
-  )}
+  {
+    error && <div className="p-4 text-sm text-red-400">{error.message}</div>;
+  }
 
   if (!event) {
     return (
@@ -952,7 +953,7 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {/* {activeTab === 'equipment' && <EventEquipmentTab equipment={equipment} />} */}
+      {activeTab === 'equipment' && <EventEquipmentTab />}
 
       {activeTab === 'team' && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">

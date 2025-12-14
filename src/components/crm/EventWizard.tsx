@@ -24,7 +24,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from './LocationSelector';
-import OfferWizard from './OfferWizard';
+import OfferWizard from '../../app/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import { EquipmentStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
 
@@ -81,7 +81,9 @@ export default function EventWizard({
     status: 'offer_sent',
   });
 
-  const [clientType, setClientType] = useState<'business' | 'individual'>(initialClientType || 'business');
+  const [clientType, setClientType] = useState<'business' | 'individual'>(
+    initialClientType || 'business',
+  );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
@@ -108,6 +110,7 @@ export default function EventWizard({
   const [assignEquipment, setAssignEquipment] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<any[]>([]);
   const [equipmentList, setEquipmentList] = useState<any[]>([]);
+  const [relatedEventIds, setRelatedEventIds] = useState<string[]>([]);
 
   // Krok 4: Zespół (opcjonalnie)
   const [assignTeam, setAssignTeam] = useState(false);
@@ -143,7 +146,7 @@ export default function EventWizard({
 
   useEffect(() => {
     if (initialDate) {
-      setEventData(prev => ({
+      setEventData((prev) => ({
         ...prev,
         event_date: initialDate.toISOString().slice(0, 16),
       }));
@@ -152,16 +155,18 @@ export default function EventWizard({
 
   useEffect(() => {
     if (clientType === 'business' && eventData.organization_id) {
-      const filtered = contacts.filter(c => c.organization_id === eventData.organization_id);
+      const filtered = contacts.filter((c) => c.organization_id === eventData.organization_id);
       setFilteredContacts(filtered);
 
       // Auto-select jeśli tylko jedna osoba kontaktowa
       if (filtered.length === 1 && !eventData.contact_person_id) {
-        setEventData(prev => ({ ...prev, contact_person_id: filtered[0].id }));
+        setEventData((prev) => ({ ...prev, contact_person_id: filtered[0].id }));
       }
     } else if (clientType === 'individual') {
       // Dla klienta indywidualnego - kontakty bez organizacji
-      const filtered = contacts.filter(c => !c.organization_id || c.contact_type === 'individual');
+      const filtered = contacts.filter(
+        (c) => !c.organization_id || c.contact_type === 'individual',
+      );
       setFilteredContacts(filtered);
     } else {
       setFilteredContacts(contacts);
@@ -169,17 +174,15 @@ export default function EventWizard({
   }, [eventData.organization_id, contacts, clientType]);
 
   const fetchOrganizations = async () => {
-    const { data } = await supabase
-      .from('organizations')
-      .select('id, name, alias')
-      .order('name');
+    const { data } = await supabase.from('organizations').select('id, name, alias').order('name');
     if (data) setOrganizations(data);
   };
 
   const fetchContacts = async () => {
     const { data } = await supabase
       .from('contacts')
-      .select(`
+      .select(
+        `
         id,
         full_name,
         contact_type,
@@ -188,25 +191,24 @@ export default function EventWizard({
           is_primary,
           is_current
         )
-      `)
+      `,
+      )
       .order('full_name');
 
     if (data) {
-      const mappedContacts = data.map(contact => ({
+      const mappedContacts = data.map((contact) => ({
         ...contact,
-        organization_id: contact.contact_organizations?.find((co: any) => co.is_current)?.organization_id ||
-                         contact.contact_organizations?.[0]?.organization_id ||
-                         null
+        organization_id:
+          contact.contact_organizations?.find((co: any) => co.is_current)?.organization_id ||
+          contact.contact_organizations?.[0]?.organization_id ||
+          null,
       }));
       setContacts(mappedContacts as any);
     }
   };
 
   const fetchCategories = async () => {
-    const { data } = await supabase
-      .from('event_categories')
-      .select('*')
-      .order('name');
+    const { data } = await supabase.from('event_categories').select('*').order('name');
     if (data) setCategories(data);
   };
 
@@ -240,7 +242,7 @@ export default function EventWizard({
           .update({ budget: offer.total_amount })
           .eq('id', createdEventId);
 
-        setEventData(prev => ({ ...prev, budget: offer.total_amount.toString() }));
+        setEventData((prev) => ({ ...prev, budget: offer.total_amount.toString() }));
       }
 
       // Pobierz pozycje z oferty (offer_items)
@@ -311,14 +313,14 @@ export default function EventWizard({
       if (error) throw error;
 
       if (clientType === 'business' && eventData.organization_id) {
-        const { error: orgError } = await supabase
-          .from('contact_organizations')
-          .insert([{
+        const { error: orgError } = await supabase.from('contact_organizations').insert([
+          {
             contact_id: newContactData.id,
             organization_id: eventData.organization_id,
             is_current: true,
             is_primary: true,
-          }]);
+          },
+        ]);
 
         if (orgError) throw orgError;
       }
@@ -392,16 +394,27 @@ export default function EventWizard({
   const createEvent = async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       const { data, error } = await supabase
         .from('events')
         .insert([
           {
             name: eventData.name,
-            organization_id: eventData.organization_id && eventData.organization_id.trim() !== '' ? eventData.organization_id : null,
-            contact_person_id: eventData.contact_person_id && eventData.contact_person_id.trim() !== '' ? eventData.contact_person_id : null,
-            category_id: eventData.category_id && eventData.category_id.trim() !== '' ? eventData.category_id : null,
+            organization_id:
+              eventData.organization_id && eventData.organization_id.trim() !== ''
+                ? eventData.organization_id
+                : null,
+            contact_person_id:
+              eventData.contact_person_id && eventData.contact_person_id.trim() !== ''
+                ? eventData.contact_person_id
+                : null,
+            category_id:
+              eventData.category_id && eventData.category_id.trim() !== ''
+                ? eventData.category_id
+                : null,
             event_date: eventData.event_date,
             event_end_date: eventData.event_end_date || null,
             location: eventData.location,
@@ -421,9 +434,8 @@ export default function EventWizard({
 
       // Automatycznie dodaj autora do zespołu z pełnym dostępem (status: accepted)
       if (session?.user?.id) {
-        const { error: assignmentError } = await supabase
-          .from('employee_assignments')
-          .insert([{
+        const { error: assignmentError } = await supabase.from('employee_assignments').insert([
+          {
             event_id: data.id,
             employee_id: session.user.id,
             role: 'Koordynator',
@@ -436,12 +448,16 @@ export default function EventWizard({
             can_invite_members: true,
             can_view_budget: true,
             granted_by: session.user.id,
-            permissions_updated_at: new Date().toISOString()
-          }]);
+            permissions_updated_at: new Date().toISOString(),
+          },
+        ]);
 
         if (assignmentError) {
           console.error('Error adding creator to team:', assignmentError);
-          showSnackbar('Uwaga: Nie udało się automatycznie dodać Cię do zespołu wydarzenia', 'warning');
+          showSnackbar(
+            'Uwaga: Nie udało się automatycznie dodać Cię do zespołu wydarzenia',
+            'warning',
+          );
         }
       }
 
@@ -462,9 +478,18 @@ export default function EventWizard({
         .from('events')
         .update({
           name: eventData.name,
-          organization_id: eventData.organization_id && eventData.organization_id.trim() !== '' ? eventData.organization_id : null,
-          contact_person_id: eventData.contact_person_id && eventData.contact_person_id.trim() !== '' ? eventData.contact_person_id : null,
-          category_id: eventData.category_id && eventData.category_id.trim() !== '' ? eventData.category_id : null,
+          organization_id:
+            eventData.organization_id && eventData.organization_id.trim() !== ''
+              ? eventData.organization_id
+              : null,
+          contact_person_id:
+            eventData.contact_person_id && eventData.contact_person_id.trim() !== ''
+              ? eventData.contact_person_id
+              : null,
+          category_id:
+            eventData.category_id && eventData.category_id.trim() !== ''
+              ? eventData.category_id
+              : null,
           event_date: eventData.event_date,
           event_end_date: eventData.event_end_date || null,
           location: eventData.location,
@@ -494,31 +519,36 @@ export default function EventWizard({
 
       // Krok 2: Utwórz ofertę jeśli wybrano
       if (createOffer && currentStep >= 2) {
-        const { data: { session } } = await supabase.auth.getSession();
-        await supabase.from('offers').insert([{
-          event_id: createdEventId,
-          offer_number: offerData.offer_number || null,
-          valid_until: offerData.valid_until || null,
-          notes: offerData.notes || null,
-          status: 'draft',
-          created_by: session?.user?.id || null,
-        }]);
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        await supabase.from('offers').insert([
+          {
+            event_id: createdEventId,
+            offer_number: offerData.offer_number || null,
+            valid_until: offerData.valid_until || null,
+            notes: offerData.notes || null,
+            status: 'draft',
+            created_by: session?.user?.id || null,
+          },
+        ]);
       }
 
       // Krok 3: Przypisz sprzęt
       if (assignEquipment && selectedEquipment.length > 0) {
-        const equipmentItems = selectedEquipment.map(eq => ({
+        const equipmentItems = selectedEquipment.map((eq) => ({
           event_id: createdEventId,
           equipment_id: eq.id,
           quantity: eq.quantity || 1,
           status: 'reserved',
+          source: 'offer',
         }));
         await supabase.from('event_equipment').insert(equipmentItems);
       }
 
       // Krok 4: Przypisz zespół
       if (assignTeam && selectedEmployees.length > 0) {
-        const teamItems = selectedEmployees.map(emp => ({
+        const teamItems = selectedEmployees.map((emp) => ({
           event_id: createdEventId,
           employee_id: emp.id,
           role: emp.role || 'Członek zespołu',
@@ -528,7 +558,7 @@ export default function EventWizard({
 
       // Krok 5: Przypisz pojazdy
       if (assignVehicles && selectedVehicles.length > 0) {
-        const vehicleItems = selectedVehicles.map(veh => ({
+        const vehicleItems = selectedVehicles.map((veh) => ({
           event_id: createdEventId,
           vehicle_id: veh.id,
           assigned_at: new Date().toISOString(),
@@ -538,7 +568,7 @@ export default function EventWizard({
 
       // Krok 6: Przypisz podwykonawców
       if (assignSubcontractors && selectedSubcontractors.length > 0) {
-        const subcontractorItems = selectedSubcontractors.map(sub => ({
+        const subcontractorItems = selectedSubcontractors.map((sub) => ({
           event_id: createdEventId,
           subcontractor_id: sub.id,
           description: sub.description || '',
@@ -594,12 +624,12 @@ export default function EventWizard({
   const currentStepInfo = steps[currentStep - 1];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1117] rounded-xl border border-[#d3bb73]/20 w-full max-w-4xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1117]">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#d3bb73]/10">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <div className="flex items-center gap-3">
-            <currentStepInfo.icon className="w-6 h-6 text-[#d3bb73]" />
+            <currentStepInfo.icon className="h-6 w-6 text-[#d3bb73]" />
             <div>
               <h2 className="text-xl font-light text-[#e5e4e2]">Nowy event</h2>
               <p className="text-sm text-[#e5e4e2]/60">
@@ -609,47 +639,45 @@ export default function EventWizard({
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
           >
-            <X className="w-5 h-5 text-[#e5e4e2]" />
+            <X className="h-5 w-5 text-[#e5e4e2]" />
           </button>
         </div>
 
         {/* Progress indicator */}
-        <div className="px-6 py-4 border-b border-[#d3bb73]/10">
+        <div className="border-b border-[#d3bb73]/10 px-6 py-4">
           <div className="flex items-center justify-between">
             {steps.map((step, index) => (
-              <div key={step.id} className="flex items-center flex-1">
-                <div className="flex flex-col items-center flex-1">
+              <div key={step.id} className="flex flex-1 items-center">
+                <div className="flex flex-1 flex-col items-center">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors ${
                       step.id < currentStep
-                        ? 'bg-[#d3bb73] border-[#d3bb73] text-[#1c1f33]'
+                        ? 'border-[#d3bb73] bg-[#d3bb73] text-[#1c1f33]'
                         : step.id === currentStep
-                        ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                        : 'bg-[#1c1f33] border-[#d3bb73]/30 text-[#e5e4e2]/50'
+                          ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                          : 'border-[#d3bb73]/30 bg-[#1c1f33] text-[#e5e4e2]/50'
                     }`}
                   >
                     {step.id < currentStep ? (
-                      <Check className="w-5 h-5" />
+                      <Check className="h-5 w-5" />
                     ) : (
-                      <step.icon className="w-5 h-5" />
+                      <step.icon className="h-5 w-5" />
                     )}
                   </div>
                   <span
-                    className={`text-xs mt-2 ${
+                    className={`mt-2 text-xs ${
                       step.id === currentStep ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/50'
                     }`}
                   >
                     {step.name}
                   </span>
-                  {!step.required && (
-                    <span className="text-[10px] text-[#e5e4e2]/40">(opcja)</span>
-                  )}
+                  {!step.required && <span className="text-[10px] text-[#e5e4e2]/40">(opcja)</span>}
                 </div>
                 {index < steps.length - 1 && (
                   <div
-                    className={`h-0.5 flex-1 mx-2 ${
+                    className={`mx-2 h-0.5 flex-1 ${
                       step.id < currentStep ? 'bg-[#d3bb73]' : 'bg-[#d3bb73]/20'
                     }`}
                   />
@@ -663,35 +691,36 @@ export default function EventWizard({
         <div className="flex-1 overflow-y-auto p-6">
           {/* Step 1: Szczegóły eventu */}
           {currentStep === 1 && (
-            <div className="max-w-2xl mx-auto space-y-4">
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-6">
+            <div className="mx-auto max-w-2xl space-y-4">
+              <div className="mb-6 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-400" />
                   <div className="text-sm text-blue-300">
-                    <p className="font-medium mb-1">Podstawowe informacje o evencie</p>
+                    <p className="mb-1 font-medium">Podstawowe informacje o evencie</p>
                     <p className="text-blue-300/80">
-                      Wypełnij wymagane pola. Po utworzeniu eventu będziesz mógł dodać szczegóły takie jak oferta, sprzęt, zespół i logistyka.
+                      Wypełnij wymagane pola. Po utworzeniu eventu będziesz mógł dodać szczegóły
+                      takie jak oferta, sprzęt, zespół i logistyka.
                     </p>
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                   Nazwa eventu *
                 </label>
                 <input
                   type="text"
                   value={eventData.name}
                   onChange={(e) => setEventData({ ...eventData, name: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   placeholder="np. Konferencja Tech Summit 2025"
                 />
               </div>
 
               {/* Typ klienta */}
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-3">
+                <label className="mb-3 block text-sm font-medium text-[#e5e4e2]">
                   Typ klienta *
                 </label>
                 <div className="grid grid-cols-2 gap-3">
@@ -701,15 +730,19 @@ export default function EventWizard({
                       setClientType('business');
                       setEventData({ ...eventData, organization_id: '', contact_person_id: '' });
                     }}
-                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    className={`rounded-lg border-2 p-4 text-left transition-all ${
                       clientType === 'business'
                         ? 'border-[#d3bb73] bg-[#d3bb73]/10'
                         : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                     }`}
                   >
-                    <Building2 className={`w-5 h-5 mb-2 ${clientType === 'business' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/50'}`} />
+                    <Building2
+                      className={`mb-2 h-5 w-5 ${clientType === 'business' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/50'}`}
+                    />
                     <div className="font-medium text-[#e5e4e2]">Businessowy</div>
-                    <div className="text-xs text-[#e5e4e2]/60 mt-1">Firmy, agencje, organizacje</div>
+                    <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                      Firmy, agencje, organizacje
+                    </div>
                   </button>
 
                   <button
@@ -718,15 +751,17 @@ export default function EventWizard({
                       setClientType('individual');
                       setEventData({ ...eventData, organization_id: '', contact_person_id: '' });
                     }}
-                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    className={`rounded-lg border-2 p-4 text-left transition-all ${
                       clientType === 'individual'
                         ? 'border-[#d3bb73] bg-[#d3bb73]/10'
                         : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                     }`}
                   >
-                    <User className={`w-5 h-5 mb-2 ${clientType === 'individual' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/50'}`} />
+                    <User
+                      className={`mb-2 h-5 w-5 ${clientType === 'individual' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/50'}`}
+                    />
                     <div className="font-medium text-[#e5e4e2]">Indywidualny</div>
-                    <div className="text-xs text-[#e5e4e2]/60 mt-1">Prywatny, wesela</div>
+                    <div className="mt-1 text-xs text-[#e5e4e2]/60">Prywatny, wesela</div>
                   </button>
                 </div>
               </div>
@@ -735,15 +770,19 @@ export default function EventWizard({
               {clientType === 'business' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Organizacja
                     </label>
                     <select
                       value={eventData.organization_id}
                       onChange={(e) => {
-                        setEventData({ ...eventData, organization_id: e.target.value, contact_person_id: '' });
+                        setEventData({
+                          ...eventData,
+                          organization_id: e.target.value,
+                          contact_person_id: '',
+                        });
                       }}
-                      className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     >
                       <option value="">Wybierz organizację</option>
                       {organizations.map((org) => (
@@ -756,23 +795,25 @@ export default function EventWizard({
 
                   {eventData.organization_id && (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="mb-2 flex items-center justify-between">
                         <label className="block text-sm font-medium text-[#e5e4e2]">
                           Osoba kontaktowa
                         </label>
                         <button
                           type="button"
                           onClick={() => setShowNewContactForm(true)}
-                          className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 flex items-center gap-1"
+                          className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="h-3 w-3" />
                           Dodaj nową
                         </button>
                       </div>
                       <select
                         value={eventData.contact_person_id}
-                        onChange={(e) => setEventData({ ...eventData, contact_person_id: e.target.value })}
-                        className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                        onChange={(e) =>
+                          setEventData({ ...eventData, contact_person_id: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                       >
                         <option value="">Wybierz kontakt</option>
                         {filteredContacts.map((contact) => (
@@ -782,7 +823,7 @@ export default function EventWizard({
                         ))}
                       </select>
                       {filteredContacts.length === 1 && eventData.contact_person_id && (
-                        <p className="text-xs text-green-400 mt-1">
+                        <p className="mt-1 text-xs text-green-400">
                           ✓ Automatycznie wybrano jedyną osobę kontaktową
                         </p>
                       )}
@@ -794,23 +835,25 @@ export default function EventWizard({
               {/* Klient indywidualny */}
               {clientType === 'individual' && (
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="mb-2 flex items-center justify-between">
                     <label className="block text-sm font-medium text-[#e5e4e2]">
                       Osoba kontaktowa
                     </label>
                     <button
                       type="button"
                       onClick={() => setShowNewContactForm(true)}
-                      className="text-xs text-[#d3bb73] hover:text-[#d3bb73]/80 flex items-center gap-1"
+                      className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus className="h-3 w-3" />
                       Dodaj nową
                     </button>
                   </div>
                   <select
                     value={eventData.contact_person_id}
-                    onChange={(e) => setEventData({ ...eventData, contact_person_id: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    onChange={(e) =>
+                      setEventData({ ...eventData, contact_person_id: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   >
                     <option value="">Wybierz lub dodaj nową osobę</option>
                     {filteredContacts.map((contact) => (
@@ -824,15 +867,15 @@ export default function EventWizard({
 
               {/* Formularz nowej osoby kontaktowej */}
               {showNewContactForm && (
-                <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="space-y-3 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-4">
+                  <div className="mb-2 flex items-center justify-between">
                     <h4 className="text-sm font-medium text-[#e5e4e2]">Nowa osoba kontaktowa</h4>
                     <button
                       type="button"
                       onClick={() => setShowNewContactForm(false)}
                       className="text-[#e5e4e2]/50 hover:text-[#e5e4e2]"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -841,14 +884,14 @@ export default function EventWizard({
                       placeholder="Imię *"
                       value={newContact.first_name}
                       onChange={(e) => setNewContact({ ...newContact, first_name: e.target.value })}
-                      className="px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     />
                     <input
                       type="text"
                       placeholder="Nazwisko *"
                       value={newContact.last_name}
                       onChange={(e) => setNewContact({ ...newContact, last_name: e.target.value })}
-                      className="px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     />
                   </div>
                   <input
@@ -856,19 +899,19 @@ export default function EventWizard({
                     placeholder="Email"
                     value={newContact.email}
                     onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                   <input
                     type="tel"
                     placeholder="Telefon"
                     value={newContact.phone}
                     onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#0f1117] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleCreateContact}
-                    className="w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                    className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                   >
                     Dodaj osobę kontaktową
                   </button>
@@ -876,13 +919,11 @@ export default function EventWizard({
               )}
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                  Kategoria
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Kategoria</label>
                 <select
                   value={eventData.category_id}
                   onChange={(e) => setEventData({ ...eventData, category_id: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 >
                   <option value="">Wybierz kategorię</option>
                   {categories.map((cat) => (
@@ -895,32 +936,32 @@ export default function EventWizard({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Data rozpoczęcia *
                   </label>
                   <input
                     type="datetime-local"
                     value={eventData.event_date}
                     onChange={(e) => setEventData({ ...eventData, event_date: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Data zakończenia
                   </label>
                   <input
                     type="datetime-local"
                     value={eventData.event_end_date}
                     onChange={(e) => setEventData({ ...eventData, event_end_date: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                   Lokalizacja *
                 </label>
                 <LocationSelector
@@ -928,33 +969,31 @@ export default function EventWizard({
                   onChange={(value) => setEventData({ ...eventData, location: value })}
                   placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
                 />
-                <p className="text-xs text-[#e5e4e2]/50 mt-1">
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">
                   Wybierz z zapisanych lokalizacji lub wyszukaj nową w Google Maps
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Budżet (PLN)
                   </label>
                   <input
                     type="number"
                     value={eventData.budget}
                     onChange={(e) => setEventData({ ...eventData, budget: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     placeholder="0"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                    Status
-                  </label>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Status</label>
                   <select
                     value={eventData.status}
                     onChange={(e) => setEventData({ ...eventData, status: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   >
                     <option value="offer_sent">Oferta wysłana</option>
                     <option value="offer_accepted">Zaakceptowana</option>
@@ -967,40 +1006,35 @@ export default function EventWizard({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                  Opis
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Opis</label>
                 <textarea
                   value={eventData.description}
                   onChange={(e) => setEventData({ ...eventData, description: e.target.value })}
                   rows={4}
-                  className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   placeholder="Dodatkowe informacje o evencie..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                  Uczestnicy
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Uczestnicy</label>
                 <ParticipantsAutocomplete
                   value={participants}
                   onChange={setParticipants}
                   placeholder="Dodaj uczestników (pracownicy, kontakty lub wpisz nazwę)..."
                 />
-                <p className="text-xs text-[#e5e4e2]/50 mt-1">
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">
                   Wybierz pracowników, kontakty lub wpisz imię i nazwisko ręcznie
                 </p>
               </div>
-
             </div>
           )}
 
           {/* Step 2: Oferta */}
           {currentStep === 2 && (
-            <div className="max-w-2xl mx-auto space-y-6">
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <label className="flex items-center gap-3 cursor-pointer">
+            <div className="mx-auto max-w-2xl space-y-6">
+              <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
+                <label className="flex cursor-pointer items-center gap-3">
                   <input
                     type="checkbox"
                     checked={createOffer}
@@ -1012,7 +1046,7 @@ export default function EventWizard({
                         setShowOfferWizard(true);
                       }
                     }}
-                    className="w-5 h-5 rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73]"
+                    className="h-5 w-5 rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73]"
                   />
                   <span className="text-sm text-blue-300">
                     Utwórz ofertę dla tego eventu (otwiera kreator oferty)
@@ -1021,7 +1055,7 @@ export default function EventWizard({
               </div>
 
               {createOffer && !createdEventId && (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+                <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
                   <p className="text-sm text-yellow-300">
                     Najpierw utwórz event w kroku 1, aby móc dodać ofertę.
                   </p>
@@ -1031,54 +1065,53 @@ export default function EventWizard({
               {createOffer && createdEventId ? (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Numer oferty
                     </label>
                     <input
                       type="text"
                       value={offerData.offer_number}
                       onChange={(e) => setOfferData({ ...offerData, offer_number: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                       placeholder="Zostaw puste aby wygenerować automatycznie"
                     />
-                    <p className="text-xs text-[#e5e4e2]/50 mt-1">
+                    <p className="mt-1 text-xs text-[#e5e4e2]/50">
                       Pozostaw puste - numer zostanie wygenerowany automatycznie (OF/YYYY/MM/XXX)
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                       Ważna do
                     </label>
                     <input
                       type="date"
                       value={offerData.valid_until}
                       onChange={(e) => setOfferData({ ...offerData, valid_until: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                      Notatki
-                    </label>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Notatki</label>
                     <textarea
                       value={offerData.notes}
                       onChange={(e) => setOfferData({ ...offerData, notes: e.target.value })}
                       rows={4}
-                      className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                       placeholder="Dodatkowe informacje do oferty..."
                     />
                   </div>
 
-                  <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+                  <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
                     <p className="text-sm text-yellow-300">
-                      Oferta zostanie utworzona jako szkic. Możesz dodać pozycje i szczegóły później w zakładce Oferty eventu.
+                      Oferta zostanie utworzona jako szkic. Możesz dodać pozycje i szczegóły później
+                      w zakładce Oferty eventu.
                     </p>
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-12 text-[#e5e4e2]/50">
+                <div className="py-12 text-center text-[#e5e4e2]/50">
                   <p>Ofertę możesz utworzyć później ze strony szczegółów eventu</p>
                 </div>
               )}
@@ -1087,10 +1120,10 @@ export default function EventWizard({
 
           {/* Step 3: Sprzęt */}
           {currentStep === 3 && (
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="mx-auto max-w-4xl space-y-6">
               {selectedEquipment.length > 0 && (
-                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-                  <p className="text-sm text-green-300 font-medium mb-2">
+                <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+                  <p className="mb-2 text-sm font-medium text-green-300">
                     ✓ Załadowano sprzęt z oferty ({selectedEquipment.length} pozycji)
                   </p>
                   <p className="text-xs text-green-300/70">
@@ -1111,21 +1144,23 @@ export default function EventWizard({
 
           {/* Steps 4-6 - proste wersje */}
           {currentStep > 3 && (
-            <div className="text-center py-12 text-[#e5e4e2]/50">
-              <p className="mb-4">Krok {currentStep}: {currentStepInfo.name}</p>
+            <div className="py-12 text-center text-[#e5e4e2]/50">
+              <p className="mb-4">
+                Krok {currentStep}: {currentStepInfo.name}
+              </p>
               <p className="text-sm">Te szczegóły możesz dodać później ze strony eventu</p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-[#d3bb73]/10">
+        <div className="flex items-center justify-between border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={handleBack}
             disabled={currentStep === 1 || loading}
-            className="flex items-center gap-2 px-4 py-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 rounded-lg px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="h-4 w-4" />
             Wstecz
           </button>
 
@@ -1134,7 +1169,7 @@ export default function EventWizard({
               <button
                 onClick={handleSkip}
                 disabled={loading}
-                className="px-4 py-2 text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                className="rounded-lg px-4 py-2 text-[#e5e4e2]/70 transition-colors hover:bg-[#d3bb73]/10"
               >
                 Pomiń
               </button>
@@ -1143,7 +1178,7 @@ export default function EventWizard({
             <button
               onClick={handleNext}
               disabled={!canProceed() || loading}
-              className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (
                 'Przetwarzanie...'
@@ -1151,23 +1186,23 @@ export default function EventWizard({
                 createdEventId ? (
                   <>
                     Zapisz zmiany
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="h-4 w-4" />
                   </>
                 ) : (
                   <>
                     Utwórz event
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="h-4 w-4" />
                   </>
                 )
               ) : currentStep === steps.length ? (
                 <>
-                  <Check className="w-4 h-4" />
+                  <Check className="h-4 w-4" />
                   Zakończ
                 </>
               ) : (
                 <>
                   Dalej
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </>
               )}
             </button>

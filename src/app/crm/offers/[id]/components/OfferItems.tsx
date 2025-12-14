@@ -5,6 +5,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { GripVertical, Pencil, Trash2, Eye, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useRouter } from 'next/navigation';
 
 interface OfferItem {
   id: string;
@@ -45,6 +46,7 @@ export default function OfferItems({
   onAddItem,
 }: OfferItemsProps) {
   const { showSnackbar } = useSnackbar();
+  const router = useRouter();
   const [updating, setUpdating] = useState(false);
 
   const handleDragEnd = async (result: DropResult) => {
@@ -193,16 +195,15 @@ export default function OfferItems({
 
                             {item.product?.pdf_page_url && (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/offer-product-pages/${item.product?.pdf_page_url}`;
-                                  window.open(url, '_blank');
-                                }}
-                                className="p-2 text-[#e5e4e2]/60 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
-                                title="Podgląd PDF"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
+  onClick={(e) => {
+    e.stopPropagation();
+    router.push(`/crm/offers/products/${item.product_id}`);
+  }}
+  className="p-2 text-[#e5e4e2]/60 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+  title="Przejdź do produktu"
+>
+  <Eye className="w-4 h-4" />
+</button> 
                             )}
 
                             <button

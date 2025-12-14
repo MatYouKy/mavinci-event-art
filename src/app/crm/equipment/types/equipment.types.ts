@@ -24,3 +24,10 @@ export interface UnitEvent {
   created_at: string;
   employees: { name: string; surname: string } | null;
 }
+
+export type EventEquipmentStatus =
+  | 'draft'
+  | 'reserved'
+  | 'in_use'
+  | 'returned'
+  | 'cancelled';
