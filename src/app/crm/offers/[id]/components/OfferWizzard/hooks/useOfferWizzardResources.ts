@@ -1,36 +1,72 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { SubcontractorRow } from '@/app/crm/offers/api/OfferWizzardApi';
 
-export function useOfferWizardResources(opts: { isOpen: boolean; step: number }) {
-  const [equipmentList, setEquipmentList] = useState<any[]>([]);
-  const [subcontractors, setSubcontractors] = useState<any[]>([]);
+export type EquipmentListItem = {
+  id: string;
+  name: string;
+  brand: string | null;
+  model: string | null;
+};
+
+export function useOfferWizardResources(opts: {
+  isOpen: boolean;
+  step: number;
+
+  /** Sety przychodzą z logiki (koszyk + availability) */
+  excludedIds?: ReadonlySet<string>;
+  unavailableIds?: ReadonlySet<string>;
+}) {
+  const [equipmentListAll, setEquipmentListAll] = useState<EquipmentListItem[]>([]);
+  const [subcontractors, setSubcontractors] = useState<SubcontractorRow[]>([]);
+
+  const excludedIds = opts.excludedIds ?? new Set<string>();
+  const unavailableIds = opts.unavailableIds ?? new Set<string>();
+
+  const equipmentList = useMemo(() => {
+    // filtrujemy tylko na etapie kroku 4, żeby nie mieszać gdy wizard jest wcześniej
+    if (!opts.isOpen || opts.step !== 4) return equipmentListAll;
+
+    return equipmentListAll.filter((x) => {
+      const id = x.id;
+      if (excludedIds.has(id)) return false;
+      if (unavailableIds.has(id)) return false;
+      return true;
+    });
+  }, [equipmentListAll, excludedIds, unavailableIds, opts.isOpen, opts.step]);
 
   useEffect(() => {
     if (!opts.isOpen || opts.step !== 4) return;
 
+    let cancelled = false;
+
     (async () => {
-      const eqRes = await supabase
-        .from('equipment_items')
-        .select('id, name, brand, model')
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .order('name');
+      const [eqRes, sRes] = await Promise.all([
+        supabase
+          .from('equipment_items')
+          .select('id, name, brand, model')
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .order('name'),
+        supabase
+          .from('subcontractors')
+          .select('id, contact_person, company_name, specialization')
+          .eq('status', 'active')
+          .order('company_name'),
+      ]);
 
-      if (!eqRes.error && eqRes.data) setEquipmentList(eqRes.data);
-
-      const sRes = await supabase
-        .from('subcontractors')
-        .select('id, contact_person, company_name, specialization')
-        .eq('status', 'active')
-        .order('company_name');
-
-      if (!sRes.error && sRes.data) setSubcontractors(sRes.data);
+      if (!cancelled) {
+        if (!eqRes.error && eqRes.data) setEquipmentListAll(eqRes.data as EquipmentListItem[]);
+        if (!sRes.error && sRes.data) setSubcontractors(sRes.data as SubcontractorRow[]);
+      }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [opts.isOpen, opts.step]);
 
-  console.log('equipmentList: useOfferWizardResources', equipmentList);
-
-  return { equipmentList, subcontractors };
+  return { equipmentList, equipmentListAll, subcontractors };
 }

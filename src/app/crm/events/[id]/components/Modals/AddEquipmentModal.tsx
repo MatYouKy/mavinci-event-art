@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type { AvailabilityUI } from '@/app/crm/events/hooks/useEventEquipment';
+import Popover from '@/components/UI/Tooltip';
 
 type ItemType = 'item' | 'kit';
 
@@ -315,30 +316,48 @@ export function AddEquipmentModal({
         <label
           className={`flex items-start gap-3 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
         >
-          <input
-            type="checkbox"
-            disabled={disabled}
-            checked={checked}
-            onChange={() => handleToggle(type, id)}
-            className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
-          />
-
           <div className="flex-1">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="truncate font-medium text-[#e5e4e2]">{title}</div>
-                {subtitle && <div className="mt-1 text-xs text-[#e5e4e2]/60">{subtitle}</div>}
-              </div>
-
-              <div className="shrink-0 text-right text-xs">
-                <div className="font-medium text-[#d3bb73]">{maxAdd} możesz jeszcze dodać</div>
-
-                {/* ✅ dodatkowy kontekst (opcjonalny, ale mega pomaga) */}
-                <div className="mt-1 text-[11px] text-[#e5e4e2]/45">
-                  pula w terminie: {availableInTerm} • w evencie: {used}
+            <div className="flex items-start justify-center gap-4">
+              <input
+                type="checkbox"
+                disabled={disabled}
+                checked={checked}
+                onChange={() => handleToggle(type, id)}
+                className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+              />
+              <Popover
+                trigger={
+                  <img
+                    src={entity.thumbnail_url}
+                    alt={entity.name}
+                    className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+                  />
+                }
+                content={
+                  <img
+                    src={entity.thumbnail_url}
+                    alt={entity.name}
+                    className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                  />
+                }
+                openOn="hover"
+              />
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-[#e5e4e2]">{title}</div>
+                  {subtitle && <div className="mt-1 text-xs text-[#e5e4e2]/60">{subtitle}</div>}
                 </div>
-                <div className="mt-0.5 text-[11px] text-[#e5e4e2]/35">
-                  zarezerw.: {reserved} • magazyn: {total}
+              <div className=" ml-auto flex  justify-between gap-4">
+
+                <div className="shrink-0 text-right text-xs">
+                  <div className="font-medium text-[#d3bb73]">{maxAdd} możesz jeszcze dodać</div>
+
+                  {/* ✅ dodatkowy kontekst (opcjonalny, ale mega pomaga) */}
+                  <div className="mt-1 text-[11px] text-[#e5e4e2]/45">
+                    pula w terminie: {availableInTerm} • w evencie: {used}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-[#e5e4e2]/35">
+                    zarezerw.: {reserved} • magazyn: {total}
+                  </div>
                 </div>
               </div>
             </div>

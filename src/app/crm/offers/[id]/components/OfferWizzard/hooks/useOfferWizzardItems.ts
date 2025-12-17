@@ -1,11 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { calcSubtotal, calcTotal } from '../utils';
 import { IOfferItem, IOfferWizardCustomItem, IProduct } from '@/app/crm/offers/types';
 
 export function useOfferWizardItems() {
   const [offerItems, setOfferItems] = useState<IOfferItem[]>([]);
+  const offerItemsRef = useRef<IOfferItem[]>([]);
+  // trzymamy ref w sync z realnym stanem
+  if (offerItemsRef.current !== offerItems) offerItemsRef.current = offerItems;
 
   const [showCustomItemForm, setShowCustomItemForm] = useState(false);
   const [showEquipmentSelector, setShowEquipmentSelector] = useState(false);
@@ -26,25 +29,33 @@ export function useOfferWizardItems() {
 
   const total = useMemo(() => calcTotal(offerItems), [offerItems]);
 
-  const addProduct = (product: IProduct) => {
-    setOfferItems((prev: IOfferItem[]) => {
-      const existing = prev.find((i) => i.product_id === product.id);
-      if (existing) {
-        return prev.map((i) =>
-          i.id === existing.id
-            ? {
-                ...i,
-                quantity: i.quantity + 1,
-                subtotal: calcSubtotal(i.quantity + 1, i.unit_price, i.discount_percent),
-                discount_amount: 0,
-                total: 0,
-                display_order: 0,
-              }
-            : i,
-        );
-      }
+  // ✅ helper żeby zawsze ustawiać i ref, i state
+  const setOfferItemsSafe = (next: IOfferItem[]) => {
+    offerItemsRef.current = next;
+    setOfferItems(next);
+  };
 
-      // Ensure the new item has IOfferItem fields, not IOfferWizardCustomItem
+  // ✅ teraz addProduct zwraca nextItems
+  const addProduct = (product: IProduct) => {
+    const prev = offerItemsRef.current;
+
+    const existing = prev.find((i) => i.product_id === product.id);
+    let next: IOfferItem[];
+
+    if (existing) {
+      next = prev.map((i) =>
+        i.id === existing.id
+          ? {
+              ...i,
+              quantity: i.quantity + 1,
+              subtotal: calcSubtotal(i.quantity + 1, i.unit_price, i.discount_percent),
+              discount_amount: 0,
+              total: 0,
+              display_order: 0,
+            }
+          : i,
+      );
+    } else {
       const newItem: IOfferItem = {
         id: `temp-${Date.now()}`,
         product_id: product.id,
@@ -60,21 +71,38 @@ export function useOfferWizardItems() {
         display_order: 0,
       };
 
-      return [...prev, newItem];
-    });
+      next = [...prev, newItem];
+    }
+
+    setOfferItemsSafe(next);
+    return next;
   };
 
-  const removeItem = (id: string) => setOfferItems((prev) => prev.filter((i) => i.id !== id));
+  // ✅ remove zwraca next
+  const removeItem = (id: string) => {
+    const prev = offerItemsRef.current;
+    const next = prev.filter((i) => i.id !== id);
+    setOfferItemsSafe(next);
+    return next;
+  };
 
+  // ✅ update zwraca next
   const updateItem = (id: string, patch: Partial<IOfferItem>) => {
-    setOfferItems((prev) =>
-      prev.map((i) => {
-        if (i.id !== id) return i;
-        const updated = { ...i, ...patch };
-        updated.subtotal = calcSubtotal(updated.quantity, updated.unit_price, updated.discount_percent || 0);
-        return updated;
-      }),
-    );
+    const prev = offerItemsRef.current;
+
+    const next = prev.map((i) => {
+      if (i.id !== id) return i;
+      const updated: any = { ...i, ...patch };
+      updated.subtotal = calcSubtotal(
+        updated.quantity,
+        updated.unit_price,
+        updated.discount_percent || 0,
+      );
+      return updated;
+    });
+
+    setOfferItemsSafe(next);
+    return next;
   };
 
   const addCustomItem = () => {
@@ -94,7 +122,9 @@ export function useOfferWizardItems() {
       needs_subcontractor: customItem.needs_subcontractor,
     };
 
-    setOfferItems((prev: IOfferItem[]) => [...prev, newItem as IOfferItem]);
+    const prev = offerItemsRef.current;
+    const next = [...prev, newItem as IOfferItem];
+    setOfferItemsSafe(next);
 
     // reset UI/form
     setCustomItem({
@@ -107,15 +137,18 @@ export function useOfferWizardItems() {
       equipment_ids: [],
       subcontractor_id: '',
       needs_subcontractor: false,
-    });
+    } as any);
+
     setShowCustomItemForm(false);
     setShowEquipmentSelector(false);
     setShowSubcontractorSelector(false);
+
+    return next;
   };
 
   return {
     offerItems,
-    setOfferItems,
+    setOfferItems: setOfferItemsSafe, // ✅ dalej masz setter, ale bez rozjazdu z ref
 
     total,
 

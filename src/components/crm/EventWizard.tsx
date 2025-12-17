@@ -27,13 +27,14 @@ import LocationSelector from './LocationSelector';
 import OfferWizard from '../../app/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import { EquipmentStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
+import { ClientType } from '@/app/crm/clients/type';
 
 interface EventWizardProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   initialDate?: Date;
-  initialClientType?: 'business' | 'individual' | null;
+  initialClientType?: ClientType | null;
 }
 
 interface Organization {
@@ -43,6 +44,7 @@ interface Organization {
 }
 
 interface Contact {
+  contact_type: string;
   id: string;
   full_name: string;
   organization_id?: string | null;
@@ -787,7 +789,7 @@ export default function EventWizard({
                       <option value="">Wybierz organizację</option>
                       {organizations.map((org) => (
                         <option key={org.id} value={org.id}>
-                          {org.name} {org.alias && `(${org.alias})`}
+                          {org.alias || org.name}
                         </option>
                       ))}
                     </select>

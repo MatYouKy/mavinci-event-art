@@ -4,7 +4,6 @@ import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Modal } from '@/components/UI/Modal';
 
-
 type EquipmentConflictRow = {
   item_type: 'item' | 'kit';
   item_id: string;
@@ -73,7 +72,12 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
       onClose={onClose}
       title={`Konflikt dostępności sprzętu (${conflicts.length})`}
     >
-      <div className="space-y-6">
+      {/* ✅ absolutnie kluczowe: nie pozwól klikom z treści zamykać modala */}
+      <div
+        className="space-y-6"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-start gap-4">
           <div className="rounded-full bg-orange-500/10 p-3">
             <AlertTriangle className="h-6 w-6 text-orange-400" />
@@ -135,7 +139,6 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                     <div className="space-y-2">
                       {c.alternatives.map((a: any) => {
                         const subKey = `${c.item_type}|${c.item_id}`;
-
                         const selected = equipmentSubstitutions[subKey];
                         const isSelected = selected?.to_item_id === a.item_id;
 
@@ -143,22 +146,35 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                         const picked = selectedAlt[key]?.item_id === a.item_id;
 
                         return (
-                          <button
+                          <div
                             key={`${a.item_type}-${a.item_id}`}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                (e.currentTarget as HTMLDivElement).click();
+                              }
+                            }}
                             onClick={() => {
+                              // ✅ toggle: klik drugi raz = odznacz
                               setSelectedAlt((prev) => {
-                                const next = {
+                                if (prev[key]?.item_id === a.item_id) {
+                                  const next = { ...prev };
+                                  delete next[key];
+                                  return next;
+                                }
+                                return {
                                   ...prev,
                                   [key]: {
                                     item_id: a.item_id,
                                     qty: prev[key]?.qty ?? c.shortage_qty ?? 1,
                                   },
                                 };
-                                queueMicrotask(() => checkCartConflicts(offerItems));
-                                return next;
                               });
+                              // ❌ NIE przeliczamy konfliktów tutaj — tylko na "Zastosuj"
                             }}
-                            className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
+                            className={`w-full rounded-lg border px-3 py-2 text-left text-sm cursor-pointer ${
                               picked
                                 ? 'border-[#d3bb73] bg-[#d3bb73]/10'
                                 : 'border-[#d3bb73]/15 bg-[#0f1119]'
@@ -166,31 +182,25 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                           >
                             <div className="flex items-center justify-between">
                               <div className="font-medium">{a.item_name}</div>
-                              {isSelected && (
-                                <span className="text-xs text-[#d3bb73]">Wybrane ✓</span>
-                              )}
+                              {isSelected && <span className="text-xs text-[#d3bb73]">Wybrane ✓</span>}
                             </div>
 
                             <div className="text-xs text-[#e5e4e2]/55">
-                              Dostępne: {a.available_qty} • Zarezerw.: {a.reserved_qty} • Magazyn:{' '}
-                              {a.total_qty}
+                              Dostępne: {a.available_qty} • Zarezerw.: {a.reserved_qty} • Magazyn: {a.total_qty}
                             </div>
 
-                            {selectedAlt[key]?.item_id && (
+                            {picked && (
                               <div className="mt-2 flex items-center gap-2">
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedAlt((prev) => {
                                       const nextQty = Math.max(1, (prev[key]?.qty ?? 1) - 1);
-                                      const next = {
-                                        ...prev,
-                                        [key]: { item_id: a.item_id, qty: nextQty },
-                                      };
-                                      queueMicrotask(() => checkCartConflicts(offerItems));
-                                      return next;
+                                      return { ...prev, [key]: { item_id: a.item_id, qty: nextQty } };
                                     });
                                   }}
+                                  className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1"
                                 >
                                   -
                                 </button>
@@ -198,79 +208,47 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                                 <input
                                   type="number"
                                   min={1}
-                                  value={selectedAlt[key].qty}
+                                  value={selectedAlt[key]?.qty ?? 1}
                                   onClick={(e) => e.stopPropagation()}
                                   onChange={(e) => {
+                                    e.stopPropagation();
                                     const nextQty = Math.max(1, parseInt(e.target.value) || 1);
-                                    setSelectedAlt((prev) => {
-                                      const next = {
-                                        ...prev,
-                                        [key]: { item_id: a.item_id, qty: nextQty },
-                                      };
-                                      queueMicrotask(() => checkCartConflicts(offerItems));
-                                      return next;
-                                    });
+                                    setSelectedAlt((prev) => ({
+                                      ...prev,
+                                      [key]: { item_id: a.item_id, qty: nextQty },
+                                    }));
                                   }}
                                   className="w-20 rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-center"
                                 />
 
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedAlt((prev) => {
                                       const nextQty = (prev[key]?.qty ?? 1) + 1;
-                                      const next = {
-                                        ...prev,
-                                        [key]: { item_id: a.item_id, qty: nextQty },
-                                      };
-                                      queueMicrotask(() => checkCartConflicts(offerItems));
-                                      return next;
+                                      return { ...prev, [key]: { item_id: a.item_id, qty: nextQty } };
                                     });
                                   }}
+                                  className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1"
                                 >
                                   +
                                 </button>
                               </div>
                             )}
 
-                            {isSelected && (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={a.available_qty || 99}
-                                  defaultValue={c.shortage_qty}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => {
-                                    const qty = Math.max(1, parseInt(e.target.value || '1', 10));
-                                    const k = `${c.item_type}|${c.item_id}`;
-
-                                    setEquipmentSubstitutions((prev) => ({
-                                      ...prev,
-                                      [k]: {
-                                        ...(prev[k] || {
-                                          from_item_type: c.item_type,
-                                          from_item_id: c.item_id,
-                                          to_item_type: a.item_type,
-                                          to_item_id: a.item_id,
-                                          qty,
-                                        }),
-                                        qty,
-                                      },
-                                    }));
-                                  }}
-                                  className="w-20 rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-center text-[#e5e4e2]"
-                                />
-
+                            {picked && (
+                              <div className="mt-2 flex items-center gap-2">
                                 <button
-                                  onClick={(e) => {
+                                  type="button"
+                                  onClick={async (e) => {
                                     e.stopPropagation();
-                                    const k = `${c.item_type}|${c.item_id}`;
-                                    const qty = equipmentSubstitutions[k]?.qty ?? c.shortage_qty;
+
+                                    const qty = selectedAlt[key]?.qty ?? c.shortage_qty ?? 1;
 
                                     setEquipmentSubstitutions((prev) => ({
                                       ...prev,
-                                      [k]: {
+                                      [subKey]: {
                                         from_item_type: c.item_type,
                                         from_item_id: c.item_id,
                                         to_item_type: a.item_type,
@@ -278,6 +256,9 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                                         qty,
                                       },
                                     }));
+
+                                    // ✅ dopiero tu przeliczamy, bo to jest "commit"
+                                    await checkCartConflicts(offerItems);
                                   }}
                                   className="rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2 hover:border-[#d3bb73]/30"
                                 >
@@ -285,7 +266,7 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                                 </button>
                               </div>
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -298,6 +279,7 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
 
         <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 pt-4">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/5"
           >
@@ -305,8 +287,9 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
           </button>
 
           <button
+            type="button"
             onClick={() => {
-              // ✅ tu możesz pozwolić “Dodaj mimo to” (zostawiasz braki)
+              // ✅ pozwalasz “Dodaj mimo to” — ale decyzja należy do Ciebie, czy tu coś zapisujesz
               onClose();
             }}
             className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
