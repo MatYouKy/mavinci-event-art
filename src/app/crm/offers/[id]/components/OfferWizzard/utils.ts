@@ -1,4 +1,5 @@
-import { EquipmentConflictRow, OfferItem, SelectedAltMap } from './types';
+import { IOfferItem } from '../../../types';
+import { EquipmentConflictRow, SelectedAltMap } from './types';
 
 export const calcSubtotal = (qty: number, unitPrice: number, discountPercent: number) => {
   const disc = (discountPercent || 0) / 100;
@@ -40,12 +41,12 @@ export const buildSubstitutionsForInsert = ({
   return rows.map((r) => ({ ...r, offer_id: offerId }));
 };
 
-export const buildConflictPayloadItems = (items: OfferItem[]) =>
+export const buildConflictPayloadItems = (items: IOfferItem[]) =>
   (items || [])
     .filter((i) => !!i.product_id)
     .map((i) => ({
       product_id: i.product_id!,
-      quantity: i.qty ?? 1, // w DB masz "quantity"
+      quantity: i.quantity ?? 1, // w DB masz "quantity"
     }));
 
-export const calcTotal = (items: OfferItem[]) => items.reduce((sum, i) => sum + (i.subtotal || 0), 0);
+export const calcTotal = (items: IOfferItem[]) => items.reduce((sum, i) => sum + (i.subtotal || 0), 0);

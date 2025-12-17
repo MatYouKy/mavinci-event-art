@@ -22,57 +22,13 @@ import { IEventCategory } from '@/app/crm/event-categories/types';
 import EquipmentConflictsSummary from './EquipmentConflictsSummary';
 import EquipmentConflictsModal from './EquipmentConflictsModal';
 import OfferStep2 from './Steps/OfferStep2';
-import { OfferStep3 } from './Steps/OfferStep3';
 import OfferStep4 from './Steps/OfferStep4';
 import AddClientModal from './components/AddClientModal';
 import { OfferStep1 } from './Steps/OfferStep1';
 import { useOfferWizardLogic } from './hooks/useOfferWizzard';
-
-const buildSubstitutionsForRpc = ({ selectedAlt, conflicts }: any) => {
-  return (conflicts || [])
-    .map((c: any) => {
-      const key = `${c.item_type}|${c.item_id}`;
-      const pick = selectedAlt?.[key];
-      if (!pick?.item_id) return null;
-
-      return {
-        from_item_id: c.item_id,
-        to_item_id: pick.item_id,
-        qty: pick.qty ?? c.shortage_qty ?? 1,
-      };
-    })
-    .filter(Boolean);
-};
-
-// const buildSubstitutionsForInsert = ({ offerId, selectedAlt, conflicts }: any) => {
-//   const rows = buildSubstitutionsForRpc({ selectedAlt, conflicts });
-//   return rows.map((r: any) => ({ ...r, offer_id: offerId }));
-// };
-
-interface Product {
-  id: string;
-  name: string;
-  description: string;
-  base_price: number;
-  unit: string;
-  category?: IEventCategory | null;
-  category_id?: string | null;
-}
-
-interface OfferItem {
-  id: string;
-  product_id?: string;
-  name: string;
-  description: string;
-  qty: number;
-  unit: string;
-  unit_price: number;
-  discount_percent: number;
-  subtotal: number;
-  equipment_ids?: string[];
-  subcontractor_id?: string;
-  needs_subcontractor?: boolean;
-}
+import { IProduct } from '../../../types';
+import OfferStep3 from './Steps/OfferStep3';
+import { ClientType } from '@/app/crm/clients/type';
 
 interface OfferWizardProps {
   isOpen: boolean;
@@ -80,7 +36,7 @@ interface OfferWizardProps {
   eventId: string;
   organizationId?: string;
   contactId?: string;
-  clientType?: 'individual' | 'business';
+  clientType?: ClientType;
   onSuccess: () => void;
 }
 
@@ -94,31 +50,6 @@ export default function OfferWizard({
   onSuccess,
 }: OfferWizardProps) {
   const { employee } = useCurrentEmployee();
-  // If client is already selected (from event), start at step 2
-
-  // const [step, setStep] = useState(initialStep);
-
-  // Step 1: Wybór klienta
-
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [clientSearchQuery, setClientSearchQuery] = useState('');
-  const [showAddClientModal, setShowAddClientModal] = useState(false);
-
-  // Step 2: Podstawowe dane oferty
-  // const [offerData, setOfferData] = useState({
-  //   offer_number: '',
-  //   valid_until: '',
-  //   notes: '',
-  // });
-
-  // Step 2: Produkty z katalogu
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
-  const [showConflictsModal, setShowConflictsModal] = useState(false);
-
   const {
     handleSubmit,
     addProductToOffer,
@@ -135,25 +66,44 @@ export default function OfferWizard({
       selectedOrganizationId,
       selectedContactId,
       organizations,
+      canProceedFromStep1,
+      clientSearchQuery,
+      contacts,
+      setClientSearchQuery,
+      setContacts,
+      setShowAddClientModal,
+      showAddClientModal,
     },
     nextStep,
     prevStep,
     step,
     loading,
     initialStep,
-    catalog,
+    catalog: {
+      filteredProducts,
+      categories,
+      products,
+      searchQuery,
+      selectedCategory,
+      setSearchQuery,
+      setSelectedCategory,
+    },
     items: {
       setCustomItem,
       addCustomItem,
       setShowCustomItemForm,
-
       setShowEquipmentSelector,
       setShowSubcontractorSelector,
+      total,
       showSubcontractorSelector,
       showEquipmentSelector,
       showCustomItemForm,
       customItem,
       offerItems,
+      addProduct,
+      updateItem,
+      removeItem,
+      setOfferItems,
     },
     resources: { equipmentList, subcontractors },
     conflicts: {
@@ -164,6 +114,9 @@ export default function OfferWizard({
       conflicts,
       selectedAlt,
       checkingConflicts,
+      setConflicts,
+      setShowConflictsModal,
+      showConflictsModal,
     },
     offerData,
   } = useOfferWizardLogic({
@@ -171,14 +124,13 @@ export default function OfferWizard({
     eventId,
     employeeId: employee?.id,
     defaults: {
-      clientType: propClientType || 'business',
+      clientType: propClientType || 'business' as ClientType,
       organizationId: propOrganizationId || '',
       contactId: propContactId || '',
     },
     onSuccess,
     onClose,
   });
-
 
   const calculateTotal = () => {
     return offerItems.reduce((sum, item) => sum + item.subtotal, 0);
@@ -304,11 +256,8 @@ export default function OfferWizard({
           {/* Step 4: Pozycje oferty */}
           {step === 4 && (
             <OfferStep4
-              offerItems={offerItems}
               showCustomItemForm={showCustomItemForm}
               setShowCustomItemForm={setShowCustomItemForm}
-              customItem={customItem}
-              setCustomItem={setCustomItem}
               showEquipmentSelector={showEquipmentSelector}
               setShowEquipmentSelector={setShowEquipmentSelector}
               showSubcontractorSelector={showSubcontractorSelector}
@@ -319,6 +268,9 @@ export default function OfferWizard({
               updateOfferItem={updateOfferItem}
               removeOfferItem={removeOfferItem}
               calculateTotal={calculateTotal}
+              customItem={customItem}
+              offerItems={offerItems}
+              setCustomItem={setCustomItem}
             />
           )}
           {conflicts && conflicts.length > 0 && (

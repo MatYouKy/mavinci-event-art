@@ -8,6 +8,8 @@ import equipmentReducer from './slices/equipmentSlice';
 import { equipmentApi } from '@/app/crm/equipment/store/equipmentApi';
 import customIconsReducer from './slices/customIconSlice';
 import { offerWizardApi } from '@/app/crm/offers/api/OfferWizzardApi';
+import offerWizardReducer from '@/app/crm/offers/store/OfferWizzardSlice';
+import { eventCategoriesApi } from '@/app/crm/event-categories/store/eventCategoriesApi';
 
 export const store = configureStore({
   reducer: {
@@ -15,7 +17,9 @@ export const store = configureStore({
     contacts: contactsReducer,
     equipment: equipmentReducer,
     customIcons: customIconsReducer,
+    offerWizard: offerWizardReducer,
     [api.reducerPath]: api.reducer,
+    [eventCategoriesApi.reducerPath]: eventCategoriesApi.reducer,
     [eventsApi.reducerPath]: eventsApi.reducer,
     [offerWizardApi.reducerPath]: offerWizardApi.reducer,
     [equipmentApi.reducerPath]: equipmentApi.reducer,
@@ -24,6 +28,7 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware()
       .concat(api.middleware)
+      .concat(eventCategoriesApi.middleware)
       .concat(eventsApi.middleware)
       .concat(offerWizardApi.middleware)
       .concat(equipmentApi.middleware)

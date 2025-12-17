@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -47,82 +47,17 @@ import { EventsDetailsTab } from './components/tabs/EventsDetailsTab/EventsDetai
 import { fetchAuditLog } from './helpers/fetchAuditLog';
 import { EventContractTab } from './components/tabs/EventContractTab';
 import { AddChecklistModal } from './components/Modals/AddChecklistModal';
-import AddEmployeeModal from '@/components/crm/AddEmployeeModal';
-import { AddEquipmentModal } from './components/Modals/AddEquipmentModal';
 import { TeamMembersList } from './components/AddMembersList';
 import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
-import { useEvent } from '@/app/crm/events/hooks/useEvent';
 import {
   useGetEventByIdQuery,
-  useGetEventDetailsQuery,
-  useLazyGetEventByIdQuery,
 } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useOfferActions } from '../../offers/hooks/useOfferById';
+import { useEventOffers } from '../hooks';
+import { IEventCategory } from '../../event-categories/types';
+import { IEmployee } from '../../employees/type';
 import { logChange } from './helpers/logChange';
-
-export interface IEvent {
-  actual_revenue: any;
-  location_id: null;
-  expected_revenue: any;
-  location_details: any;
-  id: string;
-  name: string;
-  description: string;
-  event_date: string;
-  event_end_date: string;
-  location: string;
-  status: string;
-  budget: number;
-  final_cost: number;
-  notes: string;
-  attachments: any[];
-  organization_id: string | null;
-  contact_person_id: string | null;
-  client_type: 'individual' | 'business';
-  event_categories?: {
-    contract_template?: {
-      id: string;
-      name: string;
-      content: string;
-      content_html: string;
-      page_settings: any;
-    };
-  };
-  category_id: string;
-  created_by: string;
-  requires_subcontractors: boolean;
-  organization?: {
-    id: string;
-    name: string;
-    alias: string | null;
-  } | null;
-  contact_person?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    full_name: string;
-    contact_type: string;
-    email: string;
-    phone: string;
-  } | null;
-  category?: {
-    id: string;
-    name: string;
-    color: string;
-    icon?: {
-      id: string;
-      name: string;
-      svg_code: string;
-      preview_color: string;
-    };
-  };
-  creator?: {
-    id: string;
-    name: string;
-    surname: string;
-    avatar_url: string;
-  };
-}
 
 interface Equipment {
   kit_id: unknown;
@@ -141,29 +76,6 @@ interface Equipment {
   };
   kit?: any;
 }
-
-interface Employee {
-  id: string;
-  employee_id: string;
-  role: string;
-  responsibilities: string | null;
-  status: 'pending' | 'accepted' | 'rejected';
-  invited_at: string;
-  responded_at: string | null;
-  notes: string;
-  employee: {
-    id: string;
-    name: string;
-    surname: string;
-    nickname: string | null;
-    occupation: string;
-    avatar_url: string | null;
-    avatar_metadata: any;
-    email: string;
-    phone_number: string | null;
-  };
-}
-
 interface Checklist {
   id: string;
   title: string;
@@ -203,9 +115,13 @@ export default function EventDetailPage() {
   const router = useRouter();
   const params = useParams();
   const eventId = params.id as string;
-  const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+  const { deleteOfferById } = useOfferActions();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
+  const { offers, refetch: refetchOffers, isDeleting: isDeletingOffer } = useEventOffers(eventId);
+
+  console.log('isDeletingOffer', isDeletingOffer);
 
   const {
     data: event,
@@ -214,9 +130,9 @@ export default function EventDetailPage() {
   } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
-
+  const [isConfirmed, setIsConfirmed] = useState(false);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<IEmployee[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -235,7 +151,7 @@ export default function EventDetailPage() {
 
   const [isEditingCategory, setIsEditingCategory] = useState(false);
 
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<IEventCategory[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [canManageTeam, setCanManageTeam] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -256,8 +172,6 @@ export default function EventDetailPage() {
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
-  const [offers, setOffers] = useState<any[]>([]);
-  const [selectedOffer, setSelectedOffer] = useState<any>(null);
   const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
   const [auditLog, setAuditLog] = useState<any[]>([]);
 
@@ -266,7 +180,6 @@ export default function EventDetailPage() {
   useEffect(() => {
     if (eventId) {
       fetchAuditLog(eventId);
-      fetchOffers();
       fetchCategories();
       checkTeamManagementPermission();
     }
@@ -394,30 +307,30 @@ export default function EventDetailPage() {
     }
   };
 
-  const fetchOffers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('offers')
-        .select(
-          `
-          *,
-          organization:organizations!organization_id(name)
-        `,
-        )
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: false });
+  // const fetchOffers = async () => {
+  //   try {
+  //     const { data, error } = await supabase
+  //       .from('offers')
+  //       .select(
+  //         `
+  //         *,
+  //         organization:organizations!organization_id(name)
+  //       `,
+  //       )
+  //       .eq('event_id', eventId)
+  //       .order('created_at', { ascending: false });
 
-      // console.log('Fetched offers for event:', data);
+  //     // console.log('Fetched offers for event:', data);
 
-      if (!error && data) {
-        setOffers(data);
-      } else if (error) {
-        console.error('Error fetching offers:', error);
-      }
-    } catch (err) {
-      console.error('Error fetching offers:', err);
-    }
-  };
+  //     if (!error && data) {
+  //       setOffers(data);
+  //     } else if (error) {
+  //       console.error('Error fetching offers:', error);
+  //     }
+  //   } catch (err) {
+  //     console.error('Error fetching offers:', err);
+  //   }
+  // };
 
   const fetchCategories = async () => {
     try {
@@ -435,7 +348,7 @@ export default function EventDetailPage() {
         .order('name');
 
       if (!error && data) {
-        setCategories(data);
+        setCategories(data as unknown as IEventCategory[]);
       }
     } catch (err) {
       console.error('Error fetching categories:', err);
@@ -492,7 +405,7 @@ export default function EventDetailPage() {
 
     if (!error && data) {
       // Odfiltruj pracowników którzy są już w zespole
-      const alreadyAddedIds = employees.map((emp) => emp.employee_id);
+      const alreadyAddedIds = employees.map((emp) => emp.id);
       const availableEmp = data.filter((emp) => !alreadyAddedIds.includes(emp.id));
       setAvailableEmployees(availableEmp);
     }
@@ -577,6 +490,29 @@ export default function EventDetailPage() {
     setShowAddChecklistModal(false);
   };
 
+  const handleDeleteOffer = useCallback(
+    async (offerId: string) => {
+      setIsConfirmed(true);
+      const confirmed = await showConfirm(
+        'Czy na pewno chcesz usunąć tę ofertę?',
+        'Tej operacji nie można cofnąć.',
+      );
+
+      if (!confirmed) return;
+      setIsConfirmed(false);
+      try {
+        await deleteOfferById(offerId);
+        showSnackbar('Oferta została usunięta', 'success');
+        refetchOffers();
+      } catch (err) {
+        console.error('Error deleting offer:', err);
+        showSnackbar('Błąd podczas usuwania oferty', 'error');
+      }
+
+    },
+    [deleteOfferById, showConfirm, showSnackbar, refetchOffers],
+  );
+
   const handleRemoveChecklist = async (checklistId: string) => {
     console.log('Checklist functionality disabled - table does not exist');
   };
@@ -637,7 +573,7 @@ export default function EventDetailPage() {
                     color: event.category.color,
                   }}
                 >
-                  {event.category.icon ? (
+                  {event.category?.icon ? (
                     <div
                       className="h-4 w-4"
                       style={{ color: event.category.color }}
@@ -985,7 +921,12 @@ export default function EventDetailPage() {
       )}
 
       {activeTab === 'offer' && (
-        <EventTabOffer offers={offers} setShowCreateOfferModal={setShowCreateOfferModal} />
+        <EventTabOffer
+          offers={offers}
+          isConfirmed={isConfirmed}
+          setShowCreateOfferModal={setShowCreateOfferModal}
+          handleDeleteOffer={handleDeleteOffer}
+        />
       )}
 
       {activeTab === 'files' && <EventFilesExplorer eventId={eventId} />}
@@ -993,7 +934,7 @@ export default function EventDetailPage() {
       {activeTab === 'logistics' && event && (
         <EventLogisticsPanel
           eventId={event.id}
-          eventLocation={event.location}
+          eventLocation={event.location.name}
           eventDate={event.event_date}
           canManage={canManageTeam}
         />
@@ -1318,14 +1259,16 @@ export default function EventDetailPage() {
       {showCreateOfferModal && event && (
         <OfferWizard
           isOpen={showCreateOfferModal}
-          onClose={() => setShowCreateOfferModal(false)}
+          onClose={() => {
+            setShowCreateOfferModal(false);
+          }}
           eventId={eventId}
           organizationId={event.organization_id}
           contactId={event.contact_person_id}
           clientType={event?.client_type || 'business'}
           onSuccess={() => {
             setShowCreateOfferModal(false);
-            fetchOffers();
+            refetchOffers();
             setActiveTab('offer'); // Odśwież dane eventu aby zaktualizować budżet
           }}
         />

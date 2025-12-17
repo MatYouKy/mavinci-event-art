@@ -20,44 +20,12 @@
  * - website_edit - edycja strony WWW (portfolio, usługi, zespół, itp.)
  */
 
-export interface Employee {
-  can_edit_equipment: any;
-  can_edit_equipment: any;
-  can_edit_files: any;
-  can_invite_members: any;
-  can_view_budget: any;
-  can_edit_tasks: any;
-  can_edit_agenda: any;
-  can_edit_event: any;
-  employee: any;
-  employee: any;
-  employee: any;
-  employee: any;
-  employee: any;
-  employee: any;
-  status: string;
-  responsibilities: string;
-  id: string;
-  name: string;
-  surname: string;
-  nickname?: string;
-  email: string;
-  phone_number?: string;
-  phone_private?: string;
-  avatar_url?: string;
-  role?: string;
-  access_level?: string;
-  occupation?: string;
-  region?: string;
-  permissions?: string[];
-  position?: any;
-  phone?: string;
-}
+import { IEmployee } from '@/app/crm/employees/type';
 
 /**
  * Sprawdza czy użytkownik jest adminem
  */
-export const isAdmin = (employee: Employee | null | undefined): boolean => {
+export const isAdmin = (employee: IEmployee | null | undefined): boolean => {
   if (!employee) return false;
   return (
     employee.access_level === 'admin' ||
@@ -69,7 +37,7 @@ export const isAdmin = (employee: Employee | null | undefined): boolean => {
  * Sprawdza czy użytkownik ma konkretny scope permission
  */
 export const hasPermission = (
-  employee: Employee | null | undefined,
+  employee: IEmployee | null | undefined,
   scope: string
 ): boolean => {
   if (!employee) return false;
@@ -82,7 +50,7 @@ export const hasPermission = (
  * Zwraca true jeśli ma [module]_view lub [module]_manage
  */
 export const canView = (
-  employee: Employee | null | undefined,
+  employee: IEmployee | null | undefined,
   module: string
 ): boolean => {
   if (!employee) return false;
@@ -98,7 +66,7 @@ export const canView = (
  * Zwraca true jeśli ma [module]_manage (edycja i usuwanie)
  */
 export const canManage = (
-  employee: Employee | null | undefined,
+  employee: IEmployee | null | undefined,
   module: string
 ): boolean => {
   if (!employee) return false;
@@ -111,7 +79,7 @@ export const canManage = (
  * Zwraca true jeśli ma [module]_create LUB [module]_manage
  */
 export const canCreate = (
-  employee: Employee | null | undefined,
+  employee: IEmployee | null | undefined,
   module: string
 ): boolean => {
   if (!employee) return false;
@@ -126,7 +94,7 @@ export const canCreate = (
  * Sprawdza czy użytkownik może zarządzać uprawnieniami pracowników
  */
 export const canManagePermissions = (
-  employee: Employee | null | undefined
+  employee: IEmployee | null | undefined
 ): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
@@ -197,7 +165,7 @@ export const getAllScopes = (): string[] => {
  * Sprawdza czy użytkownik może edytować stronę WWW
  */
 export const canEditWebsite = (
-  employee: Employee | null | undefined
+  employee: IEmployee | null | undefined
 ): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;

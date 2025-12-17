@@ -3,91 +3,122 @@ import { createApi } from '@reduxjs/toolkit/query/react';
 import { fakeBaseQuery } from '@reduxjs/toolkit/query';
 import { supabase } from '@/lib/supabase';
 import { WarehouseCategoryRow } from '../categories/page';
+import { EquipmentCatalogItem } from '../hooks/useEquipmentCatalog';
 
 type FeedParams = {
-  q?: string;                // wyszukiwarka
-  categoryId?: string|null;  // filtr kategorii (opcjonalnie)
-  itemType?: 'all'|'equipment'|'kits';
-  showCablesOnly?: boolean;  // czy pokazać tylko kable
-  page?: number;             // numer strony (0,1,2…)
-  limit?: number;            // ile rekordów na stronę
+  q?: string; // wyszukiwarka
+  categoryId?: string | null; // filtr kategorii (opcjonalnie)
+  itemType?: 'all' | 'equipment' | 'kits';
+  showCablesOnly?: boolean; // czy pokazać tylko kable
+  page?: number; // numer strony (0,1,2…)
+  limit?: number; // ile rekordów na stronę
 };
 
 export const equipmentApi = createApi({
   reducerPath: 'equipmentApi',
   baseQuery: fakeBaseQuery(), // ← to chcieliśmy
-  tagTypes: ['Equipment', 'EquipmentList', 'Units', 'ConnectorTypes', 'StorageLocations', 'Categories', 'CablesList'],
+  tagTypes: [
+    'Equipment',
+    'EquipmentList',
+    'Units',
+    'ConnectorTypes',
+    'StorageLocations',
+    'Categories',
+    'CablesList',
+  ],
 
   endpoints: (builder) => ({
-
     // === LISTA (dla /crm/equipment) ===
-getEquipmentList: builder.query<{
-  equipment_items: any[];
-  equipment_kits: any[];
-  warehouse_categories: any[];
-}, void>({
-  async queryFn() {
-    const { data: categories, error: catErr } = await supabase
-      .from('warehouse_categories')
-      .select('*')
-      .order('level')
-      .order('name');
-    if (catErr) return { error: catErr as any };
+    getEquipmentList: builder.query<
+      {
+        equipment_items: any[];
+        equipment_kits: any[];
+        warehouse_categories: any[];
+      },
+      void
+    >({
+      async queryFn() {
+        const { data: categories, error: catErr } = await supabase
+          .from('warehouse_categories')
+          .select('*')
+          .order('level')
+          .order('name');
+        if (catErr) return { error: catErr as any };
 
-    const { data: items, error: itemsErr } = await supabase
-      .from('equipment_items')
-      .select(`
+        const { data: items, error: itemsErr } = await supabase
+          .from('equipment_items')
+          .select(
+            `
         id, name, warehouse_category_id, brand, model, thumbnail_url, description,
         warehouse_categories:warehouse_categories(*),
         equipment_units:equipment_units(id, status)
-      `)
-      .order('name');
-    if (itemsErr) return { error: itemsErr as any };
+      `,
+          )
+          .order('name');
+        if (itemsErr) return { error: itemsErr as any };
 
-    // <-- tu wchodzi poprawiona wersja dla kits
-    const { data: kitsRaw, error: kitsErr } = await supabase
-      .from('equipment_kits')
-      .select(`
+        // <-- tu wchodzi poprawiona wersja dla kits
+        const { data: kitsRaw, error: kitsErr } = await supabase
+          .from('equipment_kits')
+          .select(
+            `
         id,
         name,
         warehouse_category_id,
         thumbnail_url,
         description,
         warehouse_categories:warehouse_categories(*)
-      `)
-      .order('name');
-    if (kitsErr) return { error: kitsErr as any };
+      `,
+          )
+          .order('name');
+        if (kitsErr) return { error: kitsErr as any };
 
-    const kits = (kitsRaw ?? []).map(k => ({ ...k, is_kit: true, equipment_units: [] }));
+        const kits = (kitsRaw ?? []).map((k) => ({ ...k, is_kit: true, equipment_units: [] }));
 
-    return {
-      data: {
-        equipment_items: items ?? [],
-        equipment_kits: kits,
-        warehouse_categories: categories ?? [],
+        return {
+          data: {
+            equipment_items: items ?? [],
+            equipment_kits: kits,
+            warehouse_categories: categories ?? [],
+          },
+        };
       },
-    };
-  },
-  providesTags: ['EquipmentList'],
-}),
-getEquipmentFeed: builder.query<{
-      items: any[];                     // połączone items + kits + cables
-      total?: number | null;
-      page: number;
-      hasMore: boolean;
-    }, FeedParams>({
-      async queryFn({ q='', categoryId=null, itemType='all', showCablesOnly=false, page=0, limit=24 }) {
+      providesTags: ['EquipmentList'],
+    }),
+    getEquipmentFeed: builder.query<
+      {
+        items: EquipmentCatalogItem[]; // połączone items + kits + cables
+        total?: number | null;
+        page: number;
+        hasMore: boolean;
+      },
+      FeedParams
+    >({
+      async queryFn({
+        q = '',
+        categoryId = null,
+        itemType = 'all',
+        showCablesOnly = false,
+        page = 0,
+        limit = 24,
+      }) {
         const from = page * limit;
-        const to   = from + limit - 1;
+        const to = from + limit - 1;
+
+        const countAvailable = (units: any[] | null | undefined) =>
+          (units ?? []).filter((u) => u.status === 'available').length;
 
         // Jeśli pokazujemy tylko kable
         if (showCablesOnly) {
           let cablesQ = supabase
             .from('cables')
-            .select(`
+            .select(
+              `
               id, name, warehouse_category_id, thumbnail_url, description, created_at, stock_quantity,
               cable_units:cable_units(id, status)
-            `, { count: 'exact' })
+            `,
+              { count: 'exact' },
+            )
             .is('deleted_at', null)
             .eq('is_active', true)
             .order('created_at', { ascending: false })
@@ -98,14 +129,15 @@ getEquipmentFeed: builder.query<{
           const cablesRes = await cablesQ;
           if (cablesRes.error) return { error: cablesRes.error as any };
 
-          const cables = (cablesRes.data ?? []).map(c => ({
+          const cables = (cablesRes.data ?? []).map((c: any) => ({
             ...c,
             is_cable: true,
             is_kit: false,
-            equipment_units: c.cable_units || []
+            equipment_units: c.cable_units || [],
+            available_quantity: c.stock_quantity ?? 0, // ✅ DODAJ TO
           }));
 
-          const hasMore = (from + cables.length) < (cablesRes.count ?? 0);
+          const hasMore = from + cables.length < (cablesRes.count ?? 0);
 
           return { data: { items: cables, total: cablesRes.count, page, hasMore } };
         }
@@ -118,15 +150,15 @@ getEquipmentFeed: builder.query<{
             .select('id, parent_id, level');
 
           if (allCategories) {
-            const selectedCat = allCategories.find(c => c.id === categoryId);
+            const selectedCat = allCategories.find((c) => c.id === categoryId);
             if (selectedCat) {
               // Dodaj wybraną kategorię
               categoryIds.push(categoryId);
 
               // Jeśli to kategoria level 1, dodaj wszystkie jej podkategorie
               if (selectedCat.level === 1) {
-                const subcats = allCategories.filter(c => c.parent_id === categoryId);
-                categoryIds.push(...subcats.map(c => c.id));
+                const subcats = allCategories.filter((c) => c.parent_id === categoryId);
+                categoryIds.push(...subcats.map((c) => c.id));
               }
             }
           }
@@ -135,10 +167,13 @@ getEquipmentFeed: builder.query<{
         // --- sprzęty (bez kabli) ---
         let itemsQ = supabase
           .from('equipment_items')
-          .select(`
+          .select(
+            `
             id, name, warehouse_category_id, brand, model, thumbnail_url, description, created_at,
             equipment_units:equipment_units(id, status)
-          `, { count: 'exact' })
+          `,
+            { count: 'exact' },
+          )
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
@@ -149,9 +184,12 @@ getEquipmentFeed: builder.query<{
         // --- kity ---
         let kitsQ = supabase
           .from('equipment_kits')
-          .select(`
+          .select(
+            `
             id, name, warehouse_category_id, thumbnail_url, description, created_at
-          `, { count: 'exact' })
+          `,
+            { count: 'exact' },
+          )
           .order('created_at', { ascending: false })
           .range(from, to);
 
@@ -161,29 +199,40 @@ getEquipmentFeed: builder.query<{
         const [itemsRes, kitsRes] = await Promise.all([itemsQ, kitsQ]);
 
         if (itemsRes.error) return { error: itemsRes.error as any };
-        if (kitsRes.error)  return { error: kitsRes.error as any };
+        if (kitsRes.error) return { error: kitsRes.error as any };
 
         // złącz i posortuj (po created_at DESC)
         let merged = [
-          ...(itemsRes.data ?? []).map(i => ({ ...i, is_kit: false, is_cable: false })),
-          ...(kitsRes.data  ?? []).map(k => ({ ...k, is_kit: true, is_cable: false, equipment_units: [] })),
-        ].sort((a,b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+          ...(itemsRes.data ?? []).map((i: any) => ({
+            ...i,
+            is_kit: false,
+            is_cable: false,
+            available_quantity: countAvailable(i.equipment_units), // ✅ DODAJ TO
+          })),
+          ...(kitsRes.data ?? []).map((k: any) => ({
+            ...k,
+            is_kit: true,
+            is_cable: false,
+            equipment_units: [],
+            available_quantity: 0, // ✅ DODAJ TO (na razie 0)
+          })),
+        ].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
 
         // filtr typu (all/equipment/kits)
-        if (itemType === 'equipment') merged = merged.filter(i => !i.is_kit && !i.is_cable);
-        if (itemType === 'kits')      merged = merged.filter(i =>  i.is_kit);
+        if (itemType === 'equipment') merged = merged.filter((i) => !i.is_kit && !i.is_cable);
+        if (itemType === 'kits') merged = merged.filter((i) => i.is_kit);
 
         const approxCount =
           (itemType !== 'kits' ? (itemsRes.count ?? 0) : 0) +
           (itemType !== 'equipment' ? (kitsRes.count ?? 0) : 0);
 
-        const hasMore = (from + merged.length) < approxCount;
+        const hasMore = from + merged.length < approxCount;
 
         return { data: { items: merged, total: approxCount, page, hasMore } };
       },
       // cache po parametrach
       serializeQueryArgs: ({ endpointName, queryArgs }) => {
-        const { q='', categoryId=null, itemType='all' } = queryArgs ?? {};
+        const { q = '', categoryId = null, itemType = 'all' } = queryArgs ?? {};
         return `${endpointName}|q:${q}|cat:${categoryId}|type:${itemType}`;
       },
       // po zmianie page nie chcemy nadpisać cache klucza — RTKQ wywoła merge
@@ -199,31 +248,29 @@ getEquipmentFeed: builder.query<{
       },
       forceRefetch({ currentArg, previousArg }) {
         // reset, gdy zmieni się q/category/itemType
-        return JSON.stringify({ ...currentArg, page: 0 }) !== JSON.stringify({ ...previousArg, page: 0 });
+        return (
+          JSON.stringify({ ...currentArg, page: 0 }) !== JSON.stringify({ ...previousArg, page: 0 })
+        );
       },
       providesTags: (_r) => ['EquipmentList'],
     }),
     // equipmentApi.ts
-updateCableQuantity: builder.mutation<
-  void,
-  { equipmentId: string; quantity: number }
->({
-  async queryFn({ equipmentId, quantity }) {
-    const { error } = await supabase
-      .from('equipment_items')
-      .update({ cable_stock_quantity: quantity })
-      .eq('id', equipmentId);
+    updateCableQuantity: builder.mutation<void, { equipmentId: string; quantity: number }>({
+      async queryFn({ equipmentId, quantity }) {
+        const { error } = await supabase
+          .from('equipment_items')
+          .update({ cable_stock_quantity: quantity })
+          .eq('id', equipmentId);
 
-    if (error) return { error: error as any };
-    return { data: undefined };
-  },
-  // odświeży szczegóły konkretnego sprzętu oraz listing (jeśli tak tagujesz)
-  invalidatesTags: (_r, _e, { equipmentId }) => [
-    { type: 'Equipment', id: equipmentId },
-    'EquipmentList',
-  ],
-}),
-
+        if (error) return { error: error as any };
+        return { data: undefined };
+      },
+      // odświeży szczegóły konkretnego sprzętu oraz listing (jeśli tak tagujesz)
+      invalidatesTags: (_r, _e, { equipmentId }) => [
+        { type: 'Equipment', id: equipmentId },
+        'EquipmentList',
+      ],
+    }),
 
     // szczegóły sprzętu
     getEquipmentDetails: builder.query<any, string>({
@@ -231,7 +278,8 @@ updateCableQuantity: builder.mutation<
         console.log('getEquipmentDetails - fetching equipment:', id);
         const { data, error } = await supabase
           .from('equipment_items')
-          .select(`
+          .select(
+            `
             *,
             warehouse_categories:warehouse_categories(*),
             equipment_stock:equipment_stock(*),
@@ -246,7 +294,8 @@ updateCableQuantity: builder.mutation<
               )
             ),
             equipment_images:equipment_images(*)
-          `)
+          `,
+          )
           .eq('id', id)
           .is('deleted_at', null)
           .single();
@@ -266,7 +315,8 @@ updateCableQuantity: builder.mutation<
       async queryFn() {
         const { data, error } = await supabase
           .from('cables')
-          .select(`
+          .select(
+            `
             id,
             name,
             length_meters,
@@ -280,7 +330,8 @@ updateCableQuantity: builder.mutation<
             storage_location:storage_locations(id, name),
             connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
             connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
-          `)
+          `,
+          )
           .eq('is_active', true)
           .is('deleted_at', null)
           .order('name');
@@ -297,13 +348,15 @@ updateCableQuantity: builder.mutation<
         console.log('getCableDetails - fetching cable:', id);
         const { data, error } = await supabase
           .from('cables')
-          .select(`
+          .select(
+            `
             *,
             warehouse_categories:warehouse_categories(*),
             storage_location:storage_locations(id, name),
             connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
             connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
-          `)
+          `,
+          )
           .eq('id', id)
           .single();
         if (error) {
@@ -324,10 +377,12 @@ updateCableQuantity: builder.mutation<
       async queryFn(cableId) {
         const { data, error } = await supabase
           .from('cable_units')
-          .select(`
+          .select(
+            `
             *,
             storage_locations:storage_locations(id, name)
-          `)
+          `,
+          )
           .eq('cable_id', cableId)
           .order('created_at', { ascending: false });
 
@@ -336,7 +391,7 @@ updateCableQuantity: builder.mutation<
       },
       providesTags: (result, _err, id) => [
         { type: 'Units', id },
-        ...((result ?? []).map((u: any) => ({ type: 'Units' as const, id: u.id }))),
+        ...(result ?? []).map((u: any) => ({ type: 'Units' as const, id: u.id })),
       ],
     }),
 
@@ -346,36 +401,26 @@ updateCableQuantity: builder.mutation<
       { id: string; payload: Record<string, any> }
     >({
       async queryFn({ id, payload }) {
-        const { error } = await supabase
-          .from('equipment_items')
-          .update(payload)
-          .eq('id', id);
+        const { error } = await supabase.from('equipment_items').update(payload).eq('id', id);
 
         if (error) return { error: error as any };
         return { data: { success: true } };
       },
-      invalidatesTags: (_result, _error, { id }) => [
-        { type: 'Equipment', id },
-        'EquipmentList',
-      ],
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Equipment', id }, 'EquipmentList'],
     }),
 
     // aktualizacja kabla
-    updateCable: builder.mutation<
-      { success: true },
-      { id: string; payload: Record<string, any> }
-    >({
+    updateCable: builder.mutation<{ success: true }, { id: string; payload: Record<string, any> }>({
       async queryFn({ id, payload }) {
         console.log('updateCable mutation - updating cable:', id, payload);
 
         // Sprawdź sesję użytkownika
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         console.log('Current session:', session ? `User: ${session.user.email}` : 'NO SESSION');
 
-        const { error, count } = await supabase
-          .from('cables')
-          .update(payload)
-          .eq('id', id);
+        const { error, count } = await supabase.from('cables').update(payload).eq('id', id);
 
         if (error) {
           console.error('updateCable mutation - error:', error);
@@ -386,13 +431,15 @@ updateCableQuantity: builder.mutation<
 
         const { data: updatedData } = await supabase
           .from('cables')
-          .select(`
+          .select(
+            `
             *,
             warehouse_categories:warehouse_categories(*),
             storage_location:storage_locations(id, name),
             connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
             connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
-          `)
+          `,
+          )
           .eq('id', id)
           .single();
 
@@ -400,21 +447,14 @@ updateCableQuantity: builder.mutation<
       },
       invalidatesTags: (_result, _error, { id }) => {
         console.log('Invalidating tags for cable:', id);
-        return [
-          { type: 'Equipment', id },
-          'EquipmentList',
-        ];
+        return [{ type: 'Equipment', id }, 'EquipmentList'];
       },
     }),
 
     // tworzenie kabla
     createCable: builder.mutation<{ id: string }, Record<string, any>>({
       async queryFn(payload) {
-        const { data, error } = await supabase
-          .from('cables')
-          .insert(payload)
-          .select('id')
-          .single();
+        const { data, error } = await supabase.from('cables').insert(payload).select('id').single();
 
         if (error) {
           console.error('createCable mutation - error:', error);
@@ -457,68 +497,54 @@ updateCableQuantity: builder.mutation<
         if (error) return { error: error as any };
         return { data: { success: true } };
       },
-      invalidatesTags: (_result, _error, { cable_id }) => [
-        { type: 'Units', id: cable_id },
-      ],
+      invalidatesTags: (_result, _error, { cable_id }) => [{ type: 'Units', id: cable_id }],
     }),
 
     // usuwanie jednostki kabla
-    deleteCableUnit: builder.mutation<
-      { success: true },
-      { id: string; cable_id: string }
-    >({
+    deleteCableUnit: builder.mutation<{ success: true }, { id: string; cable_id: string }>({
       async queryFn({ id }) {
-        const { error } = await supabase
-          .from('cable_units')
-          .delete()
-          .eq('id', id);
+        const { error } = await supabase.from('cable_units').delete().eq('id', id);
 
         if (error) return { error: error as any };
         return { data: { success: true } };
       },
-      invalidatesTags: (_result, _error, { cable_id }) => [
-        { type: 'Units', id: cable_id },
-      ],
+      invalidatesTags: (_result, _error, { cable_id }) => [{ type: 'Units', id: cable_id }],
     }),
 
     // kasowanie pojedynczego sprzętu (nie dotyczy kitów)
-deleteEquipment: builder.mutation<{ success: true }, string>({
-  async queryFn(id) {
-    // 1) spróbuj w equipment_items
-    const { error: delItemsErr } = await supabase
-      .from('equipment_items')
-      .delete()
-      .eq('id', id);
+    deleteEquipment: builder.mutation<{ success: true }, string>({
+      async queryFn(id) {
+        // 1) spróbuj w equipment_items
+        const { error: delItemsErr } = await supabase.from('equipment_items').delete().eq('id', id);
 
-    if (!delItemsErr) {
-      return { data: { success: true } };
-    }
+        if (!delItemsErr) {
+          return { data: { success: true } };
+        }
 
-    // 2) jeśli błąd, spróbuj w equipment_kits
-    const { error: delKitsErr } = await supabase
-      .from('equipment_kits')
-      .delete()
-      .eq('id', id);
+        // 2) jeśli błąd, spróbuj w equipment_kits
+        const { error: delKitsErr } = await supabase.from('equipment_kits').delete().eq('id', id);
 
-    if (!delKitsErr) {
-      return { data: { success: true } };
-    }
+        if (!delKitsErr) {
+          return { data: { success: true } };
+        }
 
-    // 3) zwróć pierwszy błąd (często bardziej informacyjny)
-    return { error: delItemsErr as any };
-  },
-  invalidatesTags: ['Equipment'],
-}),
+        // 3) zwróć pierwszy błąd (często bardziej informacyjny)
+        return { error: delItemsErr as any };
+      },
+      invalidatesTags: ['Equipment'],
+    }),
 
     // === JEDNOSTKI SPRZĘTU dla danego equipment_id ===
     getUnitsByEquipment: builder.query<any[], string>({
       async queryFn(equipmentId) {
         const { data, error } = await supabase
           .from('equipment_units')
-          .select(`
+          .select(
+            `
             *,
             storage_locations:storage_locations(id, name)
-          `)
+          `,
+          )
           .eq('equipment_id', equipmentId)
           .order('created_at', { ascending: false });
 
@@ -527,7 +553,7 @@ deleteEquipment: builder.mutation<{ success: true }, string>({
       },
       providesTags: (result, _err, id) => [
         { type: 'Units', id },
-        ...((result ?? []).map((u: any) => ({ type: 'Units' as const, id: u.id }))),
+        ...(result ?? []).map((u: any) => ({ type: 'Units' as const, id: u.id })),
       ],
     }),
 
@@ -557,7 +583,7 @@ deleteEquipment: builder.mutation<{ success: true }, string>({
       },
       providesTags: ['StorageLocations'],
     }),
-        getEquipmentCategories: builder.query<any[], void>({
+    getEquipmentCategories: builder.query<any[], void>({
       async queryFn() {
         const { data, error } = await supabase
           .from('warehouse_categories')
@@ -573,78 +599,74 @@ deleteEquipment: builder.mutation<{ success: true }, string>({
 
     // equipmentApi.ts (only the 3 category mutations changed)
 
-// Return the inserted row so `data` is always defined
-createWarehouseCategory: builder.mutation<
-  WarehouseCategoryRow, // return type
-  {
-    name: string;
-    description: string | null;
-    level: 1 | 2;
-    parent_id: string | null;
-    order_index: number;
-    color?: string;
-    special_properties: { name: string; value: boolean }[];
-  }
->({
-  async queryFn(payload) {
-    const { data, error } = await supabase
-      .from('warehouse_categories')
-      .insert({
-        ...payload,
-        is_active: true,
-        color: payload.color ?? '#d3bb73',
-        created_at: new Date().toISOString(),
-      })
-      .select('*')      // 👈 ensure a row is returned
-      .single();        // 👈 single row
+    // Return the inserted row so `data` is always defined
+    createWarehouseCategory: builder.mutation<
+      WarehouseCategoryRow, // return type
+      {
+        name: string;
+        description: string | null;
+        level: 1 | 2;
+        parent_id: string | null;
+        order_index: number;
+        color?: string;
+        special_properties: { name: string; value: boolean }[];
+      }
+    >({
+      async queryFn(payload) {
+        const { data, error } = await supabase
+          .from('warehouse_categories')
+          .insert({
+            ...payload,
+            is_active: true,
+            color: payload.color ?? '#d3bb73',
+            created_at: new Date().toISOString(),
+          })
+          .select('*') // 👈 ensure a row is returned
+          .single(); // 👈 single row
 
-    if (error) return { error: error as any };
-    return { data: data as WarehouseCategoryRow };
-  },
-  invalidatesTags: ['Categories'],
-}),
+        if (error) return { error: error as any };
+        return { data: data as WarehouseCategoryRow };
+      },
+      invalidatesTags: ['Categories'],
+    }),
 
-// Return the updated row (via .select().single())
-updateWarehouseCategory: builder.mutation<
-  WarehouseCategoryRow, // return the updated row
-  {
-    id: string;
-    name?: string;
-    description?: string | null;
-    special_properties?: { name: string; value: boolean }[];
-  }
->({
-  async queryFn({ id, ...patch }) {
-    const { data, error } = await supabase
-      .from('warehouse_categories')
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('*')      // 👈 return the updated row
-      .single();
+    // Return the updated row (via .select().single())
+    updateWarehouseCategory: builder.mutation<
+      WarehouseCategoryRow, // return the updated row
+      {
+        id: string;
+        name?: string;
+        description?: string | null;
+        special_properties?: { name: string; value: boolean }[];
+      }
+    >({
+      async queryFn({ id, ...patch }) {
+        const { data, error } = await supabase
+          .from('warehouse_categories')
+          .update({ ...patch, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .select('*') // 👈 return the updated row
+          .single();
 
-    if (error) return { error: error as any };
-    return { data: data as WarehouseCategoryRow };
-  },
-  invalidatesTags: ['Categories'],
-}),
+        if (error) return { error: error as any };
+        return { data: data as WarehouseCategoryRow };
+      },
+      invalidatesTags: ['Categories'],
+    }),
 
-// Return a success object (not undefined)
-deleteWarehouseCategory: builder.mutation<
-  { success: true },            // explicit non-undefined payload
-  { id: string }
->({
-  async queryFn({ id }) {
-    const { error } = await supabase
-      .from('warehouse_categories')
-      .delete()
-      .eq('id', id);
+    // Return a success object (not undefined)
+    deleteWarehouseCategory: builder.mutation<
+      { success: true }, // explicit non-undefined payload
+      { id: string }
+    >({
+      async queryFn({ id }) {
+        const { error } = await supabase.from('warehouse_categories').delete().eq('id', id);
 
-    if (error) return { error: error as any };
-    return { data: { success: true } };   // 👈 defined data
-  },
-  invalidatesTags: ['Categories'],
-}),
-   
+        if (error) return { error: error as any };
+        return { data: { success: true } }; // 👈 defined data
+      },
+      invalidatesTags: ['Categories'],
+    }),
   }),
 });
 

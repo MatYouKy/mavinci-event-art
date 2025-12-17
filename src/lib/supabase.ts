@@ -1,4 +1,32 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, PostgrestError } from '@supabase/supabase-js';
+
+export type SupabaseRTKError = {
+  status: 'SUPABASE_ERROR' | 'UNKNOWN_ERROR';
+  data: {
+    message: string;
+    code?: string;
+    details?: string | null;
+    hint?: string | null;
+  };
+};
+
+export const toRtkError = (error: PostgrestError | any): SupabaseRTKError => {
+  if (!error) return { status: 'UNKNOWN_ERROR', data: { message: 'Unknown error' } };
+
+  if (typeof error === 'object' && 'message' in error) {
+    return {
+      status: 'SUPABASE_ERROR',
+      data: {
+        message: error.message ?? 'Supabase error',
+        code: error.code,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+      },
+    };
+  }
+
+  return { status: 'UNKNOWN_ERROR', data: { message: String(error) } };
+};
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://fuuljhhuhfojtmmfmskq.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1dWxqaGh1aGZvanRtbWZtc2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5NDI5NjEsImV4cCI6MjA3NTUxODk2MX0.xe8_YUgENMeXwuLSZVatAfDBZLi5lcfyV3sHjaD8dmE';

@@ -1,6 +1,6 @@
 import { uploadImage } from '@/lib/storage';
 import { useState } from 'react';
-import { UnitEvent, UnitEventType } from '../../types/equipment.types';
+import { UnitEventRow, UnitEventType } from '../../types/equipment.types';
 import { supabase } from '@/lib/supabase';
 import { Plus, Upload, X, History } from 'lucide-react';
 
@@ -298,7 +298,7 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
             </div>
           ) : (
             <div className="space-y-4">
-              {events.map((event: UnitEvent) => (
+              {events.map((event: UnitEventRow) => (
                 <div
                   key={event.id}
                   className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-xl p-4"

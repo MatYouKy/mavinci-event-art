@@ -4,11 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
-  FileText,
-  Download,
-  Send,
   Trash2,
-  RefreshCw,
   Pencil,
   X,
   Check,
@@ -26,53 +22,10 @@ import { OfferDetails } from './components/OfferDetails';
 import OfferBasicInfo, { OfferBasicInfoHandle } from './components/OfferBasicInfo';
 import AddOfferItemModal from './components/AddOfferItemModal';
 import EditOfferItemModal from './components/EditOfferItemModal';
+import { usePrefetchOffer } from '../hooks/usePrefetchOffer';
+import { useOfferById } from '../hooks/useOfferById';
+import { IOfferItem } from '../types';
 
-interface OfferItem {
-  id: string;
-  product_id: string;
-  quantity: number;
-  unit_price: number;
-  discount_percent: number;
-  discount_amount: number;
-  subtotal: number;
-  total: number;
-  display_order: number;
-  product?: {
-    id: string;
-    name: string;
-    description: string;
-    pdf_page_url?: string;
-    pdf_thumbnail_url?: string;
-  };
-}
-
-interface Offer {
-  id: string;
-  offer_number: string;
-  event_id: string;
-  organization_id: string;
-  created_by: string;
-  total_amount: number;
-  valid_until: string;
-  status: string;
-  notes: string;
-  created_at: string;
-  generated_pdf_url?: string;
-  organization?: {
-    name?: string;
-    email?: string;
-  };
-  event?: {
-    name: string;
-    event_date: string;
-    contact?: {
-      email?: string;
-      first_name?: string;
-      last_name?: string;
-    };
-  };
-  offer_items?: OfferItem[];
-}
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -97,11 +50,13 @@ export default function OfferDetailPage() {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
-  const [offer, setOffer] = useState<Offer | null>(null);
-  const [loading, setLoading] = useState(true);
+  usePrefetchOffer(offerId);
+  const { offer, isLoading, refetch } = useOfferById(offerId);
+
+
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [editingItem, setEditingItem] = useState<OfferItem | null>(null);
+  const [editingItem, setEditingItem] = useState<IOfferItem | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [canSendManage, setCanSendManage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -111,7 +66,6 @@ export default function OfferDetailPage() {
 
   useEffect(() => {
     if (offerId) {
-      fetchOfferDetails();
       fetchCurrentUser();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,72 +97,6 @@ export default function OfferDetailPage() {
       setCanSendManage(isAdmin || isCreator);
     }
   }, [offer, currentUser]);
-
-  const fetchOfferDetails = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      const { data, error } = await supabase
-        .from('offers')
-        .select(
-          `
-          *,
-          organization:organizations!organization_id(name, email),
-          event:events!event_id(
-            name,
-            event_date,
-            location,
-            contact:contacts(email, first_name, last_name)
-          ),
-          last_generated_by_employee:employees!last_generated_by(
-            id,
-            name,
-            surname
-          ),
-          offer_items(
-            id,
-            product_id,
-            quantity,
-            unit_price,
-            discount_percent,
-            discount_amount,
-            subtotal,
-            total,
-            display_order,
-            product:offer_products(
-              id,
-              name,
-              description,
-              pdf_page_url,
-              pdf_thumbnail_url
-            )
-          )
-        `,
-        )
-        .eq('id', offerId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching offer:', error);
-        showSnackbar('Błąd podczas pobierania oferty', 'error');
-        setOffer(null);
-        return;
-      }
-
-      if (!data) {
-        showSnackbar('Nie znaleziono oferty', 'error');
-        setOffer(null);
-        return;
-      }
-
-      setOffer(data);
-    } catch (err) {
-      console.error('Error:', err);
-      showSnackbar('Wystąpił błąd', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [offerId, showSnackbar]);
 
   const handleDeleteOffer = useCallback(async () => {
     if (!offer) return;
@@ -269,7 +157,7 @@ export default function OfferDetailPage() {
       }
 
       showSnackbar('Pozycja usunięta', 'success');
-      fetchOfferDetails();
+      refetch();
     } catch (err) {
       console.error('Error:', err);
       showSnackbar('Wystąpił błąd', 'error');
@@ -277,7 +165,7 @@ export default function OfferDetailPage() {
   };
 
   const handleOfferUpdated = () => {
-    fetchOfferDetails();
+    refetch();
     setIsEditing(false);
   };
 
@@ -324,7 +212,7 @@ export default function OfferDetailPage() {
     return result;
   }, [canSendManage, isEditing, handleDeleteOffer]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-lg text-[#e5e4e2]">Ładowanie...</div>
@@ -387,9 +275,9 @@ export default function OfferDetailPage() {
           <OfferItems
             items={offer.offer_items || []}
             offerId={offer.id}
-            onItemsReordered={fetchOfferDetails}
+            onItemsReordered={refetch}
             onEditItem={(item) => {
-              setEditingItem(item);
+              setEditingItem(item as IOfferItem);
             }}
             onDeleteItem={handleDeleteItem}
             onPreviewImage={setPreviewImage}
@@ -425,7 +313,7 @@ export default function OfferDetailPage() {
         <AddOfferItemModal
           offerId={offer.id}
           onClose={() => setShowAddItemModal(false)}
-          onSuccess={fetchOfferDetails}
+          onSuccess={refetch}
         />
       )}
 
@@ -433,7 +321,7 @@ export default function OfferDetailPage() {
         <EditOfferItemModal
           item={editingItem}
           onClose={() => setEditingItem(null)}
-          onSuccess={fetchOfferDetails}
+          onSuccess={refetch}
         />
       )}
 

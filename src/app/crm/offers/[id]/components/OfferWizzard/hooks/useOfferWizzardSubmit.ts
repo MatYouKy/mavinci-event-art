@@ -2,7 +2,8 @@
 
 import { supabase } from '@/lib/supabase';
 import { buildSubstitutionsForInsert, calcTotal } from '../utils';
-import { EquipmentConflictRow, OfferItem, SelectedAltMap } from '../types';
+import { EquipmentConflictRow, SelectedAltMap } from '../types';
+import { IOfferItem } from '@/app/crm/offers/types';
 
 export async function submitOfferWizard(params: {
   eventId: string;
@@ -13,7 +14,7 @@ export async function submitOfferWizard(params: {
   contactId?: string;
 
   offerData: { offer_number: string; valid_until: string; notes: string };
-  offerItems: OfferItem[];
+  offerItems: IOfferItem[];
 
   selectedAlt: SelectedAltMap;
   conflicts: EquipmentConflictRow[];
@@ -46,7 +47,7 @@ export async function submitOfferWizard(params: {
     product_id: item.product_id?.trim() ? item.product_id : null,
     name: item.name,
     description: item.description || null,
-    quantity: item.qty,
+    quantity: item.quantity,
     unit: item.unit,
     unit_price: item.unit_price,
     unit_cost: 0,

@@ -30,5 +30,7 @@ export function useOfferWizardResources(opts: { isOpen: boolean; step: number })
     })();
   }, [opts.isOpen, opts.step]);
 
+  console.log('equipmentList: useOfferWizardResources', equipmentList);
+
   return { equipmentList, subcontractors };
 }

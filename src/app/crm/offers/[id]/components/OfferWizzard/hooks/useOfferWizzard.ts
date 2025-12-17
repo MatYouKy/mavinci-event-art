@@ -3,19 +3,20 @@
 import { useMemo, useState } from 'react';
 import { useDialog } from '@/contexts/DialogContext';
 
-import { Product } from '../types';
 import { useOfferWizardClient } from './useOfferWizzardClient';
 import { useOfferWizardCatalog } from './useOfferWizzardCatalog';
 import { useOfferWizardResources } from './useOfferWizzardResources';
 import { useOfferWizardItems } from './useOfferWizzardItem';
 import { useOfferWizardConflicts } from './useOfferWizzardConflicts';
 import { submitOfferWizard } from './useOfferWizzardSubmit';
+import { IProduct } from '@/app/crm/offers/types';
+import { ClientType } from '@/app/crm/clients/type';
 
 export function useOfferWizardLogic(opts: {
   isOpen: boolean;
   eventId: string;
-  employeeId?: string;
-  defaults?: { clientType?: 'individual' | 'business'; organizationId?: string; contactId?: string };
+    employeeId?: string;
+    defaults?: { clientType?: ClientType; organizationId?: string; contactId?: string };
   onSuccess: () => void;
   onClose: () => void;
 }) {
@@ -40,7 +41,7 @@ export function useOfferWizardLogic(opts: {
     return client.canProceedFromStep1;
   }, [step, client.canProceedFromStep1]);
 
-  const addProductToOffer = async (product: Product) => {
+  const addProductToOffer = async (product: IProduct) => {
     items.addProduct(product);
 
     // sprawdź po zmianie (na aktualnym stanie – najprościej: zrób to na bazie next tick)
@@ -153,8 +154,6 @@ export function useOfferWizardLogic(opts: {
       setLoading(false);
     }
   };
-
-  console.log('conflicts:', conflicts);
 
   return {
     initialStep,

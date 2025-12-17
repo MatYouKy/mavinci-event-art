@@ -9,33 +9,38 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import AdminResetPasswordModal from '@/components/crm/AdminResetPasswordModal';
 import AddEmployeeModal from '@/components/crm/AddEmployeeModal';
-import { EmployeeCardsView, EmployeeListView, EmployeeDetailedView } from '@/components/crm/EmployeeViews';
+import {
+  EmployeeCardsView,
+  EmployeeListView,
+  EmployeeDetailedView,
+} from '@/components/crm/EmployeeViews';
+import { IEmployee } from './type';
 
-interface Employee {
-  id: string;
-  name: string;
-  surname: string;
-  nickname: string | null;
-  email: string;
-  phone_number: string | null;
-  avatar_url: string | null;
-  avatar_metadata?: any;
-  role: string;
-  access_level: string;
-  occupation: string | null;
-  region: string | null;
-  is_active: boolean;
-  skills: string[] | null;
-  order_index: number;
-}
+// interface Employee {
+//   id: string;
+//   name: string;
+//   surname: string;
+//   nickname: string | null;
+//   email: string;
+//   phone_number: string | null;
+//   avatar_url: string | null;
+//   avatar_metadata?: any;
+//   role: string;
+//   access_level: string;
+//   occupation: string | null;
+//   region: string | null;
+//   is_active: boolean;
+//   skills: string[] | null;
+//   order_index: number;
+// }
 
 export default function EmployeesPage() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<IEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [resetPasswordEmployee, setResetPasswordEmployee] = useState<Employee | null>(null);
+  const [resetPasswordEmployee, setResetPasswordEmployee] = useState<IEmployee | null>(null);
 
   const { canCreateInModule } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
@@ -72,7 +77,7 @@ export default function EmployeesPage() {
   const filteredEmployees = employees.filter((emp) =>
     `${emp.name} ${emp.surname} ${emp.nickname || ''} ${emp.email} ${emp.occupation || ''}`
       .toLowerCase()
-      .includes(searchTerm.toLowerCase())
+      .includes(searchTerm.toLowerCase()),
   );
 
   const getRoleLabel = (role: string) => {
@@ -121,10 +126,9 @@ export default function EmployeesPage() {
     return colors[level] || 'bg-gray-500/20 text-gray-400';
   };
 
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
       </div>
     );
@@ -135,25 +139,23 @@ export default function EmployeesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2]">Pracownicy</h2>
-          <p className="text-[#e5e4e2]/60 text-sm mt-1">
-            Zarządzaj zespołem i uprawnieniami
-          </p>
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">Zarządzaj zespołem i uprawnieniami</p>
         </div>
         <div className="flex gap-3">
           {canAddEmployee && (
             <>
               <button
                 onClick={() => router.push('/crm/settings/access-levels')}
-                className="flex items-center gap-2 border border-[#d3bb73]/30 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/10 transition-colors"
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-sm font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
               >
-                <Lock className="w-4 h-4" />
+                <Lock className="h-4 w-4" />
                 Poziomy dostępu
               </button>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 Dodaj pracownika
               </button>
             </>
@@ -163,56 +165,56 @@ export default function EmployeesPage() {
 
       <div className="flex items-center justify-between gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
           <input
             type="text"
             placeholder="Szukaj pracowników..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-12 pr-4 py-3 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] py-3 pl-12 pr-4 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
           />
         </div>
 
-        <div className="flex items-center gap-1 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-1">
+        <div className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-1">
           <button
             onClick={() => setViewMode('employees', 'cards')}
-            className={`p-2 rounded transition-colors ${
+            className={`rounded p-2 transition-colors ${
               viewMode === 'cards'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+                : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
             }`}
             title="Widok kafelkowy"
           >
-            <LayoutGrid className="w-5 h-5" />
+            <LayoutGrid className="h-5 w-5" />
           </button>
           <button
             onClick={() => setViewMode('employees', 'list')}
-            className={`p-2 rounded transition-colors ${
+            className={`rounded p-2 transition-colors ${
               viewMode === 'list'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+                : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
             }`}
             title="Widok listy"
           >
-            <List className="w-5 h-5" />
+            <List className="h-5 w-5" />
           </button>
           <button
             onClick={() => setViewMode('employees', 'detailed')}
-            className={`p-2 rounded transition-colors ${
+            className={`rounded p-2 transition-colors ${
               viewMode === 'detailed'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+                : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
             }`}
             title="Widok szczegółowy"
           >
-            <ListTree className="w-5 h-5" />
+            <ListTree className="h-5 w-5" />
           </button>
         </div>
       </div>
 
       {filteredEmployees.length === 0 ? (
-        <div className="text-center py-12">
-          <User className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+        <div className="py-12 text-center">
+          <User className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
           <p className="text-[#e5e4e2]/60">
             {searchTerm ? 'Nie znaleziono pracowników' : 'Brak pracowników'}
           </p>
@@ -251,6 +253,7 @@ export default function EmployeesPage() {
 
       {showAddModal && (
         <AddEmployeeModal
+          isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false);
@@ -261,11 +264,14 @@ export default function EmployeesPage() {
 
       {resetPasswordEmployee && (
         <AdminResetPasswordModal
-          employee={resetPasswordEmployee}
+          employeeId={resetPasswordEmployee.id}
+          employeeName={resetPasswordEmployee.name}
+          employeeEmail={resetPasswordEmployee.email}
           onClose={() => {
             setResetPasswordEmployee(null);
             fetchEmployees();
           }}
+          isOpen={resetPasswordEmployee !== null}
         />
       )}
     </div>

@@ -2,12 +2,34 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Save, Package, DollarSign, Truck, Users, Wrench, Tag, Settings, X, Trash2, FileText, Upload, Eye } from 'lucide-react';
+import {
+  ArrowLeft,
+  Save,
+  Package,
+  DollarSign,
+  Truck,
+  Users,
+  Wrench,
+  Tag,
+  Settings,
+  X,
+  Trash2,
+  FileText,
+  Upload,
+  Eye,
+  Loader2,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { IEventCategory } from '@/app/crm/event-categories/types';
+import { useEventCategories } from '@/app/crm/event-categories/hook/useEventCategories';
+import { ProductEquipment } from '../components/ProductEquipment';
+import { ProductStaffSection } from '../components/ProductStuffSection';
+import { AddEquipmentModal } from '../modal/AddEquipmentModal';
+import { useManageProduct } from '../hooks/useManageProduct';
 
-interface Product {
+interface IProduct {
   id: string;
   category_id: string;
   name: string;
@@ -37,32 +59,7 @@ interface Product {
   display_order: number;
   pdf_page_url?: string | null;
   pdf_thumbnail_url?: string | null;
-  category?: {
-    id: string;
-    name: string;
-    full_path?: string;
-  };
-}
-
-interface ProductEquipment {
-  id: string;
-  equipment_item_id: string | null;
-  equipment_kit_id: string | null;
-  quantity: number;
-  is_optional: boolean;
-  notes: string;
-  equipment_item?: {
-    id: string;
-    name: string;
-    warehouse_category?: {
-      name: string;
-    };
-  };
-  equipment_kit?: {
-    id: string;
-    name: string;
-    description: string | null;
-  };
+  category?: IEventCategory;
 }
 
 interface ProductStaff {
@@ -80,21 +77,28 @@ interface ProductStaff {
 export default function ProductDetailPage() {
   const router = useRouter();
   const params = useParams();
+  console.log(params);
   const { showSnackbar } = useSnackbar();
-  const { employee, hasScope, isAdmin } = useCurrentEmployee();
+  const { hasScope, isAdmin } = useCurrentEmployee();
+  const { categories, isLoading: isLoadingCategories } = useEventCategories();
+  const { items, isLoading, isFetching, remove } = useManageProduct({
+    productId: params.id as string,
+  });
+
+  console.log('items', items);
+  console.log('isLoading', isLoading);
+  console.log('isFetching', isFetching);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [product, setProduct] = useState<Product | null>(null);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [equipment, setEquipment] = useState<ProductEquipment[]>([]);
-  const [staff, setStaff] = useState<ProductStaff[]>([]);
+  const [product, setProduct] = useState<IProduct | null>(null);
+
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
-  const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [draftStaff, setDraftStaff] = useState<any[]>([]);
 
   const canEdit = isAdmin || hasScope('offers_manage');
 
@@ -133,10 +137,7 @@ export default function ProductDetailPage() {
         setLoading(false);
       } else {
         fetchProduct();
-        fetchEquipment();
-        fetchStaff();
       }
-      fetchCategories();
     }
   }, [params.id]);
 
@@ -145,10 +146,12 @@ export default function ProductDetailPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('offer_products')
-        .select(`
+        .select(
+          `
           *,
           category:offer_product_categories(id, name)
-        `)
+        `,
+        )
         .eq('id', params.id)
         .single();
 
@@ -159,35 +162,6 @@ export default function ProductDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchCategories = async () => {
-    const { data } = await supabase
-      .from('offer_product_categories')
-      .select('*')
-      .eq('is_active', true)
-      .order('display_order');
-    if (data) setCategories(data);
-  };
-
-  const fetchEquipment = async () => {
-    const { data } = await supabase
-      .from('offer_product_equipment')
-      .select(`
-        *,
-        equipment_item:equipment_items(id, name, warehouse_category:warehouse_categories(name)),
-        equipment_kit:equipment_kits(id, name, description)
-      `)
-      .eq('product_id', params.id);
-    if (data) setEquipment(data);
-  };
-
-  const fetchStaff = async () => {
-    const { data } = await supabase
-      .from('offer_product_staff')
-      .select('*')
-      .eq('product_id', params.id);
-    if (data) setStaff(data);
   };
 
   const handleUploadPdf = async () => {
@@ -221,9 +195,9 @@ export default function ProductDetailPage() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('offer-product-pages')
-        .getPublicUrl(filePath);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('offer-product-pages').getPublicUrl(filePath);
 
       const { error: updateError } = await supabase
         .from('offer_products')
@@ -344,41 +318,6 @@ export default function ProductDetailPage() {
     }
   };
 
-  const handleDeleteEquipment = async (equipmentId: string) => {
-    try {
-      const { error } = await supabase
-        .from('offer_product_equipment')
-        .delete()
-        .eq('id', equipmentId);
-
-      if (error) throw error;
-
-      showSnackbar('Sprzęt usunięty', 'success');
-      fetchEquipment();
-    } catch (error) {
-      console.error('Error deleting equipment:', error);
-      showSnackbar('Błąd podczas usuwania sprzętu', 'error');
-    }
-  };
-
-  const handleUpdateEquipmentQuantity = async (equipmentId: string, quantity: number) => {
-    if (quantity < 1) return;
-
-    try {
-      const { error } = await supabase
-        .from('offer_product_equipment')
-        .update({ quantity })
-        .eq('id', equipmentId);
-
-      if (error) throw error;
-
-      fetchEquipment();
-    } catch (error) {
-      console.error('Error updating quantity:', error);
-      showSnackbar('Błąd podczas aktualizacji ilości', 'error');
-    }
-  };
-
   const handleSave = async () => {
     if (!product || !canEdit) return;
 
@@ -440,17 +379,18 @@ export default function ProductDetailPage() {
   const handleDelete = async () => {
     if (!product || !canEdit || params.id === 'new') return;
 
-    if (!confirm(`Czy na pewno chcesz usunąć produkt "${product.name}"?\n\nTa operacja jest nieodwracalna.`)) {
+    if (
+      !confirm(
+        `Czy na pewno chcesz usunąć produkt "${product.name}"?\n\nTa operacja jest nieodwracalna.`,
+      )
+    ) {
       return;
     }
 
     try {
       setSaving(true);
 
-      const { error } = await supabase
-        .from('offer_products')
-        .delete()
-        .eq('id', product.id);
+      const { error } = await supabase.from('offer_products').delete().eq('id', product.id);
 
       if (error) throw error;
 
@@ -489,14 +429,27 @@ export default function ProductDetailPage() {
 
   // Fallback dla starych danych (przed migracją VAT)
   const priceNet = product?.price_net ?? product?.base_price ?? 0;
-  const priceGross = product?.price_gross ?? (priceNet * 1.23) ?? 0;
+  const priceGross =
+    product?.price_gross !== undefined && product?.price_gross !== null
+      ? product.price_gross
+      : priceNet * (1 + (product?.vat_rate ?? 0) / 100);
+
   const costNet = product?.cost_net ?? product?.cost_price ?? 0;
-  const costGross = product?.cost_gross ?? (costNet * 1.23) ?? 0;
+  const costGross =
+    product?.cost_gross !== undefined && product?.cost_gross !== null
+      ? product.cost_gross
+      : costNet * (1 + (product?.vat_rate ?? 0) / 100);
+
   const transportNet = product?.transport_cost_net ?? product?.transport_cost ?? 0;
-  const transportGross = product?.transport_cost_gross ?? (transportNet * 1.23) ?? 0;
+  const transportGross =
+    product?.transport_cost_gross !== undefined && product?.transport_cost_gross !== null
+      ? product.transport_cost_gross
+      : transportNet * (1 + (product?.vat_rate ?? 0) / 100);
   const logisticsNet = product?.logistics_cost_net ?? product?.logistics_cost ?? 0;
-  const logisticsGross = product?.logistics_cost_gross ?? (logisticsNet * 1.23) ?? 0;
-  const vatRate = product?.vat_rate ?? 23;
+  const logisticsGross =
+    product?.logistics_cost_gross !== undefined && product?.logistics_cost_gross !== null
+      ? product.logistics_cost_gross
+      : logisticsNet * (1 + (product?.vat_rate ?? 0) / 100);
 
   const margin = priceNet > 0 ? ((priceNet - costNet) / priceNet) * 100 : 0;
   const totalCostNet = costNet + transportNet + logisticsNet;
@@ -506,7 +459,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -514,7 +467,7 @@ export default function ProductDetailPage() {
 
   if (!product) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-[#e5e4e2]">Nie znaleziono produktu</div>
       </div>
     );
@@ -527,18 +480,16 @@ export default function ProductDetailPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/offers?tab=catalog')}
-            className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
           >
-            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+            <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
           </button>
           <div>
             <h1 className="text-2xl font-light text-[#e5e4e2]">
               {params.id === 'new' ? 'Nowy produkt' : product.name}
             </h1>
             {params.id !== 'new' && (
-              <p className="text-sm text-[#e5e4e2]/60 mt-1">
-                {product.category?.name}
-              </p>
+              <p className="mt-1 text-sm text-[#e5e4e2]/60">{product.category?.name}</p>
             )}
           </div>
         </div>
@@ -548,18 +499,18 @@ export default function ProductDetailPage() {
               <button
                 onClick={handleDelete}
                 disabled={saving}
-                className="flex items-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-500/30 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="h-4 w-4" />
                 Usuń
               </button>
             )}
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
+              <Save className="h-4 w-4" />
               {saving ? 'Zapisywanie...' : params.id === 'new' ? 'Dodaj produkt' : 'Zapisz zmiany'}
             </button>
           </div>
@@ -567,10 +518,10 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-[#d3bb73]" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
                 {priceNet.toLocaleString('pl-PL')} zł
@@ -583,9 +534,9 @@ export default function ProductDetailPage() {
           <p className="text-sm text-[#e5e4e2]/60">Cena netto</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-red-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-red-400" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
                 {costNet.toLocaleString('pl-PL')} zł
@@ -598,13 +549,11 @@ export default function ProductDetailPage() {
           <p className="text-sm text-[#e5e4e2]/60">Koszt netto</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-green-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-green-400" />
             <div>
-              <div className="text-2xl font-light text-[#e5e4e2]">
-                {margin.toFixed(1)}%
-              </div>
+              <div className="text-2xl font-light text-[#e5e4e2]">{margin.toFixed(1)}%</div>
               <div className="text-xs text-[#e5e4e2]/40">
                 {(priceNet - costNet).toLocaleString('pl-PL')} zł netto
               </div>
@@ -613,9 +562,9 @@ export default function ProductDetailPage() {
           <p className="text-sm text-[#e5e4e2]/60">Marża</p>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <Package className="w-5 h-5 text-blue-400" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+          <div className="mb-2 flex items-center gap-3">
+            <Package className="h-5 w-5 text-blue-400" />
             <div>
               <div className="text-2xl font-light text-[#e5e4e2]">
                 {totalPriceNet.toLocaleString('pl-PL')} zł
@@ -629,102 +578,113 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Basic Info */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Settings className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Settings className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Podstawowe informacje</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa produktu</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa produktu</label>
               <input
                 type="text"
                 value={product.name}
                 onChange={(e) => setProduct({ ...product, name: e.target.value })}
                 disabled={!canEdit}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kategoria</label>
+              <label className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                <span>Kategoria</span>
+                {isLoadingCategories && (
+                  <span>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </span>
+                )}
+              </label>
               <select
                 value={product.category_id}
                 onChange={(e) => setProduct({ ...product, category_id: e.target.value })}
                 disabled={!canEdit}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               >
                 {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
               <textarea
                 value={product.description || ''}
                 onChange={(e) => setProduct({ ...product, description: e.target.value })}
                 disabled={!canEdit}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[100px] disabled:opacity-50"
+                className="min-h-[100px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Jednostka</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Jednostka</label>
                 <input
                   type="text"
                   value={product.unit}
                   onChange={(e) => setProduct({ ...product, unit: e.target.value })}
                   disabled={!canEdit}
                   placeholder="szt, komplet, dzień"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Min. ilość</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Min. ilość</label>
                 <input
                   type="number"
                   value={product.min_quantity}
-                  onChange={(e) => setProduct({ ...product, min_quantity: parseInt(e.target.value) })}
+                  onChange={(e) =>
+                    setProduct({ ...product, min_quantity: parseInt(e.target.value) })
+                  }
                   disabled={!canEdit}
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={product.is_active}
                   onChange={(e) => setProduct({ ...product, is_active: e.target.checked })}
                   disabled={!canEdit}
-                  className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
                 />
                 <span className="text-sm text-[#e5e4e2]">Aktywny</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={product.requires_vehicle}
                   onChange={(e) => setProduct({ ...product, requires_vehicle: e.target.checked })}
                   disabled={!canEdit}
-                  className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
                 />
                 <span className="text-sm text-[#e5e4e2]">Wymaga pojazdu</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={product.requires_driver}
                   onChange={(e) => setProduct({ ...product, requires_driver: e.target.checked })}
                   disabled={!canEdit}
-                  className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
                 />
                 <span className="text-sm text-[#e5e4e2]">Wymaga kierowcy</span>
               </label>
@@ -733,18 +693,18 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Pricing */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <DollarSign className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Ceny i koszty (netto/brutto)</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stawka VAT (%)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka VAT (%)</label>
               <input
                 type="number"
-                value={vatRate}
+                value={product?.vat_rate}
                 onChange={(e) => {
                   const newVat = parseFloat(e.target.value);
                   setProduct({
@@ -758,63 +718,63 @@ export default function ProductDetailPage() {
                 }}
                 disabled={!canEdit}
                 step="0.01"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena netto</label>
                 <input
                   type="number"
                   value={priceNet}
                   onChange={(e) => updateNetPrice(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Cena brutto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena brutto</label>
                 <input
                   type="number"
                   value={priceGross}
                   onChange={(e) => updateGrossPrice(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Koszt netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt netto</label>
                 <input
                   type="number"
                   value={costNet}
                   onChange={(e) => updateNetCost(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Koszt brutto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt brutto</label>
                 <input
                   type="number"
                   value={costGross}
                   onChange={(e) => updateGrossCost(parseFloat(e.target.value))}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Transport netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Transport netto</label>
                 <input
                   type="number"
                   value={transportNet}
@@ -823,16 +783,16 @@ export default function ProductDetailPage() {
                     setProduct({
                       ...product,
                       transport_cost_net: net,
-                      transport_cost_gross: net * (1 + vatRate / 100),
+                      transport_cost_gross: net * (1 + product?.vat_rate / 100),
                     });
                   }}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Logistyka netto</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Logistyka netto</label>
                 <input
                   type="number"
                   value={logisticsNet}
@@ -841,71 +801,83 @@ export default function ProductDetailPage() {
                     setProduct({
                       ...product,
                       logistics_cost_net: net,
-                      logistics_cost_gross: net * (1 + vatRate / 100),
+                      logistics_cost_gross: net * (1 + product?.vat_rate / 100),
                     });
                   }}
                   disabled={!canEdit}
                   step="0.01"
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#d3bb73]/10 space-y-2">
+            <div className="space-y-2 border-t border-[#d3bb73]/10 pt-4">
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Marża:</span>
-                <span className={`font-medium ${margin > 50 ? 'text-green-400' : margin > 30 ? 'text-yellow-400' : 'text-red-400'}`}>
+                <span
+                  className={`font-medium ${margin > 50 ? 'text-green-400' : margin > 30 ? 'text-yellow-400' : 'text-red-400'}`}
+                >
                   {margin.toFixed(1)}% ({(priceNet - costNet).toLocaleString('pl-PL')} zł netto)
                 </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Całkowity koszt:</span>
-                <span className="text-[#e5e4e2]">{totalCostNet.toLocaleString('pl-PL')} zł netto / {totalCostGross.toLocaleString('pl-PL')} zł brutto</span>
+                <span className="text-[#e5e4e2]">
+                  {totalCostNet.toLocaleString('pl-PL')} zł netto /{' '}
+                  {totalCostGross.toLocaleString('pl-PL')} zł brutto
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Całkowita cena:</span>
-                <span className="text-[#d3bb73] font-medium">{totalPriceNet.toLocaleString('pl-PL')} zł netto / {totalPriceGross.toLocaleString('pl-PL')} zł brutto</span>
+                <span className="font-medium text-[#d3bb73]">
+                  {totalPriceNet.toLocaleString('pl-PL')} zł netto /{' '}
+                  {totalPriceGross.toLocaleString('pl-PL')} zł brutto
+                </span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Time */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Truck className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Truck className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Czas realizacji</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Czas montażu (godz.)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Czas montażu (godz.)</label>
               <input
                 type="number"
                 value={product.setup_time_hours}
-                onChange={(e) => setProduct({ ...product, setup_time_hours: parseFloat(e.target.value) })}
+                onChange={(e) =>
+                  setProduct({ ...product, setup_time_hours: parseFloat(e.target.value) })
+                }
                 disabled={!canEdit}
                 step="0.5"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Czas demontażu (godz.)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Czas demontażu (godz.)</label>
               <input
                 type="number"
                 value={product.teardown_time_hours}
-                onChange={(e) => setProduct({ ...product, teardown_time_hours: parseFloat(e.target.value) })}
+                onChange={(e) =>
+                  setProduct({ ...product, teardown_time_hours: parseFloat(e.target.value) })
+                }
                 disabled={!canEdit}
                 step="0.5"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               />
             </div>
 
-            <div className="pt-4 border-t border-[#d3bb73]/10">
+            <div className="border-t border-[#d3bb73]/10 pt-4">
               <div className="flex justify-between text-sm">
                 <span className="text-[#e5e4e2]/60">Całkowity czas:</span>
-                <span className="text-[#e5e4e2] font-medium">
+                <span className="font-medium text-[#e5e4e2]">
                   {(product.setup_time_hours + product.teardown_time_hours).toFixed(1)} godz.
                 </span>
               </div>
@@ -914,48 +886,58 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Tags */}
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Tag className="w-5 h-5 text-[#d3bb73]" />
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Tag className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Tagi</h2>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Tagi (oddzielone przecinkami)
-              <span className="text-xs text-[#e5e4e2]/40 ml-2">np: dj, wesele, premium</span>
+              <span className="ml-2 text-xs text-[#e5e4e2]/40">np: dj, wesele, premium</span>
             </label>
             <input
               type="text"
               value={(product.tags || []).join(', ')}
               onChange={(e) => {
                 const value = e.target.value.trim();
-                const tags = value ? value.split(',').map(t => t.trim()).filter(Boolean) : [];
+                const tags = value
+                  ? value
+                      .split(',')
+                      .map((t) => t.trim())
+                      .filter(Boolean)
+                  : [];
                 setProduct({ ...product, tags });
               }}
               disabled={!canEdit}
               placeholder="Wpisz tagi oddzielone przecinkami..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] disabled:opacity-50 placeholder:text-[#e5e4e2]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 disabled:opacity-50"
             />
-            <p className="text-xs text-[#e5e4e2]/40 mt-1">
+            <p className="mt-1 text-xs text-[#e5e4e2]/40">
               Tagi pomagają w wyszukiwaniu produktów w ofercie
             </p>
           </div>
 
           {product.tags && product.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-4">
+            <div className="mt-4 flex flex-wrap gap-2">
               {product.tags.map((tag, idx) => (
-                <div key={idx} className="flex items-center gap-1 px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full text-sm">
+                <div
+                  key={idx}
+                  className="flex items-center gap-1 rounded-full bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]"
+                >
                   <span>{tag}</span>
                   {canEdit && (
                     <button
-                      onClick={() => setProduct({
-                        ...product,
-                        tags: product.tags.filter((_, i) => i !== idx)
-                      })}
-                      className="ml-1 text-[#d3bb73]/60 hover:text-[#d3bb73] transition-colors"
+                      onClick={() =>
+                        setProduct({
+                          ...product,
+                          tags: product.tags.filter((_, i) => i !== idx),
+                        })
+                      }
+                      className="ml-1 text-[#d3bb73]/60 transition-colors hover:text-[#d3bb73]"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="h-3 w-3" />
                     </button>
                   )}
                 </div>
@@ -966,34 +948,38 @@ export default function ProductDetailPage() {
 
         {/* PDF Upload Section */}
         {params.id !== 'new' && (
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <FileText className="w-5 h-5 text-[#d3bb73]" />
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-[#d3bb73]" />
               <h2 className="text-lg font-medium text-[#e5e4e2]">Strona PDF produktu</h2>
             </div>
 
             <div className="space-y-4">
               <p className="text-sm text-[#e5e4e2]/60">
-                Upload pojedynczej strony PDF dla tego produktu. Strona zostanie automatycznie dołączona do finalnej oferty.
+                Upload pojedynczej strony PDF dla tego produktu. Strona zostanie automatycznie
+                dołączona do finalnej oferty.
               </p>
 
               {product.pdf_page_url ? (
                 <div className="space-y-4">
-                  <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
-                    <div className="grid grid-cols-[200px_1fr_auto] gap-4 items-start">
+                  <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+                    <div className="grid grid-cols-[200px_1fr_auto] items-start gap-4">
                       {/* Miniaturka PDF po lewej */}
                       <div className="relative">
                         {product.pdf_thumbnail_url ? (
-                          <div className="relative group cursor-pointer" onClick={async () => {
-                            const { data } = await supabase.storage
-                              .from('offer-product-pages')
-                              .createSignedUrl(product.pdf_page_url!, 3600);
-                            if (data?.signedUrl) window.open(data.signedUrl, '_blank');
-                          }}>
+                          <div
+                            className="group relative cursor-pointer"
+                            onClick={async () => {
+                              const { data } = await supabase.storage
+                                .from('offer-product-pages')
+                                .createSignedUrl(product.pdf_page_url!, 3600);
+                              if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                            }}
+                          >
                             <img
                               src={`${supabase.storage.from('offer-product-pages').getPublicUrl(product.pdf_thumbnail_url).data.publicUrl}`}
                               alt="Podgląd PDF"
-                              className="w-full rounded-lg border border-[#d3bb73]/20 hover:border-[#d3bb73]/40 transition-colors"
+                              className="w-full rounded-lg border border-[#d3bb73]/20 transition-colors hover:border-[#d3bb73]/40"
                               onError={(e) => {
                                 (async () => {
                                   const { data } = await supabase.storage
@@ -1005,22 +991,22 @@ export default function ProductDetailPage() {
                                 })();
                               }}
                             />
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-                              <Eye className="w-8 h-8 text-white" />
+                            <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                              <Eye className="h-8 w-8 text-white" />
                             </div>
                           </div>
                         ) : (
-                          <div className="w-full aspect-[3/4] bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg flex items-center justify-center">
-                            <FileText className="w-12 h-12 text-[#e5e4e2]/20" />
+                          <div className="flex aspect-[3/4] w-full items-center justify-center rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
+                            <FileText className="h-12 w-12 text-[#e5e4e2]/20" />
                           </div>
                         )}
                       </div>
 
                       {/* Informacje o PDF */}
                       <div className="flex flex-col justify-center">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-5 h-5 text-[#d3bb73]" />
-                          <div className="text-[#e5e4e2] font-medium">Strona PDF przesłana</div>
+                        <div className="mb-2 flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-[#d3bb73]" />
+                          <div className="font-medium text-[#e5e4e2]">Strona PDF przesłana</div>
                         </div>
                         <div className="text-sm text-[#e5e4e2]/60">
                           {product.pdf_thumbnail_url
@@ -1034,9 +1020,9 @@ export default function ProductDetailPage() {
                         <div className="flex flex-col gap-2">
                           <button
                             onClick={handleDeletePdf}
-                            className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm whitespace-nowrap"
+                            className="flex items-center gap-2 whitespace-nowrap rounded-lg bg-red-500/20 px-3 py-2 text-sm text-red-400 hover:bg-red-500/30"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-4 w-4" />
                             Usuń PDF
                           </button>
                         </div>
@@ -1045,16 +1031,18 @@ export default function ProductDetailPage() {
                   </div>
 
                   {/* Thumbnail Section */}
-                  <div className="bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg p-4">
-                    <div className="text-sm text-[#e5e4e2] font-medium mb-3">Miniaturka podglądu PDF</div>
+                  <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+                    <div className="mb-3 text-sm font-medium text-[#e5e4e2]">
+                      Miniaturka podglądu PDF
+                    </div>
 
                     {product.pdf_thumbnail_url ? (
                       <div className="space-y-3">
-                        <div className="relative w-full max-w-md mx-auto">
+                        <div className="relative mx-auto w-full max-w-md">
                           <img
                             src={`${supabase.storage.from('offer-product-pages').getPublicUrl(product.pdf_thumbnail_url).data.publicUrl}`}
                             alt="Miniaturka PDF"
-                            className="w-full h-auto rounded-lg border border-[#d3bb73]/20"
+                            className="h-auto w-full rounded-lg border border-[#d3bb73]/20"
                             onError={(e) => {
                               (async () => {
                                 const { data } = await supabase.storage
@@ -1071,9 +1059,9 @@ export default function ProductDetailPage() {
                           <div className="flex justify-center gap-2">
                             <button
                               onClick={handleDeleteThumbnail}
-                              className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm"
+                              className="flex items-center gap-2 rounded-lg bg-red-500/20 px-3 py-2 text-sm text-red-400 hover:bg-red-500/30"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-4 w-4" />
                               Usuń miniaturkę
                             </button>
                           </div>
@@ -1099,20 +1087,21 @@ export default function ProductDetailPage() {
                                   setThumbnailFile(file);
                                 }
                               }}
-                              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-[#d3bb73] file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
+                              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
                             />
                             {thumbnailFile && (
-                              <p className="text-xs text-[#d3bb73] mt-2">
-                                Wybrany plik: {thumbnailFile.name} ({(thumbnailFile.size / 1024).toFixed(2)} KB)
+                              <p className="mt-2 text-xs text-[#d3bb73]">
+                                Wybrany plik: {thumbnailFile.name} (
+                                {(thumbnailFile.size / 1024).toFixed(2)} KB)
                               </p>
                             )}
                           </div>
                           <button
                             onClick={handleUploadThumbnail}
                             disabled={!thumbnailFile || uploadingThumbnail}
-                            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <Upload className="w-4 h-4" />
+                            <Upload className="h-4 w-4" />
                             {uploadingThumbnail ? 'Przesyłanie...' : 'Prześlij miniaturkę'}
                           </button>
                         </div>
@@ -1120,7 +1109,7 @@ export default function ProductDetailPage() {
                     )}
 
                     {!canEdit && !product.pdf_thumbnail_url && (
-                      <p className="text-sm text-[#e5e4e2]/40 text-center py-4">
+                      <p className="py-4 text-center text-sm text-[#e5e4e2]/40">
                         Brak miniaturki dla tego produktu
                       </p>
                     )}
@@ -1130,7 +1119,9 @@ export default function ProductDetailPage() {
                 canEdit && (
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz plik PDF</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                        Wybierz plik PDF
+                      </label>
                       <input
                         type="file"
                         accept=".pdf,application/pdf"
@@ -1144,10 +1135,10 @@ export default function ProductDetailPage() {
                             setPdfFile(file);
                           }
                         }}
-                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-[#d3bb73] file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
                       />
                       {pdfFile && (
-                        <p className="text-xs text-[#d3bb73] mt-2">
+                        <p className="mt-2 text-xs text-[#d3bb73]">
                           Wybrany plik: {pdfFile.name} ({(pdfFile.size / 1024).toFixed(2)} KB)
                         </p>
                       )}
@@ -1156,9 +1147,9 @@ export default function ProductDetailPage() {
                     <button
                       onClick={handleUploadPdf}
                       disabled={!pdfFile || uploadingPdf}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <Upload className="w-4 h-4" />
+                      <Upload className="h-4 w-4" />
                       {uploadingPdf ? 'Przesyłanie...' : 'Prześlij PDF'}
                     </button>
                   </div>
@@ -1166,7 +1157,7 @@ export default function ProductDetailPage() {
               )}
 
               {!canEdit && !product.pdf_page_url && (
-                <p className="text-sm text-[#e5e4e2]/40 text-center py-4">
+                <p className="py-4 text-center text-sm text-[#e5e4e2]/40">
                   Brak strony PDF dla tego produktu
                 </p>
               )}
@@ -1177,773 +1168,33 @@ export default function ProductDetailPage() {
 
       {/* Equipment */}
       {params.id !== 'new' && (
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-[#d3bb73]" />
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Wymagany sprzęt</h2>
-          </div>
-          {canEdit && (
-            <button
-              onClick={() => setShowAddEquipmentModal(true)}
-              className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
-            >
-              + Dodaj sprzęt / pakiet
-            </button>
-          )}
-        </div>
-
-        {equipment.length === 0 ? (
-          <p className="text-[#e5e4e2]/60 text-sm text-center py-8">
-            Brak przypisanego sprzętu
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {equipment.map((item) => (
-              <div key={item.id} className="bg-[#0a0d1a] rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between p-3">
-                  <div className="flex-1">
-                    {item.equipment_kit ? (
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Package className="w-4 h-4 text-[#d3bb73]" />
-                          <div className="text-[#e5e4e2] font-medium">{item.equipment_kit.name}</div>
-                        </div>
-                        {item.equipment_kit.description && (
-                          <div className="text-xs text-[#e5e4e2]/60 mt-1 ml-6">{item.equipment_kit.description}</div>
-                        )}
-                        <div className="text-xs text-[#d3bb73]/80 mt-1 ml-6">Pakiet sprzętu</div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="text-[#e5e4e2] font-medium">{item.equipment_item?.name}</div>
-                        <div className="text-xs text-[#e5e4e2]/60">{item.equipment_item?.warehouse_category?.name}</div>
-                      </div>
-                    )}
-                    {item.notes && (
-                      <div className="text-xs text-[#e5e4e2]/50 mt-1 italic">{item.notes}</div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    {canEdit ? (
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm text-[#e5e4e2]/60">Ilość:</label>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => handleUpdateEquipmentQuantity(item.id, parseInt(e.target.value) || 1)}
-                          min="1"
-                          className="w-20 px-2 py-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-sm text-[#e5e4e2]/80">Ilość: {item.quantity}</span>
-                    )}
-                    {item.is_optional && (
-                      <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">Opcjonalny</span>
-                    )}
-                    {canEdit && (
-                      <button
-                        onClick={() => handleDeleteEquipment(item.id)}
-                        className="text-red-400 hover:text-red-300 text-xs"
-                      >
-                        Usuń
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        <ProductEquipment
+          canEdit={canEdit}
+          setShowAddEquipmentModal={setShowAddEquipmentModal}
+        />
       )}
 
       {/* Staff */}
       {params.id !== 'new' && (
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#d3bb73]" />
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Wymagani pracownicy</h2>
-          </div>
-          {canEdit && (
-            <button
-              onClick={() => setShowAddStaffModal(true)}
-              className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 text-sm"
-            >
-              + Dodaj rolę
-            </button>
-          )}
-        </div>
-
-        {staff.length === 0 ? (
-          <p className="text-[#e5e4e2]/60 text-sm text-center py-8">
-            Brak wymagań kadrowych
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {staff.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-[#0a0d1a] rounded-lg">
-                <div>
-                  <div className="text-[#e5e4e2] font-medium">{item.role}</div>
-                  {item.required_skills && item.required_skills.length > 0 && (
-                    <div className="text-xs text-[#e5e4e2]/60">Umiejętności: {item.required_skills.join(', ')}</div>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="text-[#e5e4e2]/80">Ilość: {item.quantity}</span>
-                  {item.hourly_rate && (
-                    <span className="text-[#e5e4e2]/80">{item.hourly_rate} zł/h</span>
-                  )}
-                  {item.estimated_hours && (
-                    <span className="text-[#e5e4e2]/80">~{item.estimated_hours}h</span>
-                  )}
-                  {item.is_optional && (
-                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">Opcjonalny</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        <ProductStaffSection
+          productId={params.id === 'new' ? null : (params.id as string)}
+          canEdit={canEdit}
+          draftStaff={draftStaff}
+          setDraftStaff={setDraftStaff}
+        />
       )}
 
       {/* Add Equipment/Kit Modal */}
       {showAddEquipmentModal && (
         <AddEquipmentModal
           productId={params.id as string}
-          existingEquipment={equipment}
+          existingEquipment={items}
           onClose={() => setShowAddEquipmentModal(false)}
           onSuccess={() => {
-            fetchEquipment();
             setShowAddEquipmentModal(false);
           }}
         />
       )}
-
-      {/* Add Staff Modal */}
-      {showAddStaffModal && (
-        <AddStaffModal
-          productId={params.id as string}
-          onClose={() => setShowAddStaffModal(false)}
-          onSuccess={() => {
-            fetchStaff();
-            setShowAddStaffModal(false);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function AddEquipmentModal({
-  productId,
-  existingEquipment,
-  onClose,
-  onSuccess
-}: {
-  productId: string;
-  existingEquipment: ProductEquipment[];
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [mode, setMode] = useState<'item' | 'kit'>('kit');
-  const [selectedItemId, setSelectedItemId] = useState('');
-  const [selectedKitId, setSelectedKitId] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [isOptional, setIsOptional] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [equipmentItems, setEquipmentItems] = useState<any[]>([]);
-  const [filteredItems, setFilteredItems] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [kits, setKits] = useState<any[]>([]);
-  const [kitDetails, setKitDetails] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const { showSnackbar } = useSnackbar();
-
-  useEffect(() => {
-    fetchEquipmentItems();
-    fetchKits();
-  }, []);
-
-  useEffect(() => {
-    if (selectedKitId) {
-      fetchKitDetails(selectedKitId);
-    } else {
-      setKitDetails(null);
-    }
-  }, [selectedKitId]);
-
-  useEffect(() => {
-    if (searchQuery) {
-      const filtered = equipmentItems.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.model?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredItems(filtered);
-    } else {
-      setFilteredItems(equipmentItems);
-    }
-  }, [searchQuery, equipmentItems]);
-
-  const fetchEquipmentItems = async () => {
-    const { data } = await supabase
-      .from('equipment_items')
-      .select('id, name, brand, model, warehouse_categories(name)')
-      .eq('is_active', true)
-      .order('name');
-
-    if (data) {
-      const existingItemIds = existingEquipment
-        .filter(e => e.equipment_item_id)
-        .map(e => e.equipment_item_id);
-
-      const availableItems = data.filter(item => !existingItemIds.includes(item.id));
-
-      const itemsWithAvailability = await Promise.all(
-        availableItems.map(async (item) => {
-          const { data: availData } = await supabase.rpc('get_available_equipment_quantity', {
-            p_equipment_id: item.id
-          });
-          return {
-            ...item,
-            available_quantity: availData || 0
-          };
-        })
-      );
-      setEquipmentItems(itemsWithAvailability);
-      setFilteredItems(itemsWithAvailability);
-    }
-  };
-
-  const fetchKits = async () => {
-    const { data } = await supabase
-      .from('equipment_kits')
-      .select('id, name, description')
-      .eq('is_active', true)
-      .order('name');
-
-    if (data) {
-      const existingKitIds = existingEquipment
-        .filter(e => e.equipment_kit_id)
-        .map(e => e.equipment_kit_id);
-
-      const availableKits = data.filter(kit => !existingKitIds.includes(kit.id));
-      setKits(availableKits);
-    }
-  };
-
-  const fetchKitDetails = async (kitId: string) => {
-    const { data } = await supabase
-      .from('equipment_kit_items')
-      .select(`
-        quantity,
-        equipment:equipment_items(name, brand, model)
-      `)
-      .eq('kit_id', kitId)
-      .order('order_index');
-    if (data) setKitDetails(data);
-  };
-
-  const handleSubmit = async () => {
-    if (mode === 'item' && !selectedItemId) {
-      showSnackbar('Wybierz sprzęt', 'error');
-      return;
-    }
-    if (mode === 'kit' && !selectedKitId) {
-      showSnackbar('Wybierz pakiet', 'error');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from('offer_product_equipment')
-        .insert({
-          product_id: productId,
-          equipment_item_id: mode === 'item' ? selectedItemId : null,
-          equipment_kit_id: mode === 'kit' ? selectedKitId : null,
-          quantity,
-          is_optional: isOptional,
-          notes: notes || null,
-        });
-
-      if (error) throw error;
-
-      showSnackbar(mode === 'kit' ? 'Pakiet dodany' : 'Sprzęt dodany', 'success');
-      onSuccess();
-    } catch (error) {
-      console.error('Error adding equipment:', error);
-      showSnackbar('Błąd podczas dodawania', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
-          <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj sprzęt do produktu</h3>
-          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          {/* Mode selection */}
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-3">Wybierz typ</label>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setMode('kit')}
-                className={`flex-1 px-4 py-3 rounded-lg border transition-colors ${
-                  mode === 'kit'
-                    ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                    : 'bg-[#0a0d1a] border-[#d3bb73]/10 text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
-                }`}
-              >
-                <Package className="w-5 h-5 mx-auto mb-1" />
-                <div className="text-sm font-medium">Pakiet sprzętu</div>
-                <div className="text-xs opacity-60">Zestaw gotowych itemów</div>
-              </button>
-              <button
-                onClick={() => setMode('item')}
-                className={`flex-1 px-4 py-3 rounded-lg border transition-colors ${
-                  mode === 'item'
-                    ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                    : 'bg-[#0a0d1a] border-[#d3bb73]/10 text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
-                }`}
-              >
-                <Wrench className="w-5 h-5 mx-auto mb-1" />
-                <div className="text-sm font-medium">Pojedynczy sprzęt</div>
-                <div className="text-xs opacity-60">Wybierz jeden item</div>
-              </button>
-            </div>
-          </div>
-
-          {/* Kit selection */}
-          {mode === 'kit' && (
-            <>
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz pakiet *</label>
-                <select
-                  value={selectedKitId}
-                  onChange={(e) => setSelectedKitId(e.target.value)}
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-                >
-                  <option value="">-- Wybierz pakiet --</option>
-                  {kits.map((kit) => (
-                    <option key={kit.id} value={kit.id}>
-                      {kit.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Kit details preview */}
-              {kitDetails && kitDetails.length > 0 && (
-                <div className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-4">
-                  <div className="text-sm text-[#e5e4e2]/60 mb-2">Zawartość pakietu:</div>
-                  <div className="space-y-1">
-                    {kitDetails.map((item: any, idx: number) => (
-                      <div key={idx} className="text-sm text-[#e5e4e2] flex items-center gap-2">
-                        <span className="text-[#d3bb73]">•</span>
-                        <span>{item.quantity}x {item.equipment?.name}</span>
-                        {item.equipment?.model && (
-                          <span className="text-[#e5e4e2]/60 text-xs">({item.equipment.model})</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Item selection */}
-          {mode === 'item' && (
-            <>
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyszukaj sprzęt</label>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Szukaj po nazwie, marce lub modelu..."
-                  className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wybierz sprzęt * ({filteredItems.length} wyników)</label>
-                <div className="max-h-60 overflow-y-auto bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg">
-                  {filteredItems.length === 0 ? (
-                    <div className="p-4 text-center text-[#e5e4e2]/60 text-sm">
-                      Brak wyników wyszukiwania
-                    </div>
-                  ) : (
-                    filteredItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setSelectedItemId(item.id)}
-                        disabled={item.available_quantity === 0}
-                        className={`w-full text-left px-4 py-3 border-b border-[#d3bb73]/10 transition-colors ${
-                          selectedItemId === item.id
-                            ? 'bg-[#d3bb73]/20'
-                            : item.available_quantity === 0
-                            ? 'opacity-50 cursor-not-allowed'
-                            : 'hover:bg-[#d3bb73]/10'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="text-[#e5e4e2] font-medium">{item.name}</div>
-                          <div className={`text-xs px-2 py-0.5 rounded ${
-                            item.available_quantity === 0
-                              ? 'bg-red-500/20 text-red-400'
-                              : item.available_quantity < 5
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-green-500/20 text-green-400'
-                          }`}>
-                            {item.available_quantity === 0 ? 'Brak' : `${item.available_quantity} szt.`}
-                          </div>
-                        </div>
-                        <div className="text-xs text-[#e5e4e2]/60 mt-1">
-                          {item.brand && <span>{item.brand} </span>}
-                          {item.model && <span>• {item.model} </span>}
-                          {item.warehouse_categories?.name && <span>• {item.warehouse_categories.name}</span>}
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Quantity */}
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Ilość
-              {mode === 'item' && selectedItemId && (() => {
-                const selected = equipmentItems.find(item => item.id === selectedItemId);
-                return selected && (
-                  <span className="ml-2 text-xs">
-                    (dostępne: <span className={selected.available_quantity < 5 ? 'text-yellow-400' : 'text-green-400'}>
-                      {selected.available_quantity} szt.
-                    </span>)
-                  </span>
-                );
-              })()}
-            </label>
-            <input
-              type="number"
-              min="1"
-              max={mode === 'item' && selectedItemId ? equipmentItems.find(item => item.id === selectedItemId)?.available_quantity : undefined}
-              value={quantity}
-              onChange={(e) => {
-                const val = parseInt(e.target.value) || 1;
-                if (mode === 'item' && selectedItemId) {
-                  const selected = equipmentItems.find(item => item.id === selectedItemId);
-                  if (selected) {
-                    setQuantity(Math.min(val, selected.available_quantity));
-                  } else {
-                    setQuantity(val);
-                  }
-                } else {
-                  setQuantity(val);
-                }
-              }}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-            />
-            {mode === 'item' && selectedItemId && (() => {
-              const selected = equipmentItems.find(item => item.id === selectedItemId);
-              return selected && selected.available_quantity < 10 && (
-                <p className="text-xs text-yellow-400 mt-1">
-                  ⚠️ Niska dostępność - dostępne tylko {selected.available_quantity} szt.
-                </p>
-              );
-            })()}
-          </div>
-
-          {/* Optional */}
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isOptional}
-                onChange={(e) => setIsOptional(e.target.checked)}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
-              />
-              <span className="text-sm text-[#e5e4e2]">Opcjonalny (można usunąć z oferty)</span>
-            </label>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki (opcjonalnie)</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              placeholder="Dodatkowe informacje..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-            />
-          </div>
-        </div>
-
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end sticky bottom-0 bg-[#1c1f33]">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
-          >
-            Anuluj
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || (mode === 'item' ? !selectedItemId : !selectedKitId)}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Dodawanie...' : 'Dodaj'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AddStaffModal({ productId, onClose, onSuccess }: { productId: string; onClose: () => void; onSuccess: () => void }) {
-  const [role, setRole] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [hourlyRate, setHourlyRate] = useState('');
-  const [estimatedHours, setEstimatedHours] = useState('');
-  const [isOptional, setIsOptional] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [skills, setSkills] = useState<any[]>([]);
-  const [selectedSkills, setSelectedSkills] = useState<Array<{skill_id: string, minimum_proficiency: string}>>([]);
-  const [loading, setLoading] = useState(false);
-  const { showSnackbar } = useSnackbar();
-
-  useEffect(() => {
-    fetchSkills();
-  }, []);
-
-  const fetchSkills = async () => {
-    const { data } = await supabase
-      .from('skills')
-      .select('id, name, skill_categories(name)')
-      .eq('is_active', true)
-      .order('name');
-    if (data) setSkills(data);
-  };
-
-  const toggleSkill = (skillId: string) => {
-    const exists = selectedSkills.find(s => s.skill_id === skillId);
-    if (exists) {
-      setSelectedSkills(selectedSkills.filter(s => s.skill_id !== skillId));
-    } else {
-      setSelectedSkills([...selectedSkills, { skill_id: skillId, minimum_proficiency: 'basic' }]);
-    }
-  };
-
-  const updateSkillLevel = (skillId: string, level: string) => {
-    setSelectedSkills(selectedSkills.map(s =>
-      s.skill_id === skillId ? { ...s, minimum_proficiency: level } : s
-    ));
-  };
-
-  const handleSubmit = async () => {
-    if (!role) {
-      showSnackbar('Podaj nazwę roli', 'error');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { data: staffData, error: staffError } = await supabase
-        .from('offer_product_staff')
-        .insert({
-          product_id: productId,
-          role,
-          quantity,
-          hourly_rate: hourlyRate ? parseFloat(hourlyRate) : null,
-          estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
-          is_optional: isOptional,
-          notes: notes || null,
-        })
-        .select()
-        .single();
-
-      if (staffError) throw staffError;
-
-      if (selectedSkills.length > 0) {
-        const skillsToInsert = selectedSkills.map(s => ({
-          staff_requirement_id: staffData.id,
-          skill_id: s.skill_id,
-          minimum_proficiency: s.minimum_proficiency,
-          is_required: true,
-        }));
-
-        const { error: skillsError } = await supabase
-          .from('offer_product_staff_skills')
-          .insert(skillsToInsert);
-
-        if (skillsError) throw skillsError;
-      }
-
-      showSnackbar('Rola dodana', 'success');
-      onSuccess();
-    } catch (error) {
-      console.error('Error adding staff:', error);
-      showSnackbar('Błąd podczas dodawania roli', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between sticky top-0 bg-[#1c1f33] z-10">
-          <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj wymagania kadrowe</h3>
-          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa roli *</label>
-            <input
-              type="text"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              placeholder="np. Realizator dźwięku, Operator świateł..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość osób</label>
-              <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Stawka godzinowa (zł)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={hourlyRate}
-                onChange={(e) => setHourlyRate(e.target.value)}
-                placeholder="opcjonalne"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Szacowane godziny</label>
-              <input
-                type="number"
-                step="0.5"
-                value={estimatedHours}
-                onChange={(e) => setEstimatedHours(e.target.value)}
-                placeholder="opcjonalne"
-                className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-3">Wymagane umiejętności</label>
-            <div className="max-h-60 overflow-y-auto bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg divide-y divide-[#d3bb73]/10">
-              {skills.map((skill) => {
-                const selected = selectedSkills.find(s => s.skill_id === skill.id);
-                return (
-                  <div key={skill.id} className="p-3">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={!!selected}
-                        onChange={() => toggleSkill(skill.id)}
-                        className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
-                      />
-                      <div className="flex-1">
-                        <div className="text-[#e5e4e2] text-sm">{skill.name}</div>
-                        <div className="text-xs text-[#e5e4e2]/60">{skill.skill_categories?.name}</div>
-                      </div>
-                      {selected && (
-                        <select
-                          value={selected.minimum_proficiency}
-                          onChange={(e) => updateSkillLevel(skill.id, e.target.value)}
-                          className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded px-2 py-1 text-xs text-[#e5e4e2]"
-                        >
-                          <option value="basic">Podstawowy</option>
-                          <option value="intermediate">Średniozaawansowany</option>
-                          <option value="advanced">Zaawansowany</option>
-                          <option value="expert">Ekspert</option>
-                        </select>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {selectedSkills.length > 0 && (
-              <p className="text-xs text-[#d3bb73] mt-2">
-                Wybrano {selectedSkills.length} umiejętności
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isOptional}
-                onChange={(e) => setIsOptional(e.target.checked)}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
-              />
-              <span className="text-sm text-[#e5e4e2]">Opcjonalny (można usunąć z oferty)</span>
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki (opcjonalnie)</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              placeholder="Dodatkowe informacje..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
-            />
-          </div>
-        </div>
-
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end sticky bottom-0 bg-[#1c1f33]">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
-          >
-            Anuluj
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !role}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Dodawanie...' : 'Dodaj'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

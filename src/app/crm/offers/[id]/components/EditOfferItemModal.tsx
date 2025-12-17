@@ -4,28 +4,11 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { IOfferItem } from '../../types';
 
-interface OfferItem {
-  id: string;
-  product_id: string;
-  name: string;
-  description?: string;
-  quantity: number;
-  unit_price: number;
-  discount_percent: number;
-  discount_amount: number;
-  subtotal: number;
-  total: number;
-  display_order: number;
-  product?: {
-    id: string;
-    name: string;
-    description: string;
-  };
-}
 
 interface EditOfferItemModalProps {
-  item: OfferItem;
+  item: IOfferItem | null;
   onClose: () => void;
   onSuccess: () => void;
 }

@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Product } from '../types';
+import { IProduct } from '@/app/crm/offers/types';
 
 export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<IProduct[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -19,6 +19,8 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
         .select(`*, category:offer_product_categories(name, icon)`)
         .eq('is_active', true)
         .order('display_order');
+
+        console.log('pRes:', pRes);
 
       if (!pRes.error && pRes.data) setProducts(pRes.data as any);
 

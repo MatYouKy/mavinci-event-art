@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ClientType } from '../types';
+import { ClientType } from '@/app/crm/clients/type';
 
 export function useOfferWizardClient(opts: {
   isOpen: boolean;
   step: number;
-  defaults?: { clientType?: 'individual' | 'business'; organizationId?: string; contactId?: string };
+  defaults?: { clientType?: ClientType; organizationId?: string; contactId?: string };
 }) {
-  const initialClientType: ClientType = opts.defaults?.clientType ?? '';
+  const initialClientType: ClientType = opts.defaults?.clientType ?? 'business' as ClientType;
   const [clientType, setClientType] = useState<ClientType>(initialClientType);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState(opts.defaults?.organizationId ?? '');
   const [selectedContactId, setSelectedContactId] = useState(opts.defaults?.contactId ?? '');

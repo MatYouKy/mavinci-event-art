@@ -35,7 +35,7 @@ interface OfferStep3Props {
   removeOfferItem: (itemId: string) => void;
 }
 
-export function OfferStep3({
+export default function OfferStep3({
   offerItems,
   searchQuery,
   setSearchQuery,

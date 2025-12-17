@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { X } from 'lucide-react';
 
 import LocationSelector from '@/components/crm/LocationSelector';
-import { IEvent } from '../../page';
+import { IEvent } from '../../../type';
 
 export function EditEventModal({
   isOpen,

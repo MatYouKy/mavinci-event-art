@@ -1,5 +1,12 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase';
+import { ClientType } from '@/app/crm/clients/type';
+import { IEventCategory } from '@/app/crm/event-categories/types';
+import { IOfferItem } from '@/app/crm/offers/types';
+import { IEvent } from '../../type';
+import { ILocation } from '@/app/crm/locations/type';
+import { SelectedItem } from '../../type';
+import { IEmployee } from '@/app/crm/employees/type';
 
 export type EventsApiErrorStatus = 'CUSTOM_ERROR' | 'FETCH_ERROR' | 'NOT_FOUND';
 
@@ -14,63 +21,6 @@ export type SelectedEquipment = {
   quantity: number;
   notes?: string;
 };
-
-export interface CalendarEvent {
-  id: string;
-  name: string;
-  description?: string;
-  event_date: string;
-  event_end_date?: string | null;
-  location?: string;
-  status: string;
-  budget?: number;
-  final_cost?: number;
-  notes?: string;
-  category_id?: string | null;
-  organization_id?: string | null;
-  contact_person_id?: string | null;
-  created_by?: string;
-  created_at?: string;
-  organization?: {
-    id: string;
-    name: string;
-    alias?: string | null;
-  } | null;
-  contact_person?: {
-    phone: any;
-    email: any;
-    id: string;
-    first_name: string;
-    last_name: string;
-    full_name: string;
-  } | null;
-  category?: {
-    id: string;
-    name: string;
-    color: string;
-    custom_icon?: {
-      id: string;
-      name: string;
-      svg_code: string;
-    } | null;
-  } | null;
-  employees?: any[];
-  vehicles?: any[];
-}
-
-export interface EventDetails extends CalendarEvent {
-  client_type: string;
-  requires_subcontractors: boolean;
-  location_details: any;
-  creator?: {
-    id: string;
-    name: string;
-    surname: string;
-    avatar_url?: string;
-  } | null;
-  equipment?: any[];
-  offers?: any[];
-}
 
 export interface GetEventsListParams {
   start_date?: string | null;
@@ -99,7 +49,7 @@ export const eventsApi = createApi({
   ],
   endpoints: (builder) => ({
     // Pobierz listę wydarzeń (kalendarz)
-    getEventsList: builder.query<CalendarEvent[], GetEventsListParams | void>({
+    getEventsList: builder.query<IEvent[], GetEventsListParams | void>({
       async queryFn(params) {
         try {
           const parameters = params || {};
@@ -117,7 +67,7 @@ export const eventsApi = createApi({
           }
 
           // RPC zwraca JSON array, więc rzutujemy na array
-          const events = (data || []) as CalendarEvent[];
+          const events = (data || []) as IEvent[];
 
           return { data: events };
         } catch (error: any) {
@@ -136,7 +86,7 @@ export const eventsApi = createApi({
           : [{ type: 'Events', id: 'LIST' }],
     }),
 
-    getEventById: builder.query<EventDetails, string>({
+    getEventById: builder.query<IEvent, string>({
       async queryFn(eventId) {
         try {
           const { data, error } = await supabase
@@ -145,7 +95,7 @@ export const eventsApi = createApi({
             .eq('id', eventId)
             .single();
           if (error) throw error;
-          return { data: data as EventDetails };
+          return { data: data as IEvent };
         } catch (error: any) {
           return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
@@ -156,7 +106,7 @@ export const eventsApi = createApi({
     }),
 
     // Pobierz szczegóły wydarzenia
-    getEventDetails: builder.query<EventDetails, string>({
+    getEventDetails: builder.query<IEvent, string>({
       async queryFn(eventId) {
         try {
           const { data, error } = await supabase.rpc('get_event_details', {
@@ -182,7 +132,7 @@ export const eventsApi = createApi({
             };
           }
 
-          const eventDetails: EventDetails = {
+          const eventDetails: IEvent = {
             ...data.event,
             organization: data.organization || null,
             contact_person: data.contact_person || null,
@@ -192,6 +142,7 @@ export const eventsApi = createApi({
             equipment: data.equipment || [],
             vehicles: data.vehicles || [],
             offers: data.offers || [],
+            event_attachments: data.event_attachments || [],
           };
 
           return { data: eventDetails };
@@ -209,7 +160,7 @@ export const eventsApi = createApi({
     }),
 
     // Utwórz nowe wydarzenie
-    createEvent: builder.mutation<CalendarEvent, Partial<CalendarEvent>>({
+    createEvent: builder.mutation<IEvent, Partial<IEvent>>({
       async queryFn(newEvent) {
         try {
           const { data, error } = await supabase.from('events').insert(newEvent).select().single();
@@ -220,7 +171,7 @@ export const eventsApi = createApi({
             };
           }
 
-          return { data: data as CalendarEvent };
+          return { data: data as IEvent };
         } catch (error: any) {
           return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
@@ -231,7 +182,7 @@ export const eventsApi = createApi({
     }),
 
     // Zaktualizuj wydarzenie
-    updateEvent: builder.mutation<CalendarEvent, { id: string; data: Partial<CalendarEvent> }>({
+    updateEvent: builder.mutation<IEvent, { id: string; data: Partial<IEvent> }>({
       async queryFn({ id, data }) {
         try {
           const { data: updated, error } = await supabase
@@ -247,7 +198,7 @@ export const eventsApi = createApi({
             };
           }
 
-          return { data: updated as CalendarEvent };
+          return { data: updated as IEvent };
         } catch (error: any) {
           return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
@@ -538,8 +489,55 @@ export const eventsApi = createApi({
       invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
     }),
 
+    deleteEventOffer: builder.mutation<{ success: true }, { eventId: string; offerId: string }>({
+      async queryFn({ offerId }) {
+        try {
+          const { error } = await supabase.from('offers').delete().eq('id', offerId);
+          if (error) throw error;
+          return { data: { success: true } };
+        } catch (error: any) {
+          return {
+            error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
+          };
+        }
+      },
+      invalidatesTags: (_res, _err, { eventId, offerId }) => [
+        { type: 'EventOffers', id: `${eventId}_LIST` },
+        { type: 'EventOffers', id: offerId },
+        // opcjonalnie, jeśli event_details ma w sobie offers (u Ciebie ma):
+        { type: 'EventDetails', id: eventId },
+      ],
+    }),
+
+    updateEventOffer: builder.mutation<IOfferItem, { eventId: string; offerId: string; data: any }>(
+      {
+        async queryFn({ offerId, data }) {
+          try {
+            const { data: updated, error } = await supabase
+              .from('offers')
+              .update(data)
+              .eq('id', offerId)
+              .select()
+              .single();
+
+            if (error) throw error;
+            return { data: updated as IOfferItem };
+          } catch (error: any) {
+            return {
+              error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
+            };
+          }
+        },
+        invalidatesTags: (_res, _err, { eventId, offerId }) => [
+          { type: 'EventOffers', id: `${eventId}_LIST` },
+          { type: 'EventOffers', id: offerId },
+          { type: 'EventDetails', id: eventId },
+        ],
+      },
+    ),
+
     // ============ OFFERS ENDPOINTS ============
-    getEventOffers: builder.query<any[], string>({
+    getEventOffers: builder.query<IOfferItem[], string>({
       async queryFn(eventId) {
         try {
           const { data, error } = await supabase
@@ -556,14 +554,14 @@ export const eventsApi = createApi({
             .order('created_at', { ascending: false });
 
           if (error) throw error;
-          return { data: data || [] };
+          return { data: (data || []) as unknown as IOfferItem[] };
         } catch (error: any) {
           return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
           };
         }
       },
-      providesTags: (result, error, eventId) => [{ type: 'EventOffers', id: eventId }],
+      providesTags: (result, _error, eventId) => [{ type: 'EventOffers', id: eventId }],
     }),
 
     // ============ AUDIT LOG ENDPOINTS ============
@@ -832,5 +830,7 @@ export const {
   useDeleteAgendaItemMutation,
   useGetEventContractsQuery,
   useGetEventByIdQuery,
+  useDeleteEventOfferMutation,
+  useUpdateEventOfferMutation,
   useLazyGetEventByIdQuery,
 } = eventsApi;

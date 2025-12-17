@@ -1,3 +1,5 @@
+import { IContractTemplate } from '../contract-templates/type';
+
 export interface ICustomIcon {
   id: string;
   name: string;
@@ -14,6 +16,7 @@ export interface IEventCategory {
   icon_id: string | null;
   icon?: ICustomIcon;
   contract_template_id: string | null;
+  contract_template?: IContractTemplate;
   created_at: string;
   updated_at: string;
 }

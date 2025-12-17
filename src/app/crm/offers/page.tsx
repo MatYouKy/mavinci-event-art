@@ -986,15 +986,6 @@ function CatalogTab({
           </div>
 
           <button
-            onClick={() => router.push('/crm/offers/categories')}
-            className="flex items-center space-x-2 whitespace-nowrap rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
-            title="Zarządzaj kategoriami"
-          >
-            <Settings className="h-4 w-4" />
-            <span>Kategorie</span>
-          </button>
-
-          <button
             onClick={() => router.push('/crm/offers/products/new')}
             className="flex items-center space-x-2 whitespace-nowrap rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >

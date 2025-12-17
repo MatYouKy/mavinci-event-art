@@ -5,21 +5,15 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { FileText, Plus, CreditCard as Edit, Trash2, Copy, Eye, Search } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { IContractTemplate } from './type';
 
-interface ContractTemplate {
-  id: string;
-  name: string;
-  description: string;
-  content: string;
-  is_active: boolean;
-  created_at: string;
-}
+
 
 export default function ContractTemplatesPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
-  const [templates, setTemplates] = useState<ContractTemplate[]>([]);
-  const [filteredTemplates, setFilteredTemplates] = useState<ContractTemplate[]>([]);
+  const [templates, setTemplates] = useState<IContractTemplate[]>([]);
+  const [filteredTemplates, setFilteredTemplates] = useState<IContractTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -100,7 +94,7 @@ export default function ContractTemplatesPage() {
     }
   };
 
-  const handleStartEdit = (template: ContractTemplate) => {
+  const handleStartEdit = (template: IContractTemplate) => {
     setEditingId(template.id);
     setEditingName(template.name);
   };

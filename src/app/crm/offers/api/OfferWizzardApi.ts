@@ -4,6 +4,12 @@ import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
 import type { IEventCategory } from '@/app/crm/event-categories/types';
+import {
+  CreateOfferProductEquipmentArgs,
+  IOfferItemDraft,
+  IProduct,
+  OfferProductEquipmentRow,
+} from '../types';
 
 type SupabaseRTKError = {
   status: 'SUPABASE_ERROR' | 'UNKNOWN_ERROR';
@@ -39,18 +45,6 @@ const toRtkError = (error: PostgrestError | any): SupabaseRTKError => {
   };
 };
 
-/** ===== Types from your component ===== */
-
-export interface Product {
-  id: string;
-  name: string;
-  description: string;
-  base_price: number;
-  unit: string;
-  category?: IEventCategory | null;
-  category_id?: string | null;
-}
-
 export type EquipmentConflictRow = {
   item_type: 'item' | 'kit';
   item_id: string;
@@ -72,21 +66,6 @@ export type EquipmentConflictRow = {
     warehouse_category_id?: string;
   }>;
 };
-
-export interface OfferItemDraft {
-  id: string;
-  product_id?: string;
-  name: string;
-  description: string;
-  qty: number;
-  unit: string;
-  unit_price: number;
-  discount_percent: number;
-  subtotal: number;
-  equipment_ids?: string[];
-  subcontractor_id?: string;
-  needs_subcontractor?: boolean;
-}
 
 export type SelectedAltMap = Record<
   string,
@@ -179,7 +158,7 @@ const buildSubstitutionsForInsert = ({
 
 export type CheckConflictsArgs = {
   eventId: string;
-  offerItems: OfferItemDraft[];
+  offerItems: IOfferItemDraft[];
   selectedAlt: SelectedAltMap;
   conflicts: EquipmentConflictRow[]; // potrzebne do zbudowania substitutions payload
 };
@@ -204,7 +183,7 @@ export type CreateOfferWizardArgs = {
 
   createdByEmployeeId: string;
 
-  offerItems: OfferItemDraft[];
+  offerItems: IOfferItemDraft[];
 
   // do substitutions:
   selectedAlt: SelectedAltMap;
@@ -219,19 +198,236 @@ export type CreateOfferWizardResult = {
   offerNumber: string | null;
 };
 
+const tagTypes = [
+  'Organizations',
+  'Contacts',
+  'OfferProducts',
+  'OfferProductCategories',
+  'EquipmentItems',
+  'Subcontractors',
+  'OfferConflicts',
+  'Offers',
+  'Offer',
+  'OfferProductEquipment',
+] as const;
+
 export const offerWizardApi = createApi({
   reducerPath: 'offerWizardApi',
   baseQuery: fakeBaseQuery<SupabaseRTKError>(),
-  tagTypes: [
-    'Organizations',
-    'Contacts',
-    'OfferProducts',
-    'OfferProductCategories',
-    'EquipmentItems',
-    'Subcontractors',
-    'OfferConflicts',
-  ],
+  tagTypes,
   endpoints: (builder) => ({
+    getOffers: builder.query<any[], void>({
+      providesTags: (res) =>
+        res
+          ? [
+              { type: 'Offers' as const, id: 'LIST' },
+              ...res.map((o: any) => ({ type: 'Offer' as const, id: o.id })),
+            ]
+          : [{ type: 'Offers' as const, id: 'LIST' }],
+      queryFn: async () => {
+        try {
+          const { data, error } = await supabase
+            .from('offers')
+            .select(
+              `
+              *,
+              event:events!event_id(
+                name,
+                event_date,
+                organization_id,
+                contact_person_id
+              ),
+              creator:employees!created_by(name, surname)
+            `,
+            )
+            .order('created_at', { ascending: false });
+
+          if (error) return { error: toRtkError(error) };
+
+          // (opcjonalnie) enrichment jak u Ciebie
+          const rows = data ?? [];
+          if (rows.length === 0) return { data: rows };
+
+          const orgIds = rows.map((o: any) => o.event?.organization_id).filter(Boolean);
+          const contactIds = rows.map((o: any) => o.event?.contact_person_id).filter(Boolean);
+
+          let orgsMap: Record<string, any> = {};
+          let contactsMap: Record<string, any> = {};
+
+          if (orgIds.length) {
+            const { data: orgs, error: e1 } = await supabase
+              .from('organizations')
+              .select('id, name')
+              .in('id', orgIds);
+            if (e1) return { error: toRtkError(e1) };
+            orgsMap = Object.fromEntries((orgs || []).map((o: any) => [o.id, o]));
+          }
+
+          if (contactIds.length) {
+            const { data: contacts, error: e2 } = await supabase
+              .from('contacts')
+              .select('id, first_name, last_name, company_name')
+              .in('id', contactIds);
+            if (e2) return { error: toRtkError(e2) };
+            contactsMap = Object.fromEntries((contacts || []).map((c: any) => [c.id, c]));
+          }
+
+          const enriched = rows.map((offer: any) => {
+            const event = offer.event as any;
+            if (event) {
+              if (event.organization_id && orgsMap[event.organization_id]) {
+                event.organization = orgsMap[event.organization_id];
+              }
+              if (event.contact_person_id && contactsMap[event.contact_person_id]) {
+                event.contact = contactsMap[event.contact_person_id];
+              }
+            }
+            return offer;
+          });
+
+          return { data: enriched };
+        } catch (e) {
+          return { error: toRtkError(e) };
+        }
+      },
+    }),
+
+    getOfferById: builder.query<any, { offerId: string }>({
+      providesTags: (_res, _err, arg) => [{ type: 'Offer' as const, id: arg.offerId }],
+      queryFn: async ({ offerId }) => {
+        try {
+          const { data, error } = await supabase
+            .from('offers')
+            .select(
+              `
+              *,
+              organization:organizations!organization_id(name, email),
+              event:events!event_id(
+                name,
+                event_date,
+                location,
+                contact:contacts(email, first_name, last_name)
+              ),
+              last_generated_by_employee:employees!last_generated_by(
+                id,
+                name,
+                surname
+              ),
+              offer_items(
+                id,
+                product_id,
+                quantity,
+                unit_price,
+                discount_percent,
+                discount_amount,
+                subtotal,
+                total,
+                display_order,
+                product:offer_products(
+                  id,
+                  name,
+                  description,
+                  pdf_page_url,
+                  pdf_thumbnail_url
+                )
+              )
+            `,
+            )
+            .eq('id', offerId)
+            .maybeSingle();
+
+          if (error) return { error: toRtkError(error) };
+          if (!data) return { error: toRtkError({ message: 'Nie znaleziono oferty' }) as any };
+          return { data };
+        } catch (e) {
+          return { error: toRtkError(e) };
+        }
+      },
+    }),
+
+    updateOfferById: builder.mutation<any, { offerId: string; patch: Record<string, any> }>({
+      invalidatesTags: (_res, _err, arg) => [
+        { type: 'Offer', id: arg.offerId },
+        { type: 'Offers', id: 'LIST' },
+      ],
+      queryFn: async ({ offerId, patch }) => {
+        try {
+          const { data, error } = await supabase
+            .from('offers')
+            .update(patch)
+            .eq('id', offerId)
+            .select(
+              `
+              *,
+              organization:organizations!organization_id(name, email),
+              event:events!event_id(
+                name,
+                event_date,
+                location,
+                contact:contacts(email, first_name, last_name)
+              ),
+              last_generated_by_employee:employees!last_generated_by(
+                id,
+                name,
+                surname
+              ),
+              offer_items(
+                id,
+                product_id,
+                quantity,
+                unit_price,
+                discount_percent,
+                discount_amount,
+                subtotal,
+                total,
+                display_order,
+                product:offer_products(
+                  id,
+                  name,
+                  description,
+                  pdf_page_url,
+                  pdf_thumbnail_url
+                )
+              )
+            `,
+            )
+            .maybeSingle();
+
+          if (error) return { error: toRtkError(error) };
+          if (!data) return { error: toRtkError({ message: 'Nie znaleziono oferty' }) as any };
+
+          return { data };
+        } catch (e) {
+          return { error: toRtkError(e) };
+        }
+      },
+    }),
+
+    deleteOfferById: builder.mutation<{ success: true }, { offerId: string }>({
+      invalidatesTags: (_res, _err, arg) => [
+        { type: 'Offer', id: arg.offerId },
+        { type: 'Offers', id: 'LIST' },
+      ],
+      queryFn: async ({ offerId }) => {
+        try {
+          // jeśli masz FK z offer_items i nie masz ON DELETE CASCADE,
+          // to najpierw usuń offer_items:
+          const { error: itemsErr } = await supabase
+            .from('offer_items')
+            .delete()
+            .eq('offer_id', offerId);
+          if (itemsErr) return { error: toRtkError(itemsErr) };
+
+          const { error } = await supabase.from('offers').delete().eq('id', offerId);
+          if (error) return { error: toRtkError(error) };
+
+          return { data: { success: true } };
+        } catch (e) {
+          return { error: toRtkError(e) };
+        }
+      },
+    }),
+
     /** ===== Step 1 ===== */
     getOrganizations: builder.query<OrganizationRow[], void>({
       providesTags: ['Organizations'],
@@ -256,7 +452,9 @@ export const offerWizardApi = createApi({
         try {
           const { data, error } = await supabase
             .from('contacts')
-            .select('id, first_name, last_name, full_name, email, phone, company_name, contact_type')
+            .select(
+              'id, first_name, last_name, full_name, email, phone, company_name, contact_type',
+            )
             .eq('contact_type', 'individual')
             .order('last_name');
 
@@ -295,7 +493,7 @@ export const offerWizardApi = createApi({
     }),
 
     /** ===== Step 3 ===== */
-    getOfferProducts: builder.query<Product[], void>({
+    getOfferProducts: builder.query<IProduct[], void>({
       providesTags: ['OfferProducts'],
       queryFn: async () => {
         try {
@@ -311,7 +509,7 @@ export const offerWizardApi = createApi({
             .order('display_order');
 
           if (error) return { error: toRtkError(error) };
-          return { data: (data ?? []) as Product[] };
+          return { data: (data ?? []) as IProduct[] };
         } catch (e) {
           return { error: toRtkError(e) };
         }
@@ -375,7 +573,10 @@ export const offerWizardApi = createApi({
     }),
 
     /** ===== Conflicts (RPC) ===== */
-    checkOfferCartEquipmentConflictsV2: builder.mutation<EquipmentConflictRow[], CheckConflictsArgs>({
+    checkOfferCartEquipmentConflictsV2: builder.mutation<
+      EquipmentConflictRow[],
+      CheckConflictsArgs
+    >({
       invalidatesTags: ['OfferConflicts'],
       queryFn: async ({ eventId, offerItems, selectedAlt, conflicts }) => {
         try {
@@ -385,7 +586,7 @@ export const offerWizardApi = createApi({
             .filter((i) => !!i.product_id)
             .map((i) => ({
               product_id: i.product_id,
-              quantity: i.qty ?? 1, // db: quantity
+              quantity: i.quantity ?? 1, // db: quantity
             }));
 
           const substitutionsPayload = buildSubstitutionsForRpc({
@@ -445,8 +646,8 @@ export const offerWizardApi = createApi({
           const offerInsert: any = {
             event_id: eventId,
             client_type: clientType,
-            organization_id: clientType === 'business' ? organizationId ?? null : null,
-            contact_id: clientType === 'individual' ? contactId ?? null : null,
+            organization_id: clientType === 'business' ? (organizationId ?? null) : null,
+            contact_id: clientType === 'individual' ? (contactId ?? null) : null,
             valid_until: valid_until || null,
             notes: notes || null,
             status: 'draft',
@@ -469,12 +670,14 @@ export const offerWizardApi = createApi({
           const itemsToInsert = offerItems.map((item, index) => ({
             offer_id: offerId,
             product_id:
-              item.product_id && typeof item.product_id === 'string' && item.product_id.trim() !== ''
+              item.product_id &&
+              typeof item.product_id === 'string' &&
+              item.product_id.trim() !== ''
                 ? item.product_id
                 : null,
             name: item.name,
             description: item.description || null,
-            quantity: item.qty,
+            quantity: item.quantity,
             unit: item.unit,
             unit_price: item.unit_price,
             unit_cost: 0,
@@ -523,10 +726,130 @@ export const offerWizardApi = createApi({
         }
       },
     }),
+    getOfferProductEquipmentByProductId: builder.query<
+      OfferProductEquipmentRow[],
+      { productId: string }
+    >({
+      providesTags: (res, _err, arg) =>
+        res
+          ? [
+              { type: 'OfferProductEquipment' as const, id: `PRODUCT:${arg.productId}` },
+              ...res.map((r) => ({ type: 'OfferProductEquipment' as const, id: r.id })),
+            ]
+          : [{ type: 'OfferProductEquipment' as const, id: `PRODUCT:${arg.productId}` }],
+      queryFn: async ({ productId }) => {
+        try {
+          const { data, error } = await supabase
+            .from('offer_product_equipment')
+            .select('*')
+            .eq('product_id', productId)
+            .order('created_at', { ascending: true });
+
+          if (error) return { error: toRtkError(error) };
+          return { data: (data ?? []) as OfferProductEquipmentRow[] };
+        } catch (e) {
+          return { error: toRtkError(e) };
+        }
+      },
+    }),
+
+    addOfferProductEquipment: builder.mutation<
+      OfferProductEquipmentRow,
+      CreateOfferProductEquipmentArgs
+    >({
+      invalidatesTags: (_res, _err, arg) => [
+        { type: 'OfferProductEquipment', id: `PRODUCT:${arg.product_id}` },
+      ],
+      queryFn: async (arg) => {
+        try {
+          const base = {
+            product_id: arg.product_id,
+            quantity: arg.quantity ?? 1,
+            is_optional: arg.is_optional ?? false,
+            notes: arg.notes ?? null,
+          };
+
+          // ITEM: masz UNIQUE (product_id, equipment_item_id) -> upsert
+          if (arg.mode === 'item') {
+            const { data, error } = await supabase
+              .from('offer_product_equipment')
+              .upsert(
+                {
+                  ...base,
+                  equipment_item_id: arg.equipment_item_id,
+                  equipment_kit_id: null,
+                },
+                { onConflict: 'product_id,equipment_item_id' },
+              )
+              .select('*')
+              .single();
+
+            if (error) return { error: toRtkError(error) };
+            return { data: data as OfferProductEquipmentRow };
+          }
+
+          // KIT: brak unique -> insert
+          const { data, error } = await supabase
+            .from('offer_product_equipment')
+            .insert({
+              ...base,
+              equipment_item_id: null,
+              equipment_kit_id: arg.equipment_kit_id,
+            })
+            .select('*')
+            .single();
+
+          if (error) return { error: toRtkError(error) };
+          return { data: data as OfferProductEquipmentRow };
+        } catch (e) {
+          return { error: toRtkError(e) };
+        }
+      },
+    }),
+
+    deleteOfferProductEquipment: builder.mutation<
+      { success: true },
+      { id: string; productId: string }
+    >({
+      invalidatesTags: (_res, _err, arg) => [
+        { type: 'OfferProductEquipment', id: `PRODUCT:${arg.productId}` },
+      ],
+      queryFn: async ({ id }) => {
+        try {
+          const { error } = await supabase.from('offer_product_equipment').delete().eq('id', id);
+
+          if (error) return { error: toRtkError(error) };
+          return { data: { success: true } };
+        } catch (e) {
+          return { error: toRtkError(e) };
+        }
+      },
+    }),
+    updateOfferProductEquipment: builder.mutation<
+      OfferProductEquipmentRow,
+      { id: string; patch: { quantity?: number; is_optional?: boolean; notes?: string | null } }
+    >({
+      invalidatesTags: (_res, _err, arg) => [{ type: 'OfferProductEquipment', id: arg.id }],
+      queryFn: async ({ id, patch }) => {
+        const { data, error } = await supabase
+          .from('offer_product_equipment')
+          .update(patch)
+          .eq('id', id)
+          .select('*')
+          .single();
+
+        if (error) return { error: toRtkError(error) };
+        return { data: data as OfferProductEquipmentRow };
+      },
+    }),
   }),
 });
 
 export const {
+  useGetOffersQuery,
+  useGetOfferByIdQuery,
+  useUpdateOfferByIdMutation,
+  useDeleteOfferByIdMutation,
   useGetOrganizationsQuery,
   useGetContactsIndividualsQuery,
   useCreateContactIndividualMutation,
@@ -539,4 +862,10 @@ export const {
 
   useCheckOfferCartEquipmentConflictsV2Mutation,
   useCreateOfferWizardMutation,
+  useLazyGetOfferByIdQuery,
+
+  useGetOfferProductEquipmentByProductIdQuery,
+  useAddOfferProductEquipmentMutation,
+  useDeleteOfferProductEquipmentMutation,
+  useUpdateOfferProductEquipmentMutation,
 } = offerWizardApi;

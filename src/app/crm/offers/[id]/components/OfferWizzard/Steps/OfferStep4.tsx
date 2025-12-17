@@ -1,5 +1,6 @@
 'use client';
 
+import { IOfferItem, IOfferWizardCustomItem } from '@/app/crm/offers/types';
 import {
   Plus,
   Trash2,
@@ -23,41 +24,15 @@ interface Subcontractor {
   specialization?: string[] | null;
 }
 
-export interface OfferItem {
-  id: string;
-  product_id?: string;
-  name: string;
-  description: string;
-  qty: number;
-  unit: string;
-  unit_price: number;
-  discount_percent: number;
-  subtotal: number;
-  equipment_ids?: string[];
-  subcontractor_id?: string;
-  needs_subcontractor?: boolean;
-}
-
-export interface CustomItemState {
-  name: string;
-  description: string;
-  unit: string;
-  unit_price: number;
-  discount_percent: number;
-  qty: number;
-  equipment_ids: string[];
-  subcontractor_id: string;
-  needs_subcontractor: boolean;
-}
 
 interface OfferStep4Props {
-  offerItems: OfferItem[];
+  offerItems: IOfferItem[];
 
   showCustomItemForm: boolean;
   setShowCustomItemForm: (v: boolean) => void;
 
-  customItem: CustomItemState;
-  setCustomItem: (v: CustomItemState) => void;
+  customItem: IOfferWizardCustomItem;
+  setCustomItem: (v: IOfferWizardCustomItem) => void;
 
   showEquipmentSelector: boolean;
   setShowEquipmentSelector: (v: boolean) => void;
@@ -69,11 +44,11 @@ interface OfferStep4Props {
   subcontractors: Subcontractor[];
 
   addCustomItem: () => void;
-  updateOfferItem: (id: string, updates: Partial<OfferItem>) => void;
+  updateOfferItem: (id: string, updates: Partial<IOfferItem>) => void;
   removeOfferItem: (id: string) => void;
 
   calculateTotal: () => number;
-}
+} 
 
 export default function OfferStep4({
   offerItems,
@@ -135,9 +110,9 @@ export default function OfferStep4({
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość *</label>
               <input
                 type="number"
-                value={customItem.qty}
+                value={customItem.quantity}
                 onChange={(e) =>
-                  setCustomItem({ ...customItem, qty: parseInt(e.target.value) || 1 })
+                  setCustomItem({ ...customItem, quantity: parseInt(e.target.value) || 1 })
                 }
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 min="1"
@@ -451,9 +426,9 @@ export default function OfferStep4({
                 <td className="px-4 py-3">
                   <input
                     type="number"
-                    value={item.qty}
+                    value={item.quantity}
                     onChange={(e) =>
-                      updateOfferItem(item.id, { qty: parseInt(e.target.value) || 1 })
+                      updateOfferItem(item.id, { quantity: parseInt(e.target.value) || 1 })
                     }
                     className="w-20 rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-center text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     min="1"
