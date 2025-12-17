@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Package, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Package, Plus, Trash2, Printer } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { useEventEquipment } from '../../../hooks';
 import { useEvent } from '../../../hooks/useEvent';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import type { AvailabilityUI } from '@/app/crm/events/hooks/useEventEquipment';
 import { getKeyForEventRow, keyOf } from '../../helpers/getKeyForEventRow';
 import { buildExistingMap } from '../../helpers/buildExistingMap';
 import { mergeSameSelections } from '../../helpers/mergeSameSelections';
 import { SelectedItem } from '../../../type';
 import { EventEquipmentRow } from '../../../UI/RenderRowItem';
+import { buildEquipmentChecklistHtml } from '../../helpers/buildEquipmentChecklistPdf';
+import { supabase } from '@/lib/supabase';
 
 type ItemType = 'item' | 'kit';
 type AvailKey = `${ItemType}-${string}`;
@@ -91,12 +94,14 @@ function getStatusBadge(statusRaw?: string) {
 export const EventEquipmentTab = () => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
   const { showSnackbar } = useSnackbar();
   const { event } = useEvent();
+  const { employee } = useCurrentEmployee();
 
   const {
     equipment,
@@ -230,6 +235,119 @@ export const EventEquipmentTab = () => {
     await fetchAvailableEquipment();
   };
 
+  const handleGenerateChecklist = async () => {
+    if (!event?.id || !equipment || equipment.length === 0) {
+      showSnackbar('Brak sprzętu do wygenerowania checklisty', 'error');
+      return;
+    }
+
+    try {
+      setGeneratingPdf(true);
+
+      const equipmentData = equipment
+        .filter((item: any) => !item.removed_from_offer)
+        .map((item: any) => {
+          const baseData = {
+            name: item.equipment_items?.name || item.equipment_kits?.name || item.cables?.name || 'Nieznany',
+            model: item.equipment_items?.model || item.equipment_kits?.description || '',
+            quantity: item.quantity || 1,
+            category: item.equipment_items?.equipment_categories?.name || '',
+            cable_length: item.cables?.length,
+            is_kit: !!item.kit_id,
+            kit_items: [] as any[],
+          };
+
+          if (item.kit_id && item.equipment_kits?.equipment_kit_items) {
+            baseData.kit_items = item.equipment_kits.equipment_kit_items.map((ki: any) => ({
+              name: ki.equipment_items?.name || 'Nieznany',
+              model: ki.equipment_items?.model || '',
+              quantity: ki.quantity || 1,
+            }));
+          }
+
+          return baseData;
+        });
+
+      const locationName = event.locations?.name || event.location || 'Nieokreślona';
+      const eventDateFormatted = event.event_date
+        ? new Date(event.event_date).toLocaleDateString('pl-PL')
+        : '-';
+
+      const html = buildEquipmentChecklistHtml({
+        eventName: event.name || 'Wydarzenie',
+        eventDate: eventDateFormatted,
+        location: locationName,
+        equipmentItems: equipmentData,
+        authorName: employee?.name || '-',
+        authorNumber: employee?.phone_number || '-',
+      });
+
+      const { default: html2pdf } = await import('html2pdf.js');
+      const html2pdfFn: any = (html2pdf as any) || html2pdf;
+
+      const element = document.createElement('div');
+      element.innerHTML = html;
+
+      const opt: any = {
+        margin: [10, 10, 20, 10],
+        filename: `checklista-${event.name?.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+
+      const worker = html2pdfFn().from(element).set(opt).toPdf();
+      const pdfBlob: Blob = await worker.output('blob');
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const fileName = `checklista-sprzetu-${event.name?.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
+      const storagePath = `${event.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('event-files')
+        .upload(storagePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        showSnackbar('Błąd podczas zapisywania pliku', 'error');
+      } else {
+        const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
+          p_event_id: event.id,
+          p_subfolder_name: 'Checklisty sprzętu',
+          p_required_permission: null,
+          p_created_by: employee?.id,
+        });
+
+        await supabase.from('event_files').insert([
+          {
+            event_id: event.id,
+            folder_id: folderId,
+            name: fileName,
+            original_name: fileName,
+            file_path: storagePath,
+            file_size: pdfBlob.size,
+            mime_type: 'application/pdf',
+            document_type: 'equipment_checklist',
+            thumbnail_url: null,
+            uploaded_by: employee?.id,
+          },
+        ]);
+
+        showSnackbar('Checklista sprzętu została wygenerowana i zapisana', 'success');
+
+        worker.save();
+      }
+    } catch (error) {
+      console.error('Error generating checklist:', error);
+      showSnackbar('Błąd podczas generowania checklisty', 'error');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const manualRows = useMemo(
     () => (equipment || []).filter((r: any) => !r.auto_added),
     [equipment],
@@ -268,13 +386,23 @@ export const EventEquipmentTab = () => {
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-lg font-light text-[#e5e4e2]">Sprzęt</h2>
 
-        <button
-          onClick={() => setShowAddEquipmentModal(true)}
-          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-        >
-          <Plus className="h-4 w-4" />
-          Dodaj sprzęt
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleGenerateChecklist}
+            disabled={generatingPdf || !equipment || equipment.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Printer className="h-4 w-4" />
+            {generatingPdf ? 'Generowanie...' : 'Drukuj checklistę'}
+          </button>
+          <button
+            onClick={() => setShowAddEquipmentModal(true)}
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+          >
+            <Plus className="h-4 w-4" />
+            Dodaj sprzęt
+          </button>
+        </div>
       </div>
 
       {(equipment || []).length === 0 ? (
