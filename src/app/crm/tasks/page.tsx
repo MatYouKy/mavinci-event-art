@@ -887,54 +887,29 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)]">
-      <div className="flex items-center justify-between mb-4 px-2 flex-wrap gap-3 flex-shrink-0">
-        <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>
-
-        {isMobile && (
-          <div className="flex items-center gap-2 w-full lg:w-auto order-3 lg:order-none">
-            <select
-              value={columns[activeColumnIndex].id}
-              onChange={(e) => {
-                const index = columns.findIndex(col => col.id === e.target.value);
-                if (index !== -1 && index !== activeColumnIndex) {
-                  setIsTransitioning(true);
-                  setTimeout(() => {
-                    setActiveColumnIndex(index);
-                    setIsTransitioning(false);
-                  }, 200);
-                }
-              }}
-              className="flex-1 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
-            >
-              {columns.map((col) => (
-                <option key={col.id} value={col.id}>
-                  {col.label} ({getTasksByColumn(col.id).length})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+      <div className={`flex items-center justify-between mb-3 flex-wrap gap-3 flex-shrink-0 ${isMobile ? 'px-2' : 'px-2'}`}>
+        {!isMobile && <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>}
 
         {canCreateTasks && (
           <button
             onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+            className={`flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors ${isMobile ? 'ml-auto' : ''}`}
           >
             <Plus className="w-4 h-4" />
-            Nowe zadanie
+            {isMobile ? '+' : 'Nowe zadanie'}
           </button>
         )}
       </div>
 
       <div
         ref={scrollContainerRef}
-        className={`flex-1 overflow-y-hidden pb-4 ${isMobile ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
+        className={`flex-1 overflow-y-hidden ${isMobile ? 'overflow-x-hidden pb-2' : 'overflow-x-auto pb-4'}`}
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
         <div
-          className={`flex h-full transition-opacity duration-200 ${isMobile ? 'px-2' : 'gap-4 px-2'} ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}
+          className={`flex h-full transition-opacity duration-200 ${isMobile ? '' : 'gap-4 px-2'} ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}
           style={{
             minWidth: isMobile ? '100%' : 'min-content',
           }}
@@ -945,17 +920,17 @@ export default function TasksPage() {
               onDragOver={(e) => handleDragOver(e, column.id)}
               onDragLeave={handleDragLeave}
               onDrop={() => handleDrop(column.id)}
-              className={`bg-[#1c1f33] border-2 rounded-xl p-4 flex flex-col transition-all ${
+              className={`bg-[#1c1f33] border-2 flex flex-col transition-all ${
                 dragOverColumn === column.id
                   ? 'border-[#d3bb73] bg-[#d3bb73]/5'
                   : column.color
-              } ${isMobile ? 'flex-1' : 'flex-shrink-0'}`}
+              } ${isMobile ? 'flex-1 p-2 rounded-lg' : 'flex-shrink-0 p-4 rounded-xl'}`}
               style={{
                 width: isMobile ? 'auto' : '320px',
                 height: '100%',
               }}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <div className={`flex items-center justify-between flex-shrink-0 ${isMobile ? 'mb-2' : 'mb-4'}`}>
                 <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-[#e5e4e2]/60">
@@ -973,7 +948,7 @@ export default function TasksPage() {
                 </div>
               </div>
 
-              <div className="space-y-3 overflow-y-auto flex-1 pr-2 -mr-2">
+              <div className={`overflow-y-auto flex-1 ${isMobile ? 'space-y-2 pr-1 -mr-1' : 'space-y-3 pr-2 -mr-2'}`}>
                 {getTasksByColumn(column.id).map(task => (
                   <div
                     key={task.id}
@@ -1030,7 +1005,7 @@ export default function TasksPage() {
       </div>
 
       {isMobile && (
-        <div className="flex justify-center gap-2 py-4 flex-shrink-0">
+        <div className="flex justify-center gap-2 py-2 flex-shrink-0">
           {columns.map((_, index) => (
             <button
               key={index}
