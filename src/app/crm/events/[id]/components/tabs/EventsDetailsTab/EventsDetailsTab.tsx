@@ -11,7 +11,7 @@ import {
   User,
   UserCheck,
 } from 'lucide-react';
-import React, { FC, useState } from 'react';
+import React, { FC, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import EditEventClientModal from '@/components/crm/EditEventClientModal';
 import { supabase } from '@/lib/supabase';
@@ -19,21 +19,29 @@ import { logChange } from '../../../helpers/logChange';
 import { EventDestailsDescription } from './EventDetailsDescription';
 import { EventDetailsNotes } from './EventDetailsNotes';
 import { useEvent } from '@/app/crm/events/hooks/useEvent';
+import { ContactRow, OrganizationRow } from '@/app/crm/contacts/types';
+import { useLocations } from '@/app/crm/locations/useLocations';
+import { ILocation } from '@/app/crm/locations/type';
 
 interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
   canManageTeam: boolean;
   isUserAdmin: boolean;
+  contact: ContactRow;
+  organization: OrganizationRow;
+  location: ILocation;
 }
 
 export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   hasLimitedAccess,
   canManageTeam,
   isUserAdmin,
+  contact,
+  organization,
+  location,
 }) => {
   const { event, updateEvent } = useEvent();
 
-  console.log('event', event);
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
 
@@ -90,29 +98,26 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             <MapPin className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
             <div className="flex-1">
               <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
-              {event.location_details ? (
+              {location ? (
                 <div className="group relative inline-block">
                   <button
                     onClick={() =>
-                      event.location_details?.id &&
-                      router.push(`/crm/locations/${event.location_details.id}`)
+                      location?.id && router.push(`/crm/locations/${location.id}`)
                     }
                     className="text-left text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
                   >
-                    {event.location_details.name}
+                    {location.name}
                   </button>
                   <div className="invisible absolute left-0 top-full z-50 mt-1 min-w-[300px] max-w-md rounded-xl border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-xl before:absolute before:-top-1 before:left-0 before:right-0 before:h-1 before:content-[''] group-hover:visible">
-                    <p className="mb-2 text-sm font-medium text-[#e5e4e2]">
-                      {event.location_details.name}
-                    </p>
-                    {event.location_details.formatted_address && (
+                    <p className="mb-2 text-sm font-medium text-[#e5e4e2]">{location.name}</p>
+                    {location.formatted_address && (
                       <p className="mb-3 text-xs text-[#e5e4e2]/60">
-                        {event.location_details.formatted_address}
+                        {location.formatted_address}
                       </p>
                     )}
-                    {event.location_details.google_maps_url && (
+                    {location.google_maps_url && (
                       <a
-                        href={event.location_details.google_maps_url}
+                        href={location.google_maps_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 text-xs text-[#d3bb73] hover:underline"
@@ -136,11 +141,11 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                   </div>
                 </div>
               ) : (
-                <p className="text-[#e5e4e2]">{event.location || 'Brak lokalizacji'}</p>
+                <p className="text-[#e5e4e2]">{location?.name || 'Brak lokalizacji'}</p>
               )}
             </div>
           </div>
-{/* 
+          {/* 
           {!hasLimitedAccess && (canManageTeam || isUserAdmin) && (
             <div className="flex items-start gap-3">
               <UserCheck className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
@@ -212,33 +217,46 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Klient (Firma)</p>
                       <p className="text-[#e5e4e2]">
-                        {event.organization
-                          ? event.organization.alias || event.organization.name
-                          : 'Brak klienta'}
+                        {organization ? organization.alias || organization.name : 'Brak klienta'}
                       </p>
                     </div>
                   </div>
-                  {event.contact_person && (
+                  {contact && (
                     <div className="flex items-start gap-3">
                       <User className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                       <div>
                         <p className="text-sm text-[#e5e4e2]/60">Osoba kontaktowa</p>
                         <p className="text-[#e5e4e2]">
-                          {event.contact_person.full_name ||
-                            `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                          <a
+                            href={`/crm/contacts/${contact.id}`}
+                            className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                          >
+                            {contact.full_name || `${contact.first_name} ${contact.last_name}`}
+                          </a>
                         </p>
-                        {event.contact_person.email && (
+                        {contact.email && (
                           <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                             <Mail className="h-3 w-3" />
-                            <span>{event.contact_person.email}</span>
+                            <a
+                              href={`mailto:${contact.email}`}
+                              className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                            >
+                              {contact.email}
+                            </a>
                           </div>
                         )}
-                        {event.contact_person.phone && (
-                          <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                            <Phone className="h-3 w-3" />
-                            <span>{event.contact_person.phone}</span>
-                          </div>
-                        )}
+                        {contact.business_phone ||
+                          (contact.phone && (
+                            <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                              <Phone className="h-3 w-3" />
+                              <a
+                                href={`tel:${contact.business_phone || contact.phone}`}
+                                className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                              >
+                                {contact.business_phone || contact.phone}
+                              </a>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   )}
@@ -248,22 +266,24 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                   <User className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                   <div>
                     <p className="text-sm text-[#e5e4e2]/60">Klient</p>
-                    {event.contact_person ? (
+                    {contact ? (
                       <>
                         <p className="text-[#e5e4e2]">
-                          {event.contact_person.full_name ||
-                            `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                          <a href={`/crm/contacts/${contact.id}`} className="text-[#e5e4e2] hover:text-[#d3bb73]">
+                            {contact.full_name ||
+                              `${contact.first_name} ${contact.last_name}`}
+                          </a>
                         </p>
-                        {event.contact_person.email && (
+                        {contact.email && (
                           <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                             <Mail className="h-3 w-3" />
-                            <span>{event.contact_person.email}</span>
+                            <a href={`mailto:${contact.email}`} className="text-[#e5e4e2] hover:text-[#d3bb73]">{contact.email}</a>
                           </div>
                         )}
-                        {event.contact_person.phone && (
+                        {contact.phone && (
                           <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                             <Phone className="h-3 w-3" />
-                            <span>{event.contact_person.phone}</span>
+                              <a href={`tel:${contact.phone}`} className="text-[#e5e4e2] hover:text-[#d3bb73]">{contact.phone}</a>
                           </div>
                         )}
                       </>

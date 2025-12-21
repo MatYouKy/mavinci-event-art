@@ -1,23 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-  X,
-  Plus,
-  Trash2,
-  ShoppingCart,
-  Package,
-  Search,
-  ChevronRight,
-  ChevronLeft,
-  Check,
-  AlertTriangle,
-  Wrench,
-  Users,
-} from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useDialog } from '@/contexts/DialogContext';
 import { IEventCategory } from '@/app/crm/event-categories/types';
 import EquipmentConflictsSummary from './EquipmentConflictsSummary';
 import EquipmentConflictsModal from './EquipmentConflictsModal';
@@ -26,7 +11,6 @@ import OfferStep4 from './Steps/OfferStep4';
 import AddClientModal from './components/AddClientModal';
 import { OfferStep1 } from './Steps/OfferStep1';
 import { useOfferWizardLogic } from './hooks/useOfferWizzard';
-import { IProduct } from '../../../types';
 import OfferStep3 from './Steps/OfferStep3';
 import { ClientType } from '@/app/crm/clients/type';
 
@@ -124,7 +108,7 @@ export default function OfferWizard({
     eventId,
     employeeId: employee?.id,
     defaults: {
-      clientType: propClientType || 'business' as ClientType,
+      clientType: propClientType || ('business' as ClientType),
       organizationId: propOrganizationId || '',
       contactId: propContactId || '',
     },

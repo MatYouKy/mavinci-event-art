@@ -45,6 +45,9 @@ export default function EmployeesPage() {
   const { canCreateInModule } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
 
+  const { employee,  } = useCurrentEmployee();
+  console.log('employee', employee);
+
   const { getViewMode, setViewMode } = useUserPreferences();
   const viewMode = getViewMode('employees');
 

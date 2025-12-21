@@ -17,3 +17,9 @@ export interface ILocation {
   formatted_address?: string;
   created_at: string;
 }
+
+export type LocationCreateInput = Omit<ILocation, 'id' | 'created_at'>;
+
+export type LocationUpdateInput = Partial<
+  Omit<ILocation, 'id' | 'created_at'>
+>;

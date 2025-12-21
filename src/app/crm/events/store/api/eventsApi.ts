@@ -422,15 +422,22 @@ export const eventsApi = createApi({
     }),
 
     // ============ EMPLOYEES ENDPOINTS ============
+    // ============ EMPLOYEES ENDPOINTS ============
     getEventEmployees: builder.query<any[], string>({
       async queryFn(eventId) {
         try {
           const { data, error } = await supabase
-            .from('event_employee_assignments')
+            .from('employee_assignments')
             .select(
               `
               *,
-              employee:employees(id, name, surname, avatar_url, avatar_position)
+              employee:employees!employee_assignments_employee_id_fkey(
+                id,
+                name,
+                surname,
+                avatar_url,
+                avatar_metadata
+              )
             `,
             )
             .eq('event_id', eventId)
@@ -440,40 +447,72 @@ export const eventsApi = createApi({
           return { data: data || [] };
         } catch (error: any) {
           return {
+            error: { status: 'FETCH_ERROR', message: error.message },
+          } as any;
+        }
+      },
+      providesTags: (_result, _error, eventId) => [{ type: 'EventEmployees', id: eventId }],
+    }),
+
+    addEventEmployee: builder.mutation<
+      any,
+      {
+        eventId: string;
+        employeeId: string;
+        role?: string;
+        responsibilities?: string | null;
+        access_level_id?: string | null;
+        permissions?: {
+          can_edit_event?: boolean;
+          can_edit_agenda?: boolean;
+          can_edit_tasks?: boolean;
+          can_edit_files?: boolean;
+          can_edit_equipment?: boolean;
+          can_invite_members?: boolean;
+          can_view_budget?: boolean;
+        };
+      }
+    >({
+      async queryFn({ eventId, employeeId, role, responsibilities, access_level_id, permissions }) {
+        try {
+          const payload = {
+            event_id: eventId,
+            employee_id: employeeId,
+            role: role ?? '',
+            responsibilities: responsibilities ?? null,
+            access_level_id: access_level_id ?? null,
+
+            can_edit_event: !!permissions?.can_edit_event,
+            can_edit_agenda: !!permissions?.can_edit_agenda,
+            can_edit_tasks: !!permissions?.can_edit_tasks,
+            can_edit_files: !!permissions?.can_edit_files,
+            can_edit_equipment: !!permissions?.can_edit_equipment,
+            can_invite_members: !!permissions?.can_invite_members,
+            can_view_budget: !!permissions?.can_view_budget,
+          };
+
+          const { data, error } = await supabase
+            .from('employee_assignments')
+            .insert(payload)
+            .select()
+            .single();
+
+          if (error) throw error;
+          return { data };
+        } catch (error: any) {
+          return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
           };
         }
       },
-      providesTags: (result, error, eventId) => [{ type: 'EventEmployees', id: eventId }],
+      invalidatesTags: (_res, _err, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
     }),
-
-    addEventEmployee: builder.mutation<any, { eventId: string; employeeId: string; role?: string }>(
-      {
-        async queryFn({ eventId, employeeId, role }) {
-          try {
-            const { data, error } = await supabase
-              .from('event_employee_assignments')
-              .insert({ event_id: eventId, employee_id: employeeId, role })
-              .select()
-              .single();
-
-            if (error) throw error;
-            return { data };
-          } catch (error: any) {
-            return {
-              error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
-            };
-          }
-        },
-        invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
-      },
-    ),
 
     removeEventEmployee: builder.mutation<void, { eventId: string; employeeId: string }>({
       async queryFn({ eventId, employeeId }) {
         try {
           const { error } = await supabase
-            .from('event_employee_assignments')
+            .from('employee_assignments')
             .delete()
             .eq('event_id', eventId)
             .eq('employee_id', employeeId);
@@ -486,7 +525,7 @@ export const eventsApi = createApi({
           };
         }
       },
-      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
+      invalidatesTags: (_res, _err, { eventId }) => [{ type: 'EventEmployees', id: eventId }],
     }),
 
     deleteEventOffer: builder.mutation<{ success: true }, { eventId: string; offerId: string }>({

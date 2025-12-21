@@ -4,22 +4,12 @@ import { useState, useEffect } from 'react';
 import { MapPin, Plus, Search, Building2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import AddLocationModal from './AddLocationModal';
-
-interface Location {
-  id: string;
-  name: string;
-  address?: string;
-  city?: string;
-  postal_code?: string;
-  country?: string;
-  formatted_address?: string;
-  latitude?: number;
-  longitude?: number;
-}
+import { ILocation } from '@/app/crm/locations/type';
+import { useLocations } from '@/app/crm/locations/useLocations';
 
 interface LocationSelectorProps {
   value: string;
-  onChange: (value: string, locationData?: Location) => void;
+  onChange: (value: string, locationData?: ILocation) => void;
   placeholder?: string;
 }
 
@@ -28,52 +18,38 @@ export default function LocationSelector({
   onChange,
   placeholder = 'Wybierz lub wyszukaj lokalizację...',
 }: LocationSelectorProps) {
-  const [savedLocations, setSavedLocations] = useState<Location[]>([]);
+  const [savedLocations, setSavedLocations] = useState<ILocation[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [loading, setLoading] = useState(false);
+
+  const { list: locations, loading: isLoading } = useLocations();
 
   useEffect(() => {
-    fetchLocations();
-  }, []);
-
-  const fetchLocations = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-
-      setSavedLocations(data || []);
-    } catch (error) {
-      console.error('Błąd pobierania lokalizacji:', error);
-    } finally {
-      setLoading(false);
+    if (locations) {
+      setSavedLocations(locations);
     }
-  };
+  }, [locations]);
+
 
   const filteredLocations = savedLocations.filter((loc) => {
     const query = searchQuery.toLowerCase();
     return (
-      loc.name.toLowerCase().includes(query) ||
+      loc.name?.toLowerCase().includes(query) ||
       loc.city?.toLowerCase().includes(query) ||
       loc.address?.toLowerCase().includes(query)
     );
   });
 
-  const handleSelectLocation = (location: Location) => {
-    const locationString = location.formatted_address ||
-      `${location.name}${location.city ? ', ' + location.city : ''}`;
+  const handleSelectLocation = (location: ILocation) => {
+    const locationString = 
+      `${location.name}${location.city ? ', ' + location.city : ''}${location.postal_code ? ', ' + location.postal_code : ''}`;
     onChange(locationString, location);
     setShowDropdown(false);
     setSearchQuery('');
   };
 
-  const handleLocationAdded = (location: Location) => {
+  const handleLocationAdded = (location: ILocation) => {
     // Dodaj nową lokalizację do listy
     setSavedLocations((prev) => [...prev, location]);
     // Wybierz ją
@@ -139,7 +115,7 @@ export default function LocationSelector({
 
           {/* Locations list */}
           <div className="overflow-y-auto max-h-64">
-            {loading ? (
+            {isLoading ? (
               <div className="px-4 py-8 text-center text-[#e5e4e2]/50">
                 <div className="animate-spin w-6 h-6 border-2 border-[#d3bb73] border-t-transparent rounded-full mx-auto mb-2" />
                 Ładowanie lokalizacji...

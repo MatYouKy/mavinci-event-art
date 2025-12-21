@@ -7,6 +7,7 @@ import { IOfferItem } from '../offers/types';
 export type SelectedItem = { id: string; quantity: number; notes: string; type: 'item' | 'kit' };
 
 export interface IEvent {
+  location_id: any;
   id: string;
   name: string;
   description?: string;

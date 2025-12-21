@@ -1,23 +1,19 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { X } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
+import { useEmployees } from '@/app/crm/employees/hooks/useEmployees';
+import { useEventTeam } from '../../../hooks/useEventTeam';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
-export function AddEmployeeModal({
+export function AddEventEmployeeModal({
   isOpen,
   onClose,
-  onAdd,
-  availableEmployees,
+  eventId,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (
-    employeeId: string,
-    role: string,
-    responsibilities: string,
-    accessLevelId: string,
-    permissions: any,
-  ) => void;
-  availableEmployees: any[];
+  eventId: string;
 }) {
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [role, setRole] = useState('');
@@ -31,6 +27,13 @@ export function AddEmployeeModal({
   const [canEditEquipment, setCanEditEquipment] = useState(false);
   const [canInviteMembers, setCanInviteMembers] = useState(false);
   const [canViewBudget, setCanViewBudget] = useState(false);
+
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+
+  const { list: employees, loading } = useEmployees({ activeOnly: true });
+
+  const { employees: eventEmployees, addEmployee } = useEventTeam(eventId);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,9 +55,11 @@ export function AddEmployeeModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+
     if (!selectedEmployee) {
-      alert('Wybierz pracownika');
+      const confirmed = await showConfirm('Wybierz pracownika', 'error');
+      if (!confirmed) return;
       return;
     }
     const permissions = {
@@ -66,17 +71,31 @@ export function AddEmployeeModal({
       can_invite_members: canInviteMembers,
       can_view_budget: canViewBudget,
     };
-    onAdd(selectedEmployee, role, responsibilities, selectedAccessLevel, permissions);
-    setSelectedEmployee('');
-    setRole('');
-    setResponsibilities('');
-    setCanEditEvent(false);
-    setCanEditAgenda(false);
-    setCanEditTasks(false);
-    setCanEditFiles(false);
-    setCanEditEquipment(false);
-    setCanInviteMembers(false);
-    setCanViewBudget(false);
+    try {
+      await addEmployee({
+        employeeId: selectedEmployee,
+        role,
+        responsibilities,
+        access_level_id: selectedAccessLevel,
+        permissions,
+      });
+      setSelectedEmployee('');
+      setRole('');
+      setResponsibilities('');
+      setCanEditEvent(false);
+      setCanEditAgenda(false);
+      setCanEditTasks(false);
+      setCanEditFiles(false);
+      setCanEditEquipment(false);
+      setCanInviteMembers(false);
+      setCanViewBudget(false);
+      showSnackbar('Pracownik dodany do zespołu', 'success');
+      onClose();
+    } catch (error) {
+      console.error('Error adding employee:', error);
+      showSnackbar('Błąd podczas dodawania pracownika', 'error');
+    }
+
   };
 
   const hasAnyPermission =
@@ -107,11 +126,16 @@ export function AddEmployeeModal({
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="">Wybierz pracownika...</option>
-              {availableEmployees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} {emp.surname} {emp.occupation ? `- ${emp.occupation}` : ''}
-                </option>
-              ))}
+
+              {!loading && employees ? (
+                employees?.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} {emp.surname} {emp.occupation ? `- ${emp.occupation}` : ''}
+                  </option>
+                ))
+              ) : (
+               <Loader2 className="w-4 h-4 animate-spin" />
+              )}
             </select>
           </div>
 

@@ -338,7 +338,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
               </Link>
             </div>
 
-            <div className="hidden items-center gap-3 md:flex">
+            {/* <div className="hidden items-center gap-3 md:flex">
               {isAuthenticated && <NotificationCenter />}
               {isAuthenticated ? (
                 <div className="relative" ref={dropdownRef}>
@@ -493,9 +493,9 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                   </button>
                 </>
               )}
-            </div>
+            </div> */}
 
-            <button
+            {/* <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="text-white md:hidden"
               aria-label="Toggle menu"
@@ -517,11 +517,11 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                   />
                 )}
               </svg>
-            </button>
+            </button> */}
           </div>
         </div>
 
-        {isMenuOpen && (
+        {/* {isMenuOpen && (
           <div className="mt-2 max-h-[80vh] overflow-y-auto rounded-b-3xl bg-[#1c1f33]/95 backdrop-blur-lg md:hidden">
             <div className="space-y-3 px-4 py-4">
               {navLinks.map((link) => {
@@ -675,7 +675,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
               )}
             </div>
           </div>
-        )}
+        )} */}
       </nav>
     </>
   );

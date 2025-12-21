@@ -1,6 +1,8 @@
 import type { EquipmentUnit } from '@/store/slices/equipmentSlice';
 
-/** ============ UI ============ */
+/** =========================
+ *  UI
+ *  ========================= */
 export type EquipmentTabsCarouselType =
   | 'details'
   | 'technical'
@@ -10,12 +12,16 @@ export type EquipmentTabsCarouselType =
   | 'gallery'
   | 'history';
 
-/** ============ Shared ============ */
+/** =========================
+ *  Shared / primitives
+ *  ========================= */
 export type UUID = string;
-export type ISODate = string;      // YYYY-MM-DD
-export type ISODateTime = string;  // timestamptz
+export type ISODate = string; // YYYY-MM-DD
+export type ISODateTime = string; // timestamptz (string)
 
-/** Statusy sprzętu na evencie (Twoje) */
+export type PGNumeric = number | string; // Supabase numeric bywa string
+
+/** Statusy sprzętu na evencie */
 export type EventEquipmentStatus =
   | 'draft'
   | 'reserved'
@@ -33,7 +39,9 @@ export type UnitEventType =
   | 'inspection'
   | 'sold';
 
-/** ============ Domain: Equipment Item (equipment_items) ============ */
+/** =========================
+ *  DB: equipment_items (Row 1:1)
+ *  ========================= */
 export interface DimensionsCm {
   width?: number;
   height?: number;
@@ -47,11 +55,6 @@ export interface CableSpecs {
   connector_b?: string;
 }
 
-/**
- * 1:1 z tabelą equipment_items (row z bazy)
- * - trzymamy null dla pól opcjonalnych (tak zwraca Postgres/Supabase)
- * - is_active w DB masz nullable z default true -> w TS najbezpieczniej boolean | null
- */
 export interface EquipmentItemRow {
   id: UUID;
   name: string;
@@ -63,22 +66,21 @@ export interface EquipmentItemRow {
   thumbnail_url: string | null;
   user_manual_url: string | null;
 
-  weight_kg: number | null;
-  dimensions_cm: DimensionsCm | null;
+  weight_kg: PGNumeric | null; // numeric
+  dimensions_cm: DimensionsCm | null; // jsonb
 
   purchase_date: ISODate | null;
-  purchase_price: number | null;
-  current_value: number | null;
+  purchase_price: PGNumeric | null; // numeric
+  current_value: PGNumeric | null; // numeric
   warranty_until: ISODate | null;
 
   serial_number: string | null;
   barcode: string | null;
 
   notes: string | null;
-
   is_active: boolean | null;
 
-  cable_specs: CableSpecs | null;
+  cable_specs: CableSpecs | null; // jsonb
   warehouse_category_id: UUID | null;
   cable_stock_quantity: number | null;
   storage_location_id: UUID | null;
@@ -88,14 +90,16 @@ export interface EquipmentItemRow {
   updated_at: ISODateTime | null;
 }
 
-/** ============ Domain: Equipment Kit (equipment_kits) ============ */
+/** =========================
+ *  DB: equipment_kits (Row 1:1)
+ *  ========================= */
 export interface EquipmentKitRow {
   id: UUID;
   name: string;
   description: string | null;
   thumbnail_url: string | null;
 
-  is_active: boolean; // u Ciebie NOT NULL default true
+  is_active: boolean; // NOT NULL default true
   created_by: UUID | null;
 
   created_at: ISODateTime;
@@ -105,13 +109,11 @@ export interface EquipmentKitRow {
   deleted_at: ISODateTime | null;
 }
 
-/**
- * Pozycja w kicie (equipment_kit_items)
- * Uwaga: u Ciebie jest equipment_id OR cable_id (a nie oba)
- */
+/** DB: equipment_kit_items (Row 1:1) */
 export interface EquipmentKitItemRow {
   id: UUID;
   kit_id: UUID;
+
   equipment_id: UUID | null;
   cable_id: UUID | null;
 
@@ -122,7 +124,88 @@ export interface EquipmentKitItemRow {
   created_at: ISODateTime;
 }
 
-/** ============ Relacje / joiny (opcjonalne) ============ */
+/** =========================
+ *  DB: event_equipment (Row 1:1)
+ *  ========================= */
+export interface EventEquipmentRow {
+  id: UUID;
+  event_id: UUID;
+
+  equipment_id: UUID | null;
+  kit_id: UUID | null;
+  cable_id: UUID | null;
+  offer_id: UUID | null;
+
+  quantity: number | null;
+  notes: string | null;
+
+  created_at: ISODateTime | null;
+  updated_at: ISODateTime | null;
+
+  status: EventEquipmentStatus;
+
+  auto_added: boolean;
+  auto_quantity: number | null;
+
+  is_overridden: boolean;
+  removed_from_offer: boolean;
+
+  offer_quantity: number | null;
+}
+
+/** =========================
+ *  Joins / DTO (to co zwracasz z Supabase .select)
+ *  ========================= */
+
+/** Lekki widok kategorii (z Twojego payloadu: equipment.category.name) */
+export interface WarehouseCategoryDTO {
+  name: string;
+}
+
+/**
+ * To jest dokładnie to co pokazałeś w payloadzie:
+ * equipment: { name, brand, model, category: { name }, cable_specs, thumbnail_url }
+ *
+ * UWAGA: w DB jest warehouse_category_id, ale Ty zwracasz "category"
+ * więc w DTO używamy `category`.
+ */
+export interface EquipmentItemDTO {
+  name: string;
+  brand: string | null;
+  model: string | null;
+  category: WarehouseCategoryDTO | null;
+  cable_specs: CableSpecs | null;
+  thumbnail_url: string | null;
+}
+
+/** Jeżeli kit też ma podobny “view” (na razie minimalnie) */
+export interface EquipmentKitDTO {
+  name: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  // jeśli zwracasz kategorię dla kita, dodaj:
+  category?: WarehouseCategoryDTO | null;
+  // jeśli zwracasz elementy kita, dopniemy później:
+  equipment_kit_items?: Array<{
+    quantity: number;
+    equipment?: { name: string; model: string | null } | null;
+    cable?: { name: string; length_m?: number | null } | null;
+  }>;
+}
+
+/**
+ * EventEquipment z joinami – dokładnie pod Twoje dane:
+ * - equipment: EquipmentItemDTO | null
+ * - kit: EquipmentKitDTO | null
+ */
+export interface EventEquipmentWithJoins extends EventEquipmentRow {
+  equipment: EquipmentItemDTO | null;
+  kit: EquipmentKitDTO | null;
+}
+
+/** =========================
+ *  Units / history (zostaje, ale porządniej)
+ *  ========================= */
 export interface EmployeeLite {
   name: string;
   surname: string;
@@ -139,60 +222,56 @@ export interface UnitEventRow {
   employee_id: UUID | null;
   created_at: ISODateTime;
 
-  // join: employees(name, surname)
-  employees: EmployeeLite | null;
+  employees: EmployeeLite | null; // join
 }
 
-/** ============ Unified DTO: “Equipment” do feed/listingu ============ */
-/**
- * To jest typ, który możesz używać w feedzie (items + kits w jednym widoku).
- * Minimalne pola + flagi.
- */
+/** =========================
+ *  UI: Feed/listing (items + kits razem)
+ *  ========================= */
 export type EquipmentEntityType = 'item' | 'kit';
 
-export interface EquipmentFeedItemBase {
+export interface EquipmentFeedBase {
   id: UUID;
   type: EquipmentEntityType;
-
   name: string;
-  warehouse_category_id: UUID | null;
+
   thumbnail_url: string | null;
+  warehouse_category_id: UUID | null;
 
   description?: string | null;
   created_at?: ISODateTime | null;
 
-  // tylko dla listingu (nie zawsze dociągasz)
+  // opcjonalnie dociągane w detalach/listach
   equipment_units?: EquipmentUnit[];
 }
 
-export interface EquipmentFeedItem extends EquipmentFeedItemBase {
+export interface EquipmentFeedItem extends EquipmentFeedBase {
   type: 'item';
   brand?: string | null;
   model?: string | null;
 }
 
-export interface EquipmentFeedKit extends EquipmentFeedItemBase {
+export interface EquipmentFeedKit extends EquipmentFeedBase {
   type: 'kit';
-  // kity nie mają brand/model — zostawiamy undefined
 }
 
 export type EquipmentFeedEntity = EquipmentFeedItem | EquipmentFeedKit;
 
-/** Helper: mapowanie z Twojego obecnego is_kit na type */
 export const resolveEquipmentType = (row: { is_kit?: boolean }): EquipmentEntityType =>
   row.is_kit ? 'kit' : 'item';
 
-/** ============ (Opcjonalnie) stary typ “Equipment” — do wywalenia ============ */
-/**
- * Ten interface był mylący (category/quantity/available_quantity/unit_price/status).
- * Jeśli to jest pod "marketplace" albo "stock", nazwij to jasno:
- */
+/** =========================
+ *  Osobny byt: Stock/Availability (nie mieszamy z Equipment)
+ *  ========================= */
 export interface EquipmentStockSummary {
-  id: UUID;
+  equipment_id: UUID;
   name: string;
-  category: string;            // jeśli to nazwa kategorii (string), OK
-  quantity: number;            // total
-  available_quantity: number;  // available
-  unit_price: number;          // np. purchase_price albo inna logika
-  status: string;
+  category_name: string | null;
+
+  total_qty: number;
+  reserved_qty: number;
+  available_qty: number;
+
+  // jeśli masz “cenę dzienną / katalogową” – nazwij to jasno
+  unit_price?: PGNumeric | null;
 }

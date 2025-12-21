@@ -35,3 +35,8 @@ export interface IEmployee {
   facebook_url: string | null;
   order_index: number;
 }
+
+export type EmployeeCreateDTO = Omit<IEmployee, "id" | "created_at">;
+
+// Update: patch po id
+export type EmployeeUpdateDTO = Partial<Omit<IEmployee, "id" | "created_at">>;

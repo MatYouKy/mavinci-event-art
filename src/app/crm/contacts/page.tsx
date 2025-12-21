@@ -22,31 +22,9 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import {
-  setContacts,
-  setLoading as setContactsLoading,
-  selectContacts,
-  selectContactsLoading,
-  selectShouldRefetch,
-} from '@/store/slices/contactsSlice';
 
-export interface UnifiedContact {
-  id: string;
-  type: 'organization' | 'contact' | 'individual';
-  source: 'organizations' | 'contacts';
-  name: string;
-  email: string | null;
-  phone: string | null;
-  mobile: string | null;
-  city: string | null;
-  status: string;
-  rating: number | null;
-  avatar_url: string | null;
-  tags: string[] | null;
-  created_at: string;
-  contacts_count?: number;
-  organizations_count?: number;
-}
+import { useClients } from './hooks/useClient';
+import { ClientEntityType, ContactRow } from './types';
 
 type ViewMode = 'grid' | 'list';
 type TabFilter = 'all' | 'subcontractors';
@@ -63,171 +41,157 @@ const contactTypeIcons = {
   contact: User,
   individual: UserCircle,
 };
-
 export default function ContactsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const dispatch = useAppDispatch();
-
-  const cachedContacts = useAppSelector(selectContacts);
-  const cachedLoading = useAppSelector(selectContactsLoading);
-  const shouldRefetch = useAppSelector(selectShouldRefetch);
+  const { list: contacts, loading, create, updateById, deleteById } = useClients('all');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [contacts, setLocalContacts] = useState<UnifiedContact[]>([]);
-  const [loading, setLoading] = useState(true);
+  // const [contacts, setLocalContacts] = useState<UnifiedContact[]>([]);
   const [activeTab, setActiveTab] = useState<TabFilter>('all');
   const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
-  useEffect(() => {
-    // Sprawdź czy mamy cache i czy jest aktualny
-    if (cachedContacts.length > 0 && !shouldRefetch) {
-      setLocalContacts(cachedContacts);
-      setLoading(false);
-    } else {
-      fetchAllContacts();
-    }
-  }, [activeTab, cachedContacts, shouldRefetch]);
 
-  const fetchAllContacts = async () => {
-    try {
-      setLoading(true);
-      dispatch(setContactsLoading(true));
-      const unified: UnifiedContact[] = [];
+  // const fetchAllContacts = async () => {
+  //   try {
+  //     setLoading(true);
+  //     dispatch(setContactsLoading(true));
+  //     const unified: UnifiedContact[] = [];
 
-      // Pobierz wszystkie relacje jednym zapytaniem
-      const { data: allRelations, error: relError } = await supabase
-        .from('contact_organizations')
-        .select('organization_id, contact_id')
-        .eq('is_current', true);
+  //     // Pobierz wszystkie relacje jednym zapytaniem
+  //     const { data: allRelations, error: relError } = await supabase
+  //       .from('contact_organizations')
+  //       .select('organization_id, contact_id')
+  //       .eq('is_current', true);
 
-      if (relError) throw relError;
+  //     if (relError) throw relError;
 
-      // Stwórz mapy liczników
-      const orgContactCounts = new Map<string, number>();
-      const contactOrgCounts = new Map<string, number>();
+  //     // Stwórz mapy liczników
+  //     const orgContactCounts = new Map<string, number>();
+  //     const contactOrgCounts = new Map<string, number>();
 
-      for (const rel of allRelations || []) {
-        if (rel.organization_id) {
-          orgContactCounts.set(
-            rel.organization_id,
-            (orgContactCounts.get(rel.organization_id) || 0) + 1
-          );
-        }
-        if (rel.contact_id) {
-          contactOrgCounts.set(
-            rel.contact_id,
-            (contactOrgCounts.get(rel.contact_id) || 0) + 1
-          );
-        }
-      }
+  //     for (const rel of allRelations || []) {
+  //       if (rel.organization_id) {
+  //         orgContactCounts.set(
+  //           rel.organization_id,
+  //           (orgContactCounts.get(rel.organization_id) || 0) + 1
+  //         );
+  //       }
+  //       if (rel.contact_id) {
+  //         contactOrgCounts.set(
+  //           rel.contact_id,
+  //           (contactOrgCounts.get(rel.contact_id) || 0) + 1
+  //         );
+  //       }
+  //     }
 
-      if (activeTab === 'all') {
-        // Pobierz organizacje (NIE podwykonawców)
-        const { data: orgs, error: orgsError } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('organization_type', 'client')
-          .order('created_at', { ascending: false });
+  //     if (activeTab === 'all') {
+  //       // Pobierz organizacje (NIE podwykonawców)
+  //       const { data: orgs, error: orgsError } = await supabase
+  //         .from('organizations')
+  //         .select('*')
+  //         .eq('organization_type', 'client')
+  //         .order('created_at', { ascending: false });
 
-        if (orgsError) throw orgsError;
+  //       if (orgsError) throw orgsError;
 
-        // Mapuj organizacje (bez dodatkowych zapytań!)
-        for (const org of orgs || []) {
-          unified.push({
-            id: org.id,
-            type: 'organization',
-            source: 'organizations',
-            name: org.alias || org.name,
-            email: org.email,
-            phone: org.phone,
-            mobile: null,
-            city: org.city,
-            status: org.status,
-            rating: null,
-            avatar_url: null,
-            tags: null,
-            created_at: org.created_at,
-            contacts_count: orgContactCounts.get(org.id) || 0,
-          });
-        }
+  //       // Mapuj organizacje (bez dodatkowych zapytań!)
+  //       for (const org of orgs || []) {
+  //         unified.push({
+  //           id: org.id,
+  //           type: 'organization',
+  //           source: 'organizations',
+  //           name: org.alias || org.name,
+  //           email: org.email,
+  //           phone: org.phone,
+  //           mobile: null,
+  //           city: org.city,
+  //           status: org.status,
+  //           rating: null,
+  //           avatar_url: null,
+  //           tags: null,
+  //           created_at: org.created_at,
+  //           contacts_count: orgContactCounts.get(org.id) || 0,
+  //         });
+  //       }
 
-        // Pobierz kontakty (typ 'contact' i 'individual')
-        const { data: contactsData, error: contactsError } = await supabase
-          .from('contacts')
-          .select('*')
-          .in('contact_type', ['contact', 'individual'])
-          .order('created_at', { ascending: false });
+  //       // Pobierz kontakty (typ 'contact' i 'individual')
+  //       const { data: contactsData, error: contactsError } = await supabase
+  //         .from('contacts')
+  //         .select('*')
+  //         .in('contact_type', ['contact', 'individual'])
+  //         .order('created_at', { ascending: false });
 
-        if (contactsError) throw contactsError;
+  //       if (contactsError) throw contactsError;
 
-        // Mapuj kontakty (bez dodatkowych zapytań!)
-        for (const contact of contactsData || []) {
-          unified.push({
-            id: contact.id,
-            type: contact.contact_type === 'individual' ? 'individual' : 'contact',
-            source: 'contacts',
-            name: contact.full_name,
-            email: contact.email,
-            phone: contact.phone,
-            mobile: contact.mobile,
-            city: contact.city,
-            status: contact.status,
-            rating: contact.rating,
-            avatar_url: contact.avatar_url,
-            tags: contact.tags,
-            created_at: contact.created_at,
-            organizations_count: contactOrgCounts.get(contact.id) || 0,
-          });
-        }
-      } else if (activeTab === 'subcontractors') {
-        // Pobierz tylko podwykonawców
-        const { data: subs, error: subsError } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('organization_type', 'subcontractor')
-          .order('created_at', { ascending: false });
+  //       // Mapuj kontakty (bez dodatkowych zapytań!)
+  //       for (const contact of contactsData || []) {
+  //         unified.push({
+  //           id: contact.id,
+  //           type: contact.contact_type === 'individual' ? 'individual' : 'contact',
+  //           source: 'contacts',
+  //           name: contact.full_name,
+  //           email: contact.email,
+  //           phone: contact.phone,
+  //           mobile: contact.mobile,
+  //           city: contact.city,
+  //           status: contact.status,
+  //           rating: contact.rating,
+  //           avatar_url: contact.avatar_url,
+  //           tags: contact.tags,
+  //           created_at: contact.created_at,
+  //           organizations_count: contactOrgCounts.get(contact.id) || 0,
+  //         });
+  //       }
+  //     } else if (activeTab === 'subcontractors') {
+  //       // Pobierz tylko podwykonawców
+  //       const { data: subs, error: subsError } = await supabase
+  //         .from('organizations')
+  //         .select('*')
+  //         .eq('organization_type', 'subcontractor')
+  //         .order('created_at', { ascending: false });
 
-        if (subsError) throw subsError;
+  //       if (subsError) throw subsError;
 
-        // Mapuj podwykonawców (bez dodatkowych zapytań!)
-        for (const sub of subs || []) {
-          unified.push({
-            id: sub.id,
-            type: 'organization',
-            source: 'organizations',
-            name: sub.alias || sub.name,
-            email: sub.email,
-            phone: sub.phone,
-            mobile: null,
-            city: sub.city,
-            status: sub.status,
-            rating: null,
-            avatar_url: null,
-            tags: sub.specialization,
-            created_at: sub.created_at,
-            contacts_count: orgContactCounts.get(sub.id) || 0,
-          });
-        }
-      }
+  //       // Mapuj podwykonawców (bez dodatkowych zapytań!)
+  //       for (const sub of subs || []) {
+  //         unified.push({
+  //           id: sub.id,
+  //           type: 'organization',
+  //           source: 'organizations',
+  //           name: sub.alias || sub.name,
+  //           email: sub.email,
+  //           phone: sub.phone,
+  //           mobile: null,
+  //           city: sub.city,
+  //           status: sub.status,
+  //           rating: null,
+  //           avatar_url: null,
+  //           tags: sub.specialization,
+  //           created_at: sub.created_at,
+  //           contacts_count: orgContactCounts.get(sub.id) || 0,
+  //         });
+  //       }
+  //     }
 
-      setLocalContacts(unified);
-      dispatch(setContacts(unified));
-    } catch (error: any) {
-      console.error('Error fetching contacts:', error);
-      showSnackbar('Błąd podczas ładowania kontaktów', 'error');
-    } finally {
-      setLoading(false);
-      dispatch(setContactsLoading(false));
-    }
-  };
+  //     setLocalContacts(unified);
+  //     dispatch(setContacts(unified));
+  //   } catch (error: any) {
+  //     console.error('Error fetching contacts:', error);
+  //     showSnackbar('Błąd podczas ładowania kontaktów', 'error');
+  //   } finally {
+  //     setLoading(false);
+  //     dispatch(setContactsLoading(false));
+  //   }
+  // };
 
   const filteredContacts = contacts
     .filter((contact) => {
       // Filtrowanie według typu (tylko dla taba "Wszystkie kontakty")
       if (activeTab === 'all' && typeFilter !== 'all') {
-        return contact.type === typeFilter;
+        return contact.entityType === typeFilter;
       }
       return true;
     })
@@ -238,7 +202,7 @@ export default function ContactsPage() {
       contact.mobile?.includes(searchTerm)
     );
 
-  const getContactTypeColor = (type: string) => {
+  const getContactTypeColor = (type: ClientEntityType) => {
     switch (type) {
       case 'organization':
         return 'bg-blue-900/30 text-blue-400';
@@ -255,18 +219,18 @@ export default function ContactsPage() {
     router.push('/crm/contacts/new');
   };
 
-  const handleContactClick = (contact: UnifiedContact) => {
+  const handleContactClick = (contact: ContactRow) => {
     router.push(`/crm/contacts/${contact.id}`);
   };
 
   const renderGridView = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {filteredContacts.map((contact) => {
-        const Icon = contactTypeIcons[contact.type];
+        const Icon = contactTypeIcons[contact.entityType as ClientEntityType];
         return (
           <div
             key={`${contact.source}-${contact.id}`}
-            onClick={() => handleContactClick(contact)}
+            onClick={() => handleContactClick(contact.raw as ContactRow)}
             className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-4 hover:border-[#d3bb73] transition-colors cursor-pointer"
           >
             <div className="flex flex-col items-center text-center mb-3">
@@ -284,10 +248,10 @@ export default function ContactsPage() {
               <h3 className="text-white font-semibold mb-1">{contact.name}</h3>
               <span
                 className={`text-xs px-2 py-1 rounded-full ${getContactTypeColor(
-                  contact.type
+                  contact.entityType as ClientEntityType
                 )}`}
               >
-                {contactTypeLabels[contact.type]}
+                {contactTypeLabels[contact.entityType as ClientEntityType]}
               </span>
             </div>
 
@@ -332,13 +296,13 @@ export default function ContactsPage() {
 
             <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between text-xs text-gray-500">
               <span>{new Date(contact.created_at).toLocaleDateString('pl-PL')}</span>
-              {contact.type === 'organization' && (
+              {contact.entityType === 'organization' && (
                 <div className="flex items-center space-x-1">
                   <Users className="w-3 h-3" />
                   <span>{contact.contacts_count || 0}</span>
                 </div>
               )}
-              {contact.type === 'contact' && contact.organizations_count! > 0 && (
+              {contact.entityType === 'contact' && contact.organizations_count! > 0 && (
                 <div className="flex items-center space-x-1">
                   <Building2 className="w-3 h-3" />
                   <span>{contact.organizations_count}</span>
@@ -354,11 +318,11 @@ export default function ContactsPage() {
   const renderListView = () => (
     <div className="space-y-2">
       {filteredContacts.map((contact) => {
-        const Icon = contactTypeIcons[contact.type];
+        const Icon = contactTypeIcons[contact.entityType as ClientEntityType];
         return (
           <div
             key={`${contact.source}-${contact.id}`}
-            onClick={() => handleContactClick(contact)}
+            onClick={() => handleContactClick(contact.raw as ContactRow)}
             className="bg-[#1a1d2e] border border-gray-700 rounded-lg p-3 hover:border-[#d3bb73] transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-4">
@@ -379,10 +343,10 @@ export default function ContactsPage() {
                   <h3 className="text-white font-semibold truncate">{contact.name}</h3>
                   <span
                     className={`text-xs px-2 py-0.5 rounded-full inline-block ${getContactTypeColor(
-                      contact.type
+                      contact.entityType as ClientEntityType
                     )}`}
                   >
-                    {contactTypeLabels[contact.type]}
+                    {contactTypeLabels[contact.entityType as ClientEntityType]}
                   </span>
                 </div>
 
@@ -435,13 +399,13 @@ export default function ContactsPage() {
                       ))}
                     </div>
                   )}
-                  {contact.type === 'organization' && (
+                  {contact.entityType === 'organization' && (
                     <div className="flex items-center space-x-1 text-gray-500">
                       <Users className="w-4 h-4" />
                       <span>{contact.contacts_count || 0}</span>
                     </div>
                   )}
-                  {contact.type === 'contact' && contact.organizations_count! > 0 && (
+                  {contact.entityType === 'contact' && contact.organizations_count! > 0 && (
                     <div className="flex items-center space-x-1 text-gray-500">
                       <Building2 className="w-4 h-4" />
                       <span>{contact.organizations_count}</span>

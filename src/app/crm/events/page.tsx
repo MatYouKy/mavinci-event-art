@@ -337,8 +337,6 @@ export default function EventsPage() {
           console.error('Error adding creator to team:', assignmentError);
         }
       }
-
-      console.log('Event saved:', data);
       showSnackbar('Event zapisany pomyślnie!', 'success');
       setIsModalOpen(false);
       await fetchEvents();

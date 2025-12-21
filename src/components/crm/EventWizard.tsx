@@ -28,6 +28,7 @@ import OfferWizard from '../../app/crm/offers/[id]/components/OfferWizzard/Offer
 import { EquipmentStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
 import { ClientType } from '@/app/crm/clients/type';
+import { useEventEquipment } from '@/app/crm/events/hooks/useEventEquipment';
 
 interface EventWizardProps {
   isOpen: boolean;
@@ -128,6 +129,11 @@ export default function EventWizard({
   const [assignSubcontractors, setAssignSubcontractors] = useState(false);
   const [selectedSubcontractors, setSelectedSubcontractors] = useState<any[]>([]);
   const [subcontractorsList, setSubcontractorsList] = useState<any[]>([]);
+
+  const { equipment } = useEventEquipment
+    (createdEventId as string);
+
+  console.log('---equipment', equipment);
 
   const steps = [
     { id: 1, name: 'Szczegóły', icon: Calendar, required: true },
@@ -1024,6 +1030,7 @@ export default function EventWizard({
                   value={participants}
                   onChange={setParticipants}
                   placeholder="Dodaj uczestników (pracownicy, kontakty lub wpisz nazwę)..."
+                  eventId={createdEventId}
                 />
                 <p className="mt-1 text-xs text-[#e5e4e2]/50">
                   Wybierz pracowników, kontakty lub wpisz imię i nazwisko ręcznie

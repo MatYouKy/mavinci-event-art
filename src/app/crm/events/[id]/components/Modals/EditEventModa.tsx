@@ -10,11 +10,15 @@ export function EditEventModal({
   onClose,
   event,
   onSave,
+  organizations,
+  contacts,
 }: {
   isOpen: boolean;
   onClose: () => void;
   event: IEvent;
   onSave: (data: any) => void;
+  organizations: any[];
+  contacts: any[];
 }) {
   const [categories, setCategories] = useState<any[]>([]);
   const [clientData, setClientData] = useState({
@@ -22,6 +26,14 @@ export function EditEventModal({
     organization_id: event.organization_id || null,
     contact_person_id: event.contact_person_id || null,
   });
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [newClientData, setNewClientData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+  });
+  const [sameAsOrganization, setSameAsOrganization] = useState(false);
   const [formData, setFormData] = useState({
     name: event.name || '',
     category_id: event.category_id || null,
@@ -33,11 +45,25 @@ export function EditEventModal({
     status: event.status || '',
   });
 
+  const handleContactChange = (value: string) => {
+    setClientData({ ...clientData, contact_person_id: value });
+    if (value === 'NEW_CLIENT') {
+      setShowNewClientForm(true);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchCategories();
     }
   }, [isOpen]);
+
+  const handleSameAsOrganization = (value: boolean) => {
+    setSameAsOrganization(value);
+    if (value) {
+      setClientData({ ...clientData, contact_person_id: clientData.organization_id });
+    }
+  };
 
   const fetchCategories = async () => {
     const { data, error } = await supabase
@@ -45,8 +71,31 @@ export function EditEventModal({
       .select('id, name, color')
       .eq('is_active', true)
       .order('name');
-    console.log('Fetched categories:', data, 'Error:', error);
     if (data) setCategories(data);
+  };
+
+  const handleCreateNewClient = async () => {
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert({
+        first_name: newClientData.first_name,
+        last_name: newClientData.last_name,
+        email: newClientData.email,
+        phone: newClientData.phone,
+        contact_type: 'individual',
+      })
+      .select('*')
+      .single();
+    if (data) {
+      setClientData({ ...clientData, contact_person_id: data.id });
+      setShowNewClientForm(false);
+    }
+  };
+
+  const toLocalDatetimeString = (utcDate: string | null): string => {
+    if (!utcDate) return '';
+    const date = new Date(utcDate);
+    return date.toISOString().slice(0, 16);
   };
 
   if (!isOpen) return null;
@@ -60,15 +109,11 @@ export function EditEventModal({
       alert('Data rozpoczęcia jest wymagana');
       return;
     }
-    if (!formData.location.trim()) {
-      alert('Lokalizacja jest wymagana');
-      return;
-    }
 
     const dataToSave = {
       name: formData.name,
       client_type: clientData.client_type,
-      organization_id: clientData.organization_id || null,
+      organization_id: clientData.organization_id && clientData.organization_id.trim() !== '' ? clientData.organization_id : null,
       contact_person_id: clientData.contact_person_id || null,
       category_id: formData.category_id || null,
       event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
@@ -80,7 +125,6 @@ export function EditEventModal({
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
     };
-    console.log('Form data to save:', dataToSave);
     onSave(dataToSave);
   };
 
@@ -110,8 +154,8 @@ export function EditEventModal({
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Organizacja (Firma)</label>
               <select
-                value={formData.organization_id}
-                onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
+                value={clientData.organization_id}
+                onChange={(e) => setClientData({ ...clientData, organization_id: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               >
                 <option value="">Wybierz organizację</option>
@@ -128,7 +172,7 @@ export function EditEventModal({
                 Osoba kontaktowa / Klient indywidualny
               </label>
               <select
-                value={showNewClientForm ? 'NEW_CLIENT' : formData.contact_person_id}
+                value={showNewClientForm ? 'NEW_CLIENT' : clientData.contact_person_id}
                 onChange={(e) => handleContactChange(e.target.value)}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               >
@@ -154,7 +198,7 @@ export function EditEventModal({
                   );
                 })}
               </select>
-              {formData.organization_id && !showNewClientForm && (
+              {clientData.organization_id && !showNewClientForm && (
                 <label className="mt-2 flex cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"
@@ -281,7 +325,7 @@ export function EditEventModal({
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Lokalizacja *</label>
             <LocationSelector
-              value={formData.location}
+              value={formData.location as unknown as string}
               onChange={(value, locationData) =>
                 setFormData({
                   ...formData,

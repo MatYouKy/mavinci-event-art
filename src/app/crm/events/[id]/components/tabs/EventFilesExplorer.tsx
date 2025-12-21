@@ -2,7 +2,32 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Folder, File, Upload, FolderPlus, Grid3x3, List, Image as ImageIcon, Download, Trash2, CreditCard as Edit2, Copy, Move, ChevronRight, ChevronDown, MoreVertical, X, FileText, FileVideo, FileAudio, Archive, ExternalLink, Eye } from 'lucide-react';
+import {
+  Folder,
+  File,
+  Upload,
+  FolderPlus,
+  Grid3x3,
+  List,
+  Image as ImageIcon,
+  Download,
+  Trash2,
+  CreditCard as Edit2,
+  Copy,
+  Move,
+  ChevronRight,
+  ChevronDown,
+  MoreVertical,
+  X,
+  FileText,
+  FileVideo,
+  FileAudio,
+  Archive,
+  ExternalLink,
+  Eye,
+} from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface FileItem {
   id: string;
@@ -38,6 +63,8 @@ interface ContextMenuState {
 }
 
 export default function EventFilesExplorer({ eventId }: { eventId: string }) {
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
@@ -50,18 +77,28 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     x: 0,
     y: 0,
     item: null,
-    type: null
+    type: null,
   });
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [renameValue, setRenameValue] = useState('');
-  const [renameItem, setRenameItem] = useState<{ id: string; type: 'file' | 'folder' } | null>(null);
+  const [renameItem, setRenameItem] = useState<{ id: string; type: 'file' | 'folder' } | null>(
+    null,
+  );
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [fileUrl, setFileUrl] = useState<string>('');
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const bulkMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const [clipboard, setClipboard] = useState<{
+    mode: 'copy' | 'cut';
+    type: 'file' | 'folder';
+    ids: string[];
+  } | null>(null);
 
   useEffect(() => {
     fetchFolders();
@@ -79,6 +116,38 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     }
   }, [contextMenu.isOpen]);
 
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!bulkMenuRef.current) return;
+      if (!bulkMenuRef.current.contains(e.target as Node)) setBulkMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  useEffect(() => {
+    if (selectedItems.size === 0) setBulkMenuOpen(false);
+  }, [selectedItems.size]);
+
+  const lastClickedRef = useRef<string | null>(null);
+
+  const toggleSelect = (id: string, opts?: { forceMulti?: boolean; event?: React.MouseEvent }) => {
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+
+      const e = opts?.event;
+      const multi = opts?.forceMulti || !!(e && (e.ctrlKey || e.metaKey));
+
+      if (!multi) next.clear();
+
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+
+      lastClickedRef.current = id;
+      return next;
+    });
+  };
+
   const fetchFolders = async () => {
     const { data, error } = await supabase
       .from('event_folders')
@@ -93,10 +162,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
   };
 
   const fetchFiles = async () => {
-    const query = supabase
-      .from('event_files')
-      .select('*')
-      .eq('event_id', eventId);
+    const query = supabase.from('event_files').select('*').eq('event_id', eventId);
 
     if (currentFolder) {
       query.eq('folder_id', currentFolder);
@@ -115,11 +181,11 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     const folderMap = new Map<string, FolderItem>();
     const rootFolders: FolderItem[] = [];
 
-    flatFolders.forEach(folder => {
+    flatFolders.forEach((folder) => {
       folderMap.set(folder.id, { ...folder, children: [] });
     });
 
-    folderMap.forEach(folder => {
+    folderMap.forEach((folder) => {
       if (folder.parent_folder_id === null) {
         rootFolders.push(folder);
       } else {
@@ -144,7 +210,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     let folderId: string | null = currentFolder;
 
     while (folderId) {
-      const folder = allFolders.find(f => f.id === folderId);
+      const folder = allFolders.find((f) => f.id === folderId);
       if (folder) {
         crumbs.unshift(folder);
         folderId = folder.parent_folder_id;
@@ -156,27 +222,136 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     setBreadcrumbs(crumbs);
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedItems.size === 0) return;
+
+    const confirmed = await showConfirm(`Usunąć ${selectedItems.size} elementów?`);
+    if (!confirmed) return;
+
+    const ids = Array.from(selectedItems);
+
+    // w tym MVP: kasujemy tylko pliki (foldery zbiorczo to osobny temat: rekurencja)
+    const toDeleteFiles = files.filter((f) => ids.includes(f.id));
+
+    // 1) usuń ze storage
+    const paths = toDeleteFiles.map((f) => f.file_path);
+    if (paths.length) {
+      const { error: stErr } = await supabase.storage.from('event-files').remove(paths);
+      if (stErr) console.error(stErr);
+    }
+
+    // 2) usuń rekordy z DB
+    const { error } = await supabase
+      .from('event_files')
+      .delete()
+      .in(
+        'id',
+        toDeleteFiles.map((f) => f.id),
+      );
+    showSnackbar('Pliki zostały usunięte', 'success');
+    if (error) {
+      console.error(error);
+      showSnackbar('Błąd podczas usuwania', 'error');
+      return;
+    }
+
+    setSelectedItems(new Set());
+    fetchFiles();
+  };
+
+  const handleBulkCopy = () => {
+    const ids = Array.from(selectedItems);
+    const fileIds = files.filter((f) => ids.includes(f.id)).map((f) => f.id);
+    if (!fileIds.length) return;
+
+    setClipboard({ mode: 'copy', type: 'file', ids: fileIds });
+    showSnackbar('Pliki zostały skopiowane', 'success');
+  };
+
+  const handleBulkCut = () => {
+    const ids = Array.from(selectedItems);
+    const fileIds = files.filter((f) => ids.includes(f.id)).map((f) => f.id);
+    if (!fileIds.length) return;
+
+    setClipboard({ mode: 'cut', type: 'file', ids: fileIds });
+    showSnackbar('Pliki zostały wycięte', 'success');
+  };
+
+  const handlePaste = async () => {
+    if (!clipboard) return;
+
+    if (clipboard.type === 'file') {
+      const selected = files.filter((f) => clipboard.ids.includes(f.id));
+      if (!selected.length) return;
+
+      for (const f of selected) {
+        if (clipboard.mode === 'copy') {
+          // 1) skopiuj w storage do nowej ścieżki
+          const ext = f.original_name.split('.').pop();
+          const newPath = `${eventId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+          const { error: copyErr } = await supabase.storage
+            .from('event-files')
+            .copy(f.file_path, newPath);
+
+          if (copyErr) {
+            console.error(copyErr);
+            continue;
+          }
+
+          // 2) dodaj rekord w DB
+          await supabase.from('event_files').insert([
+            {
+              event_id: eventId,
+              folder_id: currentFolder,
+              name: f.name,
+              original_name: f.original_name,
+              file_path: newPath,
+              file_size: f.file_size,
+              mime_type: f.mime_type,
+              thumbnail_url: f.thumbnail_url ?? null,
+              uploaded_by: f.uploaded_by,
+            },
+          ]);
+        }
+
+        if (clipboard.mode === 'cut') {
+          // “cut” jako przeniesienie do folderu: update folder_id
+          await supabase.from('event_files').update({ folder_id: currentFolder }).eq('id', f.id);
+        }
+      }
+    }
+
+    if (clipboard.mode === 'cut') setClipboard(null);
+    setSelectedItems(new Set());
+    fetchFiles();
+    showSnackbar('Pliki zostały wklejone', 'success');
+  };
+
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session?.user?.id) return;
 
-    const { error } = await supabase
-      .from('event_folders')
-      .insert([{
+    const { error } = await supabase.from('event_folders').insert([
+      {
         event_id: eventId,
         parent_folder_id: currentFolder,
         name: newFolderName.trim(),
-        created_by: session.user.id
-      }]);
+        created_by: session.user.id,
+      },
+    ]);
 
     if (!error) {
       setShowNewFolderModal(false);
       setNewFolderName('');
       fetchFolders();
+      showSnackbar('Folder został utworzony', 'success');
     } else {
-      alert('Błąd podczas tworzenia folderu');
+      showSnackbar('Błąd podczas tworzenia folderu', 'error');
     }
   };
 
@@ -185,8 +360,12 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     if (!uploadedFiles || uploadedFiles.length === 0) return;
 
     setUploading(true);
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
     if (!session?.user?.id) {
+      showSnackbar('Błąd podczas dodawania plików', 'error');
       setUploading(false);
       return;
     }
@@ -198,19 +377,20 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       const { error: uploadError } = await supabase.storage
         .from('event-files')
         .upload(fileName, file);
+      showSnackbar('Plik został dodany', 'success');
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
+        showSnackbar('Błąd podczas dodawania plików', 'error');
         continue;
       }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-files')
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('event-files').getPublicUrl(fileName);
 
-      await supabase
-        .from('event_files')
-        .insert([{
+      await supabase.from('event_files').insert([
+        {
           event_id: eventId,
           folder_id: currentFolder,
           name: file.name,
@@ -219,8 +399,10 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
           file_size: file.size,
           mime_type: file.type,
           thumbnail_url: file.type.startsWith('image/') ? publicUrl : null,
-          uploaded_by: session.user.id
-        }]);
+          uploaded_by: session.user.id,
+        },
+      ]);
+      showSnackbar('Plik został dodany', 'success');
     }
 
     setUploading(false);
@@ -241,6 +423,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
 
       if (!error) {
         fetchFolders();
+        showSnackbar('Nazwa folderu została zmieniona', 'success');
       }
     } else {
       const { error } = await supabase
@@ -250,6 +433,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
 
       if (!error) {
         fetchFiles();
+        showSnackbar('Nazwa pliku została zmieniona', 'success');
       }
     }
 
@@ -259,31 +443,34 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
   };
 
   const handleDelete = async (id: string, type: 'file' | 'folder') => {
-    if (!confirm(`Czy na pewno chcesz usunąć ten ${type === 'folder' ? 'folder' : 'plik'}?`)) return;
+    const confirmed = await showConfirm(
+      `Czy na pewno chcesz usunąć ten ${type === 'folder' ? 'folder' : 'plik'}?`,
+    );
+    if (!confirmed) return;
+
+    showSnackbar(`${type === 'folder' ? 'Folder' : 'Plik'} został usunięty`, 'success');
 
     if (type === 'folder') {
-      const { error } = await supabase
-        .from('event_folders')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('event_folders').delete().eq('id', id);
 
       if (!error) {
         fetchFolders();
+        showSnackbar('Folder został usunięty', 'success');
+      } else {
+        showSnackbar('Błąd podczas usuwania folderu', 'error');
       }
     } else {
-      const file = files.find(f => f.id === id);
+      const file = files.find((f) => f.id === id);
       if (file) {
-        await supabase.storage
-          .from('event-files')
-          .remove([file.file_path]);
+        await supabase.storage.from('event-files').remove([file.file_path]);
 
-        const { error } = await supabase
-          .from('event_files')
-          .delete()
-          .eq('id', id);
+        const { error } = await supabase.from('event_files').delete().eq('id', id);
 
         if (!error) {
           fetchFiles();
+          showSnackbar('Plik został usunięty', 'success');
+        } else {
+          showSnackbar('Błąd podczas usuwania pliku', 'error');
         }
       }
     }
@@ -292,9 +479,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
   const handlePreview = async (file: FileItem) => {
     // Dla obrazków pokazujemy modal z podglądem
     if (file.mime_type.startsWith('image/')) {
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-files')
-        .getPublicUrl(file.file_path);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('event-files').getPublicUrl(file.file_path);
       setFileUrl(publicUrl);
       setPreviewFile(file);
       return;
@@ -310,17 +497,15 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     } else {
       console.error('Error creating signed URL:', error);
       // Fallback do public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-files')
-        .getPublicUrl(file.file_path);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('event-files').getPublicUrl(file.file_path);
       window.open(publicUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
   const handleDownload = async (file: FileItem) => {
-    const { data } = await supabase.storage
-      .from('event-files')
-      .download(file.file_path);
+    const { data } = await supabase.storage.from('event-files').download(file.file_path);
 
     if (data) {
       const url = URL.createObjectURL(data);
@@ -331,17 +516,24 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      showSnackbar('Plik został pobrany', 'success');
+    } else {
+      showSnackbar('Błąd podczas pobierania pliku', 'error');
     }
   };
 
-  const handleContextMenu = (e: React.MouseEvent, item: FileItem | FolderItem, type: 'file' | 'folder') => {
+  const handleContextMenu = (
+    e: React.MouseEvent,
+    item: FileItem | FolderItem,
+    type: 'file' | 'folder',
+  ) => {
     e.preventDefault();
     setContextMenu({
       isOpen: true,
       x: e.clientX,
       y: e.clientY,
       item,
-      type
+      type,
     });
   };
 
@@ -353,9 +545,12 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     if (droppedFiles.length === 0) return;
 
     setUploading(true);
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session?.user?.id) {
       setUploading(false);
+      showSnackbar('Błąd podczas dodawania plików', 'error');
       return;
     }
 
@@ -369,16 +564,16 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
+        showSnackbar('Błąd podczas dodawania plików', 'error');
         continue;
       }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-files')
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('event-files').getPublicUrl(fileName);
 
-      await supabase
-        .from('event_files')
-        .insert([{
+      await supabase.from('event_files').insert([
+        {
           event_id: eventId,
           folder_id: currentFolder,
           name: file.name,
@@ -387,20 +582,26 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
           file_size: file.size,
           mime_type: file.type,
           thumbnail_url: file.type.startsWith('image/') ? publicUrl : null,
-          uploaded_by: session.user.id
-        }]);
+          uploaded_by: session.user.id,
+        },
+      ]);
     }
 
     setUploading(false);
     fetchFiles();
+    showSnackbar('Pliki zostały dodane', 'success');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5" />;
-    if (mimeType.startsWith('video/')) return <FileVideo className="w-5 h-5" />;
-    if (mimeType.startsWith('audio/')) return <FileAudio className="w-5 h-5" />;
-    if (mimeType.includes('zip') || mimeType.includes('rar')) return <Archive className="w-5 h-5" />;
-    return <FileText className="w-5 h-5" />;
+    if (mimeType.startsWith('image/')) return <ImageIcon className="h-5 w-5" />;
+    if (mimeType.startsWith('video/')) return <FileVideo className="h-5 w-5" />;
+    if (mimeType.startsWith('audio/')) return <FileAudio className="h-5 w-5" />;
+    if (mimeType.includes('zip') || mimeType.includes('rar'))
+      return <Archive className="h-5 w-5" />;
+    return <FileText className="h-5 w-5" />;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -427,56 +628,58 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
   });
 
   const renderFolderTree = (foldersList: FolderItem[], level = 0) => {
-    return foldersList.map(folder => (
+    return foldersList.map((folder) => (
       <div key={folder.id} style={{ marginLeft: `${level * 16}px` }}>
         <div
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-[#d3bb73]/10 transition-colors ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-[#d3bb73]/10 ${
             currentFolder === folder.id ? 'bg-[#d3bb73]/20' : ''
           }`}
           onClick={() => setCurrentFolder(folder.id)}
           onContextMenu={(e) => handleContextMenu(e, folder, 'folder')}
         >
           {folder.children && folder.children.length > 0 ? (
-            <ChevronDown className="w-4 h-4 text-[#e5e4e2]/60" />
+            <ChevronDown className="h-4 w-4 text-[#e5e4e2]/60" />
           ) : (
-            <ChevronRight className="w-4 h-4 text-[#e5e4e2]/60" />
+            <ChevronRight className="h-4 w-4 text-[#e5e4e2]/60" />
           )}
-          <Folder className="w-4 h-4 text-[#d3bb73]" />
+          <Folder className="h-4 w-4 text-[#d3bb73]" />
           <span className="text-sm text-[#e5e4e2]">{folder.name}</span>
         </div>
-        {folder.children && folder.children.length > 0 && renderFolderTree(folder.children, level + 1)}
+        {folder.children &&
+          folder.children.length > 0 &&
+          renderFolderTree(folder.children, level + 1)}
       </div>
     ));
   };
 
   return (
-    <div className="flex h-[600px] bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-      <div className="w-64 border-r border-[#d3bb73]/10 p-4 overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
+    <div className="flex h-[600px] overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+      <div className="w-64 overflow-y-auto border-r border-[#d3bb73]/10 p-4">
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-medium text-[#e5e4e2]">Foldery</h3>
           <button
             onClick={() => setShowNewFolderModal(true)}
-            className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+            className="rounded p-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
           >
-            <FolderPlus className="w-4 h-4" />
+            <FolderPlus className="h-4 w-4" />
           </button>
         </div>
 
         <div
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-[#d3bb73]/10 transition-colors mb-2 ${
+          className={`mb-2 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-[#d3bb73]/10 ${
             currentFolder === null ? 'bg-[#d3bb73]/20' : ''
           }`}
           onClick={() => setCurrentFolder(null)}
         >
-          <Folder className="w-4 h-4 text-[#d3bb73]" />
+          <Folder className="h-4 w-4 text-[#d3bb73]" />
           <span className="text-sm text-[#e5e4e2]">Główny folder</span>
         </div>
 
         {renderFolderTree(folders)}
       </div>
 
-      <div className="flex-1 flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-[#d3bb73]/10">
+      <div className="flex flex-1 flex-col">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentFolder(null)}
@@ -486,7 +689,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
             </button>
             {breadcrumbs.map((crumb, idx) => (
               <div key={crumb.id} className="flex items-center gap-2">
-                <ChevronRight className="w-4 h-4 text-[#e5e4e2]/40" />
+                <ChevronRight className="h-4 w-4 text-[#e5e4e2]/40" />
                 <button
                   onClick={() => setCurrentFolder(crumb.id)}
                   className="text-sm text-[#d3bb73] hover:underline"
@@ -498,10 +701,78 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {selectedItems.size > 0 && (
+              <div className="relative mr-2 flex items-center gap-2" ref={bulkMenuRef}>
+                <span className="text-xs text-[#e5e4e2]/60">{selectedItems.size}</span>
+
+                <button
+                  type="button"
+                  onClick={() => setBulkMenuOpen((v) => !v)}
+                  className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10"
+                  title="Akcje"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+
+                {bulkMenuOpen && (
+                  <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-48 overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] shadow-xl">
+                    <button
+                      onClick={() => {
+                        handleBulkCopy();
+                        setBulkMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                    >
+                      <Copy className="h-4 w-4 text-[#d3bb73]" />
+                      Kopiuj
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        handleBulkCut();
+                        setBulkMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                    >
+                      <Move className="h-4 w-4 text-[#d3bb73]" />
+                      Wytnij
+                    </button>
+
+                    <div className="h-px bg-[#d3bb73]/10" />
+
+                    <button
+                      onClick={() => {
+                        handleBulkDelete();
+                        setBulkMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-300 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Usuń
+                    </button>
+                  </div>
+                )}
+                {clipboard && (
+                  <>
+                    <div className="h-px bg-[#d3bb73]/10" />
+                    <button
+                      onClick={() => {
+                        handlePaste();
+                        setBulkMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 bg-[#d3bb73] px-4 py-2 text-left text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                    >
+                      Wklej
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortBy)}
-              className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-3 py-1 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="name">Nazwa</option>
               <option value="date">Data</option>
@@ -509,39 +780,45 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
               <option value="type">Typ</option>
             </select>
 
-            <div className="flex items-center gap-1 border border-[#d3bb73]/20 rounded-lg p-1">
+            <div className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 p-1">
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-1 rounded transition-colors ${
-                  viewMode === 'list' ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10'
+                className={`rounded p-1 transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10'
                 }`}
               >
-                <List className="w-4 h-4" />
+                <List className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-1 rounded transition-colors ${
-                  viewMode === 'grid' ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10'
+                className={`rounded p-1 transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10'
                 }`}
               >
-                <Grid3x3 className="w-4 h-4" />
+                <Grid3x3 className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setViewMode('thumbnails')}
-                className={`p-1 rounded transition-colors ${
-                  viewMode === 'thumbnails' ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10'
+                className={`rounded p-1 transition-colors ${
+                  viewMode === 'thumbnails'
+                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10'
                 }`}
               >
-                <ImageIcon className="w-4 h-4" />
+                <ImageIcon className="h-4 w-4" />
               </button>
             </div>
 
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
-              <Upload className="w-4 h-4" />
+              <Upload className="h-4 w-4" />
               {uploading ? 'Uploading...' : 'Upload'}
             </button>
             <input
@@ -555,62 +832,81 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
         </div>
 
         <div
-          className="flex-1 p-4 overflow-y-auto"
+          className="flex-1 overflow-y-auto p-4"
           onDrop={handleDrop}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
           onDragLeave={() => setDragOver(false)}
         >
           {dragOver && (
-            <div className="absolute inset-0 bg-[#d3bb73]/10 border-2 border-dashed border-[#d3bb73] rounded-lg flex items-center justify-center z-10">
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73] bg-[#d3bb73]/10">
               <div className="text-center">
-                <Upload className="w-12 h-12 text-[#d3bb73] mx-auto mb-2" />
+                <Upload className="mx-auto mb-2 h-12 w-12 text-[#d3bb73]" />
                 <p className="text-[#e5e4e2]">Upuść pliki tutaj</p>
               </div>
             </div>
           )}
 
           {sortedFiles.length === 0 ? (
-            <div className="text-center py-12">
-              <File className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
+            <div className="py-12 text-center">
+              <File className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak plików w tym folderze</p>
-              <p className="text-sm text-[#e5e4e2]/40 mt-2">
+              <p className="mt-2 text-sm text-[#e5e4e2]/40">
                 Przeciągnij i upuść pliki lub kliknij Upload
               </p>
             </div>
           ) : viewMode === 'list' ? (
-            <div className="space-y-1">
-              {sortedFiles.map(file => (
+            <div className="space-y-1" onClick={() => setSelectedItems(new Set())}>
+              {sortedFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#d3bb73]/5 cursor-pointer group"
+                  className={`group flex cursor-pointer items-center gap-3 rounded-lg p-3 ${selectedItems.has(file.id) ? 'border border-[#d3bb73]/30 bg-[#d3bb73]/15' : 'hover:bg-[#d3bb73]/5'} `}
+                  onClick={(e) => toggleSelect(file.id, { event: e })}
+                  onDoubleClick={() => handlePreview(file)} // ✅ podgląd na double click
                   onContextMenu={(e) => handleContextMenu(e, file, 'file')}
                 >
-                  <div className="text-[#d3bb73]">
-                    {getFileIcon(file.mime_type)}
+                  <div
+                    className={`transition-opacity ${
+                      selectedItems.has(file.id)
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.has(file.id)}
+                      onChange={() => toggleSelect(file.id, { forceMulti: true })}
+                      className="h-4 w-4 accent-[#d3bb73]"
+                    />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-[#e5e4e2] truncate">{file.name}</p>
+                  <div className="text-[#d3bb73]">{getFileIcon(file.mime_type)}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-[#e5e4e2]">{file.name}</p>
                     <p className="text-xs text-[#e5e4e2]/40">
-                      {formatFileSize(file.file_size)} • {new Date(file.created_at).toLocaleDateString('pl-PL')}
+                      {formatFileSize(file.file_size)} •{' '}
+                      {new Date(file.created_at).toLocaleDateString('pl-PL')}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handlePreview(file);
                       }}
-                      className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
+                      className="rounded p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
                       title="Podgląd"
                     >
-                      <Eye className="w-4 h-4" />
+                      <Eye className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDownload(file)}
-                      className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
+                      className="rounded p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
                       title="Pobierz"
                     >
-                      <Download className="w-4 h-4" />
+                      <Download className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => {
@@ -618,15 +914,15 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                         setRenameValue(file.name);
                         setShowRenameModal(true);
                       }}
-                      className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
+                      className="rounded p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(file.id, 'file')}
-                      className="p-1 text-red-400 hover:bg-red-400/10 rounded"
+                      className="rounded p-1 text-red-400 hover:bg-red-400/10"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -634,27 +930,25 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
             </div>
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-4 gap-4">
-              {sortedFiles.map(file => (
+              {sortedFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 cursor-pointer group"
+                  className="group cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 hover:border-[#d3bb73]/30"
                   onContextMenu={(e) => handleContextMenu(e, file, 'file')}
                   onClick={() => handlePreview(file)}
                 >
-                  <div className="text-[#d3bb73] mb-3">
-                    {getFileIcon(file.mime_type)}
-                  </div>
-                  <p className="text-sm text-[#e5e4e2] truncate mb-1">{file.name}</p>
+                  <div className="mb-3 text-[#d3bb73]">{getFileIcon(file.mime_type)}</div>
+                  <p className="mb-1 truncate text-sm text-[#e5e4e2]">{file.name}</p>
                   <p className="text-xs text-[#e5e4e2]/40">{formatFileSize(file.file_size)}</p>
                 </div>
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-5 gap-4">
-              {sortedFiles.map(file => (
+              {sortedFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg overflow-hidden hover:border-[#d3bb73]/30 cursor-pointer group"
+                  className="group cursor-pointer overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] hover:border-[#d3bb73]/30"
                   onContextMenu={(e) => handleContextMenu(e, file, 'file')}
                   onClick={() => handlePreview(file)}
                 >
@@ -662,17 +956,15 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                     <img
                       src={file.thumbnail_url}
                       alt={file.name}
-                      className="w-full h-32 object-cover"
+                      className="h-32 w-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-32 bg-[#1c1f33] flex items-center justify-center">
-                      <div className="text-[#d3bb73]">
-                        {getFileIcon(file.mime_type)}
-                      </div>
+                    <div className="flex h-32 w-full items-center justify-center bg-[#1c1f33]">
+                      <div className="text-[#d3bb73]">{getFileIcon(file.mime_type)}</div>
                     </div>
                   )}
                   <div className="p-2">
-                    <p className="text-xs text-[#e5e4e2] truncate">{file.name}</p>
+                    <p className="truncate text-xs text-[#e5e4e2]">{file.name}</p>
                   </div>
                 </div>
               ))}
@@ -683,7 +975,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
 
       {contextMenu.isOpen && (
         <div
-          className="fixed bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg shadow-lg py-2 z-50"
+          className="fixed z-50 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 shadow-lg"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {contextMenu.type === 'file' && contextMenu.item && (
@@ -693,9 +985,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   handlePreview(contextMenu.item as FileItem);
                   setContextMenu({ ...contextMenu, isOpen: false });
                 }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
               >
-                <Eye className="w-4 h-4" />
+                <Eye className="h-4 w-4" />
                 Podgląd
               </button>
               <button
@@ -703,9 +995,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   handleDownload(contextMenu.item as FileItem);
                   setContextMenu({ ...contextMenu, isOpen: false });
                 }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
               >
-                <Download className="w-4 h-4" />
+                <Download className="h-4 w-4" />
                 Pobierz
               </button>
               <button
@@ -715,9 +1007,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   setShowRenameModal(true);
                   setContextMenu({ ...contextMenu, isOpen: false });
                 }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
               >
-                <Edit2 className="w-4 h-4" />
+                <Edit2 className="h-4 w-4" />
                 Zmień nazwę
               </button>
               <button
@@ -725,9 +1017,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   handleDelete(contextMenu.item!.id, 'file');
                   setContextMenu({ ...contextMenu, isOpen: false });
                 }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-400/10"
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-400/10"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="h-4 w-4" />
                 Usuń
               </button>
             </>
@@ -741,9 +1033,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   setShowRenameModal(true);
                   setContextMenu({ ...contextMenu, isOpen: false });
                 }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
               >
-                <Edit2 className="w-4 h-4" />
+                <Edit2 className="h-4 w-4" />
                 Zmień nazwę
               </button>
               <button
@@ -751,9 +1043,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   handleDelete(contextMenu.item!.id, 'folder');
                   setContextMenu({ ...contextMenu, isOpen: false });
                 }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-400/10"
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-400/10"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="h-4 w-4" />
                 Usuń
               </button>
             </>
@@ -762,9 +1054,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       )}
 
       {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-light text-[#e5e4e2]">Nowy folder</h3>
               <button
                 onClick={() => {
@@ -773,7 +1065,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                 }}
                 className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <input
@@ -781,10 +1073,10 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               placeholder="Nazwa folderu"
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] mb-4 focus:outline-none focus:border-[#d3bb73]"
+              className="mb-4 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
             />
-            <div className="flex gap-2 justify-end">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowNewFolderModal(false);
@@ -796,7 +1088,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
               </button>
               <button
                 onClick={handleCreateFolder}
-                className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
+                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
               >
                 Utwórz
               </button>
@@ -806,9 +1098,9 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       )}
 
       {showRenameModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-light text-[#e5e4e2]">Zmień nazwę</h3>
               <button
                 onClick={() => {
@@ -818,7 +1110,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                 }}
                 className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <input
@@ -826,10 +1118,10 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               placeholder="Nowa nazwa"
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] mb-4 focus:outline-none focus:border-[#d3bb73]"
+              className="mb-4 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               onKeyDown={(e) => e.key === 'Enter' && handleRename()}
             />
-            <div className="flex gap-2 justify-end">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowRenameModal(false);
@@ -842,7 +1134,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
               </button>
               <button
                 onClick={handleRename}
-                className="bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
+                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
               >
                 Zapisz
               </button>
@@ -852,13 +1144,14 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       )}
 
       {previewFile && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-[#d3bb73]/10">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-light text-[#e5e4e2] truncate">{previewFile.name}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-lg font-light text-[#e5e4e2]">{previewFile.name}</h3>
                 <p className="text-sm text-[#e5e4e2]/60">
-                  {formatFileSize(previewFile.file_size)} • {new Date(previewFile.created_at).toLocaleDateString('pl-PL')}
+                  {formatFileSize(previewFile.file_size)} •{' '}
+                  {new Date(previewFile.created_at).toLocaleDateString('pl-PL')}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -866,35 +1159,35 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   href={fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                  className="rounded p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                   title="Otwórz w nowej karcie"
                 >
-                  <ExternalLink className="w-5 h-5" />
+                  <ExternalLink className="h-5 w-5" />
                 </a>
                 <button
                   onClick={() => handleDownload(previewFile)}
-                  className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                  className="rounded p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                   title="Pobierz"
                 >
-                  <Download className="w-5 h-5" />
+                  <Download className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => {
                     setPreviewFile(null);
                     setFileUrl('');
                   }}
-                  className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#e5e4e2]/10 rounded transition-colors"
+                  className="rounded p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 bg-[#1c1f33] flex items-center justify-center">
+            <div className="flex flex-1 items-center justify-center overflow-auto bg-[#1c1f33] p-4">
               <img
                 src={fileUrl}
                 alt={previewFile.name}
-                className="max-w-full max-h-full object-contain"
+                className="max-h-full max-w-full object-contain"
                 style={{ maxHeight: '80vh' }}
               />
             </div>

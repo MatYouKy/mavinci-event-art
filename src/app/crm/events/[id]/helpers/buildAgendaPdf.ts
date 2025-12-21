@@ -28,60 +28,25 @@ export const buildAgendaHtml = ({
   clientContact: string;
   contactName: string;
   contactNumber: string;
-  agendaItems: { time: string; title: string; description: string }[];
+  agendaItems: Array<{ time?: string; title?: string; description?: string }>;
   agendaNotes?: AgendaNote[];
   lastUpdated?: string;
   authorName: string;
   authorNumber: string;
 }) => {
-  const rows = agendaItems
-    .map(
-      (item) => `
-        <tr>
-          <td style="padding:6px 10px;border:1px solid #ddd;">${item.time || ''}</td>
-          <td style="padding:6px 10px;border:1px solid #ddd;font-weight:600;">
-            ${item.title || ''}
-          </td>
-          <td style="padding:6px 10px;border:1px solid #ddd;">${item.description || ''}</td>
-        </tr>
-      `,
-    )
-    .join('');
+  let rowNumber = 1;
 
-  const renderNotes = (notes: AgendaNote[]): string => {
-    if (!notes || notes.length === 0) return '';
-
-    return notes
-      .map((note) => {
-        const indent = note.level * 20;
-        const children =
-          note.children && note.children.length > 0 ? renderNotes(note.children) : '';
-
-        return `
-          <div style="margin-left:${indent}px;margin-bottom:6px;">
-            <div style="display:flex;align-items:start;">
-              <span style="margin-right:8px;color:#666;">•</span>
-              <span>${note.content || ''}</span>
-            </div>
-            ${children}
-          </div>
-        `;
-      })
-      .join('');
-  };
+  const esc = (s: any) =>
+    String(s ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
 
   const formatLastUpdated = (dateStr?: string): string => {
-    if (!dateStr)
-      return new Date().toLocaleString('pl-PL', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-
-    const date = new Date(dateStr);
-    return date.toLocaleString('pl-PL', {
+    const d = dateStr ? new Date(dateStr) : new Date();
+    return d.toLocaleString('pl-PL', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -90,153 +55,260 @@ export const buildAgendaHtml = ({
     });
   };
 
-  const notesHtml =
-    agendaNotes && agendaNotes.length > 0
-      ? `
-      <h2 style="padding-top: 16px; border-top: 0.5px solid #333;">Uwagi</h2>
-      <div style="margin-top:8px;line-height:1.6;margin-bottom:24px;">
-        ${renderNotes(agendaNotes)}
-      </div>
+  const clean = (v: any) => String(v ?? '').trim();
+
+  const rows =
+    (agendaItems || [])
+      .map((item) => {
+        const t = clean(item?.time) || '—';
+        const title = clean(item?.title) || '—';
+        const desc = clean(item?.description) || ' ';
+
+        return `
+          <tr class="row">
+            <td class="lp">${rowNumber++}</td>
+            <td class="time">${esc(t)}</td>
+            <td class="topic">
+              <div class="topic-inner">
+                <div class="title-line">${esc(title)}</div>
+                <div class="desc-line"><em>${esc(desc)}</em></div>
+              </div>
+            </td>
+          </tr>
+        `;
+      })
+      .join('') ||
     `
+      <tr class="row">
+        <td colspan="3" style="padding:10px;text-align:center;color:#999;">
+          Brak pozycji w agendzie
+        </td>
+      </tr>
+    `;
+
+  const renderNotes = (notes: AgendaNote[]): string => {
+    if (!notes || notes.length === 0) return '';
+
+    return notes
+      .map((note) => {
+        const lvl = Number(note.level ?? 0);
+        const indent = Math.min(4, Math.max(0, lvl)) * 12; // ograniczamy, żeby nie “uciekało”
+        const children = note.children?.length ? renderNotes(note.children) : '';
+
+        return `
+          <div class="note" style="margin-left:${indent}px">
+            <div class="note-row">
+              <span class="dot">•</span>
+              <span class="note-text">${esc(note.content || '')}</span>
+            </div>
+            ${children}
+          </div>
+        `;
+      })
+      .join('');
+  };
+
+  const notesHtml =
+    agendaNotes && agendaNotes.length
+      ? `
+        <div class="notes-block">
+          <div class="notes-title">Uwagi</div>
+          <div class="notes-list">
+            ${renderNotes(agendaNotes)}
+          </div>
+        </div>
+      `
       : '';
 
-  return `
-<!DOCTYPE html>
+  const timeRange =
+    [clean(startTime), clean(endTime)].filter(Boolean).length > 0
+      ? `${clean(startTime) || '—'} – ${clean(endTime) || '—'}`
+      : '—';
+
+  return `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8" />
-  <title>Agenda – ${eventName}</title>
+  <title>Agenda – ${esc(eventName)}</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100vh;
-    }
+    @page { size: A4; margin: 10mm 10mm 18mm 10mm; }
+
+    html, body { margin: 0; padding: 0; }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 12px;
       color: #111827;
-      padding: 24px 24px 0 24px;
-      display: flex;
-      flex-direction: column;
-      min-height: 297mm;
-      height: 100%;
+      font-size: 9.5px;
+      line-height: 1.2;
+      padding-bottom: 18mm;
     }
-    .page-container {
-      height: calc(297mm - 120px);
-      position: relative;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-    }
-    .content {
-      flex: 1;
-      height: 100%;
-    }
+
+    /* header identyczny vibe jak checklista */
     .header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 16px;
-    }
-    .header-left {
-      flex: 1;
-      padding-right: 16px;
-    }
-    .header-right {
-      flex-shrink: 0;
-      min-width: 220px;
-      text-align: right;
-    }
-    .logo {
-      max-width: 150px;
-      height: auto;
-      filter: grayscale(100%);
-      margin-top: 12px;
-      margin-left: auto;
-      display: block;
-    }
-    h1 {
-      font-size: 20px;
-      margin: 0 0 8px;
-    }
-    h2 {
-      font-size: 14px;
-      margin: 8px 0;
-    }
-    .meta {
-      margin-bottom: 12px;
-      font-size: 12px;
-      line-height: 1.5;
-    }
-    .meta-row {
-      margin-bottom: 2px;
-    }
-    .meta-right {
+      gap: 12px;
+      padding-bottom: 8px;
       margin-bottom: 8px;
     }
+
+    h1 {
+      font-size: 16px;
+      margin: 0 0 6px;
+      font-weight: 700;
+    }
+
+    .meta { font-size: 10px; }
+    .meta-row { margin-bottom: 2px; }
+
+    .right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      text-align: right;
+      min-width: 160px;
+    }
+
+    .logo {
+      max-width: 105px;
+      height: auto;
+      margin-bottom: 4px;
+      filter: grayscale(100%);
+    }
+
+    .stamp {
+      margin-top: 4px;
+      font-size: 9px;
+      color: #6b7280;
+    }
+
+    /* tabela */
     table {
       border-collapse: collapse;
       width: 100%;
-      margin-top: 8px;
+      table-layout: fixed;
     }
+
+    thead { display: table-header-group; }
+
+    th, td { border: 1px solid #333; }
+    td { vertical-align: top; padding: 0px 6px; }
+
     th {
-      text-align: left;
-      padding: 6px 10px;
-      border: 1px solid #ddd;
       background: #f3f4f6;
-      font-size: 11px;
+      font-size: 9px;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      padding: 0 6px 6px 6px;
     }
+
+    tr.row { break-inside: avoid; page-break-inside: avoid; height: 10mm; }
+
+    .lp { width: 9mm; text-align: center; }
+    .time { width: 18mm; text-align: center; font-weight: 700; align-items: center; }
+
+    .lp,
+    .time {
+      text-align: center;
+      vertical-align: middle;
+      font-weight: 700;
+    }
+    .title { width: 46mm; font-weight: 800; line-height: 1.05; }
+    .topic { padding: 4px 8px; vertical-align: top;}
+    .desc { width: auto; line-height: 1.05; }
+    .tick {
+      width: 12mm;
+      padding: 0;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .topic-inner{
+      display: block; 
+    }
+
+    .cb {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 1.6px solid #111;
+      box-sizing: border-box;
+    }
+
+    /* uwagi */
+    .notes-block {
+      margin-top: 10px;
+      padding-top: 8px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .notes-title {
+      font-size: 11px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .notes-list { font-size: 10px; line-height: 1.25; }
+
+    .note { margin-bottom: 5px; }
+    .note-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .dot { color: #6b7280; }
+    .note-text { color: #111827; }
+
+    .title-line {
+      font-size: 10.5px;
+      font-weight: 800;
+      line-height: 1.2;
+      margin: 0;
+    }
+    .desc-line {
+      margin-top: 3px;
+      font-size: 9.5px;
+      line-height: 1.35;
+      color: #6b7280;
+    }
+    .desc-line em { font-style: italic; }
   </style>
 </head>
 <body>
-  <div class="page-container">
-    <div class="content">
-      <div class="header">
-        <div class="header-left">
-          <h1>Agenda wydarzenia</h1>
-          <div class="meta">
-            <div class="meta-row"><strong>Nazwa:</strong> ${eventName}</div>
-            <div class="meta-row"><strong>Klient:</strong> ${clientContact || '-'}</div>
-            <div class="meta-row"><strong>Osoba kontaktowa:</strong> ${contactName || '-'}</div>
-            <div class="meta-row"><strong>Telefon kontaktowy:</strong> ${contactNumber || '-'}</div>
-            <div class="meta-row"><strong>Data:</strong> ${eventDate || '-'}</div>
-            <div class="meta-row"><strong>Godziny:</strong> ${startTime || '--:--'} – ${endTime || '--:--'}</div>
-          </div>
-        </div>
-        <div class="header-right">
-          <div class="meta meta-right">
-            <img src="/logo-mavinci-crm.png" alt="Mavinci CRM" class="logo" />
-            <div class="meta-row"><strong>Sprzedawca:</strong> ${authorName || '-'}</div>
-            <div class="meta-row"><strong>Telefon sprzedawcy:</strong> ${authorNumber || '-'}</div>
-            <div class="meta-row"><strong>Ostatnia aktualizacja:</strong> ${formatLastUpdated(lastUpdated)}</div>
-          </div>
-          
-        </div>
+  <div class="header">
+    <div class="left">
+      <h1>Agenda wydarzenia</h1>
+      <div class="meta">
+        <div class="meta-row"><strong>Wydarzenie:</strong> ${esc(eventName)}</div>
+        <div class="meta-row"><strong>Data:</strong> ${esc(eventDate || '-')}</div>
+        <div class="meta-row"><strong>Godziny:</strong> ${esc(timeRange)}</div>
+        <div class="meta-row"><strong>Klient:</strong> ${esc(clientContact || '-')}</div>
+        <div class="meta-row"><strong>Kontakt:</strong> ${esc(contactName || '-')} ${contactNumber ? `(${esc(contactNumber)})` : ''}</div>
       </div>
+    </div>
 
-      <h2>Harmonogram</h2>
-      <table>
-        <thead>
-          <tr>
-            <th style="width:80px;">Godzina</th>
-            <th>Etap</th>
-            <th>Opis</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${
-            rows ||
-            `<tr><td colspan="3" style="padding:8px 10px;border:1px solid #ddd;">Brak etapów</td></tr>`
-          }
-        </tbody>
-      </table>
-      ${notesHtml}
+    <div class="right">
+      <img src="/shape-mavinci-black.png" alt="Logo" class="logo" />
+      <div class="meta">
+        <div class="meta-row"><strong>Opiekun:</strong> ${esc(authorName || '-')}</div>
+        <div class="meta-row"><strong>Tel:</strong> ${esc(authorNumber || '-')}</div>
+      </div>
+      <div class="stamp">Ostatnia aktualizacja: ${esc(formatLastUpdated(lastUpdated))}</div>
     </div>
   </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="lp">LP</th>
+        <th class="time">CZAS</th>
+        <th class="topic">AGENDA</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+
+  ${notesHtml}
+
 </body>
-</html>
-`;
+</html>`;
 };

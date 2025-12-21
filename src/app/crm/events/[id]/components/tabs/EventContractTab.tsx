@@ -10,7 +10,7 @@ import '@/styles/contractA4.css';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import SendContractEmailModal from '@/components/crm/SendContractEmailModal';
 import { UnifiedContact } from '@/store/slices/contactsSlice';
-import { ILocation } from '@/app/crm/locations/page';
+import { ILocation } from '@/app/crm/locations/type';
 
 
 type ContractStatus =
@@ -415,8 +415,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     setEditedVariables(variables);
     setEditMode(false);
   };
-
-  console.log('event', event);
 
   const handlePrint = async () => {
     let currentContractId = contractId;

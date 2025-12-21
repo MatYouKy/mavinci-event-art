@@ -18,13 +18,28 @@ export function useEventTeam(eventId: string) {
     skip: !eventId,
   });
 
+
   const [addEmployee, { isLoading: isAdding }] = useAddEventEmployeeMutation();
   const [removeEmployee, { isLoading: isRemoving }] = useRemoveEventEmployeeMutation();
 
   const handleAddEmployee = useCallback(
-    async (employeeId: string, role?: string) => {
+    async (payload: {
+      employeeId: string;
+      role?: string;
+      responsibilities?: string | null;
+      access_level_id?: string | null;
+      permissions?: {
+        can_edit_event?: boolean;
+        can_edit_agenda?: boolean;
+        can_edit_tasks?: boolean;
+        can_edit_files?: boolean;
+        can_edit_equipment?: boolean;
+        can_invite_members?: boolean;
+        can_view_budget?: boolean;
+      };
+    }) => {
       try {
-        await addEmployee({ eventId, employeeId, role }).unwrap();
+        await addEmployee({ eventId, ...payload }).unwrap();
         showSnackbar('Pracownik dodany do zespołu', 'success');
         return true;
       } catch (error: any) {

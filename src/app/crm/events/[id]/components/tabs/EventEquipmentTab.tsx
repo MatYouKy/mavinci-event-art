@@ -1,5 +1,7 @@
+'use client';
+
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Package, Plus, Trash2, Printer } from 'lucide-react';
+import { Package, Plus, Printer } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { useEventEquipment } from '../../../hooks';
 import { useEvent } from '../../../hooks/useEvent';
@@ -9,15 +11,22 @@ import type { AvailabilityUI } from '@/app/crm/events/hooks/useEventEquipment';
 import { getKeyForEventRow, keyOf } from '../../helpers/getKeyForEventRow';
 import { buildExistingMap } from '../../helpers/buildExistingMap';
 import { mergeSameSelections } from '../../helpers/mergeSameSelections';
-import { SelectedItem } from '../../../type';
+import type { SelectedItem } from '../../../type';
 import { EventEquipmentRow } from '../../../UI/RenderRowItem';
 import { buildEquipmentChecklistHtml } from '../../helpers/buildEquipmentChecklistPdf';
 import { supabase } from '@/lib/supabase';
 
+import type {
+  UUID,
+  EquipmentItemDTO,
+  EquipmentKitDTO,
+} from '@/app/crm/equipment/types/equipment.types';
+
 type ItemType = 'item' | 'kit';
 type AvailKey = `${ItemType}-${string}`;
 
-const num = (v: any, fallback = 0) => {
+/** --- helpers --- */
+const num = (v: unknown, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
@@ -45,8 +54,8 @@ function getUiLimits(avail?: AvailabilityUI | null) {
   return {
     used,
     availableInTerm,
-    maxAdd, // ile jeszcze możesz DOŁOŻYĆ
-    maxSet, // max ile możesz ustawić w evencie
+    maxAdd,
+    maxSet,
     total: num((avail as any).total_quantity, 0),
     reserved: num((avail as any).reserved_quantity, 0),
   };
@@ -61,7 +70,6 @@ function normalizeStatus(s?: string) {
 function getStatusBadge(statusRaw?: string) {
   const status = normalizeStatus(statusRaw);
 
-  // ✅ “draft powinien rezerwować” – więc pokazujemy to wyraźnie
   if (status === 'draft') {
     return {
       label: 'DRAFT (rezerwuje)',
@@ -84,14 +92,73 @@ function getStatusBadge(statusRaw?: string) {
     return { label: 'ANULOWANE', cls: 'bg-red-500/10 text-red-300 border-red-500/20' };
   }
 
-  // fallback
   return {
     label: statusRaw ? statusRaw : '—',
     cls: 'bg-[#e5e4e2]/10 text-[#e5e4e2]/60 border-[#e5e4e2]/15',
   };
 }
 
-export const EventEquipmentTab = () => {
+function getEventEquipmentDisplay(row: any): {
+  name: string;
+  brand: string; // jak chcesz string – damy '' gdy brak
+  model: string;
+  categoryName: string;
+  isKit: boolean;
+  cableLength?: number | null;
+  kitItems: Array<{ name: string; brand: string; model: string; quantity: number }>;
+} {
+  const equipment: EquipmentItemDTO | null | undefined = row?.equipment;
+  const kit: EquipmentKitDTO | null | undefined = row?.kit;
+
+  const equipment_items = row?.equipment_items;
+  const equipment_kits = row?.equipment_kits;
+  const cables = row?.cables;
+
+  const isKit = !!row?.kit_id || !!kit || !!equipment_kits;
+
+  const name =
+    equipment?.name ||
+    kit?.name ||
+    equipment_items?.name ||
+    equipment_kits?.name ||
+    cables?.name ||
+    'Nieznany';
+
+  const brand = equipment?.brand || equipment_items?.brand || ''; // ✅ kluczowe
+
+  const model =
+    equipment?.model ||
+    equipment_items?.model ||
+    kit?.description ||
+    equipment_kits?.description ||
+    '';
+
+  const categoryName =
+    equipment?.category?.name ||
+    equipment_items?.equipment_categories?.name ||
+    kit?.category?.name ||
+    '';
+
+  const cableLength = cables?.length ?? null;
+
+  const kitItems: Array<{ name: string; brand: string; model: string; quantity: number }> = [];
+
+  const kitItemsOld = equipment_kits?.equipment_kit_items;
+  if (isKit && Array.isArray(kitItemsOld)) {
+    for (const ki of kitItemsOld) {
+      kitItems.push({
+        name: ki?.equipment_items?.name || 'Nieznany',
+        brand: ki?.equipment_items?.brand || '', // ✅
+        model: ki?.equipment_items?.model || '',
+        quantity: Number(ki?.quantity || 1),
+      });
+    }
+  }
+
+  return { name, brand, model, categoryName, isKit, cableLength, kitItems };
+}
+
+export const EventEquipmentTab: React.FC = () => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -103,6 +170,9 @@ export const EventEquipmentTab = () => {
   const { event } = useEvent();
   const { employee } = useCurrentEmployee();
 
+  const eventId = (event?.id || '') as UUID;
+
+  // ✅ guard na start: hook może być wywołany, ale wewnątrz i tak nie robimy fetchy bez ID
   const {
     equipment,
     availableEquipment,
@@ -113,21 +183,20 @@ export const EventEquipmentTab = () => {
     updateEquipment,
     removeEquipment,
     refetch,
-  } = useEventEquipment(event.id, {
-    id: event.id,
-    event_date: event.event_date,
-    event_end_date: event.event_end_date,
+  } = useEventEquipment(eventId, {
+    id: eventId,
+    event_date: event?.event_date,
+    event_end_date: event?.event_end_date,
   });
 
   useEffect(() => {
-    if (!event?.id) return;
+    if (!eventId) return;
     fetchAvailableEquipment();
-  }, [event?.id, event?.event_date, event?.event_end_date, fetchAvailableEquipment]);
+  }, [eventId, event?.event_date, event?.event_end_date, fetchAvailableEquipment]);
 
   const handleRemoveEquipment = async (row: any) => {
     const isAuto = !!row?.auto_added;
 
-    // ✅ AUTO: "usuń z eventu" = oznacz jako removed_from_offer + quantity=0
     if (isAuto) {
       if (!confirm('Usunąć tę pozycję z eventu (pochodzi z oferty)?')) return;
 
@@ -144,7 +213,6 @@ export const EventEquipmentTab = () => {
       return;
     }
 
-    // ✅ MANUAL: normalny delete
     if (!confirm('Czy na pewno chcesz usunąć ten sprzęt z eventu?')) return;
 
     const ok = await removeEquipment(row.id);
@@ -157,14 +225,10 @@ export const EventEquipmentTab = () => {
   const handleRestoreAutoRow = async (row: any) => {
     if (!confirm('Przywrócić tę pozycję z oferty do eventu?')) return;
 
-    // wracamy do stanu auto (nieusuniętego)
-    // quantity: jeśli masz gdzieś "oryginalną" ilość z oferty – tu ją ustaw.
-    // Jeśli nie masz, przyjmij 1 albo zostaw aktualną (ale przy removed było 0).
     const ok = await updateEquipment(row.id, {
       removed_from_offer: false,
-      // jeśli chcesz, żeby nadal było "auto" i nie override:
       is_overridden: false,
-      quantity: Math.max(1, Number(row.quantity || 1)),
+      quantity: Math.max(1, Number(row.offer_quantity ?? row.auto_quantity ?? 1)),
     });
 
     if (ok) {
@@ -185,12 +249,12 @@ export const EventEquipmentTab = () => {
     if (ok) {
       setEditingQuantityId(null);
       await refetch();
-      await fetchAvailableEquipment(); // ✅ po update: prawda z backendu
+      await fetchAvailableEquipment();
     }
   };
 
   const handleAddEquipment = async (selectedItems: SelectedItem[]) => {
-    if (!event?.id) return;
+    if (!eventId) return;
 
     const merged = mergeSameSelections(selectedItems);
     const existingMap = buildExistingMap(equipment);
@@ -199,14 +263,14 @@ export const EventEquipmentTab = () => {
     const toUpdate: Array<{ rowId: string; newQty: number }> = [];
 
     for (const s of merged) {
-      const k = keyOf(s.type, s.id);
+      const k = keyOf(s.type as ItemType, s.id) as AvailKey;
       const existingRow = existingMap.get(k);
 
       const avail = (availabilityByKey as Record<string, AvailabilityUI> | undefined)?.[k];
       const { used, maxAdd, maxSet } = getUiLimits(avail);
 
-      const currentQty = existingRow?.quantity ?? used ?? 0;
-      const finalQty = currentQty + s.quantity;
+      const currentQty = Number(existingRow?.quantity ?? used ?? 0);
+      const finalQty = currentQty + Number(s.quantity || 0);
 
       if (maxSet > 0 && finalQty > maxSet) {
         showSnackbar(
@@ -236,7 +300,7 @@ export const EventEquipmentTab = () => {
   };
 
   const handleGenerateChecklist = async () => {
-    if (!event?.id || !equipment || equipment.length === 0) {
+    if (!eventId || !equipment || equipment.length === 0) {
       showSnackbar('Brak sprzętu do wygenerowania checklisty', 'error');
       return;
     }
@@ -244,102 +308,99 @@ export const EventEquipmentTab = () => {
     try {
       setGeneratingPdf(true);
 
-      const equipmentData = equipment
-        .filter((item: any) => !item.removed_from_offer)
-        .map((item: any) => {
-          const baseData = {
-            name: item.equipment_items?.name || item.equipment_kits?.name || item.cables?.name || 'Nieznany',
-            model: item.equipment_items?.model || item.equipment_kits?.description || '',
-            quantity: item.quantity || 1,
-            category: item.equipment_items?.equipment_categories?.name || '',
-            cable_length: item.cables?.length,
-            is_kit: !!item.kit_id,
-            kit_items: [] as any[],
+      const equipmentData = (equipment as any[])
+        .filter((row) => !row?.removed_from_offer)
+        .map((row) => {
+          const d = getEventEquipmentDisplay(row);
+
+          return {
+            name: d.name,
+            brand: d.brand,
+            model: d.model,
+            quantity: Number(row?.quantity || 1),
+            category: d.categoryName,
+            cable_length: d.cableLength,
+            is_kit: d.isKit,
+            kit_items: d.kitItems,
           };
-
-          if (item.kit_id && item.equipment_kits?.equipment_kit_items) {
-            baseData.kit_items = item.equipment_kits.equipment_kit_items.map((ki: any) => ({
-              name: ki.equipment_items?.name || 'Nieznany',
-              model: ki.equipment_items?.model || '',
-              quantity: ki.quantity || 1,
-            }));
-          }
-
-          return baseData;
         });
 
-      const locationName = event.locations?.name || event.location || 'Nieokreślona';
-      const eventDateFormatted = event.event_date
+      const eventDateFormatted = event?.event_date
         ? new Date(event.event_date).toLocaleDateString('pl-PL')
         : '-';
 
       const html = buildEquipmentChecklistHtml({
-        eventName: event.name || 'Wydarzenie',
+        eventName: event?.name || 'Wydarzenie',
         eventDate: eventDateFormatted,
-        location: locationName,
+        location: (event as any)?.location || '-',
         equipmentItems: equipmentData,
-        authorName: employee?.name || '-',
-        authorNumber: employee?.phone_number || '-',
+        authorName: employee?.name + ' ' + employee?.surname || '-',
+        authorNumber: (employee as any)?.phone_number || '-',
       });
 
       const { default: html2pdf } = await import('html2pdf.js');
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
 
+      // ✅ ważne: w html2pdf najlepiej przekazać element, nie “div wrapper”
       const element = document.createElement('div');
       element.innerHTML = html;
 
       const opt: any = {
-        margin: [10, 10, 20, 10],
+        margin: [10, 10, 1, 10],
         filename: `checklista-${event.name?.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2 },
+        html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+
+        // ✅ to jest kluczowe przy “nie tnij wierszy”
+        pagebreak: { mode: ['css', 'legacy'] },
       };
 
       const worker = html2pdfFn().from(element).set(opt).toPdf();
       const pdfBlob: Blob = await worker.output('blob');
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const fileName = `checklista-sprzetu-${event.name?.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
-      const storagePath = `${event.id}/${fileName}`;
+      const safeEventName = String(event?.name || 'event')
+        .replace(/[^a-z0-9]/gi, '-')
+        .toLowerCase();
+
+      const fileName = `checklista-sprzetu-${safeEventName}-${timestamp}.pdf`;
+      const storagePath = `${eventId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('event-files')
-        .upload(storagePath, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: false,
-        });
+        .upload(storagePath, pdfBlob, { contentType: 'application/pdf', upsert: false });
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
         showSnackbar('Błąd podczas zapisywania pliku', 'error');
-      } else {
-        const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
-          p_event_id: event.id,
-          p_subfolder_name: 'Checklisty sprzętu',
-          p_required_permission: null,
-          p_created_by: employee?.id,
-        });
-
-        await supabase.from('event_files').insert([
-          {
-            event_id: event.id,
-            folder_id: folderId,
-            name: fileName,
-            original_name: fileName,
-            file_path: storagePath,
-            file_size: pdfBlob.size,
-            mime_type: 'application/pdf',
-            document_type: 'equipment_checklist',
-            thumbnail_url: null,
-            uploaded_by: employee?.id,
-          },
-        ]);
-
-        showSnackbar('Checklista sprzętu została wygenerowana i zapisana', 'success');
-
-        worker.save();
+        return;
       }
+
+      const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
+        p_event_id: eventId,
+        p_required_permission: null,
+        p_created_by: employee?.id ?? null,
+      });
+
+      await supabase.from('event_files').insert([
+        {
+          event_id: eventId,
+          folder_id: folderId,
+          name: fileName,
+          original_name: fileName,
+          file_path: storagePath,
+          file_size: pdfBlob.size,
+          mime_type: 'application/pdf',
+          document_type: 'equipment_checklist',
+          thumbnail_url: null,
+          uploaded_by: employee?.id ?? null,
+        },
+      ]);
+
+      showSnackbar('Checklista sprzętu została wygenerowana i zapisana', 'success');
+
+      worker.save();
     } catch (error) {
       console.error('Error generating checklist:', error);
       showSnackbar('Błąd podczas generowania checklisty', 'error');
@@ -354,37 +415,45 @@ export const EventEquipmentTab = () => {
   );
   const autoRows = useMemo(() => (equipment || []).filter((r: any) => r.auto_added), [equipment]);
 
-  const renderRow = (row: any, editable: boolean) => {
-    return (
-      <EventEquipmentRow
-        key={row.id}
-        row={row}
-        editable={editable}
-        expanded={expandedKits.has(row.id)}
-        onToggleExpand={(id) => {
-          const next = new Set(expandedKits);
+  const renderRow = (row: any, editable: boolean) => (
+    <EventEquipmentRow
+      key={row.id}
+      row={row}
+      editable={editable}
+      expanded={expandedKits.has(row.id)}
+      onToggleExpand={(id: string) => {
+        setExpandedKits((prev) => {
+          const next = new Set(prev);
           next.has(id) ? next.delete(id) : next.add(id);
-          setExpandedKits(next);
-        }}
-        availabilityByKey={availabilityByKey}
-        getKeyForEventRow={getKeyForEventRow}
-        getUiLimits={getUiLimits}
-        getStatusBadge={getStatusBadge}
-        editingQuantityId={editingQuantityId}
-        draftQuantity={draftQuantity}
-        setEditingQuantityId={setEditingQuantityId}
-        setDraftQuantity={setDraftQuantity}
-        onUpdateQuantity={handleUpdateQuantity}
-        onRemove={handleRemoveEquipment}
-        onRestore={handleRestoreAutoRow}
-      />
-    );
-  };
+          return next;
+        });
+      }}
+      availabilityByKey={availabilityByKey}
+      getKeyForEventRow={getKeyForEventRow}
+      getUiLimits={getUiLimits}
+      getStatusBadge={getStatusBadge}
+      editingQuantityId={editingQuantityId}
+      draftQuantity={draftQuantity}
+      setEditingQuantityId={setEditingQuantityId}
+      setDraftQuantity={setDraftQuantity}
+      onUpdateQuantity={handleUpdateQuantity}
+      onRemove={handleRemoveEquipment}
+      onRestore={handleRestoreAutoRow}
+    />
+  );
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-2">
         <h2 className="text-lg font-light text-[#e5e4e2]">Sprzęt</h2>
+        <div className="text-sm text-[#e5e4e2]/60">
+          <span className="font-medium">
+            Event Zawiera {equipment?.length}  Pozycji
+          </span>
+        </div>
+        </div>
+
 
         <div className="flex items-center gap-3">
           <button
@@ -395,6 +464,7 @@ export const EventEquipmentTab = () => {
             <Printer className="h-4 w-4" />
             {generatingPdf ? 'Generowanie...' : 'Drukuj checklistę'}
           </button>
+
           <button
             onClick={() => setShowAddEquipmentModal(true)}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"

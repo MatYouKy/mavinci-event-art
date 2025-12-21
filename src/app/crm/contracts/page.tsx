@@ -7,6 +7,7 @@ import { FileText, Plus, Search, Eye, Download, Trash2, FileType, Grid, List } f
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 
 interface Contract {
+  pdf_url: any;
   id: string;
   contract_number: string;
   title: string;

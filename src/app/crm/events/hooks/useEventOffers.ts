@@ -7,21 +7,11 @@ import {
   useUpdateEventOfferMutation,
 } from '@/app/crm/events/store/api/eventsApi';
 
-import { useEffect } from 'react';
-
 export function useEventOffers(eventId?: string) {
   const q = useGetEventOffersQuery(eventId ?? skipToken);
 
   const [deleteOffer, del] = useDeleteEventOfferMutation();
   const [updateOffer, upd] = useUpdateEventOfferMutation();
-
-  useEffect(() => {
-    console.log('isDeleting changed:', del.isLoading, 'status:', del.status);
-  }, [del.isLoading, del.status]);
-
-  useEffect(() => {
-    console.log('isUpdating changed:', upd.isLoading, 'status:', upd.status);
-  }, [upd.isLoading, upd.status]);
 
   return {
     offers: q.data ?? [],

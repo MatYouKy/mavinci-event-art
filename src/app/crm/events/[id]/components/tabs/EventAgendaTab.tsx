@@ -3,9 +3,26 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List, Eye, Download, Edit3, Check, X } from 'lucide-react';
+import {
+  Clock,
+  Plus,
+  Trash2,
+  Save,
+  FileDown,
+  Printer,
+  ChevronRight,
+  List,
+  Eye,
+  Download,
+  Edit3,
+  Check,
+  X,
+} from 'lucide-react';
 import { buildAgendaHtml } from '@/app/crm/events/[id]/helpers/buildAgendaPdf';
 import { supabaseServer } from '@/lib/supabaseServer';
+import { useEvent } from '../../../hooks/useEvent';
+import { useGetContactByIdQuery } from '@/app/crm/contacts/store/clientsApi';
+import { ContactRow, OrganizationRow } from '@/app/crm/contacts/types';
 
 // YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00.000Z
 const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
@@ -38,12 +55,11 @@ const isoToTimeInput = (value?: string | null): string => {
 interface EventAgendaTabProps {
   eventId: string;
   eventName: string;
-  eventDate: string;   // ISO albo YYYY-MM-DD
-  startTime: string;   // ISO albo HH:MM
+  eventDate: string; // ISO albo YYYY-MM-DD
+  startTime: string; // ISO albo HH:MM
   endTime: string;
-  clientContact: string;
-  contactName: string;
-  contactNumber: string;
+  contact: ContactRow;
+  organization: OrganizationRow | null;
   createdById: string;
 }
 
@@ -71,32 +87,31 @@ export default function EventAgendaTab({
   eventDate,
   startTime,
   endTime,
-  clientContact,
-  contactName,
-  contactNumber,
+  contact,
+  organization,
   createdById,
 }: EventAgendaTabProps) {
   const { employee } = useCurrentEmployee();
-
+  const { event } = useEvent();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [html2pdfReady, setHtml2pdfReady] = useState(false);
 
   const [agendaId, setAgendaId] = useState<string | null>(null);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
   const [agendaNotes, setAgendaNotes] = useState<AgendaNote[]>([]);
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
-  const [createdByEmployee, setCreatedByEmployee] = useState<{ name: string; phone_number: string } | null>(null);
+  const [createdByEmployee, setCreatedByEmployee] = useState<{
+    name: string;
+    phone_number: string;
+  } | null>(null);
 
   const normalizedEventDate = useMemo(() => isoToDateInput(eventDate), [eventDate]);
 
   const [startTimeInput, setStartTimeInput] = useState(() => isoToTimeInput(startTime));
   const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
-  const [clientContactInput, setClientContactInput] = useState(clientContact || '');
-
 
 
   const canManage =
@@ -112,21 +127,23 @@ export default function EventAgendaTab({
     if (!agendaId) {
       setStartTimeInput(isoToTimeInput(startTime));
       setEndTimeInput(isoToTimeInput(endTime));
-      setClientContactInput(clientContact || '');
     }
-  }, [startTime, endTime, clientContact, agendaId]);
+  }, [startTime, endTime, contact, agendaId]);
 
+  console.log('contact', contact);
 
   const fetchCreatedByEmployee = async () => {
     const { data: Author } = await supabaseServer
-    .from('employees')  
-    .select('name, surname, phone_number')
-    .eq('id', createdById)
-    .maybeSingle();
+      .from('employees')
+      .select('name, surname, phone_number')
+      .eq('id', createdById)
+      .maybeSingle();
 
-    setCreatedByEmployee({ name: `${Author?.name} ${Author?.surname}` || '', phone_number: Author?.phone_number || '' });
+    setCreatedByEmployee({
+      name: `${Author?.name} ${Author?.surname}` || '',
+      phone_number: Author?.phone_number || '',
+    });
   };
-
 
   const fetchAgenda = async () => {
     try {
@@ -145,7 +162,6 @@ export default function EventAgendaTab({
 
         setStartTimeInput(isoToTimeInput(agenda.start_time) || isoToTimeInput(startTime) || '');
         setEndTimeInput(isoToTimeInput(agenda.end_time) || isoToTimeInput(endTime) || '');
-        setClientContactInput(agenda.client_contact || clientContact || '');
         setGeneratedPdfPath(agenda.generated_pdf_path || null);
         setModifiedAfterGeneration(agenda.modified_after_generation || false);
 
@@ -179,7 +195,6 @@ export default function EventAgendaTab({
         setAgendaNotes([]);
         setStartTimeInput(isoToTimeInput(startTime));
         setEndTimeInput(isoToTimeInput(endTime));
-        setClientContactInput(clientContact || '');
       }
     } catch (err) {
       console.error('Error fetching agenda:', err);
@@ -280,7 +295,7 @@ export default function EventAgendaTab({
               event_date: normalizedEventDate,
               start_time: isoStart,
               end_time: isoEnd,
-              client_contact: clientContactInput || null,
+              client_contact: contact.full_name || null,
               created_by: employee?.id,
             },
           ])
@@ -298,7 +313,7 @@ export default function EventAgendaTab({
             event_date: normalizedEventDate,
             start_time: isoStart,
             end_time: isoEnd,
-            client_contact: clientContactInput || null,
+            client_contact: contact.full_name || null,
           })
           .eq('id', currentAgendaId);
 
@@ -384,7 +399,6 @@ export default function EventAgendaTab({
       setAgendaNotes([]);
       setStartTimeInput(isoToTimeInput(startTime));
       setEndTimeInput(isoToTimeInput(endTime));
-      setClientContactInput(clientContact || '');
     }
 
     // Czyścimy flagi edycji
@@ -424,9 +438,9 @@ export default function EventAgendaTab({
         eventDate: normalizedEventDate, // YYYY-MM-DD
         startTime: startTimeInput,
         endTime: endTimeInput,
-        clientContact: clientContact,
-        contactName: contactName,
-        contactNumber: contactNumber,
+        clientContact: organization?.alias || organization?.name || '',
+        contactName: contact.full_name || '',
+        contactNumber: contact.business_phone || '',
         agendaItems: getSortedAgendaItems(),
         agendaNotes,
         lastUpdated: new Date().toISOString(),
@@ -443,7 +457,7 @@ export default function EventAgendaTab({
       element.innerHTML = html;
 
       const opt: any = {
-        margin: [10, 10, 20, 10],  // większy bottom (20 mm)
+        margin: [10, 10, 20, 10], // większy bottom (20 mm)
         filename: `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2 },
@@ -470,13 +484,12 @@ export default function EventAgendaTab({
         console.error('Upload error:', uploadError);
         alert('Błąd podczas zapisywania pliku');
       } else {
-        const { data: { publicUrl } } = supabase.storage
-          .from('event-files')
-          .getPublicUrl(storagePath);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('event-files').getPublicUrl(storagePath);
 
         const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
           p_event_id: eventId,
-          p_subfolder_name: 'Agendy',
           p_required_permission: null,
           p_created_by: employee?.id,
         });
@@ -526,7 +539,9 @@ export default function EventAgendaTab({
     if (!generatedPdfPath) return;
 
     try {
-      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(generatedPdfPath, 3600);
 
       if (data?.signedUrl) {
         window.open(data.signedUrl, '_blank');
@@ -541,7 +556,9 @@ export default function EventAgendaTab({
     if (!generatedPdfPath) return;
 
     try {
-      const { data } = await supabase.storage.from('event-files').createSignedUrl(generatedPdfPath, 3600);
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(generatedPdfPath, 3600);
 
       if (data?.signedUrl) {
         const response = await fetch(data.signedUrl);
@@ -569,18 +586,15 @@ export default function EventAgendaTab({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if ((window as any).html2pdf) {
-      setHtml2pdfReady(true);
       return;
     }
-  
+
     const script = document.createElement('script');
-    script.src =
-      'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js';
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js';
     script.async = true;
-    script.onload = () => setHtml2pdfReady(true);
     script.onerror = () => console.error('Nie udało się załadować html2pdf.js');
     document.body.appendChild(script);
-  
+
     return () => {
       // opcjonalnie usuwanie skryptu przy unmount
       document.body.removeChild(script);
@@ -638,7 +652,7 @@ export default function EventAgendaTab({
   const handleTimeWheel = (
     e: React.WheelEvent<HTMLInputElement>,
     index: number,
-    currentTime: string
+    currentTime: string,
   ) => {
     const target = e.currentTarget;
 
@@ -841,14 +855,20 @@ export default function EventAgendaTab({
 
           {!editMode && agendaId && (
             <>
-              {(!generatedPdfPath || modifiedAfterGeneration) ? (
+              {!generatedPdfPath || modifiedAfterGeneration ? (
                 <button
                   onClick={handleGeneratePDF}
                   disabled={generating}
                   className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
                 >
                   <FileDown className="h-4 w-4" />
-                  <span>{generating ? 'Generowanie...' : modifiedAfterGeneration ? 'Regeneruj PDF' : 'Generuj PDF'}</span>
+                  <span>
+                    {generating
+                      ? 'Generowanie...'
+                      : modifiedAfterGeneration
+                        ? 'Regeneruj PDF'
+                        : 'Generuj PDF'}
+                  </span>
                 </button>
               ) : (
                 <>
@@ -905,11 +925,11 @@ export default function EventAgendaTab({
                   )}
                 </div>
               ) : (
-                <table className="min-w-full text-sm text-left">
+                <table className="min-w-full text-left text-sm">
                   <thead className="border-b border-[#d3bb73]/20 bg-[#151726] text-xs uppercase text-[#e5e4e2]/60">
                     <tr>
-                      <th className="px-4 py-3 w-32">Godzina</th>
-                      <th className="px-4 py-3 w-64">Etap</th>
+                      <th className="w-32 px-4 py-3">Godzina</th>
+                      <th className="w-64 px-4 py-3">Etap</th>
                       <th className="px-4 py-3">Opis</th>
                     </tr>
                   </thead>
@@ -925,7 +945,7 @@ export default function EventAgendaTab({
                         <td className="px-4 py-3 align-top font-medium text-[#e5e4e2]">
                           {item.title || '—'}
                         </td>
-                        <td className="px-4 py-3 align-top text-[#e5e4e2]/80 whitespace-pre-wrap">
+                        <td className="whitespace-pre-wrap px-4 py-3 align-top text-[#e5e4e2]/80">
                           {item.description || '—'}
                         </td>
                       </tr>
@@ -1014,18 +1034,20 @@ export default function EventAgendaTab({
                         ) : (
                           <div className="flex-1 space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-[#d3bb73]">{item.time || '--:--'}</span>
+                              <span className="font-medium text-[#d3bb73]">
+                                {item.time || '--:--'}
+                              </span>
                               <span className="text-[#e5e4e2]">{item.title || '(bez tytułu)'}</span>
                             </div>
                             {item.description && (
-                              <p className="text-sm text-[#e5e4e2]/70 whitespace-pre-wrap">
+                              <p className="whitespace-pre-wrap text-sm text-[#e5e4e2]/70">
                                 {item.description}
                               </p>
                             )}
                           </div>
                         )}
 
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex flex-shrink-0 items-center gap-1">
                           {isEditing ? (
                             <>
                               <button
@@ -1097,9 +1119,7 @@ export default function EventAgendaTab({
           {!editMode && (
             <div className="space-y-1">
               {agendaNotes.length === 0 && (
-                <div className="py-4 text-center text-[#e5e4e2]/60">
-                  Brak uwag do agendy.
-                </div>
+                <div className="py-4 text-center text-[#e5e4e2]/60">Brak uwag do agendy.</div>
               )}
               {agendaNotes.map((note) => renderNoteView(note))}
             </div>

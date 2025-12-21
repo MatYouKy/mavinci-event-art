@@ -51,13 +51,19 @@ import { TeamMembersList } from './components/AddMembersList';
 import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
 import {
   useGetEventByIdQuery,
+  useGetEventEmployeesQuery,
 } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useOfferActions } from '../../offers/hooks/useOfferById';
-import { useEventOffers } from '../hooks';
+import { useEventEquipment, useEventOffers, useEventTeam } from '../hooks';
 import { IEventCategory } from '../../event-categories/types';
 import { IEmployee } from '../../employees/type';
 import { logChange } from './helpers/logChange';
+import { useGetContactByIdQuery, useGetOrganizationByIdQuery } from '../../contacts/store/clientsApi';
+import { useLocations } from '../../locations/useLocations';
+import { ILocation } from '../../locations/type';
+import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
+import { useEmployees } from '../../employees/hooks/useEmployees';
 
 interface Equipment {
   kit_id: unknown;
@@ -119,9 +125,22 @@ export default function EventDetailPage() {
   const { showConfirm } = useDialog();
   const { deleteOfferById } = useOfferActions();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
-  const { offers, refetch: refetchOffers, isDeleting: isDeletingOffer } = useEventOffers(eventId);
+  const { offers, refetch: refetchOffers } = useEventOffers(eventId);
+  const { equipment } = useEventEquipment(eventId);
+  const { employees } = useEventTeam(eventId);
+  const { data: eventEmployees } = useGetEventEmployeesQuery(eventId);
+  console.log('---eventEmployees', eventEmployees);
 
-  console.log('isDeletingOffer', isDeletingOffer);
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from('employee_assignments')
+        .select('*')
+        .eq('event_id', eventId);
+  
+      console.log('[direct select employee_assignments]', { data, error });
+    })();
+  }, [eventId]);
 
   const {
     data: event,
@@ -130,10 +149,32 @@ export default function EventDetailPage() {
   } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
+
+  console.log('---event',event);
+
+  const { data: contact } = useGetContactByIdQuery(event?.contact_person_id
+  );
+  const { getById } = useLocations();
+
+  const [location, setLocation] = useState<ILocation | null>(null);
+  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+
+  useEffect(() => {
+    console.log('event-effect', event);
+    const fetchLocations = async () => {
+      if (event?.location_id && event?.location_id !== null) {
+        const location = await getById(event.location_id);
+        console.log('location-effect', location);
+        setLocation(location);
+      }
+    };
+    fetchLocations();
+  }, [getById, event?.location_id]);
+
+  const { data: organization } = useGetOrganizationByIdQuery(event?.organization_id);
+  
+
   const [isConfirmed, setIsConfirmed] = useState(false);
-  const [equipment, setEquipment] = useState<Equipment[]>([]);
-  const [employees, setEmployees] = useState<IEmployee[]>([]);
-  const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [activeTab, setActiveTab] = useState<
     | 'overview'
     | 'equipment'
@@ -162,13 +203,6 @@ export default function EventDetailPage() {
   const [allowedEventTabs, setAllowedEventTabs] = useState<string[]>([]);
   const [hasSubcontractors, setHasSubcontractors] = useState(false);
 
-  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
-
-  const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
-
-  const [equipmentAvailability, setEquipmentAvailability] = useState<{
-    [key: string]: { available: number; reserved: number };
-  }>({});
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
@@ -184,12 +218,6 @@ export default function EventDetailPage() {
       checkTeamManagementPermission();
     }
   }, [eventId]);
-
-  useEffect(() => {
-    if (event && equipment.length > 0) {
-      fetchEquipmentAvailability();
-    }
-  }, [event, equipment.length]);
 
   const checkTeamManagementPermission = async () => {
     try {
@@ -278,60 +306,6 @@ export default function EventDetailPage() {
     }
   };
 
-  const fetchEquipmentAvailability = async () => {
-    if (!event?.event_date) return;
-
-    try {
-      const availability: { [key: string]: { available: number; reserved: number } } = {};
-
-      for (const eq of equipment) {
-        if (eq.equipment_id) {
-          const { data, error } = await supabase.rpc('get_available_equipment_count', {
-            p_equipment_id: eq.equipment_id,
-            p_event_date: event.event_date,
-            p_exclude_event_id: eventId,
-          });
-
-          if (!error && data !== null) {
-            availability[eq.equipment_id] = {
-              available: data,
-              reserved: eq.quantity,
-            };
-          }
-        }
-      }
-
-      setEquipmentAvailability(availability);
-    } catch (error) {
-      console.error('Error fetching availability:', error);
-    }
-  };
-
-  // const fetchOffers = async () => {
-  //   try {
-  //     const { data, error } = await supabase
-  //       .from('offers')
-  //       .select(
-  //         `
-  //         *,
-  //         organization:organizations!organization_id(name)
-  //       `,
-  //       )
-  //       .eq('event_id', eventId)
-  //       .order('created_at', { ascending: false });
-
-  //     // console.log('Fetched offers for event:', data);
-
-  //     if (!error && data) {
-  //       setOffers(data);
-  //     } else if (error) {
-  //       console.error('Error fetching offers:', error);
-  //     }
-  //   } catch (err) {
-  //     console.error('Error fetching offers:', err);
-  //   }
-  // };
-
   const fetchCategories = async () => {
     try {
       const { data, error } = await supabase
@@ -400,67 +374,56 @@ export default function EventDetailPage() {
     }
   };
 
-  const fetchAvailableEmployees = async () => {
-    const { data, error } = await supabase.from('employees').select('*').order('name');
+  // const handleAddEmployee = async (
+  //   employeeId: string,
+  //   role: string,
+  //   responsibilities: string,
+  //   accessLevelId: string,
+  //   permissions: any,
+  // ) => {
+  //   try {
+  //     const {
+  //       data: { session },
+  //     } = await supabase.auth.getSession();
 
-    if (!error && data) {
-      // Odfiltruj pracowników którzy są już w zespole
-      const alreadyAddedIds = employees.map((emp) => emp.id);
-      const availableEmp = data.filter((emp) => !alreadyAddedIds.includes(emp.id));
-      setAvailableEmployees(availableEmp);
-    }
-  };
+  //     const { error } = await supabase.from('employee_assignments').insert([
+  //       {
+  //         event_id: eventId,
+  //         employee_id: employeeId,
+  //         role: role,
+  //         responsibilities: responsibilities || null,
+  //         invited_by: session?.user?.id || null,
+  //         status: 'pending',
+  //         access_level_id: accessLevelId || null,
+  //         can_edit_event: permissions.can_edit_event || false,
+  //         can_edit_agenda: permissions.can_edit_agenda || false,
+  //         can_edit_tasks: permissions.can_edit_tasks || false,
+  //         can_edit_files: permissions.can_edit_files || false,
+  //         can_edit_equipment: permissions.can_edit_equipment || false,
+  //         can_invite_members: permissions.can_invite_members || false,
+  //         can_view_budget: permissions.can_view_budget || false,
+  //         granted_by: session?.user?.id || null,
+  //         permissions_updated_at: new Date().toISOString(),
+  //       },
+  //     ]);
 
-  const handleAddEmployee = async (
-    employeeId: string,
-    role: string,
-    responsibilities: string,
-    accessLevelId: string,
-    permissions: any,
-  ) => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+  //     if (error) {
+  //       console.error('Error adding employee:', error);
+  //       alert('Błąd podczas dodawania pracownika');
+  //       return;
+  //     }
 
-      const { error } = await supabase.from('employee_assignments').insert([
-        {
-          event_id: eventId,
-          employee_id: employeeId,
-          role: role,
-          responsibilities: responsibilities || null,
-          invited_by: session?.user?.id || null,
-          status: 'pending',
-          access_level_id: accessLevelId || null,
-          can_edit_event: permissions.can_edit_event || false,
-          can_edit_agenda: permissions.can_edit_agenda || false,
-          can_edit_tasks: permissions.can_edit_tasks || false,
-          can_edit_files: permissions.can_edit_files || false,
-          can_edit_equipment: permissions.can_edit_equipment || false,
-          can_invite_members: permissions.can_invite_members || false,
-          can_view_budget: permissions.can_view_budget || false,
-          granted_by: session?.user?.id || null,
-          permissions_updated_at: new Date().toISOString(),
-        },
-      ]);
+  //     setShowAddEmployeeModal(false);
 
-      if (error) {
-        console.error('Error adding employee:', error);
-        alert('Błąd podczas dodawania pracownika');
-        return;
-      }
-
-      setShowAddEmployeeModal(false);
-
-      // await logChange(
-      //   'employee_added',
-      //   `Dodano pracownika do zespołu (ID: ${employeeId}, rola: ${role})`,
-      // );
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Wystąpił błąd');
-    }
-  };
+  //     // await logChange(
+  //     //   'employee_added',
+  //     //   `Dodano pracownika do zespołu (ID: ${employeeId}, rola: ${role})`,
+  //     // );
+  //   } catch (err) {
+  //     console.error('Error:', err);
+  //     alert('Wystąpił błąd');
+  //   }
+  // };
 
   const handleRemoveEmployee = async (employeeId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć tego pracownika z eventu?')) return;
@@ -512,10 +475,6 @@ export default function EventDetailPage() {
     },
     [deleteOfferById, showConfirm, showSnackbar, refetchOffers],
   );
-
-  const handleRemoveChecklist = async (checklistId: string) => {
-    console.log('Checklist functionality disabled - table does not exist');
-  };
 
   if (isLoading) {
     return (
@@ -619,29 +578,29 @@ export default function EventDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-              {event.client_type === 'business' && event.organization && (
+              {event.client_type === 'business' && organization && (
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
-                  {event.organization.alias || event.organization.name}
+                  {organization.alias || organization.name}
                 </div>
               )}
-              {event.client_type === 'individual' && event.contact_person && (
+              {event.client_type === 'individual' && contact && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
                     Klient:{' '}
-                    {event.contact_person.full_name ||
-                      `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                    {contact.full_name ||
+                      `${contact.first_name} ${contact.last_name}`}
                   </span>
                 </div>
               )}
-              {event.client_type === 'business' && event.contact_person && (
+              {event.client_type === 'business' && contact && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
                     Kontakt:{' '}
-                    {event.contact_person.full_name ||
-                      `${event.contact_person.first_name} ${event.contact_person.last_name}`}
+                    {contact.full_name ||
+                      `${contact.first_name} ${contact.last_name}`}
                   </span>
                 </div>
               )}
@@ -824,6 +783,9 @@ export default function EventDetailPage() {
               </div>
             )}
             <EventsDetailsTab
+              location={location}
+              organization={organization}
+              contact={contact}
               hasLimitedAccess={hasLimitedAccess}
               canManageTeam={canManageTeam}
               isUserAdmin={isUserAdmin}
@@ -871,7 +833,7 @@ export default function EventDetailPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[#e5e4e2]/60">Zespół</span>
-                  <span className="font-medium text-[#e5e4e2]">{employees.length}</span>
+                  {/* <span className="font-medium text-[#e5e4e2]">{employees.length}</span> */}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[#e5e4e2]/60">Pliki</span>
@@ -881,7 +843,7 @@ export default function EventDetailPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[#e5e4e2]/60">Checklisty</span>
-                  <span className="font-medium text-[#e5e4e2]">{checklists.length}</span>
+                  {/* <span className="font-medium text-[#e5e4e2]">{checklists.length}</span> */}
                 </div>
               </div>
             </div>
@@ -898,7 +860,6 @@ export default function EventDetailPage() {
             {canManageTeam && (
               <button
                 onClick={() => {
-                  fetchAvailableEmployees();
                   setShowAddEmployeeModal(true);
                 }}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
@@ -909,7 +870,7 @@ export default function EventDetailPage() {
             )}
           </div>
 
-          {employees.length === 0 ? (
+          {employees?.length === 0 ? (
             <div className="py-12 text-center">
               <Users className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak przypisanych pracowników</p>
@@ -952,14 +913,13 @@ export default function EventDetailPage() {
 
       {activeTab === 'agenda' && (
         <EventAgendaTab
-          contactName={event?.contact_person?.full_name ?? ''}
-          contactNumber={event?.contact_person?.phone ?? ''}
+          contact={contact}
+          organization={organization}
           eventId={eventId}
           eventName={event?.name ?? ''}
           eventDate={event?.event_date ?? ''}
           startTime={event?.event_date ?? ''}
           endTime={event?.event_end_date ?? ''}
-          clientContact={(event?.organization?.alias || event?.organization?.name) ?? ''}
           createdById={event?.created_by ?? ''}
         />
       )}
@@ -1213,14 +1173,13 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {/* {showAddEmployeeModal && (
-        <AddEmployeeModal
+      {showAddEmployeeModal && (
+        <AddEventEmployeeModal
           isOpen={showAddEmployeeModal}
           onClose={() => setShowAddEmployeeModal(false)}
-          onAdd={handleAddEmployee}
-          availableEmployees={availableEmployees}
+          eventId={eventId}
         />
-      )} */}
+      )}
 
       {showAddChecklistModal && (
         <AddChecklistModal
@@ -1230,8 +1189,9 @@ export default function EventDetailPage() {
         />
       )}
 
-      {showEditEventModal && event && (
+      {showEditEventModal && event  && (
         <EditEventModalNew
+          location={location}
           isOpen={showEditEventModal}
           onClose={() => setShowEditEventModal(false)}
           event={event}
