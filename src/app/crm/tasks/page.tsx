@@ -919,7 +919,7 @@ export default function TasksPage() {
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
         <div
-          className={`flex h-full transition-opacity duration-200 ${isMobile ? '' : 'gap-4 px-2'} ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}
+          className={`flex h-full transition-opacity duration-200 ${isMobile ? 'w-full px-2' : 'gap-4 px-2'} ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}
           style={{
             minWidth: isMobile ? '100%' : 'min-content',
           }}
@@ -932,9 +932,9 @@ export default function TasksPage() {
               onDrop={() => handleDrop(column.id)}
               className={`flex flex-col border-2 bg-[#1c1f33] transition-all ${
                 dragOverColumn === column.id ? 'border-[#d3bb73] bg-[#d3bb73]/5' : column.color
-              } ${isMobile ? 'flex-1 rounded-lg p-2' : 'flex-shrink-0 rounded-xl p-4'}`}
+              } ${isMobile ? 'w-full rounded-lg p-2' : 'flex-shrink-0 rounded-xl p-4'}`}
               style={{
-                width: isMobile ? 'auto' : '320px',
+                width: isMobile ? '100%' : '320px',
                 height: '100%',
               }}
             >
@@ -1017,7 +1017,7 @@ export default function TasksPage() {
       </div>
 
       {isMobile && (
-        <div className="flex flex-shrink-0 justify-center gap-2 py-2">
+        <div className="flex flex-shrink-0 justify-center gap-3 py-3 px-2 bg-[#0d0f17] border-t border-[#d3bb73]/10">
           {columns.map((_, index) => (
             <button
               key={index}
@@ -1030,8 +1030,8 @@ export default function TasksPage() {
                   }, 200);
                 }
               }}
-              className={`h-2 w-2 rounded-full transition-all ${
-                index === activeColumnIndex ? 'w-8 bg-[#d3bb73]' : 'bg-[#e5e4e2]/20'
+              className={`h-2.5 rounded-full transition-all ${
+                index === activeColumnIndex ? 'w-10 bg-[#d3bb73]' : 'w-2.5 bg-[#e5e4e2]/40'
               }`}
               aria-label={`Przejdź do sekcji ${index + 1}`}
             />
