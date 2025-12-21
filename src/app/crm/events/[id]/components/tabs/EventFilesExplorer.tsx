@@ -17,6 +17,7 @@ import {
   Move,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   MoreVertical,
   X,
   FileText,
@@ -28,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 interface FileItem {
   id: string;
@@ -93,6 +95,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
   const [fileUrl, setFileUrl] = useState<string>('');
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const bulkMenuRef = useRef<HTMLDivElement | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const [clipboard, setClipboard] = useState<{
     mode: 'copy' | 'cut';
@@ -104,6 +107,17 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     fetchFolders();
     fetchFiles();
   }, [eventId, currentFolder]);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -651,6 +665,218 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       </div>
     ));
   };
+
+  const getFlatFolderList = (foldersList: FolderItem[], parentId: string | null = null): FolderItem[] => {
+    return foldersList
+      .filter(f => f.parent_folder_id === parentId)
+      .flatMap(folder => [folder, ...getFlatFolderList(foldersList, folder.id)]);
+  };
+
+  const allFlatFolders = getFlatFolderList(
+    folders.flatMap(function flatten(f): FolderItem[] {
+      return [f, ...(f.children || []).flatMap(flatten)];
+    })
+  );
+
+  const currentFolderSubfolders = allFlatFolders.filter(f => f.parent_folder_id === currentFolder);
+
+  const mobileActions: Action[] = [
+    {
+      label: 'Nowy folder',
+      icon: <FolderPlus className="h-4 w-4" />,
+      onClick: () => setShowNewFolderModal(true),
+      variant: 'default',
+    },
+    {
+      label: 'Upload plików',
+      icon: <Upload className="h-4 w-4" />,
+      onClick: () => fileInputRef.current?.click(),
+      variant: 'primary',
+    },
+    ...(selectedItems.size > 0
+      ? [
+          {
+            label: 'Kopiuj',
+            icon: <Copy className="h-4 w-4" />,
+            onClick: handleBulkCopy,
+            variant: 'default' as const,
+          },
+          {
+            label: 'Wytnij',
+            icon: <Move className="h-4 w-4" />,
+            onClick: handleBulkCut,
+            variant: 'default' as const,
+          },
+          {
+            label: 'Usuń',
+            icon: <Trash2 className="h-4 w-4" />,
+            onClick: handleBulkDelete,
+            variant: 'danger' as const,
+          },
+        ]
+      : []),
+    ...(clipboard
+      ? [
+          {
+            label: 'Wklej',
+            icon: <Copy className="h-4 w-4" />,
+            onClick: handlePaste,
+            variant: 'primary' as const,
+          },
+        ]
+      : []),
+  ];
+
+  if (isMobile) {
+    return (
+      <div className="flex h-[600px] flex-col overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+        <div className="flex-shrink-0 border-b border-[#d3bb73]/10 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            {currentFolder ? (
+              <button
+                onClick={() => {
+                  const parent = allFlatFolders.find(f => f.id === currentFolder);
+                  setCurrentFolder(parent?.parent_folder_id || null);
+                }}
+                className="flex items-center gap-2 text-sm text-[#d3bb73] hover:underline"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Wstecz
+              </button>
+            ) : (
+              <h3 className="text-sm font-medium text-[#e5e4e2]">Pliki</h3>
+            )}
+
+            <ResponsiveActionBar actions={mobileActions} />
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <button
+              onClick={() => setCurrentFolder(null)}
+              className="whitespace-nowrap text-xs text-[#d3bb73] hover:underline"
+            >
+              Główny
+            </button>
+            {breadcrumbs.map((crumb, idx) => (
+              <div key={crumb.id} className="flex items-center gap-2">
+                <ChevronRight className="h-3 w-3 text-[#e5e4e2]/40" />
+                <button
+                  onClick={() => setCurrentFolder(crumb.id)}
+                  className="whitespace-nowrap text-xs text-[#d3bb73] hover:underline"
+                >
+                  {crumb.name}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="flex-1 overflow-y-auto p-3"
+          onDrop={handleDrop}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+        >
+          {dragOver && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73] bg-[#d3bb73]/10">
+              <div className="text-center">
+                <Upload className="mx-auto mb-2 h-12 w-12 text-[#d3bb73]" />
+                <p className="text-[#e5e4e2]">Upuść pliki tutaj</p>
+              </div>
+            </div>
+          )}
+
+          {currentFolderSubfolders.length === 0 && sortedFiles.length === 0 ? (
+            <div className="py-12 text-center">
+              <File className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
+              <p className="text-sm text-[#e5e4e2]/60">Brak plików</p>
+              <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                Przeciągnij pliki lub kliknij Upload
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {currentFolderSubfolders.map((folder) => (
+                <button
+                  key={folder.id}
+                  onClick={() => setCurrentFolder(folder.id)}
+                  className="flex w-full items-center gap-3 rounded-lg bg-[#0f1119] p-3 transition-colors hover:bg-[#0f1119]/50"
+                >
+                  <Folder className="h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
+                  <span className="flex-1 truncate text-left text-sm text-[#e5e4e2]">
+                    {folder.name}
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-[#e5e4e2]/40" />
+                </button>
+              ))}
+
+              {sortedFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className={`flex items-center gap-3 rounded-lg p-3 ${
+                    selectedItems.has(file.id)
+                      ? 'border border-[#d3bb73]/30 bg-[#d3bb73]/15'
+                      : 'bg-[#0f1119] hover:bg-[#0f1119]/50'
+                  }`}
+                  onClick={(e) => toggleSelect(file.id, { event: e })}
+                >
+                  <div
+                    className="flex-shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.has(file.id)}
+                      onChange={() => toggleSelect(file.id, { forceMulti: true })}
+                      className="h-4 w-4 accent-[#d3bb73]"
+                    />
+                  </div>
+                  <div className="flex-shrink-0 text-[#d3bb73]">
+                    {getFileIcon(file.mime_type)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-[#e5e4e2]">{file.name}</p>
+                    <p className="text-xs text-[#e5e4e2]/40">
+                      {formatFileSize(file.file_size)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePreview(file);
+                    }}
+                    className="flex-shrink-0 rounded p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleContextMenu(e, file, 'file');
+                    }}
+                    className="flex-shrink-0 rounded p-1 text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[600px] overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
