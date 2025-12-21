@@ -180,8 +180,54 @@ export default function TasksPage() {
           schema: 'public',
           table: 'tasks',
         },
-        (payload) => {
-          fetchTasks();
+        async (payload) => {
+          const newTask = payload.new as Task;
+
+          const { data: assignees } = await supabase
+            .from('task_assignees')
+            .select('employee_id')
+            .eq('task_id', newTask.id);
+
+          const assigneesWithEmployees = await Promise.all(
+            (assignees || []).map(async (assignee) => {
+              const { data: employee } = await supabase
+                .from('employees')
+                .select('name, surname, avatar_url, avatar_metadata')
+                .eq('id', assignee.employee_id)
+                .maybeSingle();
+
+              return {
+                employee_id: assignee.employee_id,
+                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+              };
+            })
+          );
+
+          let currently_working_employee = null;
+          if (newTask.currently_working_by) {
+            const { data: workingEmployee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', newTask.currently_working_by)
+              .maybeSingle();
+
+            currently_working_employee = workingEmployee;
+          }
+
+          const { count } = await supabase
+            .from('task_comments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', newTask.id);
+
+          setTasks(prevTasks => [
+            ...prevTasks,
+            {
+              ...newTask,
+              task_assignees: assigneesWithEmployees,
+              currently_working_employee,
+              comments_count: count || 0,
+            }
+          ]);
         }
       )
       .on(
@@ -601,7 +647,6 @@ export default function TasksPage() {
         showSnackbar('Zadanie zostało utworzone', 'success');
       }
 
-      fetchTasks();
       handleCloseModal();
     } catch (error) {
       console.error('Error saving task:', error);
@@ -626,7 +671,6 @@ export default function TasksPage() {
       if (error) throw error;
 
       showSnackbar('Zadanie zostało usunięte', 'success');
-      fetchTasks();
     } catch (error: any) {
       console.error('Error deleting task:', error);
       showSnackbar(error.message || 'Błąd podczas usuwania zadania', 'error');
@@ -720,6 +764,7 @@ export default function TasksPage() {
           if (error) throw error;
 
           await startTimer(draggedTask);
+          showSnackbar('Zadanie rozpoczęte', 'success');
         } catch (error) {
           console.error('Error moving task:', error);
           showSnackbar('Błąd podczas przenoszenia zadania', 'error');
@@ -778,6 +823,8 @@ export default function TasksPage() {
         .eq('id', taskId);
 
       if (error) throw error;
+
+      showSnackbar('Zadanie przeniesione', 'success');
     } catch (error) {
       console.error('Error moving task:', error);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
@@ -830,8 +877,8 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4 px-2 flex-wrap gap-3">
+    <div className="flex flex-col h-[calc(100vh-80px)]">
+      <div className="flex items-center justify-between mb-4 px-2 flex-wrap gap-3 flex-shrink-0">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>
 
         {isMobile && (
@@ -866,13 +913,13 @@ export default function TasksPage() {
 
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-x-auto pb-4"
+        className="flex-1 overflow-x-auto overflow-y-hidden pb-4"
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
         <div
-          className={`flex gap-4 px-2 transition-transform duration-300 ${isMobile ? 'transform' : ''}`}
+          className={`flex gap-4 px-2 transition-transform duration-300 h-full ${isMobile ? 'transform' : ''}`}
           style={{
             minWidth: 'min-content',
             transform: isMobile ? `translateX(-${activeColumnIndex * 100}%)` : undefined,
@@ -891,8 +938,7 @@ export default function TasksPage() {
               }`}
               style={{
                 width: isMobile ? '100%' : '320px',
-                minHeight: '500px',
-                maxHeight: 'calc(100vh - 350px)',
+                height: '100%',
               }}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
