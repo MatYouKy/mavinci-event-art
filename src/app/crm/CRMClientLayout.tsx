@@ -272,7 +272,7 @@ export default function CRMClientLayout({ children }: { children: React.ReactNod
           </aside>
 
           <main
-            className={`flex-1 overflow-y-auto p-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} transition-all duration-300`}
+            className={`flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} transition-all duration-300`}
           >
             {(() => {
               if (pathname === '/crm') return children;
