@@ -174,29 +174,29 @@ export default function MobileCalendarView({
       </div>
 
       <div className="mt-4 flex flex-1 flex-col overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
-        <div className="flex-shrink-0 border-b border-[#d3bb73]/10 p-4">
-          <h3 className="text-sm font-medium capitalize text-[#e5e4e2]">
+        <div className="flex-shrink-0 border-b border-[#d3bb73]/10 px-3 py-2">
+          <h3 className="text-xs font-medium capitalize text-[#e5e4e2]">
             {selectedDateFormatted}
           </h3>
-          <p className="mt-1 text-xs text-[#e5e4e2]/60">
+          <p className="text-[10px] text-[#e5e4e2]/60">
             {eventsForSelectedDate.length}{' '}
             {eventsForSelectedDate.length === 1 ? 'wydarzenie' : 'wydarzeń'}
           </p>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-3">
           {eventsForSelectedDate.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
-              <div className="rounded-full bg-[#d3bb73]/10 p-4">
-                <Clock className="h-8 w-8 text-[#d3bb73]/50" />
+              <div className="rounded-full bg-[#d3bb73]/10 p-3">
+                <Clock className="h-6 w-6 text-[#d3bb73]/50" />
               </div>
-              <p className="mt-4 text-sm text-[#e5e4e2]/60">Brak wydarzeń</p>
-              <p className="mt-1 text-xs text-[#e5e4e2]/40">
+              <p className="mt-3 text-xs text-[#e5e4e2]/60">Brak wydarzeń</p>
+              <p className="mt-1 text-[10px] text-[#e5e4e2]/40">
                 Nie masz żadnych wydarzeń zaplanowanych na ten dzień
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {eventsForSelectedDate.map((event) => {
                 const statusColor =
                   event.category?.color || STATUS_COLORS[event.status] || '#d3bb73';
@@ -205,21 +205,21 @@ export default function MobileCalendarView({
                   <button
                     key={event.id}
                     onClick={() => handleEventClick(event)}
-                    className="w-full rounded-lg bg-[#0f1119] p-4 text-left transition-colors hover:bg-[#0f1119]/50"
+                    className="w-full rounded-lg bg-[#0f1119] p-3 text-left transition-colors hover:bg-[#0f1119]/50"
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2">
                       <div
-                        className="mt-1 h-3 w-3 flex-shrink-0 rounded-full"
+                        className="mt-0.5 h-2.5 w-2.5 flex-shrink-0 rounded-full"
                         style={{ backgroundColor: statusColor }}
                       />
                       <div className="flex-1">
-                        <h4 className="mb-2 text-sm font-medium text-[#e5e4e2]">
+                        <h4 className="mb-1.5 text-sm font-medium text-[#e5e4e2]">
                           {event.name}
                         </h4>
 
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                            <Clock className="h-3.5 w-3.5" />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#e5e4e2]/70">
+                            <Clock className="h-3 w-3" />
                             <span>
                               {formatTime(event.event_date)}
                               {event.event_end_date && ` - ${formatTime(event.event_end_date)}`}
@@ -227,15 +227,15 @@ export default function MobileCalendarView({
                           </div>
 
                           {event.location && (
-                            <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                            <div className="flex items-center gap-1.5 text-[11px] text-[#e5e4e2]/70">
+                              <MapPin className="h-3 w-3 flex-shrink-0" />
                               <span className="line-clamp-1">{event.location}</span>
                             </div>
                           )}
 
                           {(event.organization || event.contact_person) && (
-                            <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                              <Building2 className="h-3.5 w-3.5 flex-shrink-0" />
+                            <div className="flex items-center gap-1.5 text-[11px] text-[#e5e4e2]/70">
+                              <Building2 className="h-3 w-3 flex-shrink-0" />
                               <span className="line-clamp-1">
                                 {event.organization
                                   ? event.organization.alias || event.organization.name
@@ -245,16 +245,16 @@ export default function MobileCalendarView({
                           )}
 
                           {event.category && (
-                            <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                              <Tag className="h-3.5 w-3.5" />
+                            <div className="flex items-center gap-1.5 text-[11px] text-[#e5e4e2]/70">
+                              <Tag className="h-3 w-3" />
                               <span>{event.category.name}</span>
                             </div>
                           )}
                         </div>
 
-                        <div className="mt-3">
+                        <div className="mt-2">
                           <span
-                            className="inline-block rounded border px-2 py-1 text-xs"
+                            className="inline-block rounded border px-1.5 py-0.5 text-[10px]"
                             style={{
                               borderColor: statusColor,
                               backgroundColor: `${statusColor}20`,
