@@ -21,6 +21,7 @@
  */
 
 import { IEmployee } from '@/app/crm/employees/type';
+export type Employee = IEmployee;
 
 /**
  * Sprawdza czy użytkownik jest adminem
