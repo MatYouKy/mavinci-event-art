@@ -11,6 +11,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 import LinkEventFileModal from '@/components/crm/LinkEventFileModal';
+import { useGetTaskByIdQuery, useUpdateTaskMutation, useAddCommentMutation, useDeleteCommentMutation } from '@/store/api/tasksApi';
 
 interface Task {
   id: string;
@@ -121,9 +122,14 @@ export default function TaskDetailPage() {
   const { currentEmployee } = useCurrentEmployee();
   const isMobile = useMobile();
 
-  const [task, setTask] = useState<Task | null>(null);
+  const { data: task, isLoading: loading } = useGetTaskByIdQuery(taskId, {
+    skip: !taskId,
+  });
+  const [updateTask] = useUpdateTaskMutation();
+  const [addComment] = useAddCommentMutation();
+  const [deleteComment] = useDeleteCommentMutation();
+
   const [chatItems, setChatItems] = useState<ChatItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showLinkFileModal, setShowLinkFileModal] = useState(false);
@@ -139,9 +145,14 @@ export default function TaskDetailPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (task) {
+      const items = mergeChatItems(task.comments, task.attachments);
+      setChatItems(items);
+    }
+  }, [task]);
+
+  useEffect(() => {
     if (taskId) {
-      fetchTask();
-      fetchChatItems();
       fetchAvailableEmployees();
 
       const commentsChannel = supabase
@@ -155,7 +166,6 @@ export default function TaskDetailPage() {
             filter: `task_id=eq.${taskId}`,
           },
           () => {
-            fetchChatItems();
           }
         )
         .subscribe();
@@ -171,7 +181,6 @@ export default function TaskDetailPage() {
             filter: `task_id=eq.${taskId}`,
           },
           () => {
-            fetchChatItems();
           }
         )
         .subscribe();
@@ -193,115 +202,39 @@ export default function TaskDetailPage() {
     }, 100);
   };
 
-  const fetchTask = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', taskId)
-        .single();
+  const mergeChatItems = (comments: any[], attachments: any[]): ChatItem[] => {
+    const commentItems: ChatItem[] = (comments || []).map(c => ({
+      id: c.id,
+      type: 'comment' as const,
+      created_at: c.created_at,
+      employee_id: c.employee_id,
+      employee: c.employees,
+      content: c.content,
+    }));
 
-      if (error) throw error;
+    const attachmentItems: ChatItem[] = (attachments || []).map(a => ({
+      id: a.id,
+      type: 'attachment' as const,
+      created_at: a.created_at,
+      employee_id: a.uploaded_by,
+      employee: a.employees,
+      attachment: a,
+    }));
 
-      const { data: assignees } = await supabase
-        .from('task_assignees')
-        .select('employee_id')
-        .eq('task_id', taskId);
-
-      const assigneesWithEmployees = await Promise.all(
-        (assignees || []).map(async (assignee) => {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('name, surname, avatar_url, avatar_metadata')
-            .eq('id', assignee.employee_id)
-            .maybeSingle();
-
-          return {
-            employee_id: assignee.employee_id,
-            employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
-          };
-        })
-      );
-
-      let creator = null;
-      if (data.created_by) {
-        const { data: creatorData } = await supabase
-          .from('employees')
-          .select('name, surname, avatar_url, avatar_metadata')
-          .eq('id', data.created_by)
-          .maybeSingle();
-        creator = creatorData;
-      }
-
-      setTask({
-        ...data,
-        task_assignees: assigneesWithEmployees,
-        creator,
-      });
-    } catch (error) {
-      console.error('Error fetching task:', error);
-      showSnackbar('Błąd podczas ładowania zadania', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchChatItems = async () => {
-    try {
-      const { data: commentsData } = await supabase
-        .from('task_comments')
-        .select('*, employees:employee_id(name, surname, avatar_url, avatar_metadata)')
-        .eq('task_id', taskId)
-        .order('created_at', { ascending: true });
-
-      const { data: attachmentsData } = await supabase
-        .from('task_attachments')
-        .select('*, employees:uploaded_by(name, surname, avatar_url, avatar_metadata)')
-        .eq('task_id', taskId)
-        .order('created_at', { ascending: true });
-
-      const comments: ChatItem[] = (commentsData || []).map(c => ({
-        id: c.id,
-        type: 'comment' as const,
-        created_at: c.created_at,
-        employee_id: c.employee_id,
-        employee: c.employees,
-        content: c.content,
-      }));
-
-      const attachments: ChatItem[] = (attachmentsData || []).map(a => ({
-        id: a.id,
-        type: 'attachment' as const,
-        created_at: a.created_at,
-        employee_id: a.uploaded_by,
-        employee: a.employees,
-        attachment: a,
-      }));
-
-      const allItems = [...comments, ...attachments].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
-
-      setChatItems(allItems);
-    } catch (error) {
-      console.error('Error fetching chat items:', error);
-    }
+    return [...commentItems, ...attachmentItems].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
   };
 
   const handleSendComment = async () => {
     if (!newComment.trim() || !currentEmployee) return;
 
     try {
-      const { error } = await supabase
-        .from('task_comments')
-        .insert({
-          task_id: taskId,
-          employee_id: currentEmployee.id,
-          content: newComment.trim(),
-        });
-
-      if (error) throw error;
+      await addComment({
+        task_id: taskId,
+        employee_id: currentEmployee.id,
+        content: newComment.trim(),
+      }).unwrap();
 
       setNewComment('');
       if (textareaRef.current) {
@@ -370,13 +303,7 @@ export default function TaskDetailPage() {
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('task_comments')
-        .delete()
-        .eq('id', commentId);
-
-      if (error) throw error;
-
+      await deleteComment({ commentId, taskId }).unwrap();
       showSnackbar('Komentarz został usunięty', 'success');
     } catch (error) {
       console.error('Error deleting comment:', error);
@@ -434,7 +361,6 @@ export default function TaskDetailPage() {
       if (error) throw error;
 
       showSnackbar('Wypisano z zadania', 'success');
-      fetchTask();
     } catch (error) {
       console.error('Error unassigning:', error);
       showSnackbar('Błąd podczas wypisywania się', 'error');
@@ -478,21 +404,16 @@ export default function TaskDetailPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          title: editedTask.title,
-          description: editedTask.description || null,
-          priority: editedTask.priority,
-          due_date: editedTask.due_date || null,
-        })
-        .eq('id', taskId);
-
-      if (error) throw error;
+      await updateTask({
+        id: taskId,
+        title: editedTask.title,
+        description: editedTask.description || null,
+        priority: editedTask.priority as any,
+        due_date: editedTask.due_date || null,
+      }).unwrap();
 
       showSnackbar('Zadanie zaktualizowane', 'success');
       setIsEditing(false);
-      fetchTask();
     } catch (error) {
       console.error('Error updating task:', error);
       showSnackbar('Błąd podczas aktualizacji zadania', 'error');
@@ -511,7 +432,6 @@ export default function TaskDetailPage() {
       if (error) throw error;
 
       showSnackbar('Dodano osobę do zadania', 'success');
-      fetchTask();
     } catch (error: any) {
       if (error?.code === '23505') {
         showSnackbar('Ta osoba jest już przypisana do zadania', 'info');
@@ -576,7 +496,6 @@ export default function TaskDetailPage() {
       if (updateError) throw updateError;
 
       showSnackbar('Zdjęcie zostało dodane', 'success');
-      fetchTask();
     } catch (error) {
       console.error('Error uploading thumbnail:', error);
       showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
@@ -609,7 +528,6 @@ export default function TaskDetailPage() {
       if (error) throw error;
 
       showSnackbar('Zdjęcie zostało usunięte', 'success');
-      fetchTask();
     } catch (error) {
       console.error('Error removing thumbnail:', error);
       showSnackbar('Błąd podczas usuwania zdjęcia', 'error');

@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { api } from './api/api';
 import { eventsApi } from '../app/crm/events/store/api/eventsApi';
 import { analyticsApi } from './api/analyticsApi';
+import { tasksApi } from './api/tasksApi';
 import authReducer from './slices/authSlice';
 import contactsReducer from './slices/contactsSlice';
 import equipmentReducer from './slices/equipmentSlice';
@@ -30,6 +31,7 @@ export const store = configureStore({
     [clientsApi.reducerPath]: clientsApi.reducer,
     [locationsApi.reducerPath]: locationsApi.reducer,
     [employeesApi.reducerPath]: employeesApi.reducer,
+    [tasksApi.reducerPath]: tasksApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware()
@@ -41,7 +43,8 @@ export const store = configureStore({
       .concat(analyticsApi.middleware)
       .concat(clientsApi.middleware)
       .concat(locationsApi.middleware)
-      .concat(employeesApi.middleware),
+      .concat(employeesApi.middleware)
+      .concat(tasksApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

@@ -8,6 +8,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '@/components/crm/TaskCard';
+import { useGetTasksListQuery, useCreateTaskMutation, useUpdateTaskMutation, useDeleteTaskMutation } from '@/store/api/tasksApi';
 
 type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 type TaskStatus = 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled';
@@ -56,9 +57,12 @@ export default function TasksPage() {
   const canCreateTasks = canCreateInModule('tasks');
   const canManageTasks = canManageModule('tasks');
 
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { data: tasks = [], isLoading: loading } = useGetTasksListQuery();
+  const [createTask] = useCreateTaskMutation();
+  const [updateTask] = useUpdateTaskMutation();
+  const [deleteTask] = useDeleteTaskMutation();
+
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -109,7 +113,6 @@ export default function TasksPage() {
   };
 
   useEffect(() => {
-    fetchTasks();
     fetchEmployees();
 
     const tasksChannel = supabase
@@ -164,26 +167,6 @@ export default function TasksPage() {
             .from('task_comments')
             .select('*', { count: 'exact', head: true })
             .eq('task_id', updatedTask.id);
-
-          setTasks((prevTasks) => {
-            const taskExists = prevTasks.some((t) => t.id === updatedTask.id);
-
-            if (taskExists) {
-              return prevTasks.map((task) =>
-                task.id === updatedTask.id
-                  ? {
-                      ...task,
-                      ...updatedTask,
-                      task_assignees: assigneesWithEmployees,
-                      currently_working_employee,
-                      comments_count: count || 0,
-                    }
-                  : task,
-              );
-            }
-
-            return prevTasks;
-          });
         },
       )
       .on(
@@ -236,16 +219,6 @@ export default function TasksPage() {
             .from('task_comments')
             .select('*', { count: 'exact', head: true })
             .eq('task_id', newTask.id);
-
-          setTasks((prevTasks) => [
-            ...prevTasks,
-            {
-              ...newTask,
-              task_assignees: assigneesWithEmployees,
-              currently_working_employee,
-              comments_count: count || 0,
-            },
-          ]);
         },
       )
       .on(
@@ -257,7 +230,6 @@ export default function TasksPage() {
         },
         (payload) => {
           const deletedTaskId = payload.old.id;
-          setTasks((prevTasks) => prevTasks.filter((t) => t.id !== deletedTaskId));
         },
       )
       .on(
@@ -277,19 +249,6 @@ export default function TasksPage() {
             .maybeSingle();
 
           if (employee) {
-            setTasks((prevTasks) =>
-              prevTasks.map((task) =>
-                task.id === newAssignee.task_id
-                  ? {
-                      ...task,
-                      task_assignees: [
-                        ...(task.task_assignees || []),
-                        { employee_id: newAssignee.employee_id, employees: employee },
-                      ],
-                    }
-                  : task,
-              ),
-            );
           }
         },
       )
@@ -302,19 +261,6 @@ export default function TasksPage() {
         },
         (payload) => {
           const deletedAssignee = payload.old as any;
-
-          setTasks((prevTasks) =>
-            prevTasks.map((task) =>
-              task.id === deletedAssignee.task_id
-                ? {
-                    ...task,
-                    task_assignees: (task.task_assignees || []).filter(
-                      (a) => a.employee_id !== deletedAssignee.employee_id,
-                    ),
-                  }
-                : task,
-            ),
-          );
         },
       )
       .on(
@@ -332,12 +278,6 @@ export default function TasksPage() {
             .from('task_comments')
             .select('*', { count: 'exact', head: true })
             .eq('task_id', taskId);
-
-          setTasks((prevTasks) =>
-            prevTasks.map((task) =>
-              task.id === taskId ? { ...task, comments_count: count || 0 } : task,
-            ),
-          );
         },
       )
       .subscribe();
@@ -352,94 +292,6 @@ export default function TasksPage() {
       checkActiveTimer();
     }
   }, [currentEmployee]);
-
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('is_private', false)
-        .is('event_id', null);
-
-      if (error) throw error;
-
-      const tasksWithAssignees = await Promise.all(
-        (data || []).map(async (task) => {
-          const { data: assignees } = await supabase
-            .from('task_assignees')
-            .select('employee_id')
-            .eq('task_id', task.id);
-
-          const assigneesWithEmployees = await Promise.all(
-            (assignees || []).map(async (assignee) => {
-              const { data: employee } = await supabase
-                .from('employees')
-                .select('name, surname, avatar_url, avatar_metadata')
-                .eq('id', assignee.employee_id)
-                .maybeSingle();
-
-              return {
-                employee_id: assignee.employee_id,
-                employees: employee || {
-                  name: '',
-                  surname: '',
-                  avatar_url: null,
-                  avatar_metadata: null,
-                },
-              };
-            }),
-          );
-
-          let currently_working_employee = null;
-          if (task.currently_working_by) {
-            const { data: workingEmployee } = await supabase
-              .from('employees')
-              .select('name, surname, avatar_url, avatar_metadata')
-              .eq('id', task.currently_working_by)
-              .maybeSingle();
-
-            currently_working_employee = workingEmployee;
-          }
-
-          // Get comments count
-          const { count } = await supabase
-            .from('task_comments')
-            .select('*', { count: 'exact', head: true })
-            .eq('task_id', task.id);
-
-          return {
-            ...task,
-            currently_working_employee,
-            task_assignees: assigneesWithEmployees,
-            comments_count: count || 0,
-          };
-        }),
-      );
-
-      const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
-
-      const sortedTasks = tasksWithAssignees.sort((a, b) => {
-        const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-        if (priorityDiff !== 0) return priorityDiff;
-
-        if (a.due_date && b.due_date) {
-          return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-        }
-        if (a.due_date) return -1;
-        if (b.due_date) return 1;
-
-        return a.order_index - b.order_index;
-      });
-
-      setTasks(sortedTasks);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-      showSnackbar('Błąd podczas ładowania zadań', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchEmployees = async () => {
     try {
@@ -598,65 +450,28 @@ export default function TasksPage() {
 
     try {
       if (editingTask) {
-        const { error } = await supabase
-          .from('tasks')
-          .update({
-            title: formData.title,
-            description: formData.description || null,
-            priority: formData.priority,
-            board_column: formData.board_column,
-            due_date: formData.due_date || null,
-          })
-          .eq('id', editingTask.id);
-
-        if (error) throw error;
-
-        await supabase.from('task_assignees').delete().eq('task_id', editingTask.id);
-
-        if (formData.assigned_employees.length > 0) {
-          const assignees = formData.assigned_employees.map((employee_id) => ({
-            task_id: editingTask.id,
-            employee_id,
-            assigned_by: currentEmployee?.id,
-          }));
-
-          const { error: assignError } = await supabase.from('task_assignees').insert(assignees);
-
-          if (assignError) throw assignError;
-        }
+        await updateTask({
+          id: editingTask.id,
+          title: formData.title,
+          description: formData.description || null,
+          priority: formData.priority,
+          board_column: formData.board_column,
+          due_date: formData.due_date || null,
+          assigned_employees: formData.assigned_employees,
+          assigned_by: currentEmployee?.id,
+        }).unwrap();
 
         showSnackbar('Zadanie zostało zaktualizowane', 'success');
       } else {
-        const { data: task, error } = await supabase
-          .from('tasks')
-          .insert({
-            title: formData.title,
-            description: formData.description || null,
-            priority: formData.priority,
-            board_column: formData.board_column,
-            due_date: formData.due_date || null,
-            status: 'todo',
-            is_private: false,
-            event_id: null,
-            owner_id: null,
-            created_by: currentEmployee?.id,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        if (formData.assigned_employees.length > 0) {
-          const assignees = formData.assigned_employees.map((employee_id) => ({
-            task_id: task.id,
-            employee_id,
-            assigned_by: currentEmployee?.id,
-          }));
-
-          const { error: assignError } = await supabase.from('task_assignees').insert(assignees);
-
-          if (assignError) throw assignError;
-        }
+        await createTask({
+          title: formData.title,
+          description: formData.description || null,
+          priority: formData.priority,
+          board_column: formData.board_column,
+          due_date: formData.due_date || null,
+          assigned_employees: formData.assigned_employees,
+          created_by: currentEmployee?.id,
+        }).unwrap();
 
         showSnackbar('Zadanie zostało utworzone', 'success');
       }
@@ -677,10 +492,7 @@ export default function TasksPage() {
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase.from('tasks').delete().eq('id', taskId);
-
-      if (error) throw error;
-
+      await deleteTask(taskId).unwrap();
       showSnackbar('Zadanie zostało usunięte', 'success');
     } catch (error: any) {
       console.error('Error deleting task:', error);
@@ -757,37 +569,22 @@ export default function TasksPage() {
       }
 
       if (!activeTimer) {
-        setTasks((prevTasks) =>
-          prevTasks.map((task) =>
-            task.id === taskId ? { ...task, board_column: columnId as TaskBoardColumn } : task,
-          ),
-        );
         setDraggedTask(null);
         setDragOverColumn(null);
         stopAutoScroll();
 
         try {
-          const { error } = await supabase
-            .from('tasks')
-            .update({
-              board_column: columnId,
-              currently_working_by: currentEmployee?.id || null,
-            })
-            .eq('id', taskId);
-
-          if (error) throw error;
+          await updateTask({
+            id: taskId,
+            board_column: columnId,
+            currently_working_by: currentEmployee?.id || null,
+          }).unwrap();
 
           await startTimer(draggedTask);
           showSnackbar('Zadanie rozpoczęte', 'success');
         } catch (error) {
           console.error('Error moving task:', error);
           showSnackbar('Błąd podczas przenoszenia zadania', 'error');
-
-          setTasks((prevTasks) =>
-            prevTasks.map((task) =>
-              task.id === taskId ? { ...task, board_column: oldColumn as TaskBoardColumn } : task,
-            ),
-          );
         }
         return;
       }
@@ -815,11 +612,6 @@ export default function TasksPage() {
       }
     }
 
-    setTasks((prevTasks) =>
-      prevTasks.map((task) =>
-        task.id === taskId ? { ...task, board_column: columnId as TaskBoardColumn } : task,
-      ),
-    );
     setDraggedTask(null);
     setDragOverColumn(null);
     stopAutoScroll();
@@ -831,18 +623,15 @@ export default function TasksPage() {
         updateData.currently_working_by = null;
       }
 
-      const { error } = await supabase.from('tasks').update(updateData).eq('id', taskId);
-
-      if (error) throw error;
+      await updateTask({
+        id: taskId,
+        ...updateData,
+      }).unwrap();
 
       showSnackbar('Zadanie przeniesione', 'success');
     } catch (error) {
       console.error('Error moving task:', error);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
-
-      setTasks((prevTasks) =>
-        prevTasks.map((task) => (task.id === taskId ? { ...task, board_column: oldColumn } : task)),
-      );
     }
   };
 
