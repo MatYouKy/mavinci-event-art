@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus, Edit3, Save, X, UserPlus, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus, CreditCard as Edit3, Save, X, UserPlus, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
