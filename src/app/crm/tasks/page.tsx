@@ -78,6 +78,7 @@ export default function TasksPage() {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const columns = [
     { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30' },
@@ -860,11 +861,19 @@ export default function TasksPage() {
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe && activeColumnIndex < columns.length - 1) {
-      setActiveColumnIndex(prev => prev + 1);
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setActiveColumnIndex(prev => prev + 1);
+        setIsTransitioning(false);
+      }, 200);
     }
 
     if (isRightSwipe && activeColumnIndex > 0) {
-      setActiveColumnIndex(prev => prev - 1);
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setActiveColumnIndex(prev => prev - 1);
+        setIsTransitioning(false);
+      }, 200);
     }
   };
 
@@ -887,7 +896,13 @@ export default function TasksPage() {
               value={columns[activeColumnIndex].id}
               onChange={(e) => {
                 const index = columns.findIndex(col => col.id === e.target.value);
-                if (index !== -1) setActiveColumnIndex(index);
+                if (index !== -1 && index !== activeColumnIndex) {
+                  setIsTransitioning(true);
+                  setTimeout(() => {
+                    setActiveColumnIndex(index);
+                    setIsTransitioning(false);
+                  }, 200);
+                }
               }}
               className="flex-1 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
             >
@@ -913,16 +928,15 @@ export default function TasksPage() {
 
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-x-auto overflow-y-hidden pb-4"
+        className={`flex-1 overflow-y-hidden pb-4 ${isMobile ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
         <div
-          className={`flex gap-4 px-2 transition-transform duration-300 h-full ${isMobile ? 'transform' : ''}`}
+          className={`flex h-full transition-opacity duration-200 ${isMobile ? 'px-2' : 'gap-4 px-2'} ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}
           style={{
-            minWidth: 'min-content',
-            transform: isMobile ? `translateX(-${activeColumnIndex * 100}%)` : undefined,
+            minWidth: isMobile ? '100%' : 'min-content',
           }}
         >
           {(isMobile ? [columns[activeColumnIndex]] : columns).map(column => (
@@ -931,13 +945,13 @@ export default function TasksPage() {
               onDragOver={(e) => handleDragOver(e, column.id)}
               onDragLeave={handleDragLeave}
               onDrop={() => handleDrop(column.id)}
-              className={`flex-shrink-0 bg-[#1c1f33] border-2 rounded-xl p-4 flex flex-col transition-all ${
+              className={`bg-[#1c1f33] border-2 rounded-xl p-4 flex flex-col transition-all ${
                 dragOverColumn === column.id
                   ? 'border-[#d3bb73] bg-[#d3bb73]/5'
                   : column.color
-              }`}
+              } ${isMobile ? 'flex-1' : 'flex-shrink-0'}`}
               style={{
-                width: isMobile ? '100%' : '320px',
+                width: isMobile ? 'auto' : '320px',
                 height: '100%',
               }}
             >
@@ -1016,11 +1030,19 @@ export default function TasksPage() {
       </div>
 
       {isMobile && (
-        <div className="flex justify-center gap-2 py-4">
+        <div className="flex justify-center gap-2 py-4 flex-shrink-0">
           {columns.map((_, index) => (
             <button
               key={index}
-              onClick={() => setActiveColumnIndex(index)}
+              onClick={() => {
+                if (index !== activeColumnIndex) {
+                  setIsTransitioning(true);
+                  setTimeout(() => {
+                    setActiveColumnIndex(index);
+                    setIsTransitioning(false);
+                  }, 200);
+                }
+              }}
               className={`w-2 h-2 rounded-full transition-all ${
                 index === activeColumnIndex
                   ? 'bg-[#d3bb73] w-8'
