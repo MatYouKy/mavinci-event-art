@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -64,6 +64,7 @@ import { useLocations } from '../../locations/useLocations';
 import { ILocation } from '../../locations/type';
 import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
 import { useEmployees } from '../../employees/hooks/useEmployees';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 interface Equipment {
   kit_id: unknown;
@@ -472,6 +473,24 @@ export default function EventDetailPage() {
     [deleteOfferById, showConfirm, showSnackbar, refetchOffers],
   );
 
+  const actions = useMemo<Action[]>(() => {
+    return [
+      {
+        label: 'Edytuj',
+        onClick: () => setShowEditEventModal(true),
+        icon: <Edit className="h-4 w-4" />,
+        variant: 'primary', // odpowiada bg-[#d3bb73]
+      },
+      {
+        label: 'Usuń',
+        onClick: handleDeleteEvent,
+        icon: <Trash2 className="h-4 w-4" />,
+        variant: 'danger', // odpowiada czerwieni
+        show: isAdmin, // dokładnie jak warunek w JSX
+      },
+    ];
+  }, [setShowEditEventModal, handleDeleteEvent, isAdmin]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -540,39 +559,8 @@ export default function EventDetailPage() {
                   <span className="text-sm font-medium">{event.category.name}</span>
                 </button>
               )}
-              {!isEditingCategory && !event.category && (
-                <button
-                  onClick={() => setIsEditingCategory(true)}
-                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
-                >
-                  <Tag className="h-4 w-4" />
-                  <span className="text-sm font-medium">Dodaj kategorię</span>
-                </button>
-              )}
-              {isEditingCategory && (
-                <div className="flex items-center gap-2">
-                  <select
-                    value={event.category_id || ''}
-                    onChange={(e) => handleUpdateCategory(e.target.value)}
-                    className="rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-3 py-1 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
-                    autoFocus
-                  >
-                    <option value="">Bez kategorii</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => setIsEditingCategory(false)}
-                    className="p-1 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
             </div>
+
             <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
               {event.client_type === 'business' && organization && (
                 <div className="flex items-center gap-2">
@@ -608,29 +596,8 @@ export default function EventDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <EventStatusEditor
-            eventId={event.id}
-            currentStatus={event.status}
-            onStatusChange={(newStatus) => {
-              console.log('newStatus', newStatus);
-            }}
-          />
-          <button
-            onClick={() => setShowEditEventModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-          >
-            <Edit className="h-4 w-4" />
-            Edytuj
-          </button>
-          {isAdmin && (
-            <button
-              onClick={handleDeleteEvent}
-              className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
-            >
-              <Trash2 className="h-4 w-4" />
-              Usuń
-            </button>
-          )}
+
+          <ResponsiveActionBar actions={actions} />
         </div>
       </div>
 

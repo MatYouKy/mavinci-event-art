@@ -1,3 +1,4 @@
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { DollarSign, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { Dispatch, SetStateAction, useState } from 'react';
@@ -17,9 +18,11 @@ export default function EventTabOffer({
 }: EventTabOfferProps) {
   const router = useRouter();
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  
 
-  const handleDeleteOfferLocal = async (e: React.MouseEvent<HTMLButtonElement>, offerId: string) => {
+  const handleDeleteOfferLocal = async (
+    e: React.MouseEvent<HTMLButtonElement>,
+    offerId: string,
+  ) => {
     e.stopPropagation();
     try {
       setDeletingId(offerId);
@@ -39,15 +42,18 @@ export default function EventTabOffer({
             <h2 className="text-lg font-light text-[#e5e4e2]">Oferty</h2>
             <p className="mt-1 text-sm text-[#e5e4e2]/60">Zarządzaj ofertami dla tego eventu</p>
           </div>
-          <button
-            onClick={() => setShowCreateOfferModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-          >
-            <Plus className="h-4 w-4" />
-            Nowa oferta
-          </button>
+          <ResponsiveActionBar
+            actions={[
+              {
+                label: 'Nowa oferta',
+                onClick: () => setShowCreateOfferModal(true),
+                variant: 'primary',
+                icon: <Plus className="h-4 w-4" />,
+              },
+            ]}
+          />
         </div>
-  
+
         {offers.length === 0 ? (
           <div className="py-12 text-center">
             <DollarSign className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
@@ -63,7 +69,7 @@ export default function EventTabOffer({
           <div className="space-y-4">
             {offers.map((offer) => {
               const isDeletingThis = deletingId === offer.id;
-  
+
               return (
                 <div
                   key={offer.id}
@@ -73,7 +79,9 @@ export default function EventTabOffer({
                   onClick={() => router.push(`/crm/offers/${offer.id}`)}
                 >
                   {/* CONTENT (dim only this item) */}
-                  <div className={`transition-opacity duration-200 ${isDeletingThis ? 'opacity-40 blur-[1px]' : 'opacity-100'}`}>
+                  <div
+                    className={`transition-opacity duration-200 ${isDeletingThis ? 'opacity-40 blur-[1px]' : 'opacity-100'}`}
+                  >
                     <div className="mb-4 flex items-start justify-between">
                       <div className="flex-1">
                         <div className="mb-2 flex items-center gap-3">
@@ -108,7 +116,7 @@ export default function EventTabOffer({
                           Klient: {offer.organization?.name || 'Brak klienta'}
                         </p>
                       </div>
-  
+
                       <div className="text-right">
                         <p className="text-2xl font-light text-[#d3bb73]">
                           {offer.total_amount ? offer.total_amount.toLocaleString('pl-PL') : '0'} zł
@@ -120,9 +128,11 @@ export default function EventTabOffer({
                         )}
                       </div>
                     </div>
-  
+
                     <div className="flex items-center gap-4 border-t border-[#d3bb73]/10 pt-4 text-xs text-[#e5e4e2]/40">
-                      <span>Utworzona: {new Date(offer.created_at).toLocaleDateString('pl-PL')}</span>
+                      <span>
+                        Utworzona: {new Date(offer.created_at).toLocaleDateString('pl-PL')}
+                      </span>
                       {offer.updated_at && offer.updated_at !== offer.created_at && (
                         <>
                           <span>•</span>
@@ -131,10 +141,12 @@ export default function EventTabOffer({
                           </span>
                         </>
                       )}
-  
+
                       <div className="ml-auto flex flex-col gap-2">
                         <button
-                          onClick={(e: React.MouseEvent<HTMLButtonElement>) => handleDeleteOfferLocal(e, offer.id)}
+                          onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
+                            handleDeleteOfferLocal(e, offer.id)
+                          }
                           className="rounded-lg bg-red-500/20 p-2 text-red-400 transition-colors hover:bg-red-500/30"
                           title="Usuń ofertę"
                           disabled={isDeletingThis}
@@ -143,14 +155,14 @@ export default function EventTabOffer({
                         </button>
                       </div>
                     </div>
-  
+
                     {offer.notes && (
                       <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
                         <p className="text-sm text-[#e5e4e2]/60">{offer.notes}</p>
                       </div>
                     )}
                   </div>
-  
+
                   {/* LOADING OVERLAY (only on this item) */}
                   {isDeletingThis && !isConfirmed && (
                     <div className="absolute inset-0 z-10 flex items-center justify-center">

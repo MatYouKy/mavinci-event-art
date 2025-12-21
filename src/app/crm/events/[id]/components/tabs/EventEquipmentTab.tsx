@@ -21,6 +21,7 @@ import type {
   EquipmentItemDTO,
   EquipmentKitDTO,
 } from '@/app/crm/equipment/types/equipment.types';
+import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
 
 type ItemType = 'item' | 'kit';
 type AvailKey = `${ItemType}-${string}`;
@@ -442,36 +443,35 @@ export const EventEquipmentTab: React.FC = () => {
     />
   );
 
+  const actions = useMemo<Action[]>(() => {
+    return [
+      {
+        label: 'Dodaj sprzęt',
+        onClick: () => setShowAddEquipmentModal(true),
+        icon: <Plus className="h-4 w-4" />,
+        variant: 'primary',
+      },
+      {
+        label: 'Drukuj checklistę',
+        onClick: handleGenerateChecklist,
+        icon: <Printer className="h-4 w-4" />,
+        variant: 'default',
+      },
+    ];
+  }, [setShowAddEquipmentModal, handleGenerateChecklist]);
+
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
-        <h2 className="text-lg font-light text-[#e5e4e2]">Sprzęt</h2>
-        <div className="text-sm text-[#e5e4e2]/60">
-          <span className="font-medium">
-            Event Zawiera {equipment?.length}  Pozycji
-          </span>
+          <h2 className="text-lg font-light text-[#e5e4e2]">Sprzęt</h2>
+          <div className="text-sm text-[#e5e4e2]/60">
+            <span className="font-medium">Event Zawiera {equipment?.length} Pozycji</span>
+          </div>
         </div>
-        </div>
-
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleGenerateChecklist}
-            disabled={generatingPdf || !equipment || equipment.length === 0}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Printer className="h-4 w-4" />
-            {generatingPdf ? 'Generowanie...' : 'Drukuj checklistę'}
-          </button>
-
-          <button
-            onClick={() => setShowAddEquipmentModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-          >
-            <Plus className="h-4 w-4" />
-            Dodaj sprzęt
-          </button>
+          <ResponsiveActionBar actions={actions} />
         </div>
       </div>
 

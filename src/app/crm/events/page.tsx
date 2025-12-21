@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { Modal } from '@/components/UI/Modal';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
+import EventStatusEditor from '@/components/crm/EventStatusEditor';
 
 const statusColors = {
   offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
@@ -60,7 +61,7 @@ export default function EventsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
   const [viewMode, setLocalViewMode] = useState<'list' | 'grid'>(
-    getViewMode('events') === 'grid' ? 'grid' : 'list'
+    getViewMode('events') === 'grid' ? 'grid' : 'list',
   );
 
   const handleViewModeChange = async (mode: 'list' | 'grid') => {
@@ -98,7 +99,9 @@ export default function EventsPage() {
 
   const fetchEvents = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session?.user?.id) {
         setEvents([]);
         return;
@@ -113,19 +116,18 @@ export default function EventsPage() {
         .eq('id', currentUserId)
         .maybeSingle();
 
-      const isAdmin = employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
+      const isAdmin =
+        employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
 
-      let query = supabase
-        .from('events')
-        .select(
-          `
+      let query = supabase.from('events').select(
+        `
           *,
           organizations(name),
           contacts(first_name, last_name),
           event_categories(name, color),
           locations(name, formatted_address, address, city, postal_code)
         `,
-        );
+      );
 
       // Jeśli użytkownik nie jest adminem, pokaż tylko eventy do których jest przypisany
       if (!isAdmin) {
@@ -173,10 +175,7 @@ export default function EventsPage() {
 
   const fetchCategories = async () => {
     try {
-      const { data, error } = await supabase
-        .from('event_categories')
-        .select('*')
-        .order('name');
+      const { data, error } = await supabase.from('event_categories').select('*').order('name');
 
       if (error) throw error;
       if (data) setCategories(data);
@@ -442,25 +441,25 @@ export default function EventsPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleViewModeChange('list')}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`rounded-lg p-2 transition-colors ${
                 viewMode === 'list'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1117] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
               }`}
               title="Widok listy"
             >
-              <List className="w-4 h-4" />
+              <List className="h-4 w-4" />
             </button>
             <button
               onClick={() => handleViewModeChange('grid')}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`rounded-lg p-2 transition-colors ${
                 viewMode === 'grid'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1117] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
               }`}
               title="Widok siatki"
             >
-              <Grid className="w-4 h-4" />
+              <Grid className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -507,7 +506,13 @@ export default function EventsPage() {
         </div>
       </div>
 
-      <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid gap-4'}>
+      <div
+        className={
+          viewMode === 'grid'
+            ? 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'
+            : 'grid gap-4'
+        }
+      >
         {filteredEvents.map((event) => {
           const eventDate = new Date(event.event_date);
           const today = new Date();
@@ -519,25 +524,27 @@ export default function EventsPage() {
             return (
               <div
                 key={event.id}
-                className={`relative rounded-xl border bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30 cursor-pointer flex flex-col ${
+                className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30 ${
                   isPast ? 'border-[#e5e4e2]/5 opacity-60' : 'border-[#d3bb73]/10'
                 }`}
                 onClick={() => router.push(`/crm/events/${event.id}`)}
               >
-                <div className="flex items-start justify-between mb-4">
+                <div className="mb-4 flex items-start justify-between">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-medium text-[#e5e4e2] line-clamp-2">{event.name}</h3>
+                    <h3 className="line-clamp-2 text-base font-medium text-[#e5e4e2]">
+                      {event.name}
+                    </h3>
                   </div>
                   <button
                     onClick={(e) => handleDeleteClick(e, event)}
-                    className="rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20 flex-shrink-0"
+                    className="flex-shrink-0 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
                     title="Usuń event"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
 
-                <div className="space-y-3 text-sm text-[#e5e4e2]/70 flex-1">
+                <div className="flex-1 space-y-3 text-sm text-[#e5e4e2]/70">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4 flex-shrink-0" />
                     <span className="truncate">{event.organizations?.name || 'Brak klienta'}</span>
@@ -547,7 +554,7 @@ export default function EventsPage() {
                     <span>{new Date(event.event_date).toLocaleDateString('pl-PL')}</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
                     <span className="line-clamp-2">
                       {event.locations ? (
                         <>
@@ -563,26 +570,35 @@ export default function EventsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-4 border-t border-[#d3bb73]/10 mt-4">
+                <div className="mt-4 flex items-center gap-2 border-t border-[#d3bb73]/10 pt-4">
                   <div
-                    className={`text-xs px-2 py-1 rounded-full border ${
+                    className={`rounded-full border px-2 py-1 text-xs ${
                       statusColors[event.status]
                     }`}
                   >
                     {statusLabels[event.status]}
                   </div>
                   {event.event_categories && (
-                    <div className="text-xs px-2 py-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 text-[#d3bb73]">
+                    <div className="rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
                       {event.event_categories.name}
                     </div>
                   )}
                 </div>
 
-                <div className="text-sm text-[#e5e4e2]/70 mt-3">
+                <div className="mt-3 text-sm text-[#e5e4e2]/70">
                   Budżet:{' '}
                   <span className="font-medium text-[#d3bb73]">
                     {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
                   </span>
+                </div>
+                <div className="mt-3">
+                <EventStatusEditor
+                  eventId={event.id}
+                  currentStatus={event.status}
+                  onStatusChange={(newStatus) => {
+                      console.log('newStatus', newStatus);
+                    }}
+                  />
                 </div>
               </div>
             );
@@ -636,7 +652,7 @@ export default function EventsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-end gap-2 rounded-lg p-2 min-w-fit">
+                  <div className="flex min-w-fit items-center justify-end gap-2 rounded-lg p-2">
                     <div
                       className={`rounded-full border px-3 py-1 text-xs ${
                         statusColors[event.status]
@@ -651,13 +667,13 @@ export default function EventsPage() {
                       </div>
                     )}
                     <div className="flex items-center justify-end">
-                    <button
-                      onClick={(e) => handleDeleteClick(e, event)}
-                      className="top-4 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
-                      title="Usuń event"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                      <button
+                        onClick={(e) => handleDeleteClick(e, event)}
+                        className="top-4 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
+                        title="Usuń event"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 </div>

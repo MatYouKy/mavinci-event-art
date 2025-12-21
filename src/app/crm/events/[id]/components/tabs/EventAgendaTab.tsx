@@ -23,6 +23,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { useEvent } from '../../../hooks/useEvent';
 import { useGetContactByIdQuery } from '@/app/crm/contacts/store/clientsApi';
 import { ContactRow, OrganizationRow } from '@/app/crm/contacts/types';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 // YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00.000Z
 const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
@@ -112,7 +113,6 @@ export default function EventAgendaTab({
 
   const [startTimeInput, setStartTimeInput] = useState(() => isoToTimeInput(startTime));
   const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
-
 
   const canManage =
     employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
@@ -755,6 +755,98 @@ export default function EventAgendaTab({
     setAgendaNotes(removeFromTree(agendaNotes));
   };
 
+  const actions = useMemo<Action[]>(() => {
+    const result: Action[] = [];
+
+    /** =====================
+     * TRYB NIE-EDYCJI AGENDA
+     * ===================== */
+    if (canManage && !editMode) {
+      result.push({
+        label: 'Edytuj agendę',
+        onClick: () => setEditMode(true),
+        icon: <List className="h-4 w-4" />,
+        variant: 'default',
+      });
+    }
+
+    /** =====================
+     * TRYB EDYCJI AGENDA
+     * ===================== */
+    if (canManage && editMode) {
+      result.push(
+        {
+          label: saving ? 'Zapisywanie...' : 'Zapisz',
+          onClick: handleSave,
+          icon: <Save className="h-4 w-4" />,
+          variant: 'primary',
+        },
+        {
+          label: 'Anuluj',
+          onClick: handleCancelEdit,
+          variant: 'default',
+        },
+      );
+
+      return result; // ⬅️ w trybie edycji nie pokazujemy reszty akcji
+    }
+
+    /** =====================
+     * PDF / DRUK (tylko gdy NIE editMode)
+     * ===================== */
+    if (!editMode && agendaId) {
+      if (!generatedPdfPath || modifiedAfterGeneration) {
+        result.push({
+          label: generating
+            ? 'Generowanie...'
+            : modifiedAfterGeneration
+              ? 'Regeneruj PDF'
+              : 'Generuj PDF',
+          onClick: handleGeneratePDF,
+          icon: <FileDown className="h-4 w-4" />,
+          variant: 'default',
+        });
+      } else {
+        result.push(
+          {
+            label: 'Pokaż PDF',
+            onClick: handleShowPdf,
+            icon: <Eye className="h-4 w-4" />,
+            variant: 'default',
+          },
+          {
+            label: 'Pobierz PDF',
+            onClick: handleDownloadPdf,
+            icon: <Download className="h-4 w-4" />,
+            variant: 'default',
+          },
+        );
+      }
+
+      result.push({
+        label: 'Drukuj',
+        onClick: () => window.print(),
+        icon: <Printer className="h-4 w-4" />,
+        variant: 'default',
+      });
+    }
+
+    return result;
+  }, [
+    canManage,
+    editMode,
+    saving,
+    agendaId,
+    generatedPdfPath,
+    modifiedAfterGeneration,
+    generating,
+    handleSave,
+    handleCancelEdit,
+    handleGeneratePDF,
+    handleShowPdf,
+    handleDownloadPdf,
+  ]);
+
   const renderNoteEdit = (note: AgendaNote, depth: number = 0) => {
     const indent = depth * 24;
     return (
@@ -823,83 +915,9 @@ export default function EventAgendaTab({
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Agenda wydarzenia</h2>
         <div className="flex gap-2">
-          {canManage && !editMode && (
-            <button
-              onClick={() => setEditMode(true)}
-              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/40 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
-            >
-              <List className="h-4 w-4" />
-              <span>Edytuj agendę</span>
-            </button>
-          )}
-
-          {canManage && editMode && (
-            <>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-              >
-                <Save className="h-4 w-4" />
-                <span>{saving ? 'Zapisywanie...' : 'Zapisz'}</span>
-              </button>
-              <button
-                onClick={handleCancelEdit}
-                disabled={saving}
-                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/40 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-              >
-                <span>Anuluj</span>
-              </button>
-            </>
-          )}
-
-          {!editMode && agendaId && (
-            <>
-              {!generatedPdfPath || modifiedAfterGeneration ? (
-                <button
-                  onClick={handleGeneratePDF}
-                  disabled={generating}
-                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-                >
-                  <FileDown className="h-4 w-4" />
-                  <span>
-                    {generating
-                      ? 'Generowanie...'
-                      : modifiedAfterGeneration
-                        ? 'Regeneruj PDF'
-                        : 'Generuj PDF'}
-                  </span>
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={handleShowPdf}
-                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                  >
-                    <Eye className="h-4 w-4" />
-                    <span>Pokaż PDF</span>
-                  </button>
-                  <button
-                    onClick={handleDownloadPdf}
-                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                  >
-                    <Download className="h-4 w-4" />
-                    <span>Pobierz PDF</span>
-                  </button>
-                </>
-              )}
-              <button
-                onClick={() => window.print()}
-                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
-              >
-                <Printer className="h-4 w-4" />
-                <span>Drukuj</span>
-              </button>
-            </>
-          )}
+          <ResponsiveActionBar actions={actions} />
         </div>
       </div>
-
       <div className="space-y-6">
         {/* Podstawowe informacje */}
 
