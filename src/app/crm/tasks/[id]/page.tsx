@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useMobile } from '@/hooks/useMobile';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 import LinkEventFileModal from '@/components/crm/LinkEventFileModal';
@@ -118,6 +119,7 @@ export default function TaskDetailPage() {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { currentEmployee } = useCurrentEmployee();
+  const isMobile = useMobile();
 
   const [task, setTask] = useState<Task | null>(null);
   const [chatItems, setChatItems] = useState<ChatItem[]>([]);
@@ -687,23 +689,25 @@ export default function TaskDetailPage() {
     <div className="bg-[#0a0d1a]">
       {/* Header - Sticky */}
       <div className="sticky top-0 z-10 bg-[#0f1119] border-b border-[#d3bb73]/10">
-        <div className="flex items-center gap-4 p-4">
+        <div className={`flex items-center gap-2 ${isMobile ? 'p-2' : 'p-4'}`}>
           <button
             onClick={() => router.back()}
-            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+            className={`${isMobile ? 'p-1.5' : 'p-2'} hover:bg-[#d3bb73]/10 rounded-lg transition-colors`}
           >
-            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+            <ArrowLeft className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-[#e5e4e2]`} />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-[#e5e4e2]">Szczegóły zadania</h1>
+            <h1 className={`${isMobile ? 'text-base' : 'text-xl'} font-bold text-[#e5e4e2]`}>
+              {isMobile ? 'Szczegóły' : 'Szczegóły zadania'}
+            </h1>
           </div>
           {!isEditing && (
             <button
               onClick={handleStartEdit}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors"
+              className={`flex items-center gap-1.5 ${isMobile ? 'px-2 py-1.5 text-xs' : 'px-4 py-2'} bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors`}
             >
-              <Edit3 className="w-4 h-4" />
-              Edytuj
+              <Edit3 className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} />
+              {isMobile ? 'Edytuj' : 'Edytuj'}
             </button>
           )}
         </div>
@@ -711,7 +715,7 @@ export default function TaskDetailPage() {
 
       {/* Task Details Section - Scrollable */}
       <div className="flex-shrink-0 bg-[#0f1119] border-b-4 border-[#d3bb73]/20 max-h-[60vh] overflow-y-auto">
-        <div className="p-6 space-y-6">
+        <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'}`}>
           {isEditing ? (
             <>
               {/* Edit Mode */}
@@ -806,19 +810,19 @@ export default function TaskDetailPage() {
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4 border-t border-[#d3bb73]/10">
+                <div className={`flex ${isMobile ? 'gap-2' : 'gap-3'} pt-4 border-t border-[#d3bb73]/10`}>
                   <button
                     onClick={handleSaveEdit}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] hover:bg-[#c4ac64] text-[#0a0d1a] rounded-lg transition-colors font-medium"
+                    className={`flex items-center ${isMobile ? 'gap-1.5 px-3 py-1.5 text-xs' : 'gap-2 px-4 py-2'} bg-[#d3bb73] hover:bg-[#c4ac64] text-[#0a0d1a] rounded-lg transition-colors font-medium`}
                   >
-                    <Save className="w-4 h-4" />
+                    <Save className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} />
                     Zapisz
                   </button>
                   <button
                     onClick={handleCancelEdit}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#e5e4e2]/10 hover:bg-[#e5e4e2]/20 text-[#e5e4e2] rounded-lg transition-colors"
+                    className={`flex items-center ${isMobile ? 'gap-1.5 px-3 py-1.5 text-xs' : 'gap-2 px-4 py-2'} bg-[#e5e4e2]/10 hover:bg-[#e5e4e2]/20 text-[#e5e4e2] rounded-lg transition-colors`}
                   >
-                    <X className="w-4 h-4" />
+                    <X className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} />
                     Anuluj
                   </button>
                 </div>
@@ -827,13 +831,13 @@ export default function TaskDetailPage() {
           ) : (
             <>
               {/* View Mode */}
-              <div className="space-y-4">
-                <h2 className="text-2xl font-bold text-[#e5e4e2]">{task.title}</h2>
+              <div className={`${isMobile ? 'space-y-2' : 'space-y-4'}`}>
+                <h2 className={`${isMobile ? 'text-lg' : 'text-2xl'} font-bold text-[#e5e4e2]`}>{task.title}</h2>
 
                 {task.description && (
                   <div>
-                    <h3 className="text-sm font-medium text-[#e5e4e2]/60 mb-2">Opis</h3>
-                    <p className="text-sm text-[#e5e4e2]/80 whitespace-pre-wrap">{task.description}</p>
+                    <h3 className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium text-[#e5e4e2]/60 mb-1`}>Opis</h3>
+                    <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-[#e5e4e2]/80 whitespace-pre-wrap`}>{task.description}</p>
                   </div>
                 )}
 
@@ -842,27 +846,27 @@ export default function TaskDetailPage() {
                     <img
                       src={task.thumbnail_url}
                       alt="Task thumbnail"
-                      className="w-48 h-32 object-cover rounded-lg border-2 border-[#d3bb73]/20"
+                      className={`${isMobile ? 'w-32 h-20' : 'w-48 h-32'} object-cover rounded-lg border-2 border-[#d3bb73]/20`}
                     />
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 flex-wrap">
+                <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-4'} flex-wrap`}>
                   {task.creator && (
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-[#e5e4e2]/60" />
-                      <span className="text-sm text-[#e5e4e2]/60">Autor:</span>
-                      <span className="text-sm text-[#e5e4e2]">
+                    <div className="flex items-center gap-1.5">
+                      <User className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-[#e5e4e2]/60`} />
+                      <span className={`${isMobile ? 'text-xs' : 'text-sm'} text-[#e5e4e2]/60`}>Autor:</span>
+                      <span className={`${isMobile ? 'text-xs' : 'text-sm'} text-[#e5e4e2]`}>
                         {task.creator.name} {task.creator.surname}
                       </span>
                     </div>
                   )}
-                  <span className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
+                  <span className={`${isMobile ? 'text-[10px] px-2 py-0.5' : 'text-xs px-3 py-1'} rounded-full ${priorityColors[task.priority]}`}>
                     {priorityLabels[task.priority]}
                   </span>
                   {task.due_date && (
-                    <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                      <Calendar className="w-4 h-4" />
+                    <div className={`flex items-center gap-1.5 ${isMobile ? 'text-xs' : 'text-sm'} text-[#e5e4e2]/60`}>
+                      <Calendar className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} />
                       {new Date(task.due_date).toLocaleDateString('pl-PL')}
                     </div>
                   )}
@@ -870,7 +874,7 @@ export default function TaskDetailPage() {
 
                 {/* Assignees - Only Avatars */}
                 <div>
-                  <h3 className="text-sm font-medium text-[#e5e4e2]/60 mb-3">Przypisane osoby</h3>
+                  <h3 className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium text-[#e5e4e2]/60 ${isMobile ? 'mb-2' : 'mb-3'}`}>Przypisane osoby</h3>
                   <div className="flex items-center -space-x-2">
                     {task.task_assignees.map((assignee) => (
                       <div
@@ -885,25 +889,25 @@ export default function TaskDetailPage() {
                             name: assignee.employees.name,
                             surname: assignee.employees.surname,
                           }}
-                          size={40}
+                          size={isMobile ? 32 : 40}
                         />
                         {(task.created_by === currentEmployee?.id || currentEmployee?.id === assignee.employee_id) && (
                           <button
                             onClick={() => handleRemoveAssignee(assignee.employee_id)}
-                            className="absolute -top-1 -right-1 p-1 bg-red-500 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
+                            className={`absolute -top-1 -right-1 ${isMobile ? 'p-0.5' : 'p-1'} bg-red-500 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10`}
                             title="Usuń"
                           >
-                            <X className="w-3 h-3 text-white" />
+                            <X className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} text-white`} />
                           </button>
                         )}
                       </div>
                     ))}
                     <button
                       onClick={() => setShowAssignModal(true)}
-                      className="w-10 h-10 rounded-full bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 border-2 border-[#d3bb73]/40 flex items-center justify-center transition-colors ml-2"
+                      className={`${isMobile ? 'w-8 h-8 border' : 'w-10 h-10 border-2'} rounded-full bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 border-[#d3bb73]/40 flex items-center justify-center transition-colors ml-2`}
                       title="Dodaj osobę"
                     >
-                      <UserPlus className="w-5 h-5 text-[#d3bb73]" />
+                      <UserPlus className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-[#d3bb73]`} />
                     </button>
                   </div>
                 </div>
@@ -916,7 +920,7 @@ export default function TaskDetailPage() {
       {/* Chat Area */}
       <div className="bg-[#0f1119] border-b-4 border-[#d3bb73]/20">
         <div
-          className="overflow-y-auto p-6 space-y-4"
+          className={`overflow-y-auto ${isMobile ? 'p-2 space-y-2' : 'p-6 space-y-4'}`}
           style={{
             minHeight: chatItems.length === 0 ? '200px' : '200px',
             maxHeight: '500px'
@@ -925,97 +929,197 @@ export default function TaskDetailPage() {
 
         {chatItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[#e5e4e2]/40">
-            <p className="text-sm">Brak wiadomości. Rozpocznij konwersację.</p>
+            <p className={`${isMobile ? 'text-xs' : 'text-sm'}`}>Brak wiadomości. Rozpocznij konwersację.</p>
           </div>
         ) : (
           chatItems.map((item) => (
-            <div key={item.id} className="flex gap-3">
-              <EmployeeAvatar
-                employee={{
-                  avatar_url: item.employee.avatar_url,
-                  avatar_metadata: item.employee.avatar_metadata,
-                  name: item.employee.name,
-                  surname: item.employee.surname,
-                }}
-                size={40}
-                className="flex-shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium text-[#e5e4e2]">
-                    {item.employee.name} {item.employee.surname}
-                  </span>
-                  <span className="text-xs text-[#e5e4e2]/40">
-                    {new Date(item.created_at).toLocaleString('pl-PL')}
-                  </span>
-                </div>
-
-                {item.type === 'comment' && (
-                  <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 group">
-                    <div className="flex items-start gap-2">
-                      <p className="text-sm text-[#e5e4e2] whitespace-pre-wrap flex-1">{item.content}</p>
-                      {canDeleteComment(item.employee_id) && (
-                        <button
-                          onClick={() => handleDeleteComment(item.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-500/10 rounded-lg flex-shrink-0"
-                          title="Usuń komentarz"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                        </button>
-                      )}
-                    </div>
+            <div key={item.id} className={isMobile ? "space-y-1" : "flex gap-3"}>
+              {isMobile ? (
+                <>
+                  {/* Mobile: Avatar + Info na górze */}
+                  <div className="flex items-center gap-2 px-1">
+                    <EmployeeAvatar
+                      employee={{
+                        avatar_url: item.employee.avatar_url,
+                        avatar_metadata: item.employee.avatar_metadata,
+                        name: item.employee.name,
+                        surname: item.employee.surname,
+                      }}
+                      size={28}
+                      className="flex-shrink-0"
+                    />
+                    <span className="text-xs font-medium text-[#e5e4e2]">
+                      {item.employee.name} {item.employee.surname}
+                    </span>
+                    <span className="text-[10px] text-[#e5e4e2]/40 ml-auto">
+                      {new Date(item.created_at).toLocaleString('pl-PL', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
                   </div>
-                )}
-
-                {item.type === 'attachment' && item.attachment && (
-                  <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3">
-                    <div className="flex items-center gap-3">
-                      {isImage(item.attachment.file_type) && item.attachment.file_url ? (
-                        <img
-                          src={item.attachment.file_url}
-                          alt={item.attachment.file_name}
-                          className="w-48 h-32 object-cover rounded-lg"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center">
-                          <File className="w-6 h-6 text-[#d3bb73]" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm text-[#e5e4e2] font-medium truncate">
-                            {item.attachment.file_name}
-                          </p>
-                          {item.attachment.is_linked && (
-                            <ExternalLink className="w-3 h-3 text-blue-400 flex-shrink-0"  />
+                  {/* Treść na pełną szerokość */}
+                  <div className="w-full">
+                    {item.type === 'comment' && (
+                      <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-2 group">
+                        <div className="flex items-start gap-1.5">
+                          <p className="text-xs text-[#e5e4e2] whitespace-pre-wrap flex-1">{item.content}</p>
+                          {canDeleteComment(item.employee_id) && (
+                            <button
+                              onClick={() => handleDeleteComment(item.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-500/10 rounded flex-shrink-0"
+                              title="Usuń"
+                            >
+                              <Trash2 className="w-3 h-3 text-red-400" />
+                            </button>
                           )}
                         </div>
-                        <p className="text-xs text-[#e5e4e2]/60">{formatFileSize(item.attachment.file_size)}</p>
                       </div>
-                      <div className="flex gap-2">
-                        {item.attachment.file_url && (
-                          <a
-                            href={item.attachment.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-                            title="Pobierz"
-                          >
-                            <Download className="w-4 h-4 text-[#d3bb73]" />
-                          </a>
-                        )}
-                        <button
-                          onClick={() => handleDeleteAttachment(item.attachment!.id, item.attachment!.file_url, item.attachment!.is_linked)}
-                          className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
-                          title={item.attachment.is_linked ? 'Odlinkuj' : 'Usuń'}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-400" />
-                        </button>
+                    )}
+                    {item.type === 'attachment' && item.attachment && (
+                      <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-2">
+                        <div className="flex items-center gap-2">
+                          {isImage(item.attachment.file_type) && item.attachment.file_url ? (
+                            <img
+                              src={item.attachment.file_url}
+                              alt={item.attachment.file_name}
+                              className="w-32 h-20 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-[#d3bb73]/10 flex items-center justify-center">
+                              <File className="w-4 h-4 text-[#d3bb73]" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <p className="text-xs text-[#e5e4e2] font-medium truncate">
+                                {item.attachment.file_name}
+                              </p>
+                              {item.attachment.is_linked && (
+                                <ExternalLink className="w-2.5 h-2.5 text-blue-400 flex-shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-[10px] text-[#e5e4e2]/60">{formatFileSize(item.attachment.file_size)}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            {item.attachment.file_url && (
+                              <a
+                                href={item.attachment.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 hover:bg-[#d3bb73]/10 rounded transition-colors"
+                                title="Pobierz"
+                              >
+                                <Download className="w-3 h-3 text-[#d3bb73]" />
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleDeleteAttachment(item.attachment!.id, item.attachment!.file_url, item.attachment!.is_linked)}
+                              className="p-1.5 hover:bg-red-500/10 rounded transition-colors"
+                              title={item.attachment.is_linked ? 'Odlinkuj' : 'Usuń'}
+                            >
+                              <Trash2 className="w-3 h-3 text-red-400" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              ) : (
+                <>
+                  {/* Desktop: Avatar po lewej, treść obok */}
+                  <EmployeeAvatar
+                    employee={{
+                      avatar_url: item.employee.avatar_url,
+                      avatar_metadata: item.employee.avatar_metadata,
+                      name: item.employee.name,
+                      surname: item.employee.surname,
+                    }}
+                    size={40}
+                    className="flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-[#e5e4e2]">
+                        {item.employee.name} {item.employee.surname}
+                      </span>
+                      <span className="text-xs text-[#e5e4e2]/40">
+                        {new Date(item.created_at).toLocaleString('pl-PL')}
+                      </span>
+                    </div>
+
+                    {item.type === 'comment' && (
+                      <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3 group">
+                        <div className="flex items-start gap-2">
+                          <p className="text-sm text-[#e5e4e2] whitespace-pre-wrap flex-1">{item.content}</p>
+                          {canDeleteComment(item.employee_id) && (
+                            <button
+                              onClick={() => handleDeleteComment(item.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-500/10 rounded-lg flex-shrink-0"
+                              title="Usuń komentarz"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {item.type === 'attachment' && item.attachment && (
+                      <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3">
+                        <div className="flex items-center gap-3">
+                          {isImage(item.attachment.file_type) && item.attachment.file_url ? (
+                            <img
+                              src={item.attachment.file_url}
+                              alt={item.attachment.file_name}
+                              className="w-48 h-32 object-cover rounded-lg"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center">
+                              <File className="w-6 h-6 text-[#d3bb73]" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-sm text-[#e5e4e2] font-medium truncate">
+                                {item.attachment.file_name}
+                              </p>
+                              {item.attachment.is_linked && (
+                                <ExternalLink className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-xs text-[#e5e4e2]/60">{formatFileSize(item.attachment.file_size)}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            {item.attachment.file_url && (
+                              <a
+                                href={item.attachment.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                                title="Pobierz"
+                              >
+                                <Download className="w-4 h-4 text-[#d3bb73]" />
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleDeleteAttachment(item.attachment!.id, item.attachment!.file_url, item.attachment!.is_linked)}
+                              className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                              title={item.attachment.is_linked ? 'Odlinkuj' : 'Usuń'}
+                            >
+                              <Trash2 className="w-4 h-4 text-red-400" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           ))
         )}
@@ -1024,7 +1128,7 @@ export default function TaskDetailPage() {
 
       {/* Input Area */}
       <div
-        className="p-4 bg-[#0f1119] border-t border-[#d3bb73]/10 relative"
+        className={`${isMobile ? 'p-2' : 'p-4'} bg-[#0f1119] border-t border-[#d3bb73]/10 relative`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -1032,12 +1136,12 @@ export default function TaskDetailPage() {
         {isDragging && (
           <div className="absolute inset-0 bg-[#d3bb73]/10 border-2 border-dashed border-[#d3bb73] rounded-lg flex items-center justify-center z-50">
             <div className="text-center">
-              <Paperclip className="w-12 h-12 text-[#d3bb73] mx-auto mb-2" />
-              <p className="text-[#d3bb73] font-medium">Upuść pliki tutaj</p>
+              <Paperclip className={`${isMobile ? 'w-8 h-8' : 'w-12 h-12'} text-[#d3bb73] mx-auto mb-2`} />
+              <p className={`text-[#d3bb73] ${isMobile ? 'text-xs' : 'font-medium'}`}>Upuść pliki tutaj</p>
             </div>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className={`flex ${isMobile ? 'gap-1' : 'gap-2'}`}>
           <input
             ref={fileInputRef}
             type="file"
@@ -1048,18 +1152,18 @@ export default function TaskDetailPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadingFile}
-            className="p-3 hover:bg-[#d3bb73]/10 rounded-lg transition-colors disabled:opacity-50"
+            className={`${isMobile ? 'p-2' : 'p-3'} hover:bg-[#d3bb73]/10 rounded-lg transition-colors disabled:opacity-50`}
             title="Dodaj plik"
           >
-            <Paperclip className="w-5 h-5 text-[#e5e4e2]/60" />
+            <Paperclip className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-[#e5e4e2]/60`} />
           </button>
           {task.event_id && (
             <button
               onClick={() => setShowLinkFileModal(true)}
-              className="p-3 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+              className={`${isMobile ? 'p-2' : 'p-3'} hover:bg-[#d3bb73]/10 rounded-lg transition-colors`}
               title="Dodaj z wydarzenia"
             >
-              <LinkIcon className="w-5 h-5 text-blue-400" />
+              <LinkIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-blue-400`} />
             </button>
           )}
           <textarea
@@ -1067,21 +1171,23 @@ export default function TaskDetailPage() {
             value={newComment}
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
-            placeholder="Napisz wiadomość... (Shift+Enter dla nowej linii)"
-            className="flex-1 bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/50 resize-none min-h-[48px] max-h-[200px]"
+            placeholder={isMobile ? "Napisz..." : "Napisz wiadomość... (Shift+Enter dla nowej linii)"}
+            className={`flex-1 bg-[#1a1d2e] border border-[#d3bb73]/20 rounded-lg ${isMobile ? 'px-2 py-2 text-xs' : 'px-4 py-3'} text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/50 resize-none ${isMobile ? 'min-h-[36px]' : 'min-h-[48px]'} max-h-[200px]`}
             rows={1}
           />
           <button
             onClick={handleSendComment}
             disabled={!newComment.trim() || uploadingFile}
-            className="px-6 py-3 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#0f1119] rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`${isMobile ? 'px-3 py-2' : 'px-6 py-3'} bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#0f1119] rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <Send className="w-5 h-5" />
+            <Send className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} />
           </button>
         </div>
-        <p className="text-xs text-[#e5e4e2]/40 mt-2 px-6 pb-4">
-          Przeciągnij i upuść pliki lub zdjęcia aby je dodać
-        </p>
+        {!isMobile && (
+          <p className="text-xs text-[#e5e4e2]/40 mt-2 px-6 pb-4">
+            Przeciągnij i upuść pliki lub zdjęcia aby je dodać
+          </p>
+        )}
         </div>
       </div>
 
