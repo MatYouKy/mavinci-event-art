@@ -58,7 +58,9 @@ export default function CRMDashboard() {
 
   const fetchEmployee = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) return;
 
       const { data } = await supabase
@@ -79,12 +81,7 @@ export default function CRMDashboard() {
     try {
       setLoading(true);
 
-      const [
-        eventsResult,
-        clientsResult,
-        employeesResult,
-        tasksResult,
-      ] = await Promise.all([
+      const [eventsResult, clientsResult, employeesResult, tasksResult] = await Promise.all([
         supabase.from('events').select('id, event_date, status', { count: 'exact' }),
         supabase.from('clients').select('id', { count: 'exact' }),
         supabase.from('employees').select('id, is_active', { count: 'exact' }),
@@ -92,17 +89,15 @@ export default function CRMDashboard() {
       ]);
 
       const now = new Date();
-      const upcomingEvents = eventsResult.data?.filter(
-        (e) => new Date(e.event_date) >= now && e.status !== 'cancelled'
-      ).length || 0;
+      const upcomingEvents =
+        eventsResult.data?.filter((e) => new Date(e.event_date) >= now && e.status !== 'cancelled')
+          .length || 0;
 
-      const activeEmployees = employeesResult.data?.filter(
-        (e) => e.is_active
-      ).length || 0;
+      const activeEmployees = employeesResult.data?.filter((e) => e.is_active).length || 0;
 
-      const pendingTasks = tasksResult.data?.filter(
-        (t) => t.status === 'todo' || t.status === 'in_progress'
-      ).length || 0;
+      const pendingTasks =
+        tasksResult.data?.filter((t) => t.status === 'todo' || t.status === 'in_progress').length ||
+        0;
 
       setStats({
         totalEvents: eventsResult.count || 0,
@@ -158,9 +153,10 @@ export default function CRMDashboard() {
 
       if (recentClients) {
         recentClients.forEach((client) => {
-          const name = client.client_type === 'company'
-            ? client.company_name
-            : `${client.first_name} ${client.last_name}`;
+          const name =
+            client.client_type === 'company'
+              ? client.company_name
+              : `${client.first_name} ${client.last_name}`;
           activities.push({
             id: client.id,
             type: 'client',
@@ -259,15 +255,15 @@ export default function CRMDashboard() {
     },
   ];
 
-  const statCards = allStatCards.filter(card => {
+  const statCards = allStatCards.filter((card) => {
     if (!employee || !card.module) return true;
     return isAdmin(employee) || canView(employee, card.module);
   });
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-[#d3bb73] text-lg">Ładowanie dashboard...</div>
+      <div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
@@ -276,80 +272,68 @@ export default function CRMDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-light text-[#e5e4e2]">
-            Witaj w systemie CRM
-          </h2>
-          <p className="text-[#e5e4e2]/60 text-sm mt-1">
+          <h2 className="text-2xl font-light text-[#e5e4e2]">Witaj w systemie CRM</h2>
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Przegląd działalności agencji eventowej Mavinci
           </p>
         </div>
         <Link
           href="/crm/calendar"
-          className="bg-[#d3bb73] text-[#1c1f33] px-6 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+          className="rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
           Otwórz kalendarz
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => (
           <Link
             key={stat.name}
             href={stat.href}
-            className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all duration-200 group"
+            className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all duration-200 hover:border-[#d3bb73]/30"
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className={`${stat.bgColor} p-3 rounded-lg`}>
-                <stat.icon className={`w-6 h-6 ${stat.color}`} />
+            <div className="mb-4 flex items-center justify-between">
+              <div className={`${stat.bgColor} rounded-lg p-3`}>
+                <stat.icon className={`h-6 w-6 ${stat.color}`} />
               </div>
             </div>
             <div className="space-y-2">
-              <p className="text-[#e5e4e2]/60 text-sm font-light">{stat.name}</p>
+              <p className="text-sm font-light text-[#e5e4e2]/60">{stat.name}</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-3xl font-light text-[#e5e4e2]">{stat.value}</p>
-                {stat.total && (
-                  <span className="text-sm text-[#e5e4e2]/40">/ {stat.total}</span>
-                )}
+                {stat.total && <span className="text-sm text-[#e5e4e2]/40">/ {stat.total}</span>}
               </div>
             </div>
           </Link>
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-light text-[#e5e4e2]">
-              Ostatnia aktywność
-            </h3>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 lg:col-span-2">
+          <div className="mb-6 flex items-center justify-between">
+            <h3 className="text-lg font-light text-[#e5e4e2]">Ostatnia aktywność</h3>
             <Link
               href="/crm/events"
-              className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors"
+              className="text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
             >
               Zobacz wszystkie
             </Link>
           </div>
           {recentActivity.length === 0 ? (
-            <div className="text-center py-8 text-[#e5e4e2]/40">
-              Brak aktywności
-            </div>
+            <div className="py-8 text-center text-[#e5e4e2]/40">Brak aktywności</div>
           ) : (
             <div className="space-y-4">
               {recentActivity.map((activity) => (
                 <div
                   key={activity.id}
-                  className="flex items-start gap-4 p-4 bg-[#0f1119] rounded-lg hover:bg-[#0f1119]/50 transition-colors"
+                  className="flex items-start gap-4 rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/50"
                 >
                   <div className={`${activity.color} mt-1`}>
-                    <activity.icon className="w-5 h-5" />
+                    <activity.icon className="h-5 w-5" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-[#e5e4e2] font-light">
-                      {activity.title}
-                    </p>
-                    <p className="text-xs text-[#e5e4e2]/40 mt-1">
-                      {activity.time}
-                    </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-light text-[#e5e4e2]">{activity.title}</p>
+                    <p className="mt-1 text-xs text-[#e5e4e2]/40">{activity.time}</p>
                   </div>
                 </div>
               ))}
@@ -357,43 +341,39 @@ export default function CRMDashboard() {
           )}
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <h3 className="text-lg font-light text-[#e5e4e2] mb-6">
-            Szybkie akcje
-          </h3>
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h3 className="mb-6 text-lg font-light text-[#e5e4e2]">Szybkie akcje</h3>
           <div className="space-y-3">
             <Link
               href="/crm/events"
-              className="block w-full bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-3 rounded-lg text-sm font-light hover:bg-[#d3bb73]/20 transition-colors"
+              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
             >
               + Nowy event
             </Link>
             <Link
               href="/crm/clients"
-              className="block w-full bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-3 rounded-lg text-sm font-light hover:bg-[#d3bb73]/20 transition-colors"
+              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
             >
               + Nowy klient
             </Link>
             <Link
               href="/crm/employees"
-              className="block w-full bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-3 rounded-lg text-sm font-light hover:bg-[#d3bb73]/20 transition-colors"
+              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
             >
               + Nowy pracownik
             </Link>
             <Link
               href="/crm/tasks"
-              className="block w-full bg-[#d3bb73]/10 border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-3 rounded-lg text-sm font-light hover:bg-[#d3bb73]/20 transition-colors"
+              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
             >
               + Nowe zadanie
             </Link>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-[#d3bb73]/10">
-            <div className="flex items-center gap-3 mb-4">
-              <CheckCircle className="w-5 h-5 text-[#d3bb73]" />
-              <h4 className="text-sm font-light text-[#e5e4e2]">
-                Podsumowanie
-              </h4>
+          <div className="mt-8 border-t border-[#d3bb73]/10 pt-6">
+            <div className="mb-4 flex items-center gap-3">
+              <CheckCircle className="h-5 w-5 text-[#d3bb73]" />
+              <h4 className="text-sm font-light text-[#e5e4e2]">Podsumowanie</h4>
             </div>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">

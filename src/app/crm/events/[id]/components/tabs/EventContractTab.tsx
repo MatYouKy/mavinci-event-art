@@ -772,6 +772,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   if (loading) {
     return (
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
         <div className="text-center text-[#e5e4e2]/60">Ładowanie danych umowy...</div>
       </div>
     );

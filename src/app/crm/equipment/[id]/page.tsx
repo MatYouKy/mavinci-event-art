@@ -114,7 +114,9 @@ export default function EquipmentDetailPage() {
   // flags from the equipment’s category special_properties
   const categoryFlags: Record<string, boolean> = useMemo(() => {
     const props = equipment?.warehouse_categories?.special_properties ?? [];
-    return Object.fromEntries((props as { name: string; value: boolean }[]).map((p) => [p.name, !!p.value]));
+    return Object.fromEntries(
+      (props as { name: string; value: boolean }[]).map((p) => [p.name, !!p.value]),
+    );
   }, [equipment?.warehouse_categories?.special_properties]);
 
   // ui state
@@ -153,7 +155,7 @@ export default function EquipmentDetailPage() {
         old_value: oldValue != null ? String(oldValue) : null,
         new_value: newValue != null ? String(newValue) : null,
         change_type: 'update',
-      })
+      }),
     );
   };
 
@@ -207,13 +209,21 @@ export default function EquipmentDetailPage() {
       // basic log set
       const fieldsToLog = [
         { name: 'name', old: equipment?.name, new: editForm.name },
-        { name: 'warehouse_category_id', old: equipment?.warehouse_category_id, new: normalizeUuid(editForm.warehouse_category_id) },
+        {
+          name: 'warehouse_category_id',
+          old: equipment?.warehouse_category_id,
+          new: normalizeUuid(editForm.warehouse_category_id),
+        },
         { name: 'brand', old: equipment?.brand, new: editForm.brand },
         { name: 'model', old: equipment?.model, new: editForm.model },
         { name: 'description', old: equipment?.description, new: editForm.description },
         { name: 'weight_kg', old: equipment?.weight_kg, new: toFloat(editForm.weight_kg) },
         { name: 'purchase_date', old: equipment?.purchase_date, new: editForm.purchase_date },
-        { name: 'purchase_price', old: equipment?.purchase_price, new: toFloat(editForm.purchase_price) },
+        {
+          name: 'purchase_price',
+          old: equipment?.purchase_price,
+          new: toFloat(editForm.purchase_price),
+        },
         { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
       ];
       for (const f of fieldsToLog) await logChange(f.name, f.old, f.new);
@@ -234,7 +244,7 @@ export default function EquipmentDetailPage() {
   const handleDelete = async () => {
     const confirmed = await showConfirm(
       `Czy na pewno chcesz usunąć sprzęt "${equipment?.name}"? Ta operacja jest nieodwracalna.`,
-      'Usuń sprzęt'
+      'Usuń sprzęt',
     );
     if (!confirmed) return;
 
@@ -249,7 +259,7 @@ export default function EquipmentDetailPage() {
 
   // generic input change (always strings)
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
     setEditForm((prev: any) => ({ ...prev, [name]: value }));
@@ -274,15 +284,15 @@ export default function EquipmentDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-[#e5e4e2]/60">Ładowanie…</div>
+      <div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
   if (eqError || !equipment) {
     return (
-      <div className="text-center py-12">
-        <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+      <div className="py-12 text-center">
+        <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
         <p className="text-[#e5e4e2]/60">Nie znaleziono sprzętu</p>
       </div>
     );
@@ -293,18 +303,21 @@ export default function EquipmentDetailPage() {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={() => router.back()} className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors">
-            <ArrowLeft className="w-5 h-5 text-[#e5e4e2]" />
+          <button
+            onClick={() => router.back()}
+            className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
+          >
+            <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
           </button>
           <div>
-            <h2 className="text-2xl font-light text-[#e5e4e2] flex items-center gap-3">
+            <h2 className="flex items-center gap-3 text-2xl font-light text-[#e5e4e2]">
               {equipment.name}
               <span className="text-lg font-normal text-[#d3bb73]">
                 {availableUnits}/{totalUnits}
               </span>
             </h2>
             {(equipment.brand || equipment.model) && (
-              <p className="text-sm text-[#e5e4e2]/60 mt-1">
+              <p className="mt-1 text-sm text-[#e5e4e2]/60">
                 {equipment.brand} {equipment.model}
               </p>
             )}
@@ -314,20 +327,47 @@ export default function EquipmentDetailPage() {
         {isEditing ? (
           <ResponsiveActionBar
             actions={[
-              { label: 'Usuń', onClick: handleDelete, icon: <Trash2 className="w-4 h-4" />, variant: 'danger' },
-              { label: 'Anuluj', onClick: handleCancelEdit, icon: <X className="w-4 h-4" />, variant: 'default' },
-              { label: saving ? 'Zapisywanie…' : 'Zapisz', onClick: handleSave, icon: <Save className="w-4 h-4" />, variant: 'primary' },
+              {
+                label: 'Usuń',
+                onClick: handleDelete,
+                icon: <Trash2 className="h-4 w-4" />,
+                variant: 'danger',
+              },
+              {
+                label: 'Anuluj',
+                onClick: handleCancelEdit,
+                icon: <X className="h-4 w-4" />,
+                variant: 'default',
+              },
+              {
+                label: saving ? 'Zapisywanie…' : 'Zapisz',
+                onClick: handleSave,
+                icon: <Save className="h-4 w-4" />,
+                variant: 'primary',
+              },
             ]}
           />
         ) : canEdit ? (
           <ResponsiveActionBar
-            actions={[{ label: 'Edytuj', onClick: handleEdit, icon: <Edit className="w-4 h-4" />, variant: 'primary' }]}
+            actions={[
+              {
+                label: 'Edytuj',
+                onClick: handleEdit,
+                icon: <Edit className="h-4 w-4" />,
+                variant: 'primary',
+              },
+            ]}
           />
         ) : null}
       </div>
 
       {/* TABS */}
-      <TabCarousel activeTab={activeTab} setActiveTab={setActiveTab} equipment={equipment} units={unitsCount} />
+      <TabCarousel
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        equipment={equipment}
+        units={unitsCount}
+      />
 
       {/* DETAILS */}
       {activeTab === 'details' && (
@@ -429,7 +469,9 @@ export default function EquipmentDetailPage() {
       )}
 
       {/* GALLERY */}
-      {activeTab === 'gallery' && <EquipmentGallery equipmentId={equipment.id} canManage={canEdit} />}
+      {activeTab === 'gallery' && (
+        <EquipmentGallery equipmentId={equipment.id} canManage={canEdit} />
+      )}
 
       {/* HISTORY */}
       {activeTab === 'history' && <HistoryTab history={equipment?.unit_events ?? []} />}

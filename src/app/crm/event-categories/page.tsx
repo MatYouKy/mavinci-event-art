@@ -21,7 +21,7 @@ export default function EventCategoriesPage() {
     upsertCategory,
   } = useEventCategories();
 
-  const { showConfirm } = useDialog();  
+  const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
 
   const [showModal, setShowModal] = useState(false);
@@ -178,7 +178,7 @@ export default function EventCategoriesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!await showConfirm('Czy na pewno chcesz usunąć tę kategorię?')) return;
+    if (!(await showConfirm('Czy na pewno chcesz usunąć tę kategorię?'))) return;
 
     try {
       await deleteCategory(id);
@@ -193,7 +193,7 @@ export default function EventCategoriesPage() {
   };
 
   const handleDeleteIcon = async (id: string) => {
-    if (!await showConfirm('Czy na pewno chcesz usunąć tę ikonę?')) return;
+    if (!(await showConfirm('Czy na pewno chcesz usunąć tę ikonę?'))) return;
 
     try {
       await deleteIcon(id);
@@ -222,8 +222,8 @@ export default function EventCategoriesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-gray-400">Ładowanie...</div>
+      <div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }

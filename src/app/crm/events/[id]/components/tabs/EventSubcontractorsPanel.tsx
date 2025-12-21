@@ -194,6 +194,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
       </div>
     );

@@ -56,8 +56,8 @@ export default function ContractTemplateViewPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0d1a] flex items-center justify-center">
-        <div className="text-[#e5e4e2]">Ładowanie...</div>
+<div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }

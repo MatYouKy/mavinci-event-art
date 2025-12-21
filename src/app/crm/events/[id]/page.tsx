@@ -49,17 +49,17 @@ import { EventContractTab } from './components/tabs/EventContractTab';
 import { AddChecklistModal } from './components/Modals/AddChecklistModal';
 import { TeamMembersList } from './components/AddMembersList';
 import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
-import {
-  useGetEventByIdQuery,
-  useGetEventEmployeesQuery,
-} from '../store/api/eventsApi';
+import { useGetEventByIdQuery, useGetEventEmployeesQuery } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useOfferActions } from '../../offers/hooks/useOfferById';
 import { useEventEquipment, useEventOffers, useEventTeam } from '../hooks';
 import { IEventCategory } from '../../event-categories/types';
 import { IEmployee } from '../../employees/type';
 import { logChange } from './helpers/logChange';
-import { useGetContactByIdQuery, useGetOrganizationByIdQuery } from '../../contacts/store/clientsApi';
+import {
+  useGetContactByIdQuery,
+  useGetOrganizationByIdQuery,
+} from '../../contacts/store/clientsApi';
 import { useLocations } from '../../locations/useLocations';
 import { ILocation } from '../../locations/type';
 import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
@@ -137,7 +137,7 @@ export default function EventDetailPage() {
         .from('employee_assignments')
         .select('*')
         .eq('event_id', eventId);
-  
+
       console.log('[direct select employee_assignments]', { data, error });
     })();
   }, [eventId]);
@@ -150,10 +150,9 @@ export default function EventDetailPage() {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
 
-  console.log('---event',event);
+  console.log('---event', event);
 
-  const { data: contact } = useGetContactByIdQuery(event?.contact_person_id
-  );
+  const { data: contact } = useGetContactByIdQuery(event?.contact_person_id);
   const { getById } = useLocations();
 
   const [location, setLocation] = useState<ILocation | null>(null);
@@ -172,7 +171,6 @@ export default function EventDetailPage() {
   }, [getById, event?.location_id]);
 
   const { data: organization } = useGetOrganizationByIdQuery(event?.organization_id);
-  
 
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [activeTab, setActiveTab] = useState<
@@ -202,7 +200,6 @@ export default function EventDetailPage() {
   const [hasLimitedAccess, setHasLimitedAccess] = useState(false);
   const [allowedEventTabs, setAllowedEventTabs] = useState<string[]>([]);
   const [hasSubcontractors, setHasSubcontractors] = useState(false);
-
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
@@ -471,15 +468,14 @@ export default function EventDetailPage() {
         console.error('Error deleting offer:', err);
         showSnackbar('Błąd podczas usuwania oferty', 'error');
       }
-
     },
     [deleteOfferById, showConfirm, showSnackbar, refetchOffers],
   );
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-[#e5e4e2]">Ładowanie...</div>
+      <div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
@@ -588,9 +584,7 @@ export default function EventDetailPage() {
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
-                    Klient:{' '}
-                    {contact.full_name ||
-                      `${contact.first_name} ${contact.last_name}`}
+                    Klient: {contact.full_name || `${contact.first_name} ${contact.last_name}`}
                   </span>
                 </div>
               )}
@@ -598,9 +592,7 @@ export default function EventDetailPage() {
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
-                    Kontakt:{' '}
-                    {contact.full_name ||
-                      `${contact.first_name} ${contact.last_name}`}
+                    Kontakt: {contact.full_name || `${contact.first_name} ${contact.last_name}`}
                   </span>
                 </div>
               )}
@@ -1189,7 +1181,7 @@ export default function EventDetailPage() {
         />
       )}
 
-      {showEditEventModal && event  && (
+      {showEditEventModal && event && (
         <EditEventModalNew
           location={location}
           isOpen={showEditEventModal}

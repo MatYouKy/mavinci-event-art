@@ -383,8 +383,8 @@ export default function EditTemplateWYSIWYGPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0b14]">
-        <div className="text-[#e5e4e2]">Ładowanie...</div>
+<div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
