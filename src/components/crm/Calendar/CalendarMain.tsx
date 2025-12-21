@@ -25,7 +25,7 @@ import EmployeeView from './EmployeeView';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
 import EventTypeSelector from './EventTypeSelector';
-import { useGetEventsListQuery } from '@/app/crm/events/store/api/eventsApi';
+import { useGetCalendarEventsQuery, useGetCalendarFilterOptionsQuery } from '@/store/api/calendarApi';
 
 export default function CalendarMain() {
   const router = useRouter();
@@ -60,87 +60,39 @@ export default function CalendarMain() {
     assignedToMe: false,
   });
 
-  // RTK Query - pobierz wydarzenia
   const {
-    data: eventsData,
+    data: calendarEvents = [],
     isLoading: eventsLoading,
     error: eventsError,
     refetch: refetchEvents,
-  } = useGetEventsListQuery();
+  } = useGetCalendarEventsQuery();
+
+  const {
+    data: filterOptions,
+    isLoading: filterOptionsLoading,
+  } = useGetCalendarFilterOptionsQuery();
 
   useEffect(() => {
     fetchCurrentEmployee();
-    fetchFilterOptions();
   }, []);
 
-  // Załaduj wydarzenia z RTK Query
   useEffect(() => {
-    if (eventsData) {
-      fetchMeetingsAndMerge(eventsData);
-    } else if (eventsError) {
-      console.error('Error loading events from RTK:', eventsError);
+    if (filterOptions) {
+      setCategories(filterOptions.categories);
+      setClients(filterOptions.clients);
+      setEmployees(filterOptions.employees);
     }
-  }, [eventsData, eventsLoading, eventsError]);
+  }, [filterOptions]);
 
-  const fetchMeetingsAndMerge = async (baseEvents: CalendarEvent[]) => {
-    try {
-      const { data: meetingsData, error } = await supabase
-        .from('meetings')
-        .select(
-          `
-          id,
-          title,
-          datetime_start,
-          datetime_end,
-          is_all_day,
-          color,
-          notes,
-          location_text,
-          event_id,
-          locations(id, name),
-          meeting_participants(
-            employee_id,
-            contact_id,
-            employees(id, name, surname),
-            contacts(id, name)
-          )
-        `,
-        )
-        .is('deleted_at', null);
-
-      if (error) {
-        console.error('Error fetching meetings:', error);
-        setAllEvents(baseEvents);
-        return;
-      }
-
-      const meetingsAsEvents: CalendarEvent[] = (meetingsData || []).map((meeting: any) => ({
-        id: meeting.id,
-        name: meeting.title,
-        event_date: meeting.datetime_start,
-        event_end_date: meeting.datetime_end || meeting.datetime_start,
-        status: 'meeting' as any,
-        color: meeting.color || '#d3bb73',
-        location: meeting.locations?.name || meeting.location_text || '',
-        organization: null,
-        category: { name: 'Spotkanie', color: meeting.color || '#d3bb73' },
-        is_meeting: true,
-        meeting_data: meeting,
-      }));
-
-      setAllEvents([...baseEvents, ...meetingsAsEvents]);
-    } catch (err) {
-      console.error('Error in fetchMeetingsAndMerge:', err);
-      setAllEvents(baseEvents);
+  useEffect(() => {
+    if (calendarEvents) {
+      setAllEvents(calendarEvents);
     }
-  };
+  }, [calendarEvents]);
 
   useEffect(() => {
     applyFilters();
   }, [filters, allEvents]);
-
-  // Funkcja fetchEvents zastąpiona przez RTK Query (useGetEventsListQuery)
-  // Używaj refetchEvents() jeśli potrzebujesz odświeżyć dane
 
   const fetchCurrentEmployee = async () => {
     try {
@@ -160,22 +112,6 @@ export default function CalendarMain() {
     }
   };
 
-  const fetchFilterOptions = async () => {
-    try {
-      const [categoriesRes, clientsRes, employeesRes] = await Promise.all([
-        supabase.from('event_categories').select('id, name, color').eq('is_active', true),
-        supabase.from('organizations').select('id, name, alias').order('name'),
-        supabase.from('employees').select('id, name, surname, nickname').order('name'),
-      ]);
-
-      if (categoriesRes.data) setCategories(categoriesRes.data);
-      if (clientsRes.data) setClients(clientsRes.data);
-      if (employeesRes.data) setEmployees(employeesRes.data);
-    } catch (err) {
-      console.error('Error fetching filter options:', err);
-    }
-  };
-
   const applyFilters = () => {
     let filtered = [...allEvents];
 
@@ -185,36 +121,40 @@ export default function CalendarMain() {
 
     if (filters.categories.length > 0) {
       filtered = filtered.filter(
-        (e) => e.category_id && filters.categories.includes(e.category_id),
+        (e) => e.category?.name && filters.categories.includes(e.category.name),
       );
     }
 
     if (filters.clients.length > 0) {
       filtered = filtered.filter(
-        (e) => e.organization_id && filters.clients.includes(e.organization_id),
+        (e) => e.organization?.name && filters.clients.includes(e.organization.name),
       );
     }
 
     if (filters.myEvents && currentEmployee) {
-      filtered = filtered.filter((e) => e.created_by === currentEmployee.id);
+      filtered = filtered.filter((e: any) => e.created_by === currentEmployee.id);
     }
 
     if (filters.assignedToMe && currentEmployee) {
-      filtered = filtered.filter((e) => {
-        // Sprawdź czy jest przypisany jako członek zespołu
-        const isAssignedEmployee = e.employees?.some(
-          (emp: any) => emp.employee_id === currentEmployee.id,
-        );
-        // Sprawdź czy jest przypisany jako kierowca
-        const isDriver = e.vehicles?.some((v: any) => v.driver_id === currentEmployee.id);
-        return isAssignedEmployee || isDriver;
+      filtered = filtered.filter((e: any) => {
+        if (e.is_meeting) {
+          return e.meeting_data?.meeting_participants?.some(
+            (p: any) => p.employee_id === currentEmployee.id
+          );
+        }
+        return e.assigned_employees?.some((emp: any) => emp.id === currentEmployee.id);
       });
     }
 
     if (filters.employees.length > 0) {
-      filtered = filtered.filter((e) =>
-        e.employees?.some((emp: any) => filters.employees.includes(emp.employee_id)),
-      );
+      filtered = filtered.filter((e: any) => {
+        if (e.is_meeting) {
+          return e.meeting_data?.meeting_participants?.some(
+            (p: any) => p.employee_id && filters.employees.includes(p.employee_id)
+          );
+        }
+        return e.assigned_employees?.some((emp: any) => filters.employees.includes(emp.id));
+      });
     }
 
     setEvents(filtered);
