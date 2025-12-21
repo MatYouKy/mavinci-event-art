@@ -25,6 +25,7 @@ export const STATUS_LABELS: Record<EventStatus, string> = {
 };
 
 export const DAYS_OF_WEEK = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nie'];
+export const DAYS_OF_WEEK_SHORT = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
 export const DAYS_OF_WEEK_FULL = [
   'Poniedziałek',
   'Wtorek',

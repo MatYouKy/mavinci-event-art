@@ -22,6 +22,7 @@ import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
 import EmployeeView from './EmployeeView';
+import MobileCalendarView from './MobileCalendarView';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
 import EventTypeSelector from './EventTypeSelector';
@@ -33,6 +34,7 @@ export default function CalendarMain() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [view, setView] = useState<CalendarView>('month');
+  const [isMobile, setIsMobile] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
@@ -74,6 +76,15 @@ export default function CalendarMain() {
 
   useEffect(() => {
     fetchCurrentEmployee();
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   useEffect(() => {
@@ -346,6 +357,62 @@ export default function CalendarMain() {
       );
     });
   };
+
+  if (isMobile) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-light text-[#e5e4e2]">Kalendarz</h1>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleNewMeeting()}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <CalendarIcon className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleNewEvent()}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <MobileCalendarView
+          events={events}
+          currentDate={currentDate}
+          onDateChange={handleDateChange}
+        />
+
+        <EventTypeSelector
+          isOpen={showTypeSelector}
+          onClose={() => setShowTypeSelector(false)}
+          onSelectType={handleEventTypeSelect}
+        />
+
+        <EventWizard
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedClientType(null);
+          }}
+          onSuccess={refetchEvents}
+          initialDate={modalInitialDate}
+          initialClientType={selectedClientType}
+        />
+
+        <NewMeetingModal
+          isOpen={isMeetingModalOpen}
+          onClose={() => setIsMeetingModalOpen(false)}
+          onSuccess={() => {
+            refetchEvents();
+          }}
+          initialDate={modalInitialDate}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
