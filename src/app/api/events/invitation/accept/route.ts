@@ -35,7 +35,8 @@ export async function GET(request: NextRequest) {
         id,
         name,
         event_date,
-        location
+        location,
+        created_by
       )
     `)
     .eq('invitation_token', token)
@@ -76,6 +77,68 @@ export async function GET(request: NextRequest) {
 
   const event = assignment.events as any;
   const employee = assignment.employees as any;
+
+  const { data: employeeNotifications } = await supabase
+    .from('notification_recipients')
+    .select('notification_id, notifications(*)')
+    .eq('user_id', assignment.employee_id);
+
+  if (employeeNotifications && employeeNotifications.length > 0) {
+    for (const notifRecipient of employeeNotifications) {
+      const notification = notifRecipient.notifications as any;
+      if (
+        notification &&
+        notification.related_entity_id === assignment.event_id &&
+        notification.related_entity_type === 'event' &&
+        notification.metadata?.assignment_id === assignment.id
+      ) {
+        await supabase
+          .from('notifications')
+          .update({
+            metadata: {
+              ...notification.metadata,
+              responded: true,
+              response_status: 'accepted',
+              responded_at: new Date().toISOString()
+            }
+          })
+          .eq('id', notification.id);
+      }
+    }
+  }
+
+  if (event.created_by) {
+    const { data: creatorNotification, error: notifError } = await supabase
+      .from('notifications')
+      .insert({
+        category: 'employee',
+        title: 'Akceptacja zaproszenia',
+        message: `${employee.name} ${employee.surname} zaakceptował zaproszenie do wydarzenia "${event.name}"`,
+        type: 'success',
+        related_entity_type: 'event',
+        related_entity_id: assignment.event_id,
+        action_url: `/crm/events/${assignment.event_id}`,
+        metadata: {
+          event_id: assignment.event_id,
+          event_name: event.name,
+          employee_id: assignment.employee_id,
+          employee_name: `${employee.name} ${employee.surname}`,
+          assignment_id: assignment.id,
+          response_type: 'accepted'
+        }
+      })
+      .select('id')
+      .single();
+
+    if (!notifError && creatorNotification) {
+      await supabase
+        .from('notification_recipients')
+        .insert({
+          notification_id: creatorNotification.id,
+          user_id: event.created_by
+        });
+    }
+  }
 
   return NextResponse.redirect(
     new URL(

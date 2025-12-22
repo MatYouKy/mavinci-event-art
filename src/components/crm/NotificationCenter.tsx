@@ -38,7 +38,7 @@ export default function NotificationCenter() {
     fetchNotifications();
     loadUserPreferences();
 
-    const channel = supabase
+    const recipientsChannel = supabase
       .channel('notification-recipients-changes')
       .on(
         'postgres_changes',
@@ -51,11 +51,26 @@ export default function NotificationCenter() {
           fetchNotifications();
         }
       )
-      .subscribe((status) => {
-      });
+      .subscribe();
+
+    const notificationsChannel = supabase
+      .channel('notifications-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+        },
+        (payload) => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(recipientsChannel);
+      supabase.removeChannel(notificationsChannel);
     };
   }, []);
 
