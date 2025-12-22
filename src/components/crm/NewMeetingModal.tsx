@@ -120,7 +120,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert('Musisz być zalogowany');
+        showSnackbar('Musisz być zalogowany', 'error');
         setIsSaving(false);
         return;
       }
@@ -168,14 +168,20 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
 
         if (participantsError) {
           console.error('Error adding participants:', participantsError);
+          showSnackbar('Błąd podczas dodawania uczestników', 'warning');
         }
       }
 
-      onSuccess?.();
+      showSnackbar('Spotkanie zostało utworzone pomyślnie', 'success');
+
       handleClose();
-    } catch (err) {
+
+      setTimeout(() => {
+        onSuccess?.();
+      }, 500);
+    } catch (err: any) {
       console.error('Error creating meeting:', err);
-      alert('Błąd podczas tworzenia spotkania');
+      showSnackbar(err?.message || 'Błąd podczas tworzenia spotkania', 'error');
     } finally {
       setIsSaving(false);
     }

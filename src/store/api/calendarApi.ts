@@ -36,7 +36,8 @@ export const calendarApi = createApi({
   reducerPath: 'calendarApi',
   baseQuery: fakeBaseQuery(),
   tagTypes: ['CalendarEvents', 'CalendarFilters', 'Meetings'],
-  keepUnusedDataFor: 600,
+  keepUnusedDataFor: 30,
+  refetchOnMountOrArgChange: 30,
   endpoints: (builder) => ({
     getCalendarEvents: builder.query<CalendarEvent[], CalendarFilters | void>({
       async queryFn(filters) {
