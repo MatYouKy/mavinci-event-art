@@ -172,7 +172,10 @@ export default function MessagesPage() {
       if (error) throw error;
 
       const accounts = [
-        ...(canManage ? [{ id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' }] : []),
+        ...(canManage ? [
+          { id: 'all', email_address: 'Wszystkie konta', from_name: 'Wszystkie' },
+          { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' }
+        ] : []),
         ...(data || []),
       ];
 
@@ -199,7 +202,7 @@ export default function MessagesPage() {
           .from('contact_messages')
           .select(`
             *,
-            assigned_employee:employees(name, surname)
+            assigned_employee:employees!assigned_to(name, surname)
           `)
           .order('created_at', { ascending: false })
           .range(currentOffset, currentOffset + pageSize - 1);
@@ -230,12 +233,17 @@ export default function MessagesPage() {
       }
 
       if (selectedAccount !== 'contact_form' && currentEmployee) {
-        const { data: sentEmails } = await supabase
+        let sentQuery = supabase
           .from('sent_emails')
-          .select('*, employees(name, surname, email)')
-          .eq('email_account_id', selectedAccount)
+          .select('*, employees!employee_id(name, surname, email)')
           .order('sent_at', { ascending: false })
           .range(currentOffset, currentOffset + pageSize - 1);
+
+        if (selectedAccount !== 'all') {
+          sentQuery = sentQuery.eq('email_account_id', selectedAccount);
+        }
+
+        const { data: sentEmails } = await sentQuery;
 
         if (sentEmails) {
           allMessages.push(
@@ -259,15 +267,20 @@ export default function MessagesPage() {
           );
         }
 
-        const { data: receivedEmails } = await supabase
+        let receivedQuery = supabase
           .from('received_emails')
           .select(`
             *,
-            assigned_employee:employees(name, surname)
+            assigned_employee:employees!assigned_to(name, surname)
           `)
-          .eq('email_account_id', selectedAccount)
           .order('received_date', { ascending: false })
           .range(currentOffset, currentOffset + pageSize - 1);
+
+        if (selectedAccount !== 'all') {
+          receivedQuery = receivedQuery.eq('email_account_id', selectedAccount);
+        }
+
+        const { data: receivedEmails } = await receivedQuery;
 
         if (receivedEmails) {
           allMessages.push(
@@ -603,8 +616,9 @@ export default function MessagesPage() {
               {canManage && (
                 <button
                   onClick={() => setShowNewMessageModal(true)}
-                  disabled={selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                  disabled={selectedAccount === 'all' || selectedAccount === 'contact_form' || emailAccounts.length <= 2}
                   className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={selectedAccount === 'all' || selectedAccount === 'contact_form' ? 'Wybierz konkretne konto email' : 'Napisz nową wiadomość'}
                 >
                   <Plus className="w-5 h-5" />
                   Nowa Wiadomość
@@ -815,8 +829,9 @@ export default function MessagesPage() {
                           });
                           setShowNewMessageModal(true);
                         }}
-                        disabled={selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                        disabled={selectedAccount === 'all' || selectedAccount === 'contact_form' || emailAccounts.length <= 2}
                         className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50"
+                        title={selectedAccount === 'all' || selectedAccount === 'contact_form' ? 'Wybierz konkretne konto email aby odpowiedzieć' : 'Odpowiedz na wiadomość'}
                       >
                         Odpowiedz
                       </button>
