@@ -44,30 +44,50 @@ export const calendarApi = createApi({
         try {
           const params = filters || {};
 
+          // Fetch events and meetings directly - RLS will handle security
           const [eventsResult, meetingsResult] = await Promise.all([
-            supabase.rpc('get_events_list', {
-              start_date: params.start_date || null,
-              end_date: params.end_date || null,
-              status_filter: params.statuses || null,
-            }),
+            supabase
+              .from('events')
+              .select(`
+                id,
+                name,
+                description,
+                event_date,
+                event_end_date,
+                location,
+                status,
+                budget,
+                final_cost,
+                notes,
+                category_id,
+                organization_id,
+                contact_person_id,
+                created_by,
+                created_at,
+                organizations:organization_id(id, name, alias),
+                contacts:contact_person_id(id, first_name, last_name, full_name),
+                event_categories:category_id(
+                  id,
+                  name,
+                  color,
+                  custom_icons:icon_id(id, name, svg_code)
+                )
+              `),
             supabase
               .from('meetings')
               .select(`
                 id,
                 title,
+                notes,
                 datetime_start,
                 datetime_end,
-                is_all_day,
-                color,
-                notes,
                 location_text,
-                related_event_ids,
-                locations(id, name),
+                created_by,
+                created_at,
+                locations:location_id(id, name),
                 meeting_participants(
                   employee_id,
-                  contact_id,
-                  employees(id, name, surname),
-                  contacts(id, first_name, last_name, full_name)
+                  employees:employee_id(id, name, surname)
                 )
               `)
               .is('deleted_at', null)
@@ -78,20 +98,25 @@ export const calendarApi = createApi({
             return { error: { status: 'CUSTOM_ERROR', error: eventsResult.error.message } };
           }
 
+          // Map events
           const events: CalendarEvent[] = (eventsResult.data || []).map((event: any) => ({
             id: event.id,
             name: event.name,
             event_date: event.event_date,
             event_end_date: event.event_end_date,
             status: event.status,
-            color: event.category?.color,
-            location: event.location?.name || '',
-            organization: event.organization,
-            category: event.category,
+            color: event.event_categories?.color,
+            location: event.location || '',
+            organization: event.organizations ? { name: event.organizations.name } : null,
+            category: event.event_categories ? {
+              name: event.event_categories.name,
+              color: event.event_categories.color
+            } : null,
             is_meeting: false,
-            assigned_employees: event.assigned_employees || [],
+            assigned_employees: [],
           }));
 
+          // Map meetings
           const meetings: CalendarEvent[] = meetingsResult.error
             ? []
             : (meetingsResult.data || []).map((meeting: any) => ({
@@ -100,12 +125,17 @@ export const calendarApi = createApi({
                 event_date: meeting.datetime_start,
                 event_end_date: meeting.datetime_end || meeting.datetime_start,
                 status: 'meeting',
-                color: meeting.color || '#d3bb73',
+                color: '#d3bb73',
                 location: meeting.locations?.name || meeting.location_text || '',
                 organization: null,
-                category: { name: 'Spotkanie', color: meeting.color || '#d3bb73' },
+                category: { name: 'Spotkanie', color: '#d3bb73' },
                 is_meeting: true,
                 meeting_data: meeting,
+                assigned_employees: meeting.meeting_participants?.map((p: any) => ({
+                  id: p.employees?.id,
+                  name: p.employees?.name,
+                  surname: p.employees?.surname
+                })).filter((e: any) => e.id) || [],
               }));
 
           const allEvents = [...events, ...meetings];

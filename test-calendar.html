@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Calendar RPC</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Calendar RPC Test</h1>
+    <div id="results"></div>
+    
+    <script>
+        const supabase = window.supabase.createClient(
+            'https://fuuljhhuhfojtmmfmskq.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1dWxqaGh1aGZvanRtbWZtc2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5NDI5NjEsImV4cCI6MjA3NTUxODk2MX0.xe8_YUgENMeXwuLSZVatAfDBZLi5lcfyV3sHjaD8dmE'
+        );
+        
+        async function testCalendar() {
+            const results = document.getElementById('results');
+            
+            // Check session
+            const { data: { session } } = await supabase.auth.getSession();
+            results.innerHTML += '<h2>Session</h2><pre>' + JSON.stringify(session, null, 2) + '</pre>';
+            
+            if (!session) {
+                results.innerHTML += '<p style="color: red;">No session found! User not logged in.</p>';
+                return;
+            }
+            
+            // Test auth context
+            const { data: authTest, error: authError } = await supabase.rpc('test_auth_context');
+            results.innerHTML += '<h2>Auth Context Test</h2>';
+            if (authError) {
+                results.innerHTML += '<pre style="color: red;">' + JSON.stringify(authError, null, 2) + '</pre>';
+            } else {
+                results.innerHTML += '<pre>' + JSON.stringify(authTest, null, 2) + '</pre>';
+            }
+            
+            // Test get_events_list
+            const { data: events, error: eventsError } = await supabase.rpc('get_events_list');
+            results.innerHTML += '<h2>Events List</h2>';
+            if (eventsError) {
+                results.innerHTML += '<pre style="color: red;">' + JSON.stringify(eventsError, null, 2) + '</pre>';
+            } else {
+                results.innerHTML += '<p>Found ' + events.length + ' events</p>';
+                results.innerHTML += '<pre>' + JSON.stringify(events.slice(0, 3), null, 2) + '</pre>';
+            }
+        }
+        
+        testCalendar();
+    </script>
+</body>
+</html>
