@@ -1,29 +1,39 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Mail, Server, Lock, Globe, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Mail, Server, Lock, Globe, CheckCircle2, Building2, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface AddSystemEmailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  employeeId?: string;
 }
 
 type ReceiveProtocol = 'imap' | 'pop3';
+type AccountType = 'personal' | 'shared' | 'system';
 
 export default function AddSystemEmailModal({
   isOpen,
   onClose,
   onSuccess,
+  employeeId,
 }: AddSystemEmailModalProps) {
   const { showSnackbar } = useSnackbar();
+  const { employee: currentEmployee } = useCurrentEmployee();
   const [loading, setLoading] = useState(false);
   const [receiveProtocol, setReceiveProtocol] = useState<ReceiveProtocol>('imap');
 
+  const isAdmin = currentEmployee?.permissions?.includes('admin');
+
   const [formData, setFormData] = useState({
+    accountType: 'personal' as AccountType,
     accountName: '',
+    department: '',
+    description: '',
     fromName: '',
     emailAddress: '',
     smtpHost: '',
@@ -36,9 +46,17 @@ export default function AddSystemEmailModal({
     receiveUsername: '',
     receivePassword: '',
     receiveUseSsl: true,
-    isSystemAccount: false,
     isActive: true,
   });
+
+  useEffect(() => {
+    if (employeeId && formData.accountType === 'personal') {
+      return;
+    }
+    if (!employeeId && formData.accountType === 'personal') {
+      setFormData(prev => ({ ...prev, accountType: isAdmin ? 'shared' : 'personal' }));
+    }
+  }, [employeeId, isAdmin, formData.accountType]);
 
   const handleProtocolChange = (protocol: ReceiveProtocol) => {
     setReceiveProtocol(protocol);
@@ -56,36 +74,55 @@ export default function AddSystemEmailModal({
       return;
     }
 
+    if (formData.accountType === 'shared' && !formData.department) {
+      showSnackbar('Dla konta wspólnego podaj nazwę działu', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
 
-      if (formData.isSystemAccount) {
+      if (formData.accountType === 'system') {
         await supabase
           .from('employee_email_accounts')
-          .update({ is_system_account: false })
-          .eq('is_system_account', true);
+          .update({
+            is_system_account: false,
+            account_type: 'shared'
+          })
+          .eq('account_type', 'system');
       }
 
-      const { error } = await supabase.from('employee_email_accounts').insert([
-        {
-          account_name: formData.accountName,
-          from_name: formData.fromName,
-          email_address: formData.emailAddress,
-          smtp_host: formData.smtpHost,
-          smtp_port: parseInt(formData.smtpPort),
-          smtp_username: formData.smtpUsername,
-          smtp_password: formData.smtpPassword,
-          smtp_use_tls: formData.smtpUseTls,
-          imap_host: formData.receiveHost,
-          imap_port: parseInt(formData.receivePort),
-          imap_username: formData.receiveUsername,
-          imap_password: formData.receivePassword,
-          imap_use_ssl: formData.receiveUseSsl,
-          is_system_account: formData.isSystemAccount,
-          is_active: formData.isActive,
-          is_default: false,
-        },
-      ]);
+      const insertData: any = {
+        account_type: formData.accountType,
+        account_name: formData.accountName,
+        department: formData.accountType === 'shared' ? formData.department : null,
+        description: formData.description || null,
+        from_name: formData.fromName,
+        email_address: formData.emailAddress,
+        smtp_host: formData.smtpHost,
+        smtp_port: parseInt(formData.smtpPort),
+        smtp_username: formData.smtpUsername,
+        smtp_password: formData.smtpPassword,
+        smtp_use_tls: formData.smtpUseTls,
+        imap_host: formData.receiveHost,
+        imap_port: parseInt(formData.receivePort),
+        imap_username: formData.receiveUsername,
+        imap_password: formData.receivePassword,
+        imap_use_ssl: formData.receiveUseSsl,
+        is_system_account: formData.accountType === 'system',
+        is_active: formData.isActive,
+        is_default: false,
+      };
+
+      if (formData.accountType === 'personal' && employeeId) {
+        insertData.employee_id = employeeId;
+      } else if (formData.accountType === 'personal' && currentEmployee) {
+        insertData.employee_id = currentEmployee.id;
+      } else {
+        insertData.employee_id = null;
+      }
+
+      const { error } = await supabase.from('employee_email_accounts').insert([insertData]);
 
       if (error) throw error;
 
@@ -93,7 +130,10 @@ export default function AddSystemEmailModal({
       onSuccess();
       onClose();
       setFormData({
+        accountType: 'personal',
         accountName: '',
+        department: '',
+        description: '',
         fromName: '',
         emailAddress: '',
         smtpHost: '',
@@ -106,7 +146,6 @@ export default function AddSystemEmailModal({
         receiveUsername: '',
         receivePassword: '',
         receiveUseSsl: true,
-        isSystemAccount: false,
         isActive: true,
       });
     } catch (err) {
@@ -146,6 +185,59 @@ export default function AddSystemEmailModal({
 
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-6">
+            {(!employeeId && isAdmin) && (
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-6">
+                <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#d3bb73]">
+                  <Users className="h-5 w-5" />
+                  Typ konta
+                </h3>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, accountType: 'personal' }))}
+                    className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors ${
+                      formData.accountType === 'personal'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                        : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]'
+                    }`}
+                  >
+                    <Mail className="h-5 w-5" />
+                    Osobiste
+                    <span className="text-xs opacity-70">Dla pracownika</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, accountType: 'shared' }))}
+                    className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors ${
+                      formData.accountType === 'shared'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                        : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]'
+                    }`}
+                  >
+                    <Building2 className="h-5 w-5" />
+                    Wspólne
+                    <span className="text-xs opacity-70">Biuro, Finanse</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, accountType: 'system' }))}
+                    className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors ${
+                      formData.accountType === 'system'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                        : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]'
+                    }`}
+                  >
+                    <Server className="h-5 w-5" />
+                    Systemowe
+                    <span className="text-xs opacity-70">Automatyczne</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-6">
               <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#d3bb73]">
                 <Mail className="h-5 w-5" />
@@ -161,9 +253,42 @@ export default function AddSystemEmailModal({
                     type="text"
                     value={formData.accountName}
                     onChange={(e) => handleInputChange('accountName', e.target.value)}
-                    placeholder="np. Email systemowy, Biuro, Kadry"
+                    placeholder={
+                      formData.accountType === 'system' ? 'np. Email systemowy Mavinci' :
+                      formData.accountType === 'shared' ? 'np. Biuro, Finanse, Kadry' :
+                      'np. Moje konto robocze'
+                    }
                     className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
                     required
+                  />
+                </div>
+
+                {formData.accountType === 'shared' && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Dział <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.department}
+                      onChange={(e) => handleInputChange('department', e.target.value)}
+                      placeholder="np. Biuro, Finanse, Kadry, HR"
+                      className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Opis (opcjonalny)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Dodatkowe informacje o koncie"
+                    className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
                   />
                 </div>
 
@@ -189,7 +314,7 @@ export default function AddSystemEmailModal({
                     type="email"
                     value={formData.emailAddress}
                     onChange={(e) => handleInputChange('emailAddress', e.target.value)}
-                    placeholder="system@mavinci.pl"
+                    placeholder="email@mavinci.pl"
                     className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
                     required
                   />
@@ -395,22 +520,6 @@ export default function AddSystemEmailModal({
                 <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4 transition-colors hover:bg-[#0f1119]">
                   <input
                     type="checkbox"
-                    checked={formData.isSystemAccount}
-                    onChange={(e) => handleInputChange('isSystemAccount', e.target.checked)}
-                    className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-[#e5e4e2]">Ustaw jako konto systemowe</div>
-                    <div className="text-xs text-[#e5e4e2]/60">
-                      To konto będzie używane do wysyłania automatycznych wiadomości (zaproszenia, oferty, faktury)
-                    </div>
-                  </div>
-                  <CheckCircle2 className="h-5 w-5 text-[#d3bb73]/60" />
-                </label>
-
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4 transition-colors hover:bg-[#0f1119]">
-                  <input
-                    type="checkbox"
                     checked={formData.isActive}
                     onChange={(e) => handleInputChange('isActive', e.target.checked)}
                     className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
@@ -421,6 +530,34 @@ export default function AddSystemEmailModal({
                   </div>
                   <CheckCircle2 className="h-5 w-5 text-[#d3bb73]/60" />
                 </label>
+
+                {formData.accountType === 'system' && (
+                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <Server className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-blue-200">
+                        <p className="font-medium mb-1">Konto systemowe</p>
+                        <p className="text-xs text-blue-200/70">
+                          To konto będzie używane do automatycznego wysyłania zaproszeń, ofert, faktur i innych wiadomości systemowych.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {formData.accountType === 'shared' && (
+                  <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <Building2 className="h-5 w-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-[#e5e4e2]">
+                        <p className="font-medium mb-1">Konto wspólne</p>
+                        <p className="text-xs text-[#e5e4e2]/70">
+                          Po dodaniu konta, możesz przypisać do niego pracowników w ustawieniach kont email.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

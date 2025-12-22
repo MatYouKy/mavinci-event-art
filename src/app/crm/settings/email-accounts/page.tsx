@@ -132,16 +132,35 @@ export default function AllEmailAccountsPage() {
         .from('employee_email_accounts')
         .select('*, employees!fk_employee_email_accounts_employee_id(name, surname)')
         .eq('is_active', true)
-        .eq('employee_id', currentEmployee.id)
-        .order('employee_id');
+        .order('account_type', { ascending: false })
+        .order('account_name', { ascending: true });
 
       if (error) throw error;
 
+      const getAccountTypeBadge = (accountType: string) => {
+        if (accountType === 'system') return '🔧 System';
+        if (accountType === 'shared') return '🏢 Wspólne';
+        return '👤 Osobiste';
+      };
+
+      const formatAccountName = (acc: any) => {
+        const typeBadge = getAccountTypeBadge(acc.account_type);
+        let displayName = `${typeBadge}: ${acc.account_name}`;
+
+        if (acc.account_type === 'shared' && acc.department) {
+          displayName = `${typeBadge} (${acc.department}): ${acc.account_name}`;
+        } else if (acc.account_type === 'personal' && acc.employees) {
+          displayName = `${typeBadge} (${acc.employees.name} ${acc.employees.surname}): ${acc.account_name}`;
+        }
+
+        return displayName;
+      };
+
       const accounts = [
-        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz kontaktowy' },
+        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: '📝 Formularz kontaktowy' },
         ...(data || []).map((acc: any) => ({
           ...acc,
-          from_name: `${acc.from_name} (${acc.employees?.name} ${acc.employees?.surname})`,
+          from_name: formatAccountName(acc),
         })),
       ];
 

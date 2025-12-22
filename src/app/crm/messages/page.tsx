@@ -139,20 +139,40 @@ export default function MessagesPage() {
     if (!currentEmployee) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error} = await supabase
         .from('employee_email_accounts')
         .select('*')
         .eq('is_active', true)
-        .eq('employee_id', currentEmployee.id);
+        .order('account_type', { ascending: false })
+        .order('account_name', { ascending: true });
 
       if (error) throw error;
 
+      const getAccountTypeBadge = (accountType: string) => {
+        if (accountType === 'system') return '🔧';
+        if (accountType === 'shared') return '🏢';
+        return '👤';
+      };
+
+      const formatAccountName = (account: any) => {
+        const badge = getAccountTypeBadge(account.account_type);
+        if (account.account_type === 'shared' && account.department) {
+          return `${badge} ${account.department} - ${account.account_name}`;
+        }
+        return `${badge} ${account.account_name}`;
+      };
+
+      const formattedAccounts = (data || []).map(acc => ({
+        ...acc,
+        display_name: formatAccountName(acc)
+      }));
+
       const accounts = [
-        ...(data && data.length > 0 ? [
-          { id: 'all', email_address: 'Wszystkie moje konta', from_name: 'Wszystkie moje konta' },
+        ...(formattedAccounts.length > 0 ? [
+          { id: 'all', email_address: 'Wszystkie dostępne konta', from_name: 'Wszystkie konta', display_name: '📧 Wszystkie konta' },
         ] : []),
-        ...(canManage ? [{ id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' }] : []),
-        ...(data || []),
+        ...(canManage ? [{ id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz', display_name: '📝 Formularz kontaktowy' }] : []),
+        ...formattedAccounts,
       ];
 
       setEmailAccounts(accounts);
@@ -160,7 +180,7 @@ export default function MessagesPage() {
       if (accounts.length > 0) {
         setSelectedAccount(accounts[0].id);
       } else {
-        showSnackbar('Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem.', 'warning');
+        showSnackbar('Nie masz dostępu do żadnych kont email.', 'warning');
       }
     } catch (error) {
       console.error('Error fetching email accounts:', error);
@@ -556,7 +576,7 @@ export default function MessagesPage() {
                 >
                   {emailAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
-                      {account.from_name || account.email_address}
+                      {account.display_name || account.from_name || account.email_address}
                     </option>
                   ))}
                 </select>
