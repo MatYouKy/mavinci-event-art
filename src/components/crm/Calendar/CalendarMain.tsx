@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -95,16 +95,6 @@ export default function CalendarMain() {
     }
   }, [filterOptions]);
 
-  useEffect(() => {
-    if (calendarEvents) {
-      setAllEvents(calendarEvents);
-    }
-  }, [calendarEvents]);
-
-  useEffect(() => {
-    applyFilters();
-  }, [filters, allEvents]);
-
   const fetchCurrentEmployee = async () => {
     try {
       const {
@@ -123,7 +113,7 @@ export default function CalendarMain() {
     }
   };
 
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = [...allEvents];
 
     if (filters.statuses.length > 0) {
@@ -169,7 +159,17 @@ export default function CalendarMain() {
     }
 
     setEvents(filtered);
-  };
+  }, [allEvents, filters, currentEmployee]);
+
+  useEffect(() => {
+    if (calendarEvents) {
+      setAllEvents([...calendarEvents]);
+    }
+  }, [calendarEvents]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   const toggleFilter = (type: string, value: any) => {
     setFilters((prev) => {
@@ -706,9 +706,7 @@ export default function CalendarMain() {
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
               <Building2 className="h-3 w-3" />
               <span>
-                {hoveredEvent.client?.company_name ||
-                  `${hoveredEvent.client?.first_name || ''} ${hoveredEvent.client?.last_name || ''}`.trim() ||
-                  'Brak klienta'}
+                {hoveredEvent.organization?.name || 'Brak klienta'}
               </span>
             </div>
 
@@ -789,9 +787,7 @@ export default function CalendarMain() {
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
                             <Building2 className="h-3 w-3" />
                             <span>
-                              {event.organization
-                                ? event.organization.alias || event.organization.name
-                                : event.contact_person?.full_name || 'Brak klienta'}
+                              {event.organization?.name || 'Brak klienta'}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">

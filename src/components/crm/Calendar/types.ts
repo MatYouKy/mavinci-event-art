@@ -1,44 +1,16 @@
 export interface CalendarEvent {
   id: string;
   name: string;
-  organization_id: string | null;
-  contact_person_id: string | null;
-  organization?: {
-    id: string;
-    name: string;
-    alias?: string | null;
-  };
-  contact_person?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    full_name: string;
-  };
-  category_id?: string | null;
-  category?: {
-    id: string;
-    name: string;
-    color: string;
-    custom_icon?: {
-      id: string;
-      name: string;
-      svg_code: string;
-    };
-  };
-  created_by?: string;
   event_date: string;
-  event_end_date?: string | null;
-  location: string;
-  description?: string;
-  status: EventStatus;
-  budget?: number;
-  final_cost?: number;
-  notes?: string;
-  equipment?: EquipmentBooking[];
-  employees?: EmployeeAssignment[];
-  vehicles?: any[];
-  tasks?: EventTask[];
-  attachments?: string[];
+  event_end_date: string | null;
+  status: string;
+  color?: string;
+  location?: string;
+  organization?: { name: string } | null;
+  category?: { name: string; color?: string } | null;
+  is_meeting?: boolean;
+  meeting_data?: any;
+  assigned_employees?: { id: string; name: string; surname: string }[];
 }
 
 export type EventStatus =
