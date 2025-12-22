@@ -9,7 +9,8 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 interface AddSystemEmailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess?: () => void;
+  onAdded?: () => void;
   employeeId?: string;
 }
 
@@ -20,6 +21,7 @@ export default function AddSystemEmailModal({
   isOpen,
   onClose,
   onSuccess,
+  onAdded,
   employeeId,
 }: AddSystemEmailModalProps) {
   const { showSnackbar } = useSnackbar();
@@ -127,7 +129,8 @@ export default function AddSystemEmailModal({
       if (error) throw error;
 
       showSnackbar('Konto email zostało dodane', 'success');
-      onSuccess();
+      if (onSuccess) onSuccess();
+      if (onAdded) onAdded();
       onClose();
       setFormData({
         accountType: 'personal',

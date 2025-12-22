@@ -1,401 +1,87 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import {
-  Mail,
-  RefreshCw,
-  Search,
-  Inbox,
-  Loader2,
-  Shield,
-  Calendar,
-  X,
-} from 'lucide-react';
-import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
-import AssignMessageModal from '@/components/crm/AssignMessageModal';
+import { Mail, Plus, Edit, Trash2, Eye, EyeOff, Building2, User, Settings } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useSnackbar } from '@/contexts/SnackbarContext';
-import { useDialog } from '@/contexts/DialogContext';
-import { useGetMessagesListQuery, useMarkMessageAsReadMutation, useDeleteMessageMutation, useToggleStarMessageMutation, useLazySearchMessagesQuery } from '@/store/api/messagesApi';
+import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 
-export default function AllEmailAccountsPage() {
+interface EmailAccount {
+  id: string;
+  account_name: string;
+  email_address: string;
+  account_type: 'personal' | 'shared' | 'system';
+  department: string | null;
+  description: string | null;
+  is_active: boolean;
+  employee_id: string | null;
+  employees?: {
+    name: string;
+    surname: string;
+  };
+  imap_host: string;
+  imap_port: number;
+  imap_username: string;
+  imap_password: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+}
+
+export default function EmailAccountsManagementPage() {
   const router = useRouter();
   const { employee: currentEmployee } = useCurrentEmployee();
-  const { showSnackbar } = useSnackbar();
-  const { showConfirm } = useDialog();
+  const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
 
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState<string>('all');
-  const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
-  const [offset, setOffset] = useState(0);
-  const [allMessages, setAllMessages] = useState<any[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [isSearchMode, setIsSearchMode] = useState(false);
-  const pageSize = 50;
-  const observerTarget = useRef<HTMLDivElement>(null);
-
-  const isAdmin = currentEmployee?.permissions?.includes('admin');
-
-  const { data: messagesData, isLoading, isFetching, refetch } = useGetMessagesListQuery({
-    emailAccountId: selectedAccount,
-    offset,
-    limit: pageSize,
-    filterType,
-    showOnlyOpened: true,
-  }, {
-    skip: !selectedAccount || emailAccounts.length === 0 || !isAdmin || isSearchMode,
-  });
-
-  const [triggerSearch, { data: searchData, isLoading: isSearching }] = useLazySearchMessagesQuery();
-
-  const [markAsRead] = useMarkMessageAsReadMutation();
-  const [deleteMessage] = useDeleteMessageMutation();
-  const [toggleStar] = useToggleStarMessageMutation();
-
-  const handleAdvancedSearch = async () => {
-    if (!searchQuery.trim()) {
-      showSnackbar('Wprowadź frazę do wyszukania', 'warning');
-      return;
-    }
-
-    setIsSearchMode(true);
-    setAllMessages([]);
-
-    try {
-      const result = await triggerSearch({
-        emailAccountId: selectedAccount,
-        query: searchQuery,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        filterType,
-      }).unwrap();
-
-      setAllMessages(result.messages);
-      showSnackbar(`Znaleziono ${result.total} wiadomości`, 'success');
-    } catch (error) {
-      console.error('Search error:', error);
-      showSnackbar('Błąd podczas wyszukiwania', 'error');
-    }
-  };
-
-  const handleClearSearch = () => {
-    setIsSearchMode(false);
-    setSearchQuery('');
-    setDateFrom('');
-    setDateTo('');
-    setShowAdvancedSearch(false);
-    setOffset(0);
-    setAllMessages([]);
-  };
+  const isAdmin = currentEmployee?.permissions?.includes('admin') ||
+                  currentEmployee?.permissions?.includes('messages_manage');
 
   useEffect(() => {
-    if (messagesData?.messages) {
-      if (offset === 0) {
-        setAllMessages(messagesData.messages);
-      } else {
-        setAllMessages(prev => {
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMessages = messagesData.messages.filter(m => !existingIds.has(m.id));
-          return [...prev, ...newMessages];
-        });
-      }
-      setIsLoadingMore(false);
+    if (isAdmin) {
+      fetchAccounts();
     }
-  }, [messagesData, offset]);
+  }, [isAdmin]);
 
-  useEffect(() => {
-    setOffset(0);
-    setAllMessages([]);
-  }, [selectedAccount, filterType]);
-
-  const loadMore = useCallback(() => {
-    if (!isLoadingMore && messagesData?.hasMore && !isFetching) {
-      setIsLoadingMore(true);
-      setOffset(prev => prev + pageSize);
-    }
-  }, [isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
-
-  const fetchEmailAccounts = useCallback(async () => {
-    if (!currentEmployee || !isAdmin) return;
-
+  const fetchAccounts = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('employee_email_accounts')
-        .select('*, employees!fk_employee_email_accounts_employee_id(name, surname)')
+        .select('*, employees!employee_email_accounts_employee_id_fkey(name, surname)')
         .eq('is_active', true)
-        .order('account_type', { ascending: false })
+        .order('account_type', { ascending: true })
         .order('account_name', { ascending: true });
 
       if (error) throw error;
-
-      const getAccountTypeBadge = (accountType: string) => {
-        if (accountType === 'system') return '🔧 System';
-        if (accountType === 'shared') return '🏢 Wspólne';
-        return '👤 Osobiste';
-      };
-
-      const formatAccountName = (acc: any) => {
-        const typeBadge = getAccountTypeBadge(acc.account_type);
-        let displayName = `${typeBadge}: ${acc.account_name}`;
-
-        if (acc.account_type === 'shared' && acc.department) {
-          displayName = `${typeBadge} (${acc.department}): ${acc.account_name}`;
-        } else if (acc.account_type === 'personal' && acc.employees) {
-          displayName = `${typeBadge} (${acc.employees.name} ${acc.employees.surname}): ${acc.account_name}`;
-        }
-
-        return displayName;
-      };
-
-      const accounts = [
-        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: '📝 Formularz kontaktowy' },
-        ...(data || []).map((acc: any) => ({
-          ...acc,
-          from_name: formatAccountName(acc),
-        })),
-      ];
-
-      setEmailAccounts(accounts);
-
-      if (accounts.length > 0) {
-        setSelectedAccount(accounts[0].id);
-      }
-    } catch (error) {
-      console.error('Error fetching email accounts:', error);
-    }
-  }, [currentEmployee, isAdmin]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadMore();
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    const currentTarget = observerTarget.current;
-    if (currentTarget) {
-      observer.observe(currentTarget);
-    }
-
-    return () => {
-      if (currentTarget) {
-        observer.unobserve(currentTarget);
-      }
-    };
-  }, [loadMore]);
-
-  useEffect(() => {
-    if (currentEmployee && isAdmin) {
-      fetchEmailAccounts();
-    }
-  }, [currentEmployee, isAdmin, fetchEmailAccounts]);
-
-  useEffect(() => {
-    if (!currentEmployee || emailAccounts.length === 0 || !isAdmin) return;
-
-    const contactChannel = supabase
-      .channel('contact_messages_changes_admin')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'contact_messages',
-        },
-        () => {
-          refetch();
-        }
-      )
-      .subscribe();
-
-    const sentChannel = supabase
-      .channel('sent_emails_changes_admin')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sent_emails',
-        },
-        () => {
-          if (selectedAccount !== 'contact_form') {
-            refetch();
-          }
-        }
-      )
-      .subscribe();
-
-    const receivedChannel = supabase
-      .channel('received_emails_changes_admin')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'received_emails',
-        },
-        () => {
-          if (selectedAccount !== 'contact_form') {
-            refetch();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(contactChannel);
-      supabase.removeChannel(sentChannel);
-      supabase.removeChannel(receivedChannel);
-    };
-  }, [currentEmployee, emailAccounts, selectedAccount, refetch, isAdmin]);
-
-  const handleMessageClick = async (messageId: string, messageType: 'contact_form' | 'sent' | 'received', isRead: boolean) => {
-    router.push(`/crm/messages/${messageId}?type=${messageType}`);
-
-    if (!isRead && (messageType === 'contact_form' || messageType === 'received')) {
-      await markAsRead({ id: messageId, type: messageType });
+      setAccounts(data || []);
+    } catch (err) {
+      console.error('Error fetching accounts:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleStar = async (messageId: string, isStarred: boolean) => {
-    try {
-      await toggleStar({ id: messageId, isStarred }).unwrap();
-      showSnackbar(
-        isStarred ? 'Usunięto gwiazdkę' : 'Oznaczono gwiazdką',
-        'success'
-      );
-    } catch (error) {
-      console.error('Error toggling star:', error);
-      showSnackbar('Błąd podczas oznaczania wiadomości', 'error');
-    }
-  };
-
-  const handleArchive = async (message: any) => {
-    showSnackbar('Funkcja archiwizacji będzie wkrótce dostępna', 'info');
-  };
-
-  const handleAssign = (messageId: string, messageType: 'contact_form' | 'received', assignedTo: string | null) => {
-    setMessageToAssign({ id: messageId, type: messageType, assignedTo });
-    setShowAssignModal(true);
-  };
-
-  const handleDelete = async (messageId: string, messageType: string) => {
-    const confirmed = await showConfirm({
-      title: 'Usuń wiadomość',
-      message: 'Czy na pewno chcesz usunąć tę wiadomość? Ta operacja jest nieodwracalna.',
-      confirmText: 'Usuń',
-      cancelText: 'Anuluj',
-    });
-
-    if (!confirmed) return;
+  const handleDelete = async (id: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć to konto email?')) return;
 
     try {
-      await deleteMessage({ id: messageId, type: messageType as any }).unwrap();
-      showSnackbar('Wiadomość została usunięta', 'success');
-      if (selectedMessageId === messageId) {
-        setSelectedMessageId(null);
-      }
-    } catch (error) {
-      console.error('Error deleting message:', error);
-      showSnackbar('Błąd podczas usuwania wiadomości', 'error');
-    }
-  };
+      const { error } = await supabase
+        .from('employee_email_accounts')
+        .update({ is_active: false })
+        .eq('id', id);
 
-  const handleMove = async (messageId: string) => {
-    showSnackbar('Funkcja przenoszenia będzie wkrótce dostępna', 'info');
-  };
-
-  const fetchEmailsFromServer = async () => {
-    if (!currentEmployee || !isAdmin) {
-      showSnackbar('Musisz być administratorem', 'error');
-      return;
-    }
-
-    if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
-      showSnackbar('Wybierz konkretne konto email', 'warning');
-      return;
-    }
-
-    try {
-      showSnackbar('Pobieranie wiadomości z serwera...', 'info');
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-emails`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          emailAccountId: selectedAccount,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        showSnackbar(`Pobrano ${result.count || 0} nowych wiadomości`, 'success');
-        refetch();
-      } else {
-        showSnackbar(`Błąd: ${result.error}`, 'error');
-      }
-    } catch (error) {
-      console.error('Error fetching emails:', error);
-      showSnackbar('Nie udało się pobrać wiadomości', 'error');
-    }
-  };
-
-  const filteredMessages = allMessages.filter((msg) => {
-    if (!searchQuery) return true;
-
-    const query = searchQuery.toLowerCase();
-    return (
-      msg.from.toLowerCase().includes(query) ||
-      msg.to.toLowerCase().includes(query) ||
-      msg.subject.toLowerCase().includes(query) ||
-      msg.preview.toLowerCase().includes(query)
-    );
-  });
-
-  const formatDate = (date: string) => {
-    const messageDate = new Date(date);
-    const now = new Date();
-    const diff = now.getTime() - messageDate.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    if (days === 0) {
-      return messageDate.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-    } else if (days === 1) {
-      return 'Wczoraj';
-    } else if (days < 7) {
-      return `${days} dni temu`;
-    } else {
-      return messageDate.toLocaleDateString('pl-PL');
-    }
-  };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'contact_form': return { label: 'Formularz', color: 'bg-blue-500' };
-      case 'sent': return { label: 'Wysłane', color: 'bg-green-500' };
-      case 'received': return { label: 'Odebrane', color: 'bg-purple-500' };
-      default: return { label: type, color: 'bg-gray-500' };
+      if (error) throw error;
+      alert('Konto zostało dezaktywowane');
+      fetchAccounts();
+    } catch (err) {
+      console.error('Error deleting account:', err);
+      alert('Błąd podczas usuwania konta');
     }
   };
 
@@ -403,278 +89,514 @@ export default function AllEmailAccountsPage() {
     return (
       <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
         <div className="text-center">
-          <Shield className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-2">Brak dostępu</h2>
-          <p className="text-[#e5e4e2]/60">Tylko administratorzy mają dostęp do wszystkich skrzynek email.</p>
+          <p className="text-[#e5e4e2]/60">Tylko administratorzy mogą zarządzać kontami email.</p>
         </div>
       </div>
     );
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+        <div className="text-[#e5e4e2]/60">Ładowanie...</div>
+      </div>
+    );
+  }
+
+  const personalAccounts = accounts.filter(a => a.account_type === 'personal');
+  const sharedAccounts = accounts.filter(a => a.account_type === 'shared');
+  const systemAccounts = accounts.filter(a => a.account_type === 'system');
+
+  const getAccountTypeLabel = (type: string) => {
+    switch(type) {
+      case 'personal': return 'Osobiste';
+      case 'shared': return 'Wspólne';
+      case 'system': return 'Systemowe';
+      default: return type;
+    }
+  };
+
+  const getAccountTypeColor = (type: string) => {
+    switch(type) {
+      case 'personal': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'shared': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'system': return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#0f1119]">
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="bg-[#1c1f33] rounded-lg shadow-xl border border-[#d3bb73]/20 overflow-hidden">
-          <div className="p-6 border-b border-[#d3bb73]/20">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <Shield className="w-8 h-8 text-[#d3bb73]" />
-                  <h1 className="text-3xl font-bold text-white">Wszystkie skrzynki email</h1>
-                </div>
-                <p className="text-[#e5e4e2]/60">Panel administratora - przeglądaj wszystkie wiadomości systemowe</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Konto Email</label>
-                <select
-                  value={selectedAccount}
-                  onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
-                >
-                  {emailAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.from_name || account.email_address}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Filtruj po typie</label>
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value as any)}
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
-                >
-                  <option value="all">Wszystkie</option>
-                  <option value="contact_form">Formularz</option>
-                  <option value="received">Odebrane</option>
-                  <option value="sent">Wysłane</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && searchQuery.trim()) {
-                        handleAdvancedSearch();
-                      }
-                    }}
-                    placeholder="Szukaj wiadomości..."
-                    className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                    className={`px-4 py-3 rounded-lg transition-colors flex items-center gap-2 ${
-                      showAdvancedSearch
-                        ? 'bg-[#d3bb73] text-[#1c1f33]'
-                        : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
-                    }`}
-                    title="Zaawansowane wyszukiwanie"
-                  >
-                    <Calendar className="w-5 h-5" />
-                  </button>
-                  {isSearchMode && (
-                    <button
-                      onClick={handleClearSearch}
-                      className="px-4 py-3 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors flex items-center gap-2"
-                      title="Wyczyść wyszukiwanie"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={fetchEmailsFromServer}
-                    disabled={isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                    className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    title="Pobierz nowe wiadomości z serwera email"
-                  >
-                    <Inbox className="w-5 h-5" />
-                    <span className="hidden sm:inline">Pobierz z serwera</span>
-                  </button>
-                  <button
-                    onClick={() => isSearchMode ? handleClearSearch() : refetch()}
-                    disabled={isLoading}
-                    className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-              </div>
-
-              {showAdvancedSearch && (
-                <div className="bg-[#0f1119] rounded-lg p-4 space-y-4">
-                  <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">Zaawansowane wyszukiwanie</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs text-[#e5e4e2]/70 mb-2">Data od</label>
-                      <input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                        className="w-full px-3 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[#e5e4e2]/70 mb-2">Data do</label>
-                      <input
-                        type="date"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                        className="w-full px-3 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none text-sm"
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        onClick={handleAdvancedSearch}
-                        disabled={!searchQuery.trim() || isSearching}
-                        className="w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {isSearching ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Wyszukiwanie...
-                          </>
-                        ) : (
-                          <>
-                            <Search className="w-4 h-4" />
-                            Szukaj w całej historii
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  {isSearchMode && allMessages.length > 0 && (
-                    <div className="pt-2 border-t border-[#d3bb73]/10">
-                      <p className="text-xs text-[#e5e4e2]/60">
-                        Tryb wyszukiwania aktywny: {allMessages.length} wyników
-                        {dateFrom && ` • Od: ${new Date(dateFrom).toLocaleDateString('pl-PL')}`}
-                        {dateTo && ` • Do: ${new Date(dateTo).toLocaleDateString('pl-PL')}`}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+    <div className="min-h-screen bg-[#0f1119] p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-[#e5e4e2] mb-2">Zarządzanie kontami email</h1>
+            <p className="text-[#e5e4e2]/60">
+              Zarządzaj kontami email osobistymi, wspólnymi i systemowymi
+            </p>
           </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+          >
+            <Plus className="w-5 h-5" />
+            Dodaj konto
+          </button>
+        </div>
 
-          <div className="overflow-y-auto max-h-[600px]">
-            {isLoading && offset === 0 ? (
-              <div className="p-8 text-center text-[#e5e4e2]/60">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
-                Ładowanie wiadomości...
-              </div>
-            ) : filteredMessages.length === 0 ? (
-              <div className="p-8 text-center">
-                <Inbox className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-                <p className="text-[#e5e4e2]/60">Brak wiadomości</p>
+        <div className="space-y-8">
+          {/* System Accounts */}
+          <section>
+            <div className="flex items-center gap-3 mb-4">
+              <Settings className="w-6 h-6 text-purple-400" />
+              <h2 className="text-xl font-semibold text-[#e5e4e2]">Konta systemowe</h2>
+              <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded border border-purple-500/30">
+                {systemAccounts.length}
+              </span>
+            </div>
+            <p className="text-sm text-[#e5e4e2]/60 mb-4">
+              Konta używane do automatycznych powiadomień. Dostępne dla wszystkich pracowników.
+            </p>
+            {systemAccounts.length === 0 ? (
+              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8 text-center">
+                <p className="text-[#e5e4e2]/40">Brak kont systemowych</p>
               </div>
             ) : (
-              <div className="divide-y divide-[#d3bb73]/10">
-                {filteredMessages.map((message) => {
-                  const typeInfo = getTypeLabel(message.type);
-                  return (
-                    <div
-                      key={message.id}
-                      className={`p-4 hover:bg-[#d3bb73]/5 transition-colors ${
-                        !message.isRead ? 'font-semibold bg-[#d3bb73]/5' : ''
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div
-                          className="flex-1 min-w-0 cursor-pointer"
-                          onClick={() => handleMessageClick(message.id, message.type, message.isRead)}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-white truncate">{message.from}</span>
-                            {!message.isRead && (
-                              <span className="w-2 h-2 rounded-full bg-[#d3bb73]"></span>
-                            )}
-                          </div>
-                          <p className="text-sm text-[#e5e4e2]/70 truncate">{message.subject}</p>
-                        </div>
-                        <div className="flex items-center gap-2 ml-2">
-                          <span className="text-xs text-[#e5e4e2]/50 whitespace-nowrap">
-                            {formatDate(message.date)}
-                          </span>
-                          {(message.type === 'contact_form' || message.type === 'received') && (
-                            <MessageActionsMenu
-                              messageId={message.id}
-                              messageType={message.type}
-                              isStarred={message.isStarred}
-                              onReply={() => {}}
-                              onForward={message.type === 'received' ? () => {} : undefined}
-                              onAssign={() => handleAssign(message.id, message.type as 'contact_form' | 'received', message.assigned_to || null)}
-                              onDelete={() => handleDelete(message.id, message.type)}
-                              onMove={() => handleMove(message.id)}
-                              onStar={message.type === 'received' ? () => handleStar(message.id, message.isStarred) : undefined}
-                              onArchive={message.type === 'received' ? () => handleArchive(message) : undefined}
-                              canManage={true}
-                            />
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs px-2 py-1 rounded ${typeInfo.color} text-white`}>
-                          {typeInfo.label}
-                        </span>
-                        {message.assigned_employee && (
-                          <span className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            Przypisano: {message.assigned_employee.name} {message.assigned_employee.surname}
-                          </span>
-                        )}
-                        <p className="text-sm text-[#e5e4e2]/50 truncate flex-1">{message.preview}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {messagesData?.hasMore && (
-                  <div ref={observerTarget} className="p-6 flex items-center justify-center">
-                    <div className="flex items-center gap-3 text-[#d3bb73]">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="text-sm">Ładowanie więcej wiadomości...</span>
-                    </div>
-                  </div>
-                )}
-
-                {!messagesData?.hasMore && filteredMessages.length > 0 && (
-                  <div className="p-4 text-center text-[#e5e4e2]/40 text-sm">
-                    Koniec listy wiadomości
-                  </div>
-                )}
+              <div className="grid gap-4">
+                {systemAccounts.map((account) => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={setEditingAccount}
+                    onDelete={handleDelete}
+                    showPassword={showPasswords[account.id]}
+                    togglePassword={(id) => setShowPasswords({...showPasswords, [id]: !showPasswords[id]})}
+                    getTypeLabel={getAccountTypeLabel}
+                    getTypeColor={getAccountTypeColor}
+                  />
+                ))}
               </div>
             )}
-          </div>
+          </section>
+
+          {/* Shared Accounts */}
+          <section>
+            <div className="flex items-center gap-3 mb-4">
+              <Building2 className="w-6 h-6 text-green-400" />
+              <h2 className="text-xl font-semibold text-[#e5e4e2]">Konta wspólne</h2>
+              <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded border border-green-500/30">
+                {sharedAccounts.length}
+              </span>
+            </div>
+            <p className="text-sm text-[#e5e4e2]/60 mb-4">
+              Konta współdzielone przez zespół. Przypisywane do pracowników przez admina.
+            </p>
+            {sharedAccounts.length === 0 ? (
+              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8 text-center">
+                <p className="text-[#e5e4e2]/40">Brak kont wspólnych</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {sharedAccounts.map((account) => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={setEditingAccount}
+                    onDelete={handleDelete}
+                    showPassword={showPasswords[account.id]}
+                    togglePassword={(id) => setShowPasswords({...showPasswords, [id]: !showPasswords[id]})}
+                    getTypeLabel={getAccountTypeLabel}
+                    getTypeColor={getAccountTypeColor}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Personal Accounts */}
+          <section>
+            <div className="flex items-center gap-3 mb-4">
+              <User className="w-6 h-6 text-blue-400" />
+              <h2 className="text-xl font-semibold text-[#e5e4e2]">Konta osobiste</h2>
+              <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded border border-blue-500/30">
+                {personalAccounts.length}
+              </span>
+            </div>
+            <p className="text-sm text-[#e5e4e2]/60 mb-4">
+              Konta przypisane do konkretnych pracowników. Dostępne tylko dla właściciela.
+            </p>
+            {personalAccounts.length === 0 ? (
+              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8 text-center">
+                <p className="text-[#e5e4e2]/40">Brak kont osobistych</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {personalAccounts.map((account) => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={setEditingAccount}
+                    onDelete={handleDelete}
+                    showPassword={showPasswords[account.id]}
+                    togglePassword={(id) => setShowPasswords({...showPasswords, [id]: !showPasswords[id]})}
+                    getTypeLabel={getAccountTypeLabel}
+                    getTypeColor={getAccountTypeColor}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
 
-      {showAssignModal && messageToAssign && (
-        <AssignMessageModal
-          messageId={messageToAssign.id}
-          messageType={messageToAssign.type}
-          currentAssignee={messageToAssign.assignedTo}
-          onClose={() => {
-            setShowAssignModal(false);
-            setMessageToAssign(null);
-          }}
-          onSuccess={() => {
-            refetch();
+      {showAddModal && (
+        <AddSystemEmailModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onAdded={() => {
+            fetchAccounts();
+            setShowAddModal(false);
           }}
         />
       )}
+
+      {editingAccount && (
+        <EditEmailAccountModal
+          isOpen={!!editingAccount}
+          account={editingAccount}
+          onClose={() => setEditingAccount(null)}
+          onUpdated={() => {
+            fetchAccounts();
+            setEditingAccount(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AccountCard({
+  account,
+  onEdit,
+  onDelete,
+  showPassword,
+  togglePassword,
+  getTypeLabel,
+  getTypeColor
+}: {
+  account: EmailAccount;
+  onEdit: (account: EmailAccount) => void;
+  onDelete: (id: string) => void;
+  showPassword: boolean;
+  togglePassword: (id: string) => void;
+  getTypeLabel: (type: string) => string;
+  getTypeColor: (type: string) => string;
+}) {
+  return (
+    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/20 transition-all">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-2">
+            <h3 className="text-lg font-medium text-[#e5e4e2]">{account.account_name}</h3>
+            <span className={`px-2 py-1 rounded text-xs border ${getTypeColor(account.account_type)}`}>
+              {getTypeLabel(account.account_type)}
+            </span>
+          </div>
+          <p className="text-sm text-[#e5e4e2]/70 flex items-center gap-2 mb-1">
+            <Mail className="w-4 h-4" />
+            {account.email_address}
+          </p>
+          {account.department && (
+            <p className="text-xs text-[#e5e4e2]/50">Dział: {account.department}</p>
+          )}
+          {account.description && (
+            <p className="text-xs text-[#e5e4e2]/50">{account.description}</p>
+          )}
+          {account.employees && (
+            <p className="text-xs text-[#e5e4e2]/50">
+              Właściciel: {account.employees.name} {account.employees.surname}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onEdit(account)}
+            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+            title="Edytuj"
+          >
+            <Edit className="w-4 h-4 text-[#d3bb73]" />
+          </button>
+          <button
+            onClick={() => onDelete(account.id)}
+            className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+            title="Usuń"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+        <div className="space-y-2">
+          <h4 className="text-[#d3bb73] font-medium">IMAP (Odbieranie)</h4>
+          <InfoRow label="Serwer" value={`${account.imap_host}:${account.imap_port}`} />
+          <InfoRow label="Login" value={account.imap_username} />
+          <div className="flex items-center gap-2">
+            <InfoRow
+              label="Hasło"
+              value={showPassword ? account.imap_password : '••••••••'}
+            />
+            <button
+              onClick={() => togglePassword(account.id)}
+              className="p-1 hover:bg-[#0f1119] rounded"
+            >
+              {showPassword ? (
+                <EyeOff className="w-4 h-4 text-[#e5e4e2]/60" />
+              ) : (
+                <Eye className="w-4 h-4 text-[#e5e4e2]/60" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <h4 className="text-[#d3bb73] font-medium">SMTP (Wysyłanie)</h4>
+          <InfoRow label="Serwer" value={`${account.smtp_host}:${account.smtp_port}`} />
+          <InfoRow label="Login" value={account.smtp_username} />
+          <InfoRow
+            label="Hasło"
+            value={showPassword ? account.smtp_password : '••••••••'}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span className="text-xs text-[#e5e4e2]/60">{label}</span>
+      <p className="text-[#e5e4e2]">{value}</p>
+    </div>
+  );
+}
+
+function EditEmailAccountModal({
+  isOpen,
+  account,
+  onClose,
+  onUpdated
+}: {
+  isOpen: boolean;
+  account: EmailAccount;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [formData, setFormData] = useState({
+    account_name: account.account_name,
+    email_address: account.email_address,
+    account_type: account.account_type,
+    department: account.department || '',
+    description: account.description || '',
+    imap_host: account.imap_host,
+    imap_port: account.imap_port,
+    imap_username: account.imap_username,
+    imap_password: account.imap_password,
+    smtp_host: account.smtp_host,
+    smtp_port: account.smtp_port,
+    smtp_username: account.smtp_username,
+    smtp_password: account.smtp_password,
+  });
+  const [saving, setSaving] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('employee_email_accounts')
+        .update({
+          account_name: formData.account_name,
+          email_address: formData.email_address,
+          account_type: formData.account_type,
+          department: formData.department || null,
+          description: formData.description || null,
+          imap_host: formData.imap_host,
+          imap_port: formData.imap_port,
+          imap_username: formData.imap_username,
+          imap_password: formData.imap_password,
+          smtp_host: formData.smtp_host,
+          smtp_port: formData.smtp_port,
+          smtp_username: formData.smtp_username,
+          smtp_password: formData.smtp_password,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', account.id);
+
+      if (error) throw error;
+      alert('Konto zostało zaktualizowane');
+      onUpdated();
+    } catch (err) {
+      console.error('Error updating account:', err);
+      alert('Błąd podczas aktualizacji konta');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-3xl w-full my-8">
+        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Edytuj konto email</h2>
+
+        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa konta *</label>
+              <input
+                type="text"
+                value={formData.account_name}
+                onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typ konta *</label>
+              <select
+                value={formData.account_type}
+                onChange={(e) => setFormData({ ...formData, account_type: e.target.value as any })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              >
+                <option value="personal">Osobiste</option>
+                <option value="shared">Wspólne</option>
+                <option value="system">Systemowe</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Adres email *</label>
+            <input
+              type="email"
+              value={formData.email_address}
+              onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            />
+          </div>
+
+          {formData.account_type === 'shared' && (
+            <div>
+              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Dział</label>
+              <input
+                type="text"
+                value={formData.department}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                placeholder="np. Biuro, Finanse, Kadry"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[80px]"
+              placeholder="Krótki opis konta"
+            />
+          </div>
+
+          <div className="border-t border-[#d3bb73]/10 pt-4">
+            <h3 className="text-[#d3bb73] font-medium mb-4">IMAP</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <input
+                type="text"
+                value={formData.imap_host}
+                onChange={(e) => setFormData({ ...formData, imap_host: e.target.value })}
+                placeholder="Serwer IMAP"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+              <input
+                type="number"
+                value={formData.imap_port}
+                onChange={(e) => setFormData({ ...formData, imap_port: parseInt(e.target.value) })}
+                placeholder="Port"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+              <input
+                type="text"
+                value={formData.imap_username}
+                onChange={(e) => setFormData({ ...formData, imap_username: e.target.value })}
+                placeholder="Login"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+              <input
+                type="password"
+                value={formData.imap_password}
+                onChange={(e) => setFormData({ ...formData, imap_password: e.target.value })}
+                placeholder="Hasło"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-[#d3bb73]/10 pt-4">
+            <h3 className="text-[#d3bb73] font-medium mb-4">SMTP</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <input
+                type="text"
+                value={formData.smtp_host}
+                onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
+                placeholder="Serwer SMTP"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+              <input
+                type="number"
+                value={formData.smtp_port}
+                onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
+                placeholder="Port"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+              <input
+                type="text"
+                value={formData.smtp_username}
+                onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
+                placeholder="Login"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+              <input
+                type="password"
+                value={formData.smtp_password}
+                onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
+                placeholder="Hasło"
+                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-6 mt-6 border-t border-[#d3bb73]/10">
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
+          >
+            Anuluj
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

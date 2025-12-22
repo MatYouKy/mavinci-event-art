@@ -13,6 +13,7 @@ interface EmailAccount {
   department: string | null;
   description: string | null;
   is_active: boolean;
+  employee_id: string | null;
 }
 
 interface AccountAssignment {
@@ -43,12 +44,13 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     try {
       setLoading(true);
 
+      // Fetch ALL active accounts (personal, shared, system)
       const [accountsRes, assignmentsRes] = await Promise.all([
         supabase
           .from('employee_email_accounts')
-          .select('id, account_name, email_address, account_type, department, description, is_active')
+          .select('id, account_name, email_address, account_type, department, description, is_active, employee_id')
           .eq('is_active', true)
-          .order('account_type', { ascending: true })
+          .order('account_type', { ascending: false })
           .order('account_name', { ascending: true }),
 
         supabase
@@ -124,7 +126,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     return <div className="text-[#e5e4e2]/60 text-center py-8">Ładowanie...</div>;
   }
 
-  const personalAccounts = allAccounts.filter(a => a.account_type === 'personal');
+  const personalAccounts = allAccounts.filter(a => a.account_type === 'personal' && a.employee_id === employeeId);
   const sharedAccounts = allAccounts.filter(a => a.account_type === 'shared');
   const systemAccounts = allAccounts.filter(a => a.account_type === 'system');
 
