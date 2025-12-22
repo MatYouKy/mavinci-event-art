@@ -7,6 +7,8 @@ export interface IEmployee {
   surname: string;
   nickname: string | null;
   email: string;
+  personal_email: string | null;
+  notification_email_preference: 'work' | 'personal' | 'both' | 'none';
   phone_number: string | null;
   phone_private: string | null;
   avatar_url: string | null;

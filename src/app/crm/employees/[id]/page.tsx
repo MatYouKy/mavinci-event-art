@@ -61,6 +61,8 @@ interface Employee {
   surname: string;
   nickname: string | null;
   email: string;
+  personal_email: string | null;
+  notification_email_preference: 'work' | 'personal' | 'both' | 'none';
   phone_number: string | null;
   phone_private: string | null;
   avatar_url: string | null;
@@ -707,7 +709,7 @@ export default function EmployeeDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-[#e5e4e2]/60">Email</label>
+                    <label className="text-xs text-[#e5e4e2]/60">Email służbowy</label>
                     <input
                       type="email"
                       value={editedData.email || ''}
@@ -715,6 +717,54 @@ export default function EmployeeDetailPage() {
                       className="mt-1 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
                     />
                   </div>
+                  {isAdmin && (
+                    <>
+                      <div>
+                        <label className="text-xs text-[#e5e4e2]/60">Email prywatny</label>
+                        <input
+                          type="email"
+                          value={editedData.personal_email || ''}
+                          onChange={(e) =>
+                            setEditedData({ ...editedData, personal_email: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
+                          placeholder="Opcjonalnie"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[#e5e4e2]/60">
+                          Powiadomienia email wysyłać na
+                        </label>
+                        <select
+                          value={editedData.notification_email_preference || 'work'}
+                          onChange={(e) =>
+                            setEditedData({
+                              ...editedData,
+                              notification_email_preference: e.target.value as
+                                | 'work'
+                                | 'personal'
+                                | 'both'
+                                | 'none',
+                            })
+                          }
+                          className="mt-1 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
+                        >
+                          <option value="work">Email służbowy</option>
+                          <option value="personal">Email prywatny</option>
+                          <option value="both">Oba emaile</option>
+                          <option value="none">Nie wysyłaj emaili</option>
+                        </select>
+                        <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                          {editedData.notification_email_preference === 'personal' &&
+                            'Wymaga ustawienia emaila prywatnego'}
+                          {editedData.notification_email_preference === 'both' &&
+                            'Wymaga ustawienia emaila prywatnego'}
+                          {editedData.notification_email_preference === 'none' &&
+                            'Powiadomienia będą tylko w systemie'}
+                        </p>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label className="text-xs text-[#e5e4e2]/60">Telefon</label>
                     <input
@@ -780,7 +830,24 @@ export default function EmployeeDetailPage() {
                   <InfoRow label="Imię" value={employee.name} />
                   <InfoRow label="Nazwisko" value={employee.surname} />
                   {employee.nickname && <InfoRow label="Pseudonim" value={employee.nickname} />}
-                  <InfoRow label="Email" value={employee.email} />
+                  <InfoRow label="Email służbowy" value={employee.email} />
+                  {isAdmin && employee.personal_email && (
+                    <InfoRow label="Email prywatny" value={employee.personal_email} />
+                  )}
+                  {isAdmin && employee.notification_email_preference && (
+                    <InfoRow
+                      label="Powiadomienia email"
+                      value={
+                        employee.notification_email_preference === 'work'
+                          ? 'Email służbowy'
+                          : employee.notification_email_preference === 'personal'
+                            ? 'Email prywatny'
+                            : employee.notification_email_preference === 'both'
+                              ? 'Oba emaile'
+                              : 'Nie wysyłaj emaili'
+                      }
+                    />
+                  )}
                   {employee.phone_number && (
                     <InfoRow label="Telefon" value={employee.phone_number} />
                   )}
