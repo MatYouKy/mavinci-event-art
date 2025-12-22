@@ -27,13 +27,15 @@ interface Meeting {
   };
   creator?: {
     id: string;
-    full_name: string;
+    name: string;
+    surname: string;
   };
   participants?: Array<{
     id: string;
     employee?: {
       id: string;
-      full_name: string;
+      name: string;
+      surname: string;
       avatar_url: string | null;
     };
   }>;
@@ -67,10 +69,10 @@ export default function MeetingsListPage() {
         .select(`
           *,
           location:locations(id, name),
-          creator:employees!meetings_created_by_fkey(id, full_name),
+          creator:employees!meetings_created_by_fkey(id, name, surname),
           participants:meeting_participants(
             id,
-            employee:employees(id, full_name, avatar_url)
+            employee:employees(id, name, surname, avatar_url)
           )
         `)
         .is('deleted_at', null)
@@ -275,7 +277,7 @@ export default function MeetingsListPage() {
                                   key={p.id}
                                   className="rounded-full bg-[#d3bb73]/10 px-2 py-0.5 text-xs text-[#e5e4e2]"
                                 >
-                                  {p.employee?.full_name || 'Nieznany'}
+                                  {p.employee ? `${p.employee.name} ${p.employee.surname}` : 'Nieznany'}
                                 </span>
                               ))}
                               {meeting.participants.length > 3 && (
