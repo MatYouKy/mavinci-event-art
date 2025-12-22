@@ -186,8 +186,50 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           table: 'tasks',
           filter: `event_id=eq.${eventId}`,
         },
-        () => {
-          fetchTasks();
+        async (payload) => {
+          const newTask = payload.new as Task;
+
+          const { data: assigneesData } = await supabase
+            .from('task_assignees')
+            .select(
+              `
+              employee:employees!task_assignees_employee_id_fkey(
+                id,
+                name,
+                surname,
+                avatar_url,
+                email,
+                phone_number
+              )
+            `,
+            )
+            .eq('task_id', newTask.id);
+
+          let currently_working_employee = null;
+          if (newTask.currently_working_by) {
+            const { data: workingEmployee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', newTask.currently_working_by)
+              .maybeSingle();
+
+            currently_working_employee = workingEmployee;
+          }
+
+          const { count } = await supabase
+            .from('task_comments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', newTask.id);
+
+          setTasks((prevTasks) => [
+            ...prevTasks,
+            {
+              ...newTask,
+              assignees: assigneesData || [],
+              currently_working_employee,
+              comments_count: count || 0,
+            },
+          ]);
         },
       )
       .on(
@@ -482,15 +524,16 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
         const nextOrder = maxOrderQuery.data ? maxOrderQuery.data.order_index + 1 : 0;
 
-        const { error } = await supabase
+        const { data: newTaskData, error } = await supabase
           .from('tasks')
-          .insert([{ ...taskData, order_index: nextOrder }]);
+          .insert([{ ...taskData, order_index: nextOrder }])
+          .select()
+          .single();
 
         if (error) throw error;
         showSnackbar('Zadanie dodane', 'success');
       }
 
-      await fetchTasks();
       handleCloseModal();
     } catch (err) {
       console.error('Error saving task:', err);

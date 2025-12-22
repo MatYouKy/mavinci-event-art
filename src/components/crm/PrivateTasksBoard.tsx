@@ -158,8 +158,54 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
           schema: 'public',
           table: 'tasks',
         },
-        (payload) => {
-          fetchTasks();
+        async (payload) => {
+          const newTask = payload.new as Task;
+
+          const { data: assignees } = await supabase
+            .from('task_assignees')
+            .select('employee_id')
+            .eq('task_id', newTask.id);
+
+          const assigneesWithEmployees = await Promise.all(
+            (assignees || []).map(async (assignee) => {
+              const { data: employee } = await supabase
+                .from('employees')
+                .select('name, surname, avatar_url, avatar_metadata')
+                .eq('id', assignee.employee_id)
+                .maybeSingle();
+
+              return {
+                employee_id: assignee.employee_id,
+                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+              };
+            })
+          );
+
+          let currently_working_employee = null;
+          if (newTask.currently_working_by) {
+            const { data: workingEmployee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', newTask.currently_working_by)
+              .maybeSingle();
+
+            currently_working_employee = workingEmployee;
+          }
+
+          const isRelevant =
+            newTask.is_private && newTask.owner_id === employeeId ||
+            !newTask.is_private && assignees?.some(a => a.employee_id === employeeId);
+
+          if (isRelevant) {
+            setTasks(prevTasks => [
+              ...prevTasks,
+              {
+                ...newTask,
+                task_assignees: assigneesWithEmployees,
+                currently_working_employee,
+              },
+            ]);
+          }
         }
       )
       .on(
@@ -635,7 +681,6 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         showSnackbar('Zadanie zostało utworzone', 'success');
       }
 
-      fetchTasks();
       handleCloseModal();
     } catch (error) {
       console.error('Error saving task:', error);
@@ -659,7 +704,6 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
       if (error) throw error;
 
-      fetchTasks();
       showSnackbar('Zadanie zostało usunięte', 'success');
     } catch (error: any) {
       console.error('Error deleting task:', error);

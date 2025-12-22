@@ -156,31 +156,104 @@ export default function TaskDetailPage() {
       fetchAvailableEmployees();
 
       const commentsChannel = supabase
-        .channel('task_comments_changes')
+        .channel(`task_comments_${taskId}`)
         .on(
           'postgres_changes',
           {
-            event: '*',
+            event: 'INSERT',
             schema: 'public',
             table: 'task_comments',
             filter: `task_id=eq.${taskId}`,
           },
-          () => {
+          async (payload) => {
+            const newComment = payload.new as any;
+
+            const { data: employee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', newComment.employee_id)
+              .maybeSingle();
+
+            if (employee) {
+              const chatItem: ChatItem = {
+                id: newComment.id,
+                type: 'comment',
+                created_at: newComment.created_at,
+                employee_id: newComment.employee_id,
+                employee,
+                content: newComment.content,
+              };
+
+              setChatItems(prev => [...prev, chatItem].sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              ));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'task_comments',
+            filter: `task_id=eq.${taskId}`,
+          },
+          (payload) => {
+            const deletedId = payload.old.id;
+            setChatItems(prev => prev.filter(item => !(item.type === 'comment' && item.id === deletedId)));
           }
         )
         .subscribe();
 
       const attachmentsChannel = supabase
-        .channel('task_attachments_changes')
+        .channel(`task_attachments_${taskId}`)
         .on(
           'postgres_changes',
           {
-            event: '*',
+            event: 'INSERT',
             schema: 'public',
             table: 'task_attachments',
             filter: `task_id=eq.${taskId}`,
           },
-          () => {
+          async (payload) => {
+            const newAttachment = payload.new as any;
+
+            const { data: employee } = await supabase
+              .from('employees')
+              .select('name, surname, avatar_url, avatar_metadata')
+              .eq('id', newAttachment.uploaded_by)
+              .maybeSingle();
+
+            if (employee) {
+              const chatItem: ChatItem = {
+                id: newAttachment.id,
+                type: 'attachment',
+                created_at: newAttachment.created_at,
+                employee_id: newAttachment.uploaded_by,
+                employee,
+                attachment: {
+                  ...newAttachment,
+                  employees: employee,
+                },
+              };
+
+              setChatItems(prev => [...prev, chatItem].sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              ));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'task_attachments',
+            filter: `task_id=eq.${taskId}`,
+          },
+          (payload) => {
+            const deletedId = payload.old.id;
+            setChatItems(prev => prev.filter(item => !(item.type === 'attachment' && item.id === deletedId)));
           }
         )
         .subscribe();
@@ -229,31 +302,89 @@ export default function TaskDetailPage() {
   const handleSendComment = async () => {
     if (!newComment.trim() || !currentEmployee) return;
 
+    const tempId = `temp-${Date.now()}`;
+    const commentText = newComment.trim();
+
+    const optimisticComment: ChatItem = {
+      id: tempId,
+      type: 'comment',
+      created_at: new Date().toISOString(),
+      employee_id: currentEmployee.id,
+      employee: {
+        name: currentEmployee.name,
+        surname: currentEmployee.surname,
+        avatar_url: currentEmployee.avatar_url,
+        avatar_metadata: currentEmployee.avatar_metadata,
+      },
+      content: commentText,
+    };
+
+    setChatItems(prev => [...prev, optimisticComment]);
+
+    setNewComment('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
     try {
       await addComment({
         task_id: taskId,
         employee_id: currentEmployee.id,
-        content: newComment.trim(),
+        content: commentText,
       }).unwrap();
-
-      setNewComment('');
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
     } catch (error) {
       console.error('Error adding comment:', error);
       showSnackbar('Błąd podczas dodawania komentarza', 'error');
+      setChatItems(prev => prev.filter(item => item.id !== tempId));
     }
   };
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0 || !currentEmployee) return;
 
+    const tempIds: string[] = [];
+
     try {
       setUploadingFile(true);
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const tempId = `temp-${Date.now()}-${i}`;
+        tempIds.push(tempId);
+
+        const optimisticAttachment: ChatItem = {
+          id: tempId,
+          type: 'attachment',
+          created_at: new Date().toISOString(),
+          employee_id: currentEmployee.id,
+          employee: {
+            name: currentEmployee.name,
+            surname: currentEmployee.surname,
+            avatar_url: currentEmployee.avatar_url,
+            avatar_metadata: currentEmployee.avatar_metadata,
+          },
+          attachment: {
+            id: tempId,
+            task_id: taskId,
+            event_file_id: null,
+            is_linked: false,
+            file_name: file.name,
+            file_url: null,
+            file_type: file.type,
+            file_size: file.size,
+            uploaded_by: currentEmployee.id,
+            created_at: new Date().toISOString(),
+            employees: {
+              name: currentEmployee.name,
+              surname: currentEmployee.surname,
+              avatar_url: currentEmployee.avatar_url,
+              avatar_metadata: currentEmployee.avatar_metadata,
+            },
+          },
+        };
+
+        setChatItems(prev => [...prev, optimisticAttachment]);
+
         const fileExt = file.name.split('.').pop();
         const fileName = `${Math.random()}.${fileExt}`;
         const filePath = `task-attachments/${taskId}/${fileName}`;
@@ -286,6 +417,7 @@ export default function TaskDetailPage() {
     } catch (error) {
       console.error('Error uploading file:', error);
       showSnackbar('Błąd podczas przesyłania pliku', 'error');
+      setChatItems(prev => prev.filter(item => !tempIds.includes(item.id)));
     } finally {
       setUploadingFile(false);
       if (fileInputRef.current) {
