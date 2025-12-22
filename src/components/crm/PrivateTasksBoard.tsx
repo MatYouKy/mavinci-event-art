@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar, Play, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -36,6 +37,7 @@ interface PrivateTasksBoardProps {
 }
 
 export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateTasksBoardProps) {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -850,7 +852,13 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                       setDraggedTask(null);
                       stopAutoScroll();
                     }}
-                    className={`bg-[#0f1119] border rounded-lg p-4 cursor-move transition-all group ${
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (!target.closest('button')) {
+                        router.push(`/crm/tasks/${task.id}`);
+                      }
+                    }}
+                    className={`bg-[#0f1119] border rounded-lg p-4 cursor-pointer transition-all group ${
                       draggedTask?.id === task.id
                         ? 'opacity-50 border-[#d3bb73]/50'
                         : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
@@ -858,20 +866,26 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-start gap-2 flex-1">
-                        <GripVertical className="w-4 h-4 text-[#e5e4e2]/40 mt-1 flex-shrink-0" />
+                        <GripVertical className="w-4 h-4 text-[#e5e4e2]/40 mt-1 flex-shrink-0 cursor-move" />
                         <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">
                           {task.title}
                         </h4>
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
-                          onClick={() => handleOpenModal(task)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenModal(task);
+                          }}
                           className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
                         >
                           <Edit className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleDeleteTask(task.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTask(task.id);
+                          }}
                           className="p-1 text-red-400 hover:bg-red-500/10 rounded"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -909,7 +923,10 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#d3bb73]/5">
                       <button
-                        onClick={() => handleStartTimer(task)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartTimer(task);
+                        }}
                         disabled={activeTimer?.task_id === task.id}
                         className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
                           activeTimer?.task_id === task.id
