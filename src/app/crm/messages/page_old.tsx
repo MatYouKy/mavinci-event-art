@@ -1,0 +1,889 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import {
+  Mail,
+  RefreshCw,
+  Search,
+  Plus,
+  Inbox,
+} from 'lucide-react';
+import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
+import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
+import AssignMessageModal from '@/components/crm/AssignMessageModal';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
+
+const translateSubject = (subject: string): string => {
+  if (!subject) return 'Wiadomość z formularza';
+  return subject
+    .replace(/^event_inquiry\s*-\s*/i, 'Zapytanie o event - ')
+    .replace(/^team_join\s*-\s*/i, 'Rekrutacja - ')
+    .replace(/^general\s*-\s*/i, 'Ogólna - ');
+};
+
+interface UnifiedMessage {
+  id: string;
+  type: 'contact_form' | 'sent' | 'received';
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+  bodyHtml?: string;
+  date: Date;
+  isRead: boolean;
+  isStarred: boolean;
+  status?: string;
+  assigned_to?: string | null;
+  assigned_employee?: { name: string; surname: string } | null;
+  originalData: any;
+}
+
+export default function MessagesPage() {
+  const { employee: currentEmployee, canManageModule, canViewModule } = useCurrentEmployee();
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+  const canManage = canManageModule('messages');
+  const canView = canViewModule('messages');
+
+  const [messages, setMessages] = useState<UnifiedMessage[]>([]);
+  const [selectedMessage, setSelectedMessage] = useState<UnifiedMessage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<string>('all');
+  const [showNewMessageModal, setShowNewMessageModal] = useState(false);
+  const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<UnifiedMessage | null>(null);
+  const [forwardMessage, setForwardMessage] = useState<UnifiedMessage | null>(null);
+  const [pageSize] = useState(50);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+
+  const [newMessage, setNewMessage] = useState({
+    to: '',
+    subject: '',
+    body: '',
+  });
+
+  useEffect(() => {
+    if (currentEmployee) {
+      fetchEmailAccounts();
+    }
+  }, [currentEmployee]);
+
+  useEffect(() => {
+    if (emailAccounts.length > 0) {
+      setOffset(0);
+      setMessages([]);
+      setHasMore(true);
+      fetchMessages(true);
+    }
+  }, [selectedAccount, emailAccounts]);
+
+  useEffect(() => {
+    if (offset > 0 && emailAccounts.length > 0) {
+      fetchMessages(false);
+    }
+  }, [offset]);
+
+  useEffect(() => {
+    if (!currentEmployee || emailAccounts.length === 0) return;
+
+    const contactChannel = supabase
+      .channel('contact_messages_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contact_messages',
+        },
+        (payload) => {
+          console.log('Contact message change:', payload);
+          setOffset(0);
+          setMessages([]);
+          fetchMessages(true);
+        }
+      )
+      .subscribe();
+
+    const sentChannel = supabase
+      .channel('sent_emails_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sent_emails',
+        },
+        (payload) => {
+          console.log('Sent email change:', payload);
+          if (selectedAccount !== 'contact_form') {
+            setOffset(0);
+            setMessages([]);
+            fetchMessages(true);
+          }
+        }
+      )
+      .subscribe();
+
+    const receivedChannel = supabase
+      .channel('received_emails_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'received_emails',
+        },
+        (payload) => {
+          console.log('Received email change:', payload);
+          if (selectedAccount !== 'contact_form') {
+            setOffset(0);
+            setMessages([]);
+            fetchMessages(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(contactChannel);
+      supabase.removeChannel(sentChannel);
+      supabase.removeChannel(receivedChannel);
+    };
+  }, [currentEmployee, emailAccounts, selectedAccount]);
+
+  const fetchEmailAccounts = async () => {
+    if (!currentEmployee) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('employee_email_accounts')
+        .select('*')
+        .eq('is_active', true)
+        .eq('employee_id', currentEmployee.id);
+
+      if (error) throw error;
+
+      const accounts = [
+        ...(canManage ? [
+          { id: 'all', email_address: 'Wszystkie konta', from_name: 'Wszystkie' },
+          { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' }
+        ] : []),
+        ...(data || []),
+      ];
+
+      setEmailAccounts(accounts);
+
+      if (accounts.length > 0) {
+        setSelectedAccount(accounts[0].id);
+      } else if (!canManage) {
+        showSnackbar('Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem.', 'warning');
+      }
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
+    }
+  };
+
+  const fetchMessages = async (reset = false) => {
+    setLoading(true);
+    try {
+      const allMessages: UnifiedMessage[] = [];
+      const currentOffset = reset ? 0 : offset;
+
+      if (canManage && (selectedAccount === 'all' || selectedAccount === 'contact_form')) {
+        const { data: contactMessages } = await supabase
+          .from('contact_messages')
+          .select(`
+            *,
+            assigned_employee:employees!assigned_to(name, surname)
+          `)
+          .order('created_at', { ascending: false })
+          .range(currentOffset, currentOffset + pageSize - 1);
+
+        if (contactMessages) {
+          allMessages.push(
+            ...contactMessages.map((msg: any) => ({
+              id: msg.id,
+              type: 'contact_form' as const,
+              from: `${msg.name} <${msg.email}>`,
+              to: 'Formularz kontaktowy',
+              subject: translateSubject(msg.subject || 'Wiadomość z formularza'),
+              body: msg.message,
+              bodyHtml: `<p><strong>Od:</strong> ${msg.name} (${msg.email})</p>
+                         ${msg.phone ? `<p><strong>Telefon:</strong> ${msg.phone}</p>` : ''}
+                         ${msg.cv_attachment ? `<p><strong>CV:</strong> <a href="${msg.cv_attachment}" target="_blank" class="text-[#d3bb73] hover:underline">Pobierz</a></p>` : ''}
+                         <p>${(msg.message || '').replace(/\n/g, '<br>')}</p>`,
+              date: new Date(msg.created_at),
+              isRead: msg.status !== 'new',
+              isStarred: false,
+              status: msg.status,
+              assigned_to: msg.assigned_to,
+              assigned_employee: msg.assigned_employee,
+              originalData: msg,
+            }))
+          );
+        }
+      }
+
+      if (selectedAccount !== 'contact_form' && currentEmployee) {
+        let sentQuery = supabase
+          .from('sent_emails')
+          .select('*, employees!employee_id(name, surname, email)')
+          .order('sent_at', { ascending: false })
+          .range(currentOffset, currentOffset + pageSize - 1);
+
+        if (selectedAccount !== 'all') {
+          sentQuery = sentQuery.eq('email_account_id', selectedAccount);
+        }
+
+        const { data: sentEmails } = await sentQuery;
+
+        if (sentEmails) {
+          allMessages.push(
+            ...sentEmails.map((msg) => {
+              const employee = msg.employees as any;
+              const fromName = employee ? `${employee.name} ${employee.surname}` : 'System';
+              return {
+                id: msg.id,
+                type: 'sent' as const,
+                from: `${fromName}`,
+                to: msg.to_address,
+                subject: msg.subject,
+                body: msg.body.replace(/<[^>]*>/g, ''),
+                bodyHtml: msg.body,
+                date: new Date(msg.sent_at),
+                isRead: true,
+                isStarred: false,
+                originalData: msg,
+              };
+            })
+          );
+        }
+
+        let receivedQuery = supabase
+          .from('received_emails')
+          .select(`
+            *,
+            assigned_employee:employees!assigned_to(name, surname)
+          `)
+          .order('received_date', { ascending: false })
+          .range(currentOffset, currentOffset + pageSize - 1);
+
+        if (selectedAccount !== 'all') {
+          receivedQuery = receivedQuery.eq('email_account_id', selectedAccount);
+        }
+
+        const { data: receivedEmails } = await receivedQuery;
+
+        if (receivedEmails) {
+          allMessages.push(
+            ...receivedEmails.map((msg: any) => ({
+              id: msg.id,
+              type: 'received' as const,
+              from: msg.from_address,
+              to: msg.to_address,
+              subject: msg.subject,
+              body: msg.body_text || '',
+              bodyHtml: msg.body_html || '',
+              date: new Date(msg.received_date),
+              isRead: msg.is_read,
+              isStarred: msg.is_starred,
+              assigned_to: msg.assigned_to,
+              assigned_employee: msg.assigned_employee,
+              originalData: msg,
+            }))
+          );
+        }
+      }
+
+      allMessages.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      if (reset) {
+        setMessages(allMessages);
+      } else {
+        setMessages(prev => [...prev, ...allMessages]);
+      }
+
+      setHasMore(allMessages.length >= pageSize);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    }
+    setLoading(false);
+  };
+
+  const markAsRead = async (message: UnifiedMessage) => {
+    if (message.type === 'contact_form' && message.originalData.status === 'new') {
+      await supabase
+        .from('contact_messages')
+        .update({ status: 'read', read_at: new Date().toISOString() })
+        .eq('id', message.id);
+    } else if (message.type === 'received' && !message.isRead) {
+      await supabase
+        .from('received_emails')
+        .update({ is_read: true })
+        .eq('id', message.id);
+    }
+  };
+
+  const handleReply = (message: UnifiedMessage) => {
+    setReplyToMessage(message);
+    setForwardMessage(null);
+    setShowNewMessageModal(true);
+  };
+
+  const handleForward = (message: UnifiedMessage) => {
+    setForwardMessage(message);
+    setReplyToMessage(null);
+    setShowNewMessageModal(true);
+  };
+
+  const handleStar = async (message: UnifiedMessage) => {
+    if (message.type !== 'received') return;
+
+    try {
+      const { error } = await supabase
+        .from('received_emails')
+        .update({ is_starred: !message.isStarred })
+        .eq('id', message.id);
+
+      if (error) throw error;
+
+      showSnackbar(
+        message.isStarred ? 'Usunięto gwiazdkę' : 'Oznaczono gwiazdką',
+        'success'
+      );
+      fetchMessages();
+    } catch (error) {
+      console.error('Error toggling star:', error);
+      showSnackbar('Błąd podczas oznaczania wiadomości', 'error');
+    }
+  };
+
+  const handleArchive = async (message: UnifiedMessage) => {
+    if (message.type !== 'received') return;
+
+    showSnackbar('Funkcja archiwizacji będzie wkrótce dostępna', 'info');
+  };
+
+  const handleAssign = (messageId: string, messageType: 'contact_form' | 'received', assignedTo: string | null) => {
+    setMessageToAssign({ id: messageId, type: messageType, assignedTo });
+    setShowAssignModal(true);
+  };
+
+  const handleDelete = async (messageId: string, messageType: string) => {
+    const confirmed = await showConfirm({
+      title: 'Usuń wiadomość',
+      message: 'Czy na pewno chcesz usunąć tę wiadomość? Ta operacja jest nieodwracalna.',
+      confirmText: 'Usuń',
+      cancelText: 'Anuluj',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      const tableName = messageType === 'contact_form' ? 'contact_messages'
+                      : messageType === 'received' ? 'received_emails'
+                      : 'sent_emails';
+
+      const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      showSnackbar('Wiadomość została usunięta', 'success');
+      if (selectedMessage?.id === messageId) {
+        setSelectedMessage(null);
+      }
+      fetchMessages();
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      showSnackbar('Błąd podczas usuwania wiadomości', 'error');
+    }
+  };
+
+  const handleMove = async (messageId: string) => {
+    showSnackbar('Funkcja przenoszenia będzie wkrótce dostępna', 'info');
+  };
+
+  const fetchEmailsFromServer = async () => {
+    if (!currentEmployee) {
+      showSnackbar('Musisz być zalogowany', 'error');
+      return;
+    }
+
+    if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
+      showSnackbar('Wybierz konkretne konto email', 'warning');
+      return;
+    }
+
+    try {
+      showSnackbar('Pobieranie wiadomości z serwera...', 'info');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-emails`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          emailAccountId: selectedAccount,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showSnackbar(`Pobrano ${result.count || 0} nowych wiadomości`, 'success');
+        setOffset(0);
+        setMessages([]);
+        fetchMessages(true);
+      } else {
+        showSnackbar(`Błąd: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error fetching emails:', error);
+      showSnackbar('Nie udało się pobrać wiadomości', 'error');
+    }
+  };
+
+  const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string; attachments?: File[] }) => {
+    if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
+      showSnackbar('Wybierz konto email do wysłania', 'warning');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showSnackbar('Musisz być zalogowany', 'error');
+        return;
+      }
+
+      const attachmentsBase64 = [];
+      if (data.attachments && data.attachments.length > 0) {
+        for (const file of data.attachments) {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const base64 = btoa(
+              new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+            );
+            attachmentsBase64.push({
+              filename: file.name,
+              content: base64,
+              contentType: file.type || 'application/octet-stream',
+            });
+          } catch (err) {
+            console.error('Error converting attachment:', err);
+            showSnackbar(`Błąd konwersji załącznika: ${file.name}`, 'warning');
+          }
+        }
+      }
+
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          emailAccountId: selectedAccount,
+          to: data.to,
+          subject: data.subject,
+          body: data.bodyHtml,
+          attachments: attachmentsBase64,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showSnackbar('Wiadomość wysłana!', 'success');
+        setShowNewMessageModal(false);
+        setReplyToMessage(null);
+        setForwardMessage(null);
+        setNewMessage({ to: '', subject: '', body: '' });
+        fetchMessages();
+      } else {
+        showSnackbar(`Błąd: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      showSnackbar('Nie udało się wysłać wiadomości', 'error');
+    }
+  };
+
+  const filteredMessages = messages.filter((msg) => {
+    if (filterType !== 'all' && msg.type !== filterType) return false;
+    if (!searchQuery) return true;
+
+    const query = searchQuery.toLowerCase();
+    return (
+      msg.from.toLowerCase().includes(query) ||
+      msg.to.toLowerCase().includes(query) ||
+      msg.subject.toLowerCase().includes(query) ||
+      msg.body.toLowerCase().includes(query)
+    );
+  });
+
+  const formatDate = (date: Date) => {
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (days === 0) {
+      return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    } else if (days === 1) {
+      return 'Wczoraj';
+    } else if (days < 7) {
+      return `${days} dni temu`;
+    } else {
+      return date.toLocaleDateString('pl-PL');
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'contact_form': return { label: 'Formularz', color: 'bg-blue-500' };
+      case 'sent': return { label: 'Wysłane', color: 'bg-green-500' };
+      case 'received': return { label: 'Odebrane', color: 'bg-purple-500' };
+      default: return { label: type, color: 'bg-gray-500' };
+    }
+  };
+
+  if (!canView && !canManage) {
+    return (
+      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+        <div className="text-center">
+          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Brak dostępu</h2>
+          <p className="text-[#e5e4e2]/60">Nie masz uprawnień do przeglądania wiadomości.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (emailAccounts.length === 0 && !loading && currentEmployee) {
+    return (
+      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Brak kont email</h2>
+          <p className="text-[#e5e4e2]/60 mb-4">
+            {canManage
+              ? 'Nie masz jeszcze skonfigurowanych kont email. Przejdź do ustawień pracownika, aby dodać konto.'
+              : 'Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem, aby uzyskać dostęp do poczty.'
+            }
+          </p>
+          {canManage && (
+            <button
+              onClick={() => window.location.href = `/crm/employees/${currentEmployee.id}`}
+              className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors"
+            >
+              Przejdź do ustawień
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0f1119]">
+      <div className="max-w-7xl mx-auto p-6">
+        <div className="bg-[#1c1f33] rounded-lg shadow-xl border border-[#d3bb73]/20 overflow-hidden">
+          <div className="p-6 border-b border-[#d3bb73]/20">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold text-white mb-2">Wiadomości</h1>
+                <p className="text-[#e5e4e2]/60">{canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}</p>
+              </div>
+              {canManage && (
+                <button
+                  onClick={() => setShowNewMessageModal(true)}
+                  disabled={selectedAccount === 'all' || selectedAccount === 'contact_form' || emailAccounts.length <= 2}
+                  className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={selectedAccount === 'all' || selectedAccount === 'contact_form' ? 'Wybierz konkretne konto email' : 'Napisz nową wiadomość'}
+                >
+                  <Plus className="w-5 h-5" />
+                  Nowa Wiadomość
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Konto Email</label>
+                <select
+                  value={selectedAccount}
+                  onChange={(e) => setSelectedAccount(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
+                >
+                  {emailAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.from_name || account.email_address}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Filtruj po typie</label>
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value as any)}
+                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
+                >
+                  <option value="all">Wszystkie</option>
+                  <option value="contact_form">Formularz</option>
+                  <option value="received">Odebrane</option>
+                  <option value="sent">Wysłane</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Szukaj wiadomości..."
+                  className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                {canManage && (
+                  <button
+                    onClick={fetchEmailsFromServer}
+                    disabled={loading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                    className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    title="Pobierz nowe wiadomości z serwera email"
+                  >
+                    <Inbox className="w-5 h-5" />
+                    <span className="hidden sm:inline">Pobierz z serwera</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => fetchMessages()}
+                  disabled={loading}
+                  className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-x divide-[#d3bb73]/10">
+            <div
+              className="lg:col-span-2 overflow-y-auto max-h-[600px] relative"
+              onScroll={(e) => {
+                const target = e.target as HTMLDivElement;
+                const bottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+                if (bottom && !loading && hasMore) {
+                  setOffset(prev => prev + pageSize);
+                }
+              }}
+            >
+              {loading ? (
+                <div className="p-8 text-center text-[#e5e4e2]/60">
+                  <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
+                  Ładowanie wiadomości...
+                </div>
+              ) : filteredMessages.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Inbox className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                  <p className="text-[#e5e4e2]/60">Brak wiadomości</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-[#d3bb73]/10">
+                  {filteredMessages.map((message) => {
+                    const typeInfo = getTypeLabel(message.type);
+                    return (
+                      <div
+                        key={message.id}
+                        className={`p-4 hover:bg-[#d3bb73]/5 transition-colors ${
+                          selectedMessage?.id === message.id ? 'bg-[#d3bb73]/10' : ''
+                        } ${!message.isRead ? 'font-semibold' : ''}`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={() => {
+                              setSelectedMessage(message);
+                              markAsRead(message);
+                            }}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-white truncate">{message.from}</span>
+                              {!message.isRead && (
+                                <span className="w-2 h-2 rounded-full bg-[#d3bb73]"></span>
+                              )}
+                            </div>
+                            <p className="text-sm text-[#e5e4e2]/70 truncate">{message.subject}</p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-2">
+                            <span className="text-xs text-[#e5e4e2]/50 whitespace-nowrap">
+                              {formatDate(message.date)}
+                            </span>
+                            {(message.type === 'contact_form' || message.type === 'received') && (
+                              <MessageActionsMenu
+                                messageId={message.id}
+                                messageType={message.type}
+                                isStarred={message.isStarred}
+                                onReply={() => handleReply(message)}
+                                onForward={message.type === 'received' ? () => handleForward(message) : undefined}
+                                onAssign={() => handleAssign(message.id, message.type as 'contact_form' | 'received', message.assigned_to || null)}
+                                onDelete={() => handleDelete(message.id, message.type)}
+                                onMove={() => handleMove(message.id)}
+                                onStar={message.type === 'received' ? () => handleStar(message) : undefined}
+                                onArchive={message.type === 'received' ? () => handleArchive(message) : undefined}
+                                canManage={canManage}
+                              />
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs px-2 py-1 rounded ${typeInfo.color} text-white`}>
+                            {typeInfo.label}
+                          </span>
+                          {message.assigned_employee && (
+                            <span className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              Przypisano: {message.assigned_employee.name} {message.assigned_employee.surname}
+                            </span>
+                          )}
+                          <p className="text-sm text-[#e5e4e2]/50 truncate flex-1">{message.body}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {loading && messages.length > 0 && (
+                    <div className="p-4 text-center text-[#e5e4e2]/60">
+                      <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
+                    </div>
+                  )}
+                  {!hasMore && messages.length > 0 && (
+                    <div className="p-4 text-center text-[#e5e4e2]/40 text-sm">
+                      Koniec listy wiadomości
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-3 p-6">
+              {selectedMessage ? (
+                <div>
+                  <div className="mb-6 pb-6 border-b border-[#d3bb73]/20">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h2 className="text-2xl font-bold text-white mb-2">{selectedMessage.subject}</h2>
+                        <div className="space-y-1 text-sm text-[#e5e4e2]/70">
+                          <p><strong>Od:</strong> {selectedMessage.from}</p>
+                          <p><strong>Do:</strong> {selectedMessage.to}</p>
+                          <p><strong>Data:</strong> {selectedMessage.date.toLocaleString('pl-PL')}</p>
+                        </div>
+                      </div>
+                      <span className={`text-xs px-3 py-1 rounded ${getTypeLabel(selectedMessage.type).color} text-white`}>
+                        {getTypeLabel(selectedMessage.type).label}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="prose prose-invert max-w-none text-white">
+                    {selectedMessage.bodyHtml ? (
+                      <div dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }} />
+                    ) : (
+                      <p className="whitespace-pre-wrap text-[#e5e4e2]">{selectedMessage.body}</p>
+                    )}
+                  </div>
+
+                  {canManage && (selectedMessage.type === 'contact_form' || selectedMessage.type === 'received') && (
+                    <div className="mt-6 pt-6 border-t border-[#d3bb73]/20">
+                      <button
+                        onClick={() => {
+                          const email = selectedMessage.type === 'contact_form'
+                            ? selectedMessage.originalData.email
+                            : selectedMessage.from;
+                          setNewMessage({
+                            to: email,
+                            subject: `Re: ${selectedMessage.subject}`,
+                            body: '',
+                          });
+                          setShowNewMessageModal(true);
+                        }}
+                        disabled={selectedAccount === 'all' || selectedAccount === 'contact_form' || emailAccounts.length <= 2}
+                        className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50"
+                        title={selectedAccount === 'all' || selectedAccount === 'contact_form' ? 'Wybierz konkretne konto email aby odpowiedzieć' : 'Odpowiedz na wiadomość'}
+                      >
+                        Odpowiedz
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-[#e5e4e2]/40">
+                  <div className="text-center">
+                    <Mail className="w-16 h-16 mx-auto mb-4" />
+                    <p>Wybierz wiadomość, aby zobaczyć szczegóły</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <ComposeEmailModal
+        isOpen={showNewMessageModal}
+        onClose={() => {
+          setShowNewMessageModal(false);
+          setReplyToMessage(null);
+          setForwardMessage(null);
+        }}
+        onSend={handleSendNewMessage}
+        initialTo={replyToMessage?.from || ''}
+        initialSubject={
+          replyToMessage ? `Re: ${replyToMessage.subject}` :
+          forwardMessage ? `Fwd: ${forwardMessage.subject}` :
+          newMessage.subject
+        }
+        initialBody={replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.body}` : ''}
+        forwardedBody={forwardMessage ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${forwardMessage.date.toLocaleString('pl-PL')}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.body}` : ''}
+        selectedAccountId={selectedAccount}
+      />
+
+      {showAssignModal && messageToAssign && (
+        <AssignMessageModal
+          messageId={messageToAssign.id}
+          messageType={messageToAssign.type}
+          currentAssignee={messageToAssign.assignedTo}
+          onClose={() => {
+            setShowAssignModal(false);
+            setMessageToAssign(null);
+          }}
+          onSuccess={() => {
+            fetchMessages();
+          }}
+        />
+      )}
+    </div>
+  );
+}
