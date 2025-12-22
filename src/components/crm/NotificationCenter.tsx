@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle, MessageSquare } from 'lucide-react';
+import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle, MessageSquare, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -311,6 +311,10 @@ export default function NotificationCenter() {
   const getTypeIcon = (notification: Notification) => {
     if (notification.title === 'Nowy komentarz w zadaniu' || notification.category === 'task_comment') {
       return <MessageSquare className="w-4 h-4" />;
+    }
+
+    if (notification.category === 'email' || notification.category === 'contact_form') {
+      return <Mail className="w-4 h-4" />;
     }
 
     switch (notification.type) {

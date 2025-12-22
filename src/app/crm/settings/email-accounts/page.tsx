@@ -217,7 +217,7 @@ export default function AllEmailAccountsPage() {
     try {
       const { data, error } = await supabase
         .from('employee_email_accounts')
-        .select('*, employees!employee_id(name, surname)')
+        .select('*, employees!fk_employee_email_accounts_employee_id(name, surname)')
         .eq('is_active', true)
         .order('employee_id');
 
