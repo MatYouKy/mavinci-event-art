@@ -113,7 +113,7 @@ export const tasksApi = createApi({
                   .from('task_assignees')
                   .select(`
                     employee_id,
-                    employees:employees(
+                    employees:employees!task_assignees_employee_id_fkey(
                       name,
                       surname,
                       avatar_url,
@@ -190,7 +190,7 @@ export const tasksApi = createApi({
               .from('task_assignees')
               .select(`
                 employee_id,
-                employees:employees(
+                employees:employees!task_assignees_employee_id_fkey(
                   name,
                   surname,
                   avatar_url,
