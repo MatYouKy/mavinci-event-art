@@ -87,7 +87,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       const { data, error } = await supabase
         .from('employees')
         .select('preferences')
-        .eq('user_id', employeeId)
+        .eq('id', employeeId)
         .single();
 
       if (error) throw error;
@@ -114,7 +114,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       const { data: currentData, error: fetchError } = await supabase
         .from('employees')
         .select('preferences')
-        .eq('user_id', employeeId)
+        .eq('id', employeeId)
         .single();
 
       if (fetchError) throw fetchError;
@@ -137,7 +137,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
             notifications: updatedNotifications
           }
         })
-        .eq('user_id', employeeId);
+        .eq('id', employeeId);
 
       if (updateError) throw updateError;
 
