@@ -79,14 +79,28 @@ export const messagesApi = api.injectEndpoints({
           }
 
           if (emailAccountId !== 'contact_form') {
+            const { supabase: supabaseClient } = await import('@/lib/supabase');
+            const { data: { user } } = await supabaseClient.auth.getUser();
+
             let sentQuery = supabase
               .from('sent_emails')
-              .select('id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email)')
+              .select('id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)')
               .order('sent_at', { ascending: false })
               .range(offset, offset + limit - 1);
 
             if (emailAccountId !== 'all') {
               sentQuery = sentQuery.eq('email_account_id', emailAccountId);
+            } else if (user) {
+              const { data: userAccounts } = await supabase
+                .from('employee_email_accounts')
+                .select('id')
+                .eq('employee_id', user.id)
+                .eq('is_active', true);
+
+              if (userAccounts && userAccounts.length > 0) {
+                const accountIds = userAccounts.map(acc => acc.id);
+                sentQuery = sentQuery.in('email_account_id', accountIds);
+              }
             }
 
             const { data: sentEmails } = await sentQuery;
@@ -132,6 +146,17 @@ export const messagesApi = api.injectEndpoints({
 
             if (emailAccountId !== 'all') {
               receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
+            } else if (user) {
+              const { data: userAccounts } = await supabase
+                .from('employee_email_accounts')
+                .select('id')
+                .eq('employee_id', user.id)
+                .eq('is_active', true);
+
+              if (userAccounts && userAccounts.length > 0) {
+                const accountIds = userAccounts.map(acc => acc.id);
+                receivedQuery = receivedQuery.in('email_account_id', accountIds);
+              }
             }
 
             const { data: receivedEmails } = await receivedQuery;

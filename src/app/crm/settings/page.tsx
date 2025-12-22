@@ -677,6 +677,20 @@ export default function SettingsPage() {
               </button>
 
               <button
+                onClick={() => router.push('/crm/settings/email-accounts')}
+                className="w-full flex items-center justify-between p-4 bg-[#0f1119] rounded-lg hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+              >
+                <div className="flex items-center gap-3">
+                  <Mail className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="text-[#e5e4e2] font-medium">Wszystkie skrzynki email</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Panel administratora - zarządzaj wszystkimi wiadomościami</div>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
                 onClick={() => router.push('/crm/event-categories')}
                 className="w-full flex items-center justify-between p-4 bg-[#0f1119] rounded-lg hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
               >

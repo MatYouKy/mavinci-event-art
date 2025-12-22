@@ -7,11 +7,10 @@ import {
   Mail,
   RefreshCw,
   Search,
-  Plus,
   Inbox,
   Loader2,
+  Shield,
 } from 'lucide-react';
-import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -19,37 +18,26 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useGetMessagesListQuery, useMarkMessageAsReadMutation, useDeleteMessageMutation, useToggleStarMessageMutation } from '@/store/api/messagesApi';
 
-const translateSubject = (subject: string): string => {
-  if (!subject) return 'Wiadomość z formularza';
-  return subject
-    .replace(/^event_inquiry\s*-\s*/i, 'Zapytanie o event - ')
-    .replace(/^team_join\s*-\s*/i, 'Rekrutacja - ')
-    .replace(/^general\s*-\s*/i, 'Ogólna - ');
-};
-
-export default function MessagesPage() {
+export default function AllEmailAccountsPage() {
   const router = useRouter();
-  const { employee: currentEmployee, canManageModule, canViewModule } = useCurrentEmployee();
+  const { employee: currentEmployee } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const canManage = canManageModule('messages');
-  const canView = canViewModule('messages');
 
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
-  const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
-  const [replyToMessage, setReplyToMessage] = useState<any>(null);
-  const [forwardMessage, setForwardMessage] = useState<any>(null);
   const [offset, setOffset] = useState(0);
   const [allMessages, setAllMessages] = useState<any[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageSize = 50;
   const observerTarget = useRef<HTMLDivElement>(null);
+
+  const isAdmin = currentEmployee?.permissions?.includes('admin');
 
   const { data: messagesData, isLoading, isFetching, refetch } = useGetMessagesListQuery({
     emailAccountId: selectedAccount,
@@ -57,7 +45,7 @@ export default function MessagesPage() {
     limit: pageSize,
     filterType,
   }, {
-    skip: !selectedAccount || emailAccounts.length === 0,
+    skip: !selectedAccount || emailAccounts.length === 0 || !isAdmin,
   });
 
   const [markAsRead] = useMarkMessageAsReadMutation();
@@ -114,22 +102,16 @@ export default function MessagesPage() {
   }, [loadMore]);
 
   useEffect(() => {
-    if (currentEmployee) {
+    if (currentEmployee && isAdmin) {
       fetchEmailAccounts();
     }
-  }, [currentEmployee]);
+  }, [currentEmployee, isAdmin]);
 
   useEffect(() => {
-    if (emailAccounts.length > 0) {
-      setOffset(0);
-    }
-  }, [selectedAccount, emailAccounts]);
-
-  useEffect(() => {
-    if (!currentEmployee || emailAccounts.length === 0) return;
+    if (!currentEmployee || emailAccounts.length === 0 || !isAdmin) return;
 
     const contactChannel = supabase
-      .channel('contact_messages_changes')
+      .channel('contact_messages_changes_admin')
       .on(
         'postgres_changes',
         {
@@ -144,7 +126,7 @@ export default function MessagesPage() {
       .subscribe();
 
     const sentChannel = supabase
-      .channel('sent_emails_changes')
+      .channel('sent_emails_changes_admin')
       .on(
         'postgres_changes',
         {
@@ -161,7 +143,7 @@ export default function MessagesPage() {
       .subscribe();
 
     const receivedChannel = supabase
-      .channel('received_emails_changes')
+      .channel('received_emails_changes_admin')
       .on(
         'postgres_changes',
         {
@@ -182,34 +164,33 @@ export default function MessagesPage() {
       supabase.removeChannel(sentChannel);
       supabase.removeChannel(receivedChannel);
     };
-  }, [currentEmployee, emailAccounts, selectedAccount, refetch]);
+  }, [currentEmployee, emailAccounts, selectedAccount, refetch, isAdmin]);
 
   const fetchEmailAccounts = async () => {
-    if (!currentEmployee) return;
+    if (!currentEmployee || !isAdmin) return;
 
     try {
       const { data, error } = await supabase
         .from('employee_email_accounts')
-        .select('*')
+        .select('*, employees!employee_id(name, surname)')
         .eq('is_active', true)
-        .eq('employee_id', currentEmployee.id);
+        .order('employee_id');
 
       if (error) throw error;
 
       const accounts = [
-        ...(data && data.length > 0 ? [
-          { id: 'all', email_address: 'Wszystkie moje konta', from_name: 'Wszystkie moje konta' },
-        ] : []),
-        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' },
-        ...(data || []),
+        { id: 'all', email_address: 'Wszystkie konta', from_name: 'Wszystkie konta systemowe' },
+        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz kontaktowy' },
+        ...(data || []).map((acc: any) => ({
+          ...acc,
+          from_name: `${acc.from_name} (${acc.employees?.name} ${acc.employees?.surname})`,
+        })),
       ];
 
       setEmailAccounts(accounts);
 
       if (accounts.length > 0) {
         setSelectedAccount(accounts[0].id);
-      } else {
-        showSnackbar('Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem.', 'warning');
       }
     } catch (error) {
       console.error('Error fetching email accounts:', error);
@@ -222,18 +203,6 @@ export default function MessagesPage() {
     if (!isRead && (messageType === 'contact_form' || messageType === 'received')) {
       await markAsRead({ id: messageId, type: messageType });
     }
-  };
-
-  const handleReply = (message: any) => {
-    setReplyToMessage(message);
-    setForwardMessage(null);
-    setShowNewMessageModal(true);
-  };
-
-  const handleForward = (message: any) => {
-    setForwardMessage(message);
-    setReplyToMessage(null);
-    setShowNewMessageModal(true);
   };
 
   const handleStar = async (messageId: string, isStarred: boolean) => {
@@ -285,8 +254,8 @@ export default function MessagesPage() {
   };
 
   const fetchEmailsFromServer = async () => {
-    if (!currentEmployee) {
-      showSnackbar('Musisz być zalogowany', 'error');
+    if (!currentEmployee || !isAdmin) {
+      showSnackbar('Musisz być administratorem', 'error');
       return;
     }
 
@@ -328,73 +297,6 @@ export default function MessagesPage() {
     }
   };
 
-  const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string; attachments?: File[] }) => {
-    if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
-      showSnackbar('Wybierz konto email do wysłania', 'warning');
-      return;
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        showSnackbar('Musisz być zalogowany', 'error');
-        return;
-      }
-
-      const attachmentsBase64 = [];
-      if (data.attachments && data.attachments.length > 0) {
-        for (const file of data.attachments) {
-          try {
-            const arrayBuffer = await file.arrayBuffer();
-            const base64 = btoa(
-              new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-            );
-            attachmentsBase64.push({
-              filename: file.name,
-              content: base64,
-              contentType: file.type || 'application/octet-stream',
-            });
-          } catch (err) {
-            console.error('Error converting attachment:', err);
-            showSnackbar(`Błąd konwersji załącznika: ${file.name}`, 'warning');
-          }
-        }
-      }
-
-      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          emailAccountId: selectedAccount,
-          to: data.to,
-          subject: data.subject,
-          body: data.bodyHtml,
-          attachments: attachmentsBase64,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        showSnackbar('Wiadomość wysłana!', 'success');
-        setShowNewMessageModal(false);
-        setReplyToMessage(null);
-        setForwardMessage(null);
-        refetch();
-      } else {
-        showSnackbar(`Błąd: ${result.error}`, 'error');
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      showSnackbar('Nie udało się wysłać wiadomości', 'error');
-    }
-  };
-
   const filteredMessages = allMessages.filter((msg) => {
     if (!searchQuery) return true;
 
@@ -433,38 +335,13 @@ export default function MessagesPage() {
     }
   };
 
-  if (!canView && !canManage) {
+  if (!isAdmin) {
     return (
       <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
         <div className="text-center">
-          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <Shield className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-2">Brak dostępu</h2>
-          <p className="text-[#e5e4e2]/60">Nie masz uprawnień do przeglądania wiadomości.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (emailAccounts.length === 0 && !isLoading && currentEmployee) {
-    return (
-      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6">
-          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Brak kont email</h2>
-          <p className="text-[#e5e4e2]/60 mb-4">
-            {canManage
-              ? 'Nie masz jeszcze skonfigurowanych kont email. Przejdź do ustawień pracownika, aby dodać konto.'
-              : 'Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem, aby uzyskać dostęp do poczty.'
-            }
-          </p>
-          {canManage && (
-            <button
-              onClick={() => window.location.href = `/crm/employees/${currentEmployee.id}`}
-              className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors"
-            >
-              Przejdź do ustawień
-            </button>
-          )}
+          <p className="text-[#e5e4e2]/60">Tylko administratorzy mają dostęp do wszystkich skrzynek email.</p>
         </div>
       </div>
     );
@@ -477,20 +354,12 @@ export default function MessagesPage() {
           <div className="p-6 border-b border-[#d3bb73]/20">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Wiadomości</h1>
-                <p className="text-[#e5e4e2]/60">{canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}</p>
+                <div className="flex items-center gap-3 mb-2">
+                  <Shield className="w-8 h-8 text-[#d3bb73]" />
+                  <h1 className="text-3xl font-bold text-white">Wszystkie skrzynki email</h1>
+                </div>
+                <p className="text-[#e5e4e2]/60">Panel administratora - przeglądaj wszystkie wiadomości systemowe</p>
               </div>
-              {canManage && (
-                <button
-                  onClick={() => setShowNewMessageModal(true)}
-                  disabled={selectedAccount === 'all' || selectedAccount === 'contact_form' || emailAccounts.length <= 2}
-                  className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={selectedAccount === 'all' || selectedAccount === 'contact_form' ? 'Wybierz konkretne konto email' : 'Napisz nową wiadomość'}
-                >
-                  <Plus className="w-5 h-5" />
-                  Nowa Wiadomość
-                </button>
-              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -536,17 +405,15 @@ export default function MessagesPage() {
                 />
               </div>
               <div className="flex gap-2">
-                {canManage && (
-                  <button
-                    onClick={fetchEmailsFromServer}
-                    disabled={isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                    className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    title="Pobierz nowe wiadomości z serwera email"
-                  >
-                    <Inbox className="w-5 h-5" />
-                    <span className="hidden sm:inline">Pobierz z serwera</span>
-                  </button>
-                )}
+                <button
+                  onClick={fetchEmailsFromServer}
+                  disabled={isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                  className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Pobierz nowe wiadomości z serwera email"
+                >
+                  <Inbox className="w-5 h-5" />
+                  <span className="hidden sm:inline">Pobierz z serwera</span>
+                </button>
                 <button
                   onClick={() => refetch()}
                   disabled={isLoading}
@@ -559,7 +426,7 @@ export default function MessagesPage() {
           </div>
 
           <div className="overflow-y-auto max-h-[600px]">
-            {isLoading ? (
+            {isLoading && offset === 0 ? (
               <div className="p-8 text-center text-[#e5e4e2]/60">
                 <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
                 Ładowanie wiadomości...
@@ -602,14 +469,14 @@ export default function MessagesPage() {
                               messageId={message.id}
                               messageType={message.type}
                               isStarred={message.isStarred}
-                              onReply={() => handleReply(message)}
-                              onForward={message.type === 'received' ? () => handleForward(message) : undefined}
+                              onReply={() => {}}
+                              onForward={message.type === 'received' ? () => {} : undefined}
                               onAssign={() => handleAssign(message.id, message.type as 'contact_form' | 'received', message.assigned_to || null)}
                               onDelete={() => handleDelete(message.id, message.type)}
                               onMove={() => handleMove(message.id)}
                               onStar={message.type === 'received' ? () => handleStar(message.id, message.isStarred) : undefined}
                               onArchive={message.type === 'received' ? () => handleArchive(message) : undefined}
-                              canManage={canManage}
+                              canManage={true}
                             />
                           )}
                         </div>
@@ -648,25 +515,6 @@ export default function MessagesPage() {
           </div>
         </div>
       </div>
-
-      <ComposeEmailModal
-        isOpen={showNewMessageModal}
-        onClose={() => {
-          setShowNewMessageModal(false);
-          setReplyToMessage(null);
-          setForwardMessage(null);
-        }}
-        onSend={handleSendNewMessage}
-        initialTo={replyToMessage?.from || ''}
-        initialSubject={
-          replyToMessage ? `Re: ${replyToMessage.subject}` :
-          forwardMessage ? `Fwd: ${forwardMessage.subject}` :
-          ''
-        }
-        initialBody={replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.preview}` : ''}
-        forwardedBody={forwardMessage ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${formatDate(forwardMessage.date)}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.preview}` : ''}
-        selectedAccountId={selectedAccount}
-      />
 
       {showAssignModal && messageToAssign && (
         <AssignMessageModal
