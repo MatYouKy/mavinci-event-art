@@ -543,17 +543,18 @@ export default function EventDetailPage() {
         label: 'Edytuj',
         onClick: () => setShowEditEventModal(true),
         icon: <Edit className="h-4 w-4" />,
-        variant: 'primary', // odpowiada bg-[#d3bb73]
+        variant: 'primary',
+        show: canManageTeam,
       },
       {
         label: 'Usuń',
         onClick: handleDeleteEvent,
         icon: <Trash2 className="h-4 w-4" />,
-        variant: 'danger', // odpowiada czerwieni
-        show: isAdmin, // dokładnie jak warunek w JSX
+        variant: 'danger',
+        show: isAdmin,
       },
     ];
-  }, [setShowEditEventModal, handleDeleteEvent, isAdmin]);
+  }, [setShowEditEventModal, handleDeleteEvent, isAdmin, canManageTeam]);
 
   if (isLoading) {
     return (
