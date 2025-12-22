@@ -445,6 +445,34 @@ export const tasksApi = createApi({
         { type: 'TaskComments', id: taskId },
       ],
     }),
+
+    deleteAttachment: builder.mutation<void, { attachmentId: string; taskId: string; fileUrl: string | null; isLinked: boolean }>({
+      async queryFn({ attachmentId, fileUrl, isLinked }) {
+        try {
+          if (!isLinked && fileUrl) {
+            const filePath = fileUrl.split('/event-files/')[1];
+            if (filePath) {
+              await supabase.storage.from('event-files').remove([filePath]);
+            }
+          }
+
+          const { error } = await supabase
+            .from('task_attachments')
+            .delete()
+            .eq('id', attachmentId);
+
+          if (error) return { error: error as any };
+
+          return { data: undefined };
+        } catch (error: any) {
+          return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+        }
+      },
+      invalidatesTags: (result, error, { taskId }) => [
+        { type: 'TaskDetail', id: taskId },
+        { type: 'TaskAttachments', id: taskId },
+      ],
+    }),
   }),
 });
 
@@ -456,4 +484,5 @@ export const {
   useDeleteTaskMutation,
   useAddCommentMutation,
   useDeleteCommentMutation,
+  useDeleteAttachmentMutation,
 } = tasksApi;

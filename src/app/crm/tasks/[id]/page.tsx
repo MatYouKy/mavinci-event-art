@@ -11,7 +11,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 import LinkEventFileModal from '@/components/crm/LinkEventFileModal';
-import { useGetTaskByIdQuery, useUpdateTaskMutation, useAddCommentMutation, useDeleteCommentMutation } from '@/store/api/tasksApi';
+import { useGetTaskByIdQuery, useUpdateTaskMutation, useAddCommentMutation, useDeleteCommentMutation, useDeleteAttachmentMutation } from '@/store/api/tasksApi';
 
 interface Task {
   id: string;
@@ -122,12 +122,13 @@ export default function TaskDetailPage() {
   const { currentEmployee } = useCurrentEmployee();
   const isMobile = useMobile();
 
-  const { data: task, isLoading: loading } = useGetTaskByIdQuery(taskId, {
+  const { data: task, isLoading: loading, refetch } = useGetTaskByIdQuery(taskId, {
     skip: !taskId,
   });
   const [updateTask] = useUpdateTaskMutation();
   const [addComment] = useAddCommentMutation();
   const [deleteComment] = useDeleteCommentMutation();
+  const [deleteAttachment] = useDeleteAttachmentMutation();
 
   const [chatItems, setChatItems] = useState<ChatItem[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -488,19 +489,12 @@ export default function TaskDetailPage() {
     if (!confirmed) return;
 
     try {
-      if (!isLinked && fileUrl) {
-        const filePath = fileUrl.split('/event-files/')[1];
-        if (filePath) {
-          await supabase.storage.from('event-files').remove([filePath]);
-        }
-      }
-
-      const { error } = await supabase
-        .from('task_attachments')
-        .delete()
-        .eq('id', attachmentId);
-
-      if (error) throw error;
+      await deleteAttachment({
+        attachmentId,
+        taskId,
+        fileUrl,
+        isLinked
+      }).unwrap();
 
       showSnackbar(isLinked ? 'Plik został odlinkowany' : 'Plik został usunięty', 'success');
     } catch (error) {
