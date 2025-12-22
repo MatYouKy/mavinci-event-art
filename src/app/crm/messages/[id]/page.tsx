@@ -1,7 +1,6 @@
 'use client';
 
-import { use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useGetMessageDetailsQuery, useMarkMessageAsReadMutation, useToggleStarMessageMutation } from '@/store/api/messagesApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -19,20 +18,18 @@ import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import { supabase } from '@/lib/supabase';
 
 interface PageProps {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ type?: 'contact_form' | 'sent' | 'received' }>;
+  params: { id: string };
 }
 
-export default function MessageDetailPage(props: PageProps) {
-  const params = use(props.params);
-  const searchParams = use(props.searchParams);
+export default function MessageDetailPage({ params }: PageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const { canManageModule } = useCurrentEmployee();
   const canManage = canManageModule('messages');
 
   const [messageType, setMessageType] = useState<'contact_form' | 'sent' | 'received'>(
-    searchParams.type || 'received'
+    (searchParams.get('type') as 'contact_form' | 'sent' | 'received') || 'received'
   );
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [showForwardModal, setShowForwardModal] = useState(false);
