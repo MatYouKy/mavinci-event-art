@@ -1,37 +1,21 @@
 'use client';
 
-import { Mail, Phone, Briefcase, Shield } from 'lucide-react';
+import { Mail, Phone, Briefcase, Shield, Key } from 'lucide-react';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { useRouter } from 'next/navigation';
-
-interface Employee {
-  id: string;
-  name: string;
-  surname: string;
-  nickname: string | null;
-  email: string;
-  phone_number: string | null;
-  avatar_url: string | null;
-  avatar_metadata?: any;
-  role: string;
-  access_level: string;
-  occupation: string | null;
-  region: string | null;
-  is_active: boolean;
-  skills: string[] | null;
-  order_index: number;
-}
+import { IEmployee } from '@/app/crm/employees/type';
 
 interface EmployeeViewProps {
-  employees: Employee[];
+  employees: IEmployee[];
   getRoleLabel: (role: string) => string;
   getAccessLevelLabel: (level: string) => string;
   getAccessLevelColor: (level: string) => string;
   canAddEmployee: boolean;
-  onResetPassword?: (employee: Employee) => void;
+  isAdmin?: boolean;
+  onResetPassword?: (employee: IEmployee) => void;
 }
 
-export function EmployeeCardsView({ employees, getRoleLabel, getAccessLevelLabel, getAccessLevelColor }: EmployeeViewProps) {
+export function EmployeeCardsView({ employees, getRoleLabel, getAccessLevelLabel, getAccessLevelColor, isAdmin, onResetPassword }: EmployeeViewProps) {
   const router = useRouter();
 
   return (
@@ -39,8 +23,7 @@ export function EmployeeCardsView({ employees, getRoleLabel, getAccessLevelLabel
       {employees.map((employee) => (
         <div
           key={employee.id}
-          onClick={() => router.push(`/crm/employees/${employee.id}`)}
-          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer group"
+          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all group"
         >
           <div className="flex flex-col items-center text-center mb-4">
             <div className="mb-4">
@@ -96,13 +79,37 @@ export function EmployeeCardsView({ employees, getRoleLabel, getAccessLevelLabel
               </div>
             )}
           </div>
+
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/crm/employees/${employee.id}`);
+              }}
+              className="flex-1 px-3 py-2 text-xs bg-[#d3bb73]/10 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+            >
+              Szczegóły
+            </button>
+            {isAdmin && onResetPassword && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResetPassword(employee);
+                }}
+                className="px-3 py-2 text-xs bg-orange-500/10 text-orange-400 rounded-lg hover:bg-orange-500/20 transition-colors flex items-center gap-1"
+                title="Resetuj hasło"
+              >
+                <Key className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-export function EmployeeListView({ employees, getRoleLabel, getAccessLevelColor }: EmployeeViewProps) {
+export function EmployeeListView({ employees, getRoleLabel, getAccessLevelColor, isAdmin, onResetPassword }: EmployeeViewProps) {
   const router = useRouter();
 
   return (
@@ -110,8 +117,7 @@ export function EmployeeListView({ employees, getRoleLabel, getAccessLevelColor 
       {employees.map((employee) => (
         <div
           key={employee.id}
-          onClick={() => router.push(`/crm/employees/${employee.id}`)}
-          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-all cursor-pointer flex items-center gap-4"
+          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/30 transition-all flex items-center gap-4"
         >
           <EmployeeAvatar
             avatarUrl={employee.avatar_url}
@@ -139,6 +145,27 @@ export function EmployeeListView({ employees, getRoleLabel, getAccessLevelColor 
             >
               {employee.is_active ? 'Aktywny' : 'Nieaktywny'}
             </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/crm/employees/${employee.id}`);
+              }}
+              className="px-3 py-1.5 text-xs bg-[#d3bb73]/10 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+            >
+              Szczegóły
+            </button>
+            {isAdmin && onResetPassword && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResetPassword(employee);
+                }}
+                className="p-1.5 text-xs bg-orange-500/10 text-orange-400 rounded-lg hover:bg-orange-500/20 transition-colors"
+                title="Resetuj hasło"
+              >
+                <Key className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       ))}
@@ -146,7 +173,7 @@ export function EmployeeListView({ employees, getRoleLabel, getAccessLevelColor 
   );
 }
 
-export function EmployeeDetailedView({ employees, getRoleLabel, getAccessLevelLabel, getAccessLevelColor }: EmployeeViewProps) {
+export function EmployeeDetailedView({ employees, getRoleLabel, getAccessLevelLabel, getAccessLevelColor, isAdmin, onResetPassword }: EmployeeViewProps) {
   const router = useRouter();
 
   return (
@@ -154,8 +181,7 @@ export function EmployeeDetailedView({ employees, getRoleLabel, getAccessLevelLa
       {employees.map((employee) => (
         <div
           key={employee.id}
-          onClick={() => router.push(`/crm/employees/${employee.id}`)}
-          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all cursor-pointer"
+          className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 transition-all"
         >
           <div className="flex items-start gap-6">
             <div className="flex-shrink-0">
@@ -225,6 +251,28 @@ export function EmployeeDetailedView({ employees, getRoleLabel, getAccessLevelLa
                   <Shield className="w-3 h-3 inline mr-1" />
                   {getAccessLevelLabel(employee.access_level)}
                 </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/crm/employees/${employee.id}`);
+                  }}
+                  className="px-4 py-1.5 text-xs bg-[#d3bb73]/10 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+                >
+                  Szczegóły
+                </button>
+                {isAdmin && onResetPassword && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onResetPassword(employee);
+                    }}
+                    className="px-3 py-1.5 text-xs bg-orange-500/10 text-orange-400 rounded-lg hover:bg-orange-500/20 transition-colors flex items-center gap-1.5"
+                    title="Resetuj hasło"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    Resetuj hasło
+                  </button>
+                )}
               </div>
             </div>
           </div>

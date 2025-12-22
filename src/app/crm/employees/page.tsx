@@ -42,11 +42,11 @@ export default function EmployeesPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [resetPasswordEmployee, setResetPasswordEmployee] = useState<IEmployee | null>(null);
 
-  const { canCreateInModule } = useCurrentEmployee();
+  const { canCreateInModule, employee: currentEmployee } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
-
-  const { employee,  } = useCurrentEmployee();
-  console.log('employee', employee);
+  const isAdmin = currentEmployee?.access_level === 'admin' ||
+                  currentEmployee?.permissions?.includes('admin') ||
+                  currentEmployee?.permissions?.includes('employees_manage');
 
   const { getViewMode, setViewMode } = useUserPreferences();
   const viewMode = getViewMode('employees');
@@ -231,6 +231,8 @@ export default function EmployeesPage() {
               getAccessLevelLabel={getAccessLevelLabel}
               getAccessLevelColor={getAccessLevelColor}
               canAddEmployee={canAddEmployee}
+              isAdmin={isAdmin}
+              onResetPassword={setResetPasswordEmployee}
             />
           )}
           {viewMode === 'list' && (
@@ -240,6 +242,8 @@ export default function EmployeesPage() {
               getAccessLevelLabel={getAccessLevelLabel}
               getAccessLevelColor={getAccessLevelColor}
               canAddEmployee={canAddEmployee}
+              isAdmin={isAdmin}
+              onResetPassword={setResetPasswordEmployee}
             />
           )}
           {viewMode === 'detailed' && (
@@ -249,6 +253,8 @@ export default function EmployeesPage() {
               getAccessLevelLabel={getAccessLevelLabel}
               getAccessLevelColor={getAccessLevelColor}
               canAddEmployee={canAddEmployee}
+              isAdmin={isAdmin}
+              onResetPassword={setResetPasswordEmployee}
             />
           )}
         </>
