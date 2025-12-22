@@ -35,6 +35,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   const [allAccounts, setAllAccounts] = useState<EmailAccount[]>([]);
   const [assignments, setAssignments] = useState<AccountAssignment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     fetchAccountsAndAssignments();
@@ -152,17 +153,40 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         <div>
           <h3 className="text-lg font-light text-[#e5e4e2]">Konta Email</h3>
           <p className="text-sm text-[#e5e4e2]/60 mt-1">
-            Zarządzaj kontami email dostępnymi dla pracownika
+            {isEditing
+              ? 'Tryb edycji - przypisuj lub odbieraj dostęp do kont wspólnych'
+              : 'Zarządzaj kontami email dostępnymi dla pracownika'
+            }
           </p>
         </div>
         {isAdmin && (
-          <button
-            onClick={() => router.push('/crm/settings/email-accounts')}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
-          >
-            <Plus className="w-4 h-4" />
-            Zarządzaj kontami
-          </button>
+          <div className="flex gap-2">
+            {isEditing ? (
+              <>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#1c1f33]/80"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={() => router.push('/crm/settings/email-accounts')}
+                  className="flex items-center gap-2 bg-[#d3bb73]/20 border border-[#d3bb73]/40 text-[#d3bb73] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30"
+                >
+                  <Plus className="w-4 h-4" />
+                  Dodaj konta
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+              >
+                <Edit className="w-4 h-4" />
+                Zarządzaj dostępem
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -202,6 +226,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     onToggle={() => {}}
                     isAdmin={false}
                     isPersonal={true}
+                    isEditing={isEditing}
                   />
                 ))}
               </div>
@@ -229,6 +254,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     onToggle={() => toggleAssignment(account.id, account.account_type)}
                     isAdmin={isAdmin}
                     isPersonal={false}
+                    isEditing={isEditing}
                   />
                 ))}
               </div>
@@ -256,6 +282,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     onToggle={() => {}}
                     isAdmin={false}
                     isPersonal={false}
+                    isEditing={isEditing}
                   />
                 ))}
               </div>
@@ -282,13 +309,15 @@ function AccountRow({
   isAssigned,
   onToggle,
   isAdmin,
-  isPersonal
+  isPersonal,
+  isEditing
 }: {
   account: EmailAccount;
   isAssigned: boolean;
   onToggle: () => void;
   isAdmin: boolean;
   isPersonal: boolean;
+  isEditing: boolean;
 }) {
   const getAccountTypeLabel = (type: string) => {
     switch(type) {
@@ -349,7 +378,7 @@ function AccountRow({
           )}
         </div>
 
-        {isAdmin && !isPersonal && account.account_type !== 'system' && (
+        {isEditing && isAdmin && !isPersonal && account.account_type !== 'system' && (
           <button
             onClick={onToggle}
             className={`
@@ -373,15 +402,13 @@ function AccountRow({
             )}
           </button>
         )}
-
-        {isPersonal && (
-          <span className="px-3 py-1.5 bg-[#d3bb73]/10 text-[#d3bb73]/60 rounded-lg text-sm">
+        {!isEditing && isPersonal && (
+          <span className="px-3 py-1.5 rounded-lg text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20">
             Właściciel
           </span>
         )}
-
-        {account.account_type === 'system' && (
-          <span className="px-3 py-1.5 bg-purple-500/10 text-purple-400/60 rounded-lg text-sm">
+        {!isEditing && account.account_type === 'system' && (
+          <span className="px-3 py-1.5 rounded-lg text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">
             Dla wszystkich
           </span>
         )}
