@@ -288,19 +288,46 @@ export default function EventDetailPage() {
         return;
       }
 
-      // Ustaw dozwolone zakładki:
-      // 1. Jeśli pracownik ma indywidualne event_tabs - użyj ich
-      // 2. Jeśli nie, użyj event_tabs z access_level
-      // 3. Jeśli nic nie ma, domyślnie tylko 'overview'
-      let eventTabs: string[] = ['overview'];
-      if (employee?.event_tabs && employee.event_tabs.length > 0) {
-        eventTabs = employee.event_tabs;
-      } else if ((employee?.access_levels as any)?.event_tabs) {
-        eventTabs = (employee.access_levels as any).event_tabs;
-      }
-      setAllowedEventTabs(eventTabs);
+      // Sprawdź czy użytkownik jest przypisany do wydarzenia
+      const { data: assignment } = await supabase
+        .from('employee_assignments')
+        .select('can_invite_members, status')
+        .eq('event_id', eventId)
+        .eq('employee_id', session.user.id)
+        .maybeSingle();
 
-      // Sprawdź czy jest creatorem lub ma uprawnienia
+      // Jeśli jest przypisany i zaakceptował zaproszenie, ma pełny dostęp
+      if (assignment?.status === 'accepted') {
+        setUserAssignmentStatus('accepted');
+        setHasLimitedAccess(false);
+        setAllowedEventTabs([
+          'overview',
+          'offer',
+          'equipment',
+          'team',
+          'logistics',
+          'files',
+          'tasks',
+          'history',
+        ]);
+
+        if (assignment.can_invite_members) {
+          setCanManageTeam(true);
+        }
+        return;
+      } else if (assignment?.status === 'pending') {
+        setUserAssignmentStatus('pending');
+        setHasLimitedAccess(true);
+        setAllowedEventTabs(['overview']);
+        return;
+      } else if (assignment?.status === 'rejected') {
+        setUserAssignmentStatus('rejected');
+        setHasLimitedAccess(true);
+        setAllowedEventTabs(['overview']);
+        return;
+      }
+
+      // Sprawdź czy jest creatorem
       const { data: eventData } = await supabase
         .from('events')
         .select('created_by')
@@ -309,22 +336,30 @@ export default function EventDetailPage() {
 
       if (eventData?.created_by === session.user.id) {
         setCanManageTeam(true);
+        setAllowedEventTabs([
+          'overview',
+          'offer',
+          'finances',
+          'contract',
+          'equipment',
+          'team',
+          'logistics',
+          'subcontractors',
+          'files',
+          'tasks',
+          'history',
+        ]);
         return;
       }
 
-      // Sprawdź czy jest członkiem z uprawnieniem can_invite_members
-      const { data: assignment } = await supabase
-        .from('employee_assignments')
-        .select('can_invite_members, status')
-        .eq('event_id', eventId)
-        .eq('employee_id', session.user.id)
-        .single();
-
-      if (assignment?.status === 'accepted' && assignment?.can_invite_members) {
-        setCanManageTeam(true);
-        return;
+      // Dla pozostałych użytkowników użyj event_tabs z access_level
+      let eventTabs: string[] = ['overview'];
+      if (employee?.event_tabs && employee.event_tabs.length > 0) {
+        eventTabs = employee.event_tabs;
+      } else if ((employee?.access_levels as any)?.event_tabs) {
+        eventTabs = (employee.access_levels as any).event_tabs;
       }
-
+      setAllowedEventTabs(eventTabs);
       setCanManageTeam(false);
     } catch (err) {
       console.error('Error checking team management permission:', err);

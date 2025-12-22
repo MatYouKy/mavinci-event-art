@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight } from 'lucide-react';
+import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
@@ -49,15 +49,18 @@ export default function SettingsPage() {
   const { showSnackbar } = useSnackbar();
   const { employee, loading: employeeLoading } = useCurrentEmployee();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'password' | 'notifications' | 'admin'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'password' | 'notifications' | 'system-email' | 'admin'>('general');
   const [preferences, setPreferences] = useState<Preferences>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
+  const [systemEmail, setSystemEmail] = useState<string | null>(null);
 
   useEffect(() => {
     if (employee) {
       fetchPreferences();
+      fetchEmailAccounts();
     }
   }, [employee]);
 
@@ -78,6 +81,56 @@ export default function SettingsPage() {
       showSnackbar('Błąd podczas wczytywania preferencji', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEmailAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employee_email_accounts')
+        .select('id, email_address, account_name, from_name, is_system_account, is_active')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      setEmailAccounts(data || []);
+      const systemAccount = data?.find((acc) => acc.is_system_account);
+      setSystemEmail(systemAccount?.id || null);
+    } catch (err) {
+      console.error('Error fetching email accounts:', err);
+      showSnackbar('Błąd podczas wczytywania kont email', 'error');
+    }
+  };
+
+  const saveSystemEmail = async () => {
+    if (!systemEmail) {
+      showSnackbar('Wybierz konto email', 'error');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      await supabase
+        .from('employee_email_accounts')
+        .update({ is_system_account: false })
+        .neq('id', systemEmail);
+
+      const { error } = await supabase
+        .from('employee_email_accounts')
+        .update({ is_system_account: true })
+        .eq('id', systemEmail);
+
+      if (error) throw error;
+
+      showSnackbar('Konto systemowe zostało zaktualizowane', 'success');
+      fetchEmailAccounts();
+    } catch (err) {
+      console.error('Error saving system email:', err);
+      showSnackbar('Błąd podczas zapisywania konta systemowego', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -222,6 +275,23 @@ export default function SettingsPage() {
             Powiadomienia
           </div>
           {activeTab === 'notifications' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('system-email')}
+          className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === 'system-email'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Mail className="w-4 h-4" />
+            Email systemowy
+          </div>
+          {activeTab === 'system-email' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
@@ -468,6 +538,58 @@ export default function SettingsPage() {
               <RefreshCw className="w-4 h-4" />
               Przywróć domyślne
             </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'system-email' && (
+        <div className="space-y-6">
+          <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+            <h3 className="text-lg font-light text-[#e5e4e2] mb-4">
+              Konto email systemowe
+            </h3>
+            <p className="text-sm text-[#e5e4e2]/60 mb-6">
+              Wybierz konto email, które będzie używane do wysyłania automatycznych wiadomości z systemu (zaproszenia do wydarzeń, notyfikacje, oferty, faktury)
+            </p>
+
+            <div className="space-y-3 mb-6">
+              {emailAccounts.map((account) => (
+                <label
+                  key={account.id}
+                  className="flex items-center justify-between p-4 bg-[#0f1119] rounded-lg cursor-pointer hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="system-email"
+                      value={account.id}
+                      checked={systemEmail === account.id}
+                      onChange={(e) => setSystemEmail(e.target.value)}
+                      className="w-5 h-5 text-[#d3bb73] border-[#d3bb73]/30 focus:ring-[#d3bb73]/50"
+                    />
+                    <Mail className={`w-5 h-5 ${systemEmail === account.id ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`} />
+                    <div>
+                      <div className="text-[#e5e4e2] font-medium">{account.from_name}</div>
+                      <div className="text-xs text-[#e5e4e2]/60">{account.email_address}</div>
+                      {account.is_system_account && (
+                        <div className="text-xs text-[#d3bb73] mt-1">Aktywne konto systemowe</div>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={saveSystemEmail}
+                disabled={saving || !systemEmail}
+                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
+              </button>
+            </div>
           </div>
         </div>
       )}
