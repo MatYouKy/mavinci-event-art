@@ -238,6 +238,14 @@ export default function CalendarMain() {
     );
   };
 
+  const isAdmin = () => {
+    if (!currentEmployee) return false;
+    return (
+      currentEmployee.role === 'admin' ||
+      currentEmployee.permissions?.includes('admin')
+    );
+  };
+
   const handleNewEvent = (date?: Date) => {
     setModalInitialDate(date);
     const canCreate = canCreateEvents();
@@ -496,7 +504,7 @@ export default function CalendarMain() {
           </button>
 
           <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
-            {(['month', 'week', 'day', 'employee'] as CalendarView[]).map((v) => (
+            {(['month', 'week', 'day', ...(isAdmin() ? ['employee' as CalendarView] : [])]).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -629,26 +637,28 @@ export default function CalendarMain() {
               </div>
             </div>
 
-            <div className="space-y-3">
-              <label className="block text-sm text-[#e5e4e2]/60">Pracownik</label>
-              <div className="max-h-48 space-y-2 overflow-y-auto">
-                {employees.map((emp) => (
-                  <button
-                    key={emp.id}
-                    onClick={() => toggleFilter('employees', emp.id)}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      filters.employees.includes(emp.id)
-                        ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
-                        : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
-                    }`}
-                  >
-                    {emp.nickname || `${emp.name} ${emp.surname}`}
-                  </button>
-                ))}
+            {isAdmin() && (
+              <div className="space-y-3">
+                <label className="block text-sm text-[#e5e4e2]/60">Pracownik</label>
+                <div className="max-h-48 space-y-2 overflow-y-auto">
+                  {employees.map((emp) => (
+                    <button
+                      key={emp.id}
+                      onClick={() => toggleFilter('employees', emp.id)}
+                      className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        filters.employees.includes(emp.id)
+                          ? 'border border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                          : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
+                      }`}
+                    >
+                      {emp.nickname || `${emp.name} ${emp.surname}`}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {currentEmployee?.permissions?.includes('events_manage') && (
+            {isAdmin() && (
               <div className="space-y-3">
                 <label className="block text-sm text-[#e5e4e2]/60">Klient</label>
                 <div className="max-h-48 space-y-2 overflow-y-auto">
