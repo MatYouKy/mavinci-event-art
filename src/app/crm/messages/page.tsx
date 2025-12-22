@@ -106,7 +106,6 @@ export default function MessagesPage() {
     setShowAdvancedSearch(false);
     setOffset(0);
     setAllMessages([]);
-    refetch();
   };
 
   useEffect(() => {

@@ -95,7 +95,6 @@ export default function AllEmailAccountsPage() {
     setShowAdvancedSearch(false);
     setOffset(0);
     setAllMessages([]);
-    refetch();
   };
 
   useEffect(() => {
