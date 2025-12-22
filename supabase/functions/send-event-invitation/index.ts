@@ -49,7 +49,9 @@ Deno.serve(async (req: Request) => {
           id,
           name,
           surname,
-          email
+          email,
+          personal_email,
+          notification_email_preference
         ),
         events(
           id,
@@ -79,9 +81,73 @@ Deno.serve(async (req: Request) => {
     const event = assignment.events as any;
 
     console.log('[send-event-invitation] Employee email:', employee?.email);
+    console.log('[send-event-invitation] Employee personal_email:', employee?.personal_email);
+    console.log('[send-event-invitation] Email preference:', employee?.notification_email_preference);
 
-    if (!employee?.email) {
-      throw new Error("Employee email not found");
+    // Determine which emails to send to based on preferences
+    const notificationEmails: string[] = [];
+    const preference = employee?.notification_email_preference || 'work';
+
+    switch (preference) {
+      case 'work':
+        if (employee?.email) {
+          notificationEmails.push(employee.email);
+        }
+        break;
+
+      case 'personal':
+        if (employee?.personal_email) {
+          notificationEmails.push(employee.personal_email);
+        }
+        break;
+
+      case 'both':
+        if (employee?.email) {
+          notificationEmails.push(employee.email);
+        }
+        if (employee?.personal_email) {
+          notificationEmails.push(employee.personal_email);
+        }
+        break;
+
+      case 'none':
+        // No emails to send
+        break;
+
+      default:
+        // Default to work email
+        if (employee?.email) {
+          notificationEmails.push(employee.email);
+        }
+    }
+
+    console.log('[send-event-invitation] Will send to emails:', notificationEmails);
+
+    if (notificationEmails.length === 0) {
+      console.log('[send-event-invitation] No emails to send based on preference');
+
+      // Update assignment but don't send email
+      await supabase
+        .from("employee_assignments")
+        .update({
+          invitation_email_sent: false,
+          invitation_email_sent_at: new Date().toISOString(),
+        })
+        .eq("id", assignmentId);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "No email sent due to employee preferences",
+          preference: preference,
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
 
     if (!assignment.invitation_token) {
@@ -235,30 +301,40 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log('[send-event-invitation] System email found:', systemEmail.id);
-    console.log('[send-event-invitation] Sending email to:', employee.email);
+    console.log('[send-event-invitation] Sending emails to:', notificationEmails);
 
     const sendEmailUrl = `${supabaseUrl}/functions/v1/send-email`;
-    const sendEmailResponse = await fetch(sendEmailUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": req.headers.get("Authorization") || "",
-      },
-      body: JSON.stringify({
-        to: employee.email,
-        subject: `Zaproszenie do wydarzenia: ${event.name}`,
-        body: emailBody,
-        emailAccountId: systemEmail.id,
-      }),
+
+    // Send email to all notification addresses
+    const emailPromises = notificationEmails.map(async (emailAddress) => {
+      console.log('[send-event-invitation] Sending email to:', emailAddress);
+
+      const sendEmailResponse = await fetch(sendEmailUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": req.headers.get("Authorization") || "",
+        },
+        body: JSON.stringify({
+          to: emailAddress,
+          subject: `Zaproszenie do wydarzenia: ${event.name}`,
+          body: emailBody,
+          emailAccountId: systemEmail.id,
+        }),
+      });
+
+      if (!sendEmailResponse.ok) {
+        const errorData = await sendEmailResponse.json();
+        console.error(`[send-event-invitation] Email send failed for ${emailAddress}:`, errorData);
+        throw new Error(`Failed to send email to ${emailAddress}: ${errorData.error || 'Unknown error'}`);
+      }
+
+      console.log(`[send-event-invitation] Email sent successfully to ${emailAddress}`);
+      return emailAddress;
     });
 
-    if (!sendEmailResponse.ok) {
-      const errorData = await sendEmailResponse.json();
-      console.error('[send-event-invitation] Email send failed:', errorData);
-      throw new Error(`Failed to send email: ${errorData.error || 'Unknown error'}`);
-    }
-
-    console.log('[send-event-invitation] Email sent successfully');
+    const sentEmails = await Promise.all(emailPromises);
+    console.log('[send-event-invitation] All emails sent successfully:', sentEmails);
 
     await supabase
       .from("employee_assignments")
@@ -274,7 +350,8 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         success: true,
         message: "Invitation email sent successfully",
-        sentTo: employee.email,
+        sentTo: sentEmails,
+        preference: preference,
       }),
       {
         headers: {
