@@ -24,7 +24,8 @@ interface Meeting {
   };
   creator?: {
     id: string;
-    full_name: string;
+    name: string;
+    surname: string;
   };
   participants?: Array<{
     id: string;
@@ -32,7 +33,8 @@ interface Meeting {
     contact_id: string | null;
     employee?: {
       id: string;
-      full_name: string;
+      name: string;
+      surname: string;
       avatar_url: string | null;
     };
     contact?: {
@@ -80,12 +82,12 @@ export default function MeetingDetailPage() {
         .select(`
           *,
           location:locations(id, name),
-          creator:employees!meetings_created_by_fkey(id, full_name),
+          creator:employees!meetings_created_by_fkey(id, name, surname),
           participants:meeting_participants(
             id,
             employee_id,
             contact_id,
-            employee:employees(id, full_name, avatar_url),
+            employee:employees(id, name, surname, avatar_url),
             contact:contacts(id, first_name, last_name)
           )
         `)
@@ -379,10 +381,11 @@ export default function MeetingDetailPage() {
                       key={p.id}
                       className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-sm text-[#e5e4e2]"
                     >
-                      {p.employee?.full_name ||
-                        (p.contact
+                      {p.employee
+                        ? `${p.employee.name} ${p.employee.surname}`
+                        : p.contact
                           ? `${p.contact.first_name} ${p.contact.last_name}`
-                          : 'Nieznany')}
+                          : 'Nieznany'}
                     </div>
                   ))
                 ) : (
