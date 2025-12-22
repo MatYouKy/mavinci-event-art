@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import {
   Calendar,
   Users,
@@ -90,6 +91,110 @@ const allNavigation: NavigationItem[] = [
   { key: 'page', name: 'Strona', href: '/crm/page', icon: Globe, module: 'page' },
   { key: 'locations', name: 'Lokalizacje', href: '/crm/locations', icon: MapPin, module: 'locations' },
 ];
+
+function TaskAccessWrapper({
+  pathname,
+  employee,
+  router,
+  children,
+}: {
+  pathname: string;
+  employee: Employee | null;
+  router: AppRouterInstance;
+  children: React.ReactNode;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
+
+  useEffect(() => {
+    const checkAccess = async () => {
+      if (pathname === '/crm') {
+        setHasAccess(true);
+        setLoading(false);
+        return;
+      }
+
+      const currentNav = allNavigation.find(
+        (nav) => pathname.startsWith(nav.href) && nav.href !== '/crm',
+      );
+
+      if (!currentNav?.module) {
+        setHasAccess(true);
+        setLoading(false);
+        return;
+      }
+
+      const taskIdMatch = pathname.match(/^\/crm\/tasks\/([a-f0-9-]+)$/);
+
+      if (taskIdMatch && employee?.id) {
+        const taskId = taskIdMatch[1];
+
+        const { data: task } = await supabase
+          .from('tasks')
+          .select('id, is_private, owner_id')
+          .eq('id', taskId)
+          .maybeSingle();
+
+        if (task) {
+          if (task.is_private && task.owner_id === employee.id) {
+            setHasAccess(true);
+            setLoading(false);
+            return;
+          }
+
+          const { data: assignee } = await supabase
+            .from('task_assignees')
+            .select('employee_id')
+            .eq('task_id', taskId)
+            .eq('employee_id', employee.id)
+            .maybeSingle();
+
+          if (assignee) {
+            setHasAccess(true);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      const hasPermission =
+        employee && (isAdmin(employee) || canView(employee, currentNav.module));
+
+      setHasAccess(hasPermission);
+      setLoading(false);
+    };
+
+    checkAccess();
+  }, [pathname, employee?.id]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="text-lg text-[#d3bb73]">Sprawdzanie uprawnień...</div>
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center px-6">
+        <div className="mb-4 text-6xl">🔒</div>
+        <h2 className="mb-2 text-2xl font-light text-[#e5e4e2]">Brak uprawnień</h2>
+        <p className="mb-6 max-w-md text-center text-[#e5e4e2]/60">
+          Nie masz uprawnień do przeglądania tej strony.
+        </p>
+        <button
+          onClick={() => router.push('/crm')}
+          className="rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+        >
+          Wróć do Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
 
 export default function CRMClientLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -273,38 +378,13 @@ export default function CRMClientLayout({ children }: { children: React.ReactNod
           <main
             className={`flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} transition-all duration-300`}
           >
-            {(() => {
-              if (pathname === '/crm') return children;
-
-              const currentNav = allNavigation.find(
-                (nav) => pathname.startsWith(nav.href) && nav.href !== '/crm',
-              );
-
-              if (currentNav?.module) {
-                const hasPermission =
-                  employee && (isAdmin(employee) || canView(employee, currentNav.module));
-
-                if (!hasPermission) {
-                  return (
-                    <div className="flex min-h-[400px] flex-col items-center justify-center px-6">
-                      <div className="mb-4 text-6xl">🔒</div>
-                      <h2 className="mb-2 text-2xl font-light text-[#e5e4e2]">Brak uprawnień</h2>
-                      <p className="mb-6 max-w-md text-center text-[#e5e4e2]/60">
-                        Nie masz uprawnień do przeglądania tej strony.
-                      </p>
-                      <button
-                        onClick={() => router.push('/crm')}
-                        className="rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-                      >
-                        Wróć do Dashboard
-                      </button>
-                    </div>
-                  );
-                }
-              }
-
-              return children;
-            })()}
+            <TaskAccessWrapper
+              pathname={pathname}
+              employee={employee}
+              router={router}
+            >
+              {children}
+            </TaskAccessWrapper>
           </main>
         </div>
 
