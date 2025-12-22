@@ -61,13 +61,13 @@ export const calendarApi = createApi({
                 color,
                 notes,
                 location_text,
-                event_id,
+                related_event_ids,
                 locations(id, name),
                 meeting_participants(
                   employee_id,
                   contact_id,
                   employees(id, name, surname),
-                  contacts(id, name)
+                  contacts(id, first_name, last_name, full_name)
                 )
               `)
               .is('deleted_at', null)
