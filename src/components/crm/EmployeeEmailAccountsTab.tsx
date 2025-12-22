@@ -147,7 +147,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         [key]: value
       }));
 
-      console.log(`Preferencja ${key} została zaktualizowana na ${value}`);
+      alert(`Preferencja powiadomień została ${value ? 'włączona' : 'wyłączona'}`);
     } catch (err) {
       console.error('Error updating notification preference:', err);
       alert('Błąd podczas aktualizacji preferencji: ' + JSON.stringify(err));
