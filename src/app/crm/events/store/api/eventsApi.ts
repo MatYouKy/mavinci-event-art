@@ -209,6 +209,7 @@ export const eventsApi = createApi({
         { type: 'Events', id },
         { type: 'EventDetails', id },
         { type: 'Events', id: 'LIST' },
+        { type: 'EventAuditLog', id },
       ],
     }),
 
@@ -629,7 +630,16 @@ export const eventsApi = createApi({
             .select(
               `
               *,
-              user:employees!user_id(name, surname, avatar_url)
+              employee:employees!event_audit_log_employee_id_fkey(
+                id,
+                name,
+                surname,
+                nickname,
+                avatar_url,
+                avatar_metadata,
+                occupation,
+                email
+              )
             `,
             )
             .eq('event_id', eventId)

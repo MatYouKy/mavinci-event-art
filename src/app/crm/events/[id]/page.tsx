@@ -44,7 +44,6 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import EditEventModalNew from '@/components/crm/EditEventModalNew';
 import EventTabOffer from './components/tabs/EventTabOffer';
 import { EventsDetailsTab } from './components/tabs/EventsDetailsTab/EventsDetailsTab';
-import { fetchAuditLog } from './helpers/fetchAuditLog';
 import { EventContractTab } from './components/tabs/EventContractTab';
 import { AddChecklistModal } from './components/Modals/AddChecklistModal';
 import { TeamMembersList } from './components/AddMembersList';
@@ -52,10 +51,9 @@ import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
 import { useGetEventByIdQuery, useGetEventEmployeesQuery } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useOfferActions } from '../../offers/hooks/useOfferById';
-import { useEventEquipment, useEventOffers, useEventTeam } from '../hooks';
+import { useEventEquipment, useEventOffers, useEventTeam, useEventAuditLog } from '../hooks';
 import { IEventCategory } from '../../event-categories/types';
 import { IEmployee } from '../../employees/type';
-import { logChange } from './helpers/logChange';
 import {
   useGetContactByIdQuery,
   useGetOrganizationByIdQuery,
@@ -233,13 +231,13 @@ export default function EventDetailPage() {
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
   const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
-  const [auditLog, setAuditLog] = useState<any[]>([]);
 
   const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
 
+  const { auditLog } = useEventAuditLog(eventId as string);
+
   useEffect(() => {
     if (eventId) {
-      fetchAuditLog(eventId);
       fetchCategories();
       checkTeamManagementPermission();
     }
@@ -1235,15 +1233,15 @@ export default function EventDetailPage() {
 
               if (error) {
                 console.error('Error updating event:', error);
-                alert('Błąd podczas aktualizacji eventu');
+                showSnackbar('Błąd podczas aktualizacji eventu', 'error');
                 return;
               }
 
               setShowEditEventModal(false);
-              await logChange(eventId, 'updated', 'Zaktualizowano podstawowe informacje eventu');
+              showSnackbar('Wydarzenie zaktualizowane', 'success');
             } catch (err) {
               console.error('Error:', err);
-              alert('Wystąpił błąd');
+              showSnackbar('Wystąpił błąd', 'error');
             }
           }}
         />
