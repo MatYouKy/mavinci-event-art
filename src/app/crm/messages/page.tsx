@@ -42,10 +42,11 @@ interface UnifiedMessage {
 }
 
 export default function MessagesPage() {
-  const { employee: currentEmployee, canManageModule } = useCurrentEmployee();
+  const { employee: currentEmployee, canManageModule, canViewModule } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const canManage = canManageModule('messages');
+  const canView = canViewModule('messages');
 
   const [messages, setMessages] = useState<UnifiedMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<UnifiedMessage | null>(null);
@@ -171,14 +172,16 @@ export default function MessagesPage() {
       if (error) throw error;
 
       const accounts = [
-        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' },
+        ...(canManage ? [{ id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' }] : []),
         ...(data || []),
       ];
 
       setEmailAccounts(accounts);
 
       if (accounts.length > 0) {
-        setSelectedAccount('contact_form');
+        setSelectedAccount(accounts[0].id);
+      } else if (!canManage) {
+        showSnackbar('Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem.', 'warning');
       }
     } catch (error) {
       console.error('Error fetching email accounts:', error);
@@ -191,7 +194,7 @@ export default function MessagesPage() {
       const allMessages: UnifiedMessage[] = [];
       const currentOffset = reset ? 0 : offset;
 
-      if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
+      if (canManage && (selectedAccount === 'all' || selectedAccount === 'contact_form')) {
         const { data: contactMessages } = await supabase
           .from('contact_messages')
           .select(`
@@ -550,6 +553,43 @@ export default function MessagesPage() {
     }
   };
 
+  if (!canView && !canManage) {
+    return (
+      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+        <div className="text-center">
+          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Brak dostępu</h2>
+          <p className="text-[#e5e4e2]/60">Nie masz uprawnień do przeglądania wiadomości.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (emailAccounts.length === 0 && !loading && currentEmployee) {
+    return (
+      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Brak kont email</h2>
+          <p className="text-[#e5e4e2]/60 mb-4">
+            {canManage
+              ? 'Nie masz jeszcze skonfigurowanych kont email. Przejdź do ustawień pracownika, aby dodać konto.'
+              : 'Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem, aby uzyskać dostęp do poczty.'
+            }
+          </p>
+          {canManage && (
+            <button
+              onClick={() => window.location.href = `/crm/employees/${currentEmployee.id}`}
+              className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors"
+            >
+              Przejdź do ustawień
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0f1119]">
       <div className="max-w-7xl mx-auto p-6">
@@ -558,16 +598,18 @@ export default function MessagesPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-2">Wiadomości</h1>
-                <p className="text-[#e5e4e2]/60">Zarządzaj komunikacją z klientami</p>
+                <p className="text-[#e5e4e2]/60">{canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}</p>
               </div>
-              <button
-                onClick={() => setShowNewMessageModal(true)}
-                disabled={selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-5 h-5" />
-                Nowa Wiadomość
-              </button>
+              {canManage && (
+                <button
+                  onClick={() => setShowNewMessageModal(true)}
+                  disabled={selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                  className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-5 h-5" />
+                  Nowa Wiadomość
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -613,15 +655,17 @@ export default function MessagesPage() {
                 />
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={fetchEmailsFromServer}
-                  disabled={loading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                  className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title="Pobierz nowe wiadomości z serwera email"
-                >
-                  <Inbox className="w-5 h-5" />
-                  <span className="hidden sm:inline">Pobierz z serwera</span>
-                </button>
+                {canManage && (
+                  <button
+                    onClick={fetchEmailsFromServer}
+                    disabled={loading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                    className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    title="Pobierz nowe wiadomości z serwera email"
+                  >
+                    <Inbox className="w-5 h-5" />
+                    <span className="hidden sm:inline">Pobierz z serwera</span>
+                  </button>
+                )}
                 <button
                   onClick={() => fetchMessages()}
                   disabled={loading}
@@ -757,7 +801,7 @@ export default function MessagesPage() {
                     )}
                   </div>
 
-                  {(selectedMessage.type === 'contact_form' || selectedMessage.type === 'received') && (
+                  {canManage && (selectedMessage.type === 'contact_form' || selectedMessage.type === 'received') && (
                     <div className="mt-6 pt-6 border-t border-[#d3bb73]/20">
                       <button
                         onClick={() => {
