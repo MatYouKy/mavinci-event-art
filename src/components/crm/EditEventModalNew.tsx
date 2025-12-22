@@ -15,7 +15,7 @@ interface EditEventModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: any;
-  location: ILocation;
+  location?: ILocation | null;
   onSave: (data: any) => void;
 }
 
@@ -53,7 +53,7 @@ export default function EditEventModalNew({
     category_id: event.category_id || '',
     event_date: event.event_date,
     event_end_date: event.event_end_date || '',
-    location: location,
+    location: event.location || '',
     location_id: event.location_id || null,
     budget: event.budget?.toString() || '',
     status: event.status,
@@ -98,11 +98,8 @@ export default function EditEventModalNew({
       event_end_date: formData.event_end_date
         ? new Date(formData.event_end_date).toISOString()
         : null,
-      location:
-        typeof formData.location === 'string'
-          ? formData.location
-          : formData.location?.formatted_address || formData.location?.name || '',
-      location_id: formData.location?.id ? formData.location.id : null,
+      location: formData.location || '',
+      location_id: formData.location_id || null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
       participants: participants.length > 0 ? participants : [],
@@ -197,11 +194,11 @@ export default function EditEventModalNew({
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Lokalizacja *</label>
                 <LocationSelector
-                  value={formData.location as unknown as string}
+                  value={formData.location}
                   onChange={(value, locationData) =>
                     setFormData({
                       ...formData,
-                      location: value as unknown as ILocation,
+                      location: value,
                       location_id: locationData?.id || null,
                     })
                   }
