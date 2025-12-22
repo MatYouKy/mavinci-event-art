@@ -86,7 +86,7 @@ const allNavigation: NavigationItem[] = [
   { key: 'equipment', name: 'Magazyn', href: '/crm/equipment', icon: Package, module: 'equipment' },
   { key: 'fleet', name: 'Flota', href: '/crm/fleet', icon: Car, module: 'fleet' },
   { key: 'tasks', name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
-  { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', icon: Clock },
+  { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', icon: Clock, module: 'time_tracking' },
   { key: 'page', name: 'Strona', href: '/crm/page', icon: Globe, module: 'page' },
   { key: 'locations', name: 'Lokalizacje', href: '/crm/locations', icon: MapPin, module: 'locations' },
 ];
@@ -134,9 +134,8 @@ export default function CRMClientLayout({ children }: { children: React.ReactNod
             userNav = allNavigation;
           } else {
             userNav = allNavigation.filter((item) => {
-              // Kalendarz i zadania są dostępne dla wszystkich
-              if (item.key === 'calendar' || item.key === 'tasks') return true;
-              if (!item.module) return true;
+              if (item.key === 'dashboard') return true;
+              if (!item.module) return false;
               return canView(employeeData as unknown as Employee, item.module);
             });
           }

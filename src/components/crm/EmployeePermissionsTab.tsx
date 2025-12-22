@@ -119,36 +119,32 @@ const permissionCategories: PermissionCategory[] = [
     ],
   },
   {
-    key: 'email',
-    label: 'Email',
-  },
-  {
-    key: 'mailing',
-    label: 'Mailing',
-  },
-  {
-    key: 'subcontractors',
-    label: 'Podwykonawcy',
-  },
-  {
     key: 'fleet',
     label: 'Flota',
   },
   {
     key: 'time_tracking',
-    label: 'Śledzenie czasu',
+    label: 'Czas pracy',
   },
   {
-    key: 'financials',
-    label: 'Finanse',
+    key: 'finances',
+    label: 'Faktury',
+  },
+  {
+    key: 'page',
+    label: 'Zarządzanie stroną',
+  },
+  {
+    key: 'locations',
+    label: 'Lokalizacje',
   },
   {
     key: 'website',
-    label: 'Strona WWW',
+    label: 'Edycja strony WWW',
     extraPermissions: [
       {
         key: 'website_edit',
-        label: 'Edycja strony WWW',
+        label: 'Edycja treści strony',
         description: 'Może edytować zawartość strony publicznej (portfolio, usługi, zespół)',
       },
     ],

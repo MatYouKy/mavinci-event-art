@@ -15,8 +15,11 @@
  * - contracts_view, contracts_manage, contracts_create
  * - attractions_view, attractions_manage, attractions_create
  * - messages_view, messages_manage, messages_assign
- * - financials_view, financials_manage
+ * - finances_view, finances_manage
  * - fleet_view, fleet_manage, fleet_create
+ * - page_view, page_manage
+ * - locations_view, locations_manage, locations_create
+ * - time_tracking_view, time_tracking_manage
  * - website_edit - edycja strony WWW (portfolio, usługi, zespół, itp.)
  */
 
@@ -123,8 +126,11 @@ export const MODULES = [
   'contracts',
   'attractions',
   'messages',
-  'financials',
+  'finances',
   'fleet',
+  'page',
+  'locations',
+  'time_tracking',
 ] as const;
 
 export type ModuleName = typeof MODULES[number];
@@ -142,6 +148,7 @@ const MODULES_WITH_CREATE = [
   'contracts',
   'attractions',
   'fleet',
+  'locations',
 ] as const;
 
 /**
