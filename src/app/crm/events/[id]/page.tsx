@@ -296,20 +296,21 @@ export default function EventDetailPage() {
         .eq('employee_id', session.user.id)
         .maybeSingle();
 
-      // Jeśli jest przypisany i zaakceptował zaproszenie, ma pełny dostęp
+      // Jeśli jest przypisany i zaakceptował zaproszenie, użyj jego uprawnień z access_level lub indywidualnych
       if (assignment?.status === 'accepted') {
         setUserAssignmentStatus('accepted');
         setHasLimitedAccess(false);
-        setAllowedEventTabs([
-          'overview',
-          'offer',
-          'equipment',
-          'team',
-          'logistics',
-          'files',
-          'tasks',
-          'history',
-        ]);
+
+        // Sprawdź indywidualne uprawnienia pracownika lub użyj event_tabs z access_level
+        let eventTabs: string[] = ['overview', 'team', 'agenda', 'files', 'tasks'];
+
+        if (employee?.event_tabs && employee.event_tabs.length > 0) {
+          eventTabs = employee.event_tabs;
+        } else if (employee?.access_levels?.event_tabs && employee.access_levels.event_tabs.length > 0) {
+          eventTabs = employee.access_levels.event_tabs;
+        }
+
+        setAllowedEventTabs(eventTabs);
 
         if (assignment.can_invite_members) {
           setCanManageTeam(true);
