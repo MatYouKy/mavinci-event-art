@@ -5,8 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Save, Trash2, Calendar, MapPin, Users, FileText, Clock } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import LocationSelector from '@/components/crm/LocationSelector';
-import ParticipantsAutocomplete from '@/components/crm/ParticipantsAutocomplete';
 
 interface Meeting {
   id: string;
@@ -342,12 +340,12 @@ export default function MeetingDetailPage() {
               Lokalizacja
             </label>
             {isEditing ? (
-              <LocationSelector
-                selectedLocationId={formData.location_id}
-                locationText={formData.location_text}
-                onLocationChange={(locationId, locationText) => {
-                  setFormData({ ...formData, location_id: locationId, location_text: locationText });
-                }}
+              <input
+                type="text"
+                value={formData.location_text}
+                onChange={(e) => setFormData({ ...formData, location_text: e.target.value, location_id: null })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="Wpisz lokalizację..."
               />
             ) : (
               <p className="text-[#e5e4e2]">
@@ -362,10 +360,22 @@ export default function MeetingDetailPage() {
               Uczestnicy
             </label>
             {isEditing ? (
-              <ParticipantsAutocomplete
-                selectedParticipants={selectedParticipants}
-                onChange={setSelectedParticipants}
-              />
+              <div className="space-y-2">
+                {selectedParticipants.map((empId) => (
+                  <div
+                    key={empId}
+                    className="flex items-center justify-between rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-3 py-2"
+                  >
+                    <span className="text-sm text-[#e5e4e2]">{empId}</span>
+                    <button
+                      onClick={() => setSelectedParticipants(selectedParticipants.filter((id) => id !== empId))}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {meeting.participants && meeting.participants.length > 0 ? (

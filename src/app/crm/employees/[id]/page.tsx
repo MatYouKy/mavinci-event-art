@@ -167,6 +167,8 @@ export default function EmployeeDetailPage() {
   }, [employeeId, currentEmployee]);
 
   const canEdit = canManageModule('employees');
+  const isOwnProfile = currentEmployee?.id === employeeId;
+  const canViewOwnProfile = isOwnProfile || canEdit || isAdmin;
 
   const fetchEmployeeDetails = async () => {
     try {
@@ -258,14 +260,22 @@ export default function EmployeeDetailPage() {
 
   const handleSave = async () => {
     try {
-      const { error } = await supabase.from('employees').update(editedData).eq('id', employeeId);
+      const dataToUpdate = { ...editedData };
+
+      if (isOwnProfile && !canEdit) {
+        delete dataToUpdate.role;
+        delete dataToUpdate.access_level;
+        delete dataToUpdate.permissions;
+      }
+
+      const { error } = await supabase.from('employees').update(dataToUpdate).eq('id', employeeId);
 
       if (error) {
         console.error('Supabase error:', error);
         throw error;
       }
 
-      setEmployee({ ...employee, ...editedData } as Employee);
+      setEmployee({ ...employee, ...dataToUpdate } as Employee);
       setIsEditing(false);
     } catch (err) {
       console.error('Error updating employee:', err);
@@ -483,7 +493,7 @@ export default function EmployeeDetailPage() {
             {employee.occupation || getRoleLabel(employee.role)}
           </p>
         </div>
-        {canEdit && !isEditing ? (
+        {(canEdit || isOwnProfile) && !isEditing ? (
           <button
             onClick={() => setIsEditing(true)}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"

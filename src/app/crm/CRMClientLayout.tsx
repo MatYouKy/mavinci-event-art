@@ -183,6 +183,16 @@ function TaskAccessWrapper({
         }
       }
 
+      const employeeIdMatch = pathname.match(/^\/crm\/employees\/([a-f0-9-]+)$/);
+      if (employeeIdMatch && employee?.id) {
+        const profileEmployeeId = employeeIdMatch[1];
+        if (profileEmployeeId === employee.id) {
+          setHasAccess(true);
+          setLoading(false);
+          return;
+        }
+      }
+
       const hasPermission =
         employee && (isAdmin(employee) || canView(employee, currentNav.module));
 
