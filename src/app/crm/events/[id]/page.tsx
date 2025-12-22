@@ -764,6 +764,9 @@ export default function EventDetailPage() {
                                 responded_at: new Date().toISOString(),
                               })
                               .eq('id', assignment.id);
+
+                            showSnackbar('Zaproszenie zostało zaakceptowane', 'success');
+                            window.location.reload();
                           }
                         }}
                         className="rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-2 text-green-400 transition-colors hover:bg-green-500/30"
@@ -899,7 +902,13 @@ export default function EventDetailPage() {
               <p className="text-[#e5e4e2]/60">Brak przypisanych pracowników</p>
             </div>
           ) : (
-            <TeamMembersList employees={employees} onRemove={handleRemoveEmployee} />
+            <TeamMembersList
+              employees={employees}
+              onRemove={handleRemoveEmployee}
+              canManageTeam={canManageTeam}
+              currentUserId={currentUserId}
+              eventCreatorId={event?.created_by}
+            />
           )}
         </div>
       )}

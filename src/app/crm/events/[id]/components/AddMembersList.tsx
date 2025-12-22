@@ -8,9 +8,18 @@ import { Employee } from '@/lib/permissions';
 interface TeamMembersListProps {
   employees: Employee[] | any[];
   onRemove: (id: string) => void;
+  canManageTeam?: boolean;
+  currentUserId?: string | null;
+  eventCreatorId?: string;
 }
 
-export function TeamMembersList({ employees, onRemove }: TeamMembersListProps) {
+export function TeamMembersList({
+  employees,
+  onRemove,
+  canManageTeam = false,
+  currentUserId = null,
+  eventCreatorId,
+}: TeamMembersListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');
@@ -163,7 +172,7 @@ export function TeamMembersList({ employees, onRemove }: TeamMembersListProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {!isEditing && (
+                  {!isEditing && canManageTeam && (
                     <>
                       <button
                         onClick={(e) => {
@@ -253,15 +262,17 @@ export function TeamMembersList({ employees, onRemove }: TeamMembersListProps) {
                     </div>
                   )}
 
-                  <div className="pt-2">
-                    <button
-                      onClick={() => openPermissionsModal(item)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
-                    >
-                      <User className="h-4 w-4" />
-                      Zarządzaj uprawnieniami
-                    </button>
-                  </div>
+                  {canManageTeam && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => openPermissionsModal(item)}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                      >
+                        <User className="h-4 w-4" />
+                        Zarządzaj uprawnieniami
+                      </button>
+                    </div>
+                  )}
 
                   {(item.can_edit_event ||
                     item.can_edit_agenda ||
