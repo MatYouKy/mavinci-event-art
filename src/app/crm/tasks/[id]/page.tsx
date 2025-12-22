@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus, CreditCard as Edit3, Save, X, UserPlus, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Paperclip, Send, Download, Trash2, Link as LinkIcon, ExternalLink, File, UserMinus, CreditCard as Edit3, Save, X, UserPlus, Image as ImageIcon, FileText, ZoomIn } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -139,6 +139,11 @@ export default function TaskDetailPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [availableEmployees, setAvailableEmployees] = useState<Employee[]>([]);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{
+    url: string;
+    name: string;
+    type: string;
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -738,6 +743,14 @@ export default function TaskDetailPage() {
     return fileType.startsWith('image/');
   };
 
+  const isPDF = (fileType: string) => {
+    return fileType === 'application/pdf';
+  };
+
+  const handlePreviewFile = (url: string, name: string, type: string) => {
+    setPreviewFile({ url, name, type });
+  };
+
   const canDeleteComment = (commentEmployeeId: string) => {
     if (!currentEmployee) return false;
 
@@ -1062,16 +1075,32 @@ export default function TaskDetailPage() {
                     {item.type === 'attachment' && item.attachment && (
                       <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-2">
                         <div className="flex items-center gap-2">
-                          {isImage(item.attachment.file_type) && item.attachment.file_url ? (
-                            <img
-                              src={item.attachment.file_url}
-                              alt={item.attachment.file_name}
-                              className="max-h-16 w-auto object-cover rounded"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 rounded bg-[#d3bb73]/10 flex items-center justify-center">
-                              <File className="w-4 h-4 text-[#d3bb73]" />
-                            </div>
+                          {item.attachment.file_url && (
+                            <button
+                              onClick={() => handlePreviewFile(item.attachment!.file_url!, item.attachment!.file_name, item.attachment!.file_type)}
+                              className="flex-shrink-0 relative group"
+                            >
+                              {isImage(item.attachment.file_type) ? (
+                                <>
+                                  <img
+                                    src={item.attachment.file_url}
+                                    alt={item.attachment.file_name}
+                                    className="max-h-16 w-auto object-cover rounded"
+                                  />
+                                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center">
+                                    <ZoomIn className="w-4 h-4 text-white" />
+                                  </div>
+                                </>
+                              ) : isPDF(item.attachment.file_type) ? (
+                                <div className="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center group-hover:bg-red-500/30 transition-colors">
+                                  <FileText className="w-4 h-4 text-red-400" />
+                                </div>
+                              ) : (
+                                <div className="w-8 h-8 rounded bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
+                                  <File className="w-4 h-4 text-[#d3bb73]" />
+                                </div>
+                              )}
+                            </button>
                           )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1 mb-0.5">
@@ -1152,16 +1181,32 @@ export default function TaskDetailPage() {
                     {item.type === 'attachment' && item.attachment && (
                       <div className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-3">
                         <div className="flex items-center gap-3">
-                          {isImage(item.attachment.file_type) && item.attachment.file_url ? (
-                            <img
-                              src={item.attachment.file_url}
-                              alt={item.attachment.file_name}
-                              className="max-h-16 w-auto object-cover rounded-lg"
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center">
-                              <File className="w-6 h-6 text-[#d3bb73]" />
-                            </div>
+                          {item.attachment.file_url && (
+                            <button
+                              onClick={() => handlePreviewFile(item.attachment!.file_url!, item.attachment!.file_name, item.attachment!.file_type)}
+                              className="flex-shrink-0 relative group"
+                            >
+                              {isImage(item.attachment.file_type) ? (
+                                <>
+                                  <img
+                                    src={item.attachment.file_url}
+                                    alt={item.attachment.file_name}
+                                    className="max-h-16 w-auto object-cover rounded-lg"
+                                  />
+                                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                                    <ZoomIn className="w-5 h-5 text-white" />
+                                  </div>
+                                </>
+                              ) : isPDF(item.attachment.file_type) ? (
+                                <div className="w-12 h-12 rounded-lg bg-red-500/20 flex items-center justify-center group-hover:bg-red-500/30 transition-colors">
+                                  <FileText className="w-6 h-6 text-red-400" />
+                                </div>
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
+                                  <File className="w-6 h-6 text-[#d3bb73]" />
+                                </div>
+                              )}
+                            </button>
                           )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -1320,6 +1365,83 @@ export default function TaskDetailPage() {
                 <p className="text-sm text-[#e5e4e2]/60 text-center py-8">
                   Wszyscy dostępni pracownicy są już przypisani do tego zadania
                 </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="relative bg-[#0f1119] rounded-lg max-w-6xl max-h-[90vh] w-full overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-[#d3bb73]/10">
+              <h3 className="text-lg font-semibold text-[#e5e4e2] truncate pr-4">
+                {previewFile.name}
+              </h3>
+              <div className="flex gap-2">
+                <a
+                  href={previewFile.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
+                  className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                  title="Pobierz"
+                >
+                  <Download className="w-5 h-5 text-[#d3bb73]" />
+                </a>
+                <button
+                  onClick={() => setPreviewFile(null)}
+                  className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-red-400" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {isImage(previewFile.type) && (
+                <div className="flex items-center justify-center min-h-full">
+                  <img
+                    src={previewFile.url}
+                    alt={previewFile.name}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              )}
+
+              {isPDF(previewFile.type) && (
+                <iframe
+                  src={previewFile.url}
+                  className="w-full h-[calc(90vh-120px)] rounded-lg"
+                  title={previewFile.name}
+                />
+              )}
+
+              {!isImage(previewFile.type) && !isPDF(previewFile.type) && (
+                <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+                  <File className="w-16 h-16 text-[#d3bb73] mb-4" />
+                  <p className="text-lg text-[#e5e4e2] mb-2">{previewFile.name}</p>
+                  <p className="text-sm text-[#e5e4e2]/60 mb-6">
+                    Podgląd niedostępny dla tego typu pliku
+                  </p>
+                  <a
+                    href={previewFile.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] hover:bg-[#b8a05e] text-[#0a0d1a] rounded-lg transition-colors font-medium"
+                  >
+                    <Download className="w-5 h-5" />
+                    Pobierz plik
+                  </a>
+                </div>
               )}
             </div>
           </div>
