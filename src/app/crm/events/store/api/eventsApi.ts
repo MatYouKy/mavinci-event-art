@@ -499,14 +499,19 @@ export const eventsApi = createApi({
 
           if (error) throw error;
 
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session && data?.id) {
+          if (data?.id) {
             try {
-              await supabase.functions.invoke('send-event-invitation', {
+              console.log('[addEventEmployee] Calling send-event-invitation for assignment:', data.id);
+              const result = await supabase.functions.invoke('send-event-invitation', {
                 body: { assignmentId: data.id },
               });
+              console.log('[addEventEmployee] Email function result:', result);
+
+              if (result.error) {
+                console.error('[addEventEmployee] Email function error:', result.error);
+              }
             } catch (emailError) {
-              console.error('Failed to send invitation email:', emailError);
+              console.error('[addEventEmployee] Failed to send invitation email:', emailError);
             }
           }
 

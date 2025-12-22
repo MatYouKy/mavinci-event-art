@@ -20,11 +20,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log('[send-event-invitation] Starting...');
+    
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { assignmentId }: EventInvitationRequest = await req.json();
+    console.log('[send-event-invitation] Assignment ID:', assignmentId);
 
     if (!assignmentId) {
       throw new Error("Assignment ID is required");
@@ -62,8 +65,11 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (assignmentError || !assignment) {
+      console.error('[send-event-invitation] Assignment not found:', assignmentError);
       throw new Error("Assignment not found");
     }
+
+    console.log('[send-event-invitation] Assignment status:', assignment.status);
 
     if (assignment.status !== "pending") {
       throw new Error("Can only send invitations for pending assignments");
@@ -71,6 +77,8 @@ Deno.serve(async (req: Request) => {
 
     const employee = assignment.employees as any;
     const event = assignment.events as any;
+
+    console.log('[send-event-invitation] Employee email:', employee?.email);
 
     if (!employee?.email) {
       throw new Error("Employee email not found");
@@ -81,8 +89,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const frontendUrl = Deno.env.get("FRONTEND_URL") || "https://mavinci.pl";
-    const acceptUrl = `${frontendUrl}/crm/events/invitation/accept?token=${assignment.invitation_token}`;
-    const rejectUrl = `${frontendUrl}/crm/events/invitation/reject?token=${assignment.invitation_token}`;
+    console.log('[send-event-invitation] Frontend URL:', frontendUrl);
+    
+    const acceptUrl = `${frontendUrl}/api/events/invitation/accept?token=${assignment.invitation_token}`;
+    const rejectUrl = `${frontendUrl}/api/events/invitation/reject?token=${assignment.invitation_token}`;
     const eventUrl = `${frontendUrl}/crm/events/${event.id}`;
 
     const eventDateFormatted = new Date(event.event_date).toLocaleDateString('pl-PL', {
@@ -220,8 +230,12 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!systemEmail) {
+      console.error('[send-event-invitation] System email not configured');
       throw new Error("System email account not configured");
     }
+
+    console.log('[send-event-invitation] System email found:', systemEmail.id);
+    console.log('[send-event-invitation] Sending email to:', employee.email);
 
     const sendEmailUrl = `${supabaseUrl}/functions/v1/send-email`;
     const sendEmailResponse = await fetch(sendEmailUrl, {
@@ -240,8 +254,11 @@ Deno.serve(async (req: Request) => {
 
     if (!sendEmailResponse.ok) {
       const errorData = await sendEmailResponse.json();
+      console.error('[send-event-invitation] Email send failed:', errorData);
       throw new Error(`Failed to send email: ${errorData.error || 'Unknown error'}`);
     }
+
+    console.log('[send-event-invitation] Email sent successfully');
 
     await supabase
       .from("employee_assignments")
@@ -250,6 +267,8 @@ Deno.serve(async (req: Request) => {
         invitation_email_sent_at: new Date().toISOString(),
       })
       .eq("id", assignmentId);
+
+    console.log('[send-event-invitation] Assignment updated');
 
     return new Response(
       JSON.stringify({
@@ -265,7 +284,7 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error("Error sending invitation email:", error);
+    console.error("[send-event-invitation] Error:", error);
     return new Response(
       JSON.stringify({
         success: false,
