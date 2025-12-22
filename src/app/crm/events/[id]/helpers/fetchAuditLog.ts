@@ -14,7 +14,7 @@ export   const fetchAuditLog = async (eventId: string) => {
           nickname,
           avatar_url,
           avatar_metadata,
-          occupation,r
+          occupation,
           email
         )
       `,
