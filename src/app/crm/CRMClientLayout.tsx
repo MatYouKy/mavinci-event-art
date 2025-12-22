@@ -125,7 +125,6 @@ function TaskAccessWrapper({
       }
 
       const taskIdMatch = pathname.match(/^\/crm\/tasks\/([a-f0-9-]+)$/);
-
       if (taskIdMatch && employee?.id) {
         const taskId = taskIdMatch[1];
 
@@ -150,6 +149,33 @@ function TaskAccessWrapper({
             .maybeSingle();
 
           if (assignee) {
+            setHasAccess(true);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      const eventIdMatch = pathname.match(/^\/crm\/events\/([a-f0-9-]+)$/);
+      if (eventIdMatch && employee?.id) {
+        const eventId = eventIdMatch[1];
+
+        if (isAdmin(employee) || employee.permissions?.includes('events_manage')) {
+          setHasAccess(true);
+          setLoading(false);
+          return;
+        }
+
+        if (employee.permissions?.includes('events_view')) {
+          const { data: assignment } = await supabase
+            .from('employee_assignments')
+            .select('employee_id')
+            .eq('event_id', eventId)
+            .eq('employee_id', employee.id)
+            .eq('status', 'accepted')
+            .maybeSingle();
+
+          if (assignment) {
             setHasAccess(true);
             setLoading(false);
             return;
