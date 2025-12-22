@@ -56,7 +56,7 @@ export const messagesApi = api.injectEndpoints({
                 assigned_employee:employees!assigned_to(name, surname)
               `)
               .order('created_at', { ascending: false })
-              .range(offset, offset + limit - 1);
+              .range(offset, offset + limit);
 
             if (contactMessages) {
               allMessages.push(
@@ -86,7 +86,7 @@ export const messagesApi = api.injectEndpoints({
               .from('sent_emails')
               .select('id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)')
               .order('sent_at', { ascending: false })
-              .range(offset, offset + limit - 1);
+              .range(offset, offset + limit);
 
             if (emailAccountId !== 'all') {
               sentQuery = sentQuery.eq('email_account_id', emailAccountId);
@@ -142,7 +142,7 @@ export const messagesApi = api.injectEndpoints({
                 assigned_employee:employees!assigned_to(name, surname)
               `)
               .order('received_date', { ascending: false })
-              .range(offset, offset + limit - 1);
+              .range(offset, offset + limit);
 
             if (emailAccountId !== 'all') {
               receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
@@ -187,11 +187,14 @@ export const messagesApi = api.injectEndpoints({
             ? allMessages
             : allMessages.filter(msg => msg.type === filterType);
 
+          const hasMore = filteredMessages.length > limit;
+          const messages = hasMore ? filteredMessages.slice(0, limit) : filteredMessages;
+
           return {
             data: {
-              messages: filteredMessages,
-              hasMore: filteredMessages.length >= limit,
-              total: filteredMessages.length,
+              messages,
+              hasMore,
+              total: messages.length,
             },
           };
         } catch (error) {
@@ -377,6 +380,215 @@ export const messagesApi = api.injectEndpoints({
       },
       invalidatesTags: [{ type: 'Message', id: 'LIST' }],
     }),
+
+    searchMessages: builder.query<
+      { messages: MessageListItem[]; total: number },
+      {
+        emailAccountId: string;
+        query: string;
+        dateFrom?: string;
+        dateTo?: string;
+        filterType?: 'all' | 'contact_form' | 'sent' | 'received';
+      }
+    >({
+      queryFn: async ({ emailAccountId, query, dateFrom, dateTo, filterType = 'all' }) => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const allMessages: MessageListItem[] = [];
+          const searchQuery = query.toLowerCase();
+
+          if (emailAccountId === 'all' || emailAccountId === 'contact_form') {
+            let contactQuery = supabase
+              .from('contact_messages')
+              .select(`
+                id,
+                name,
+                email,
+                subject,
+                message,
+                created_at,
+                status,
+                assigned_to,
+                assigned_employee:employees!assigned_to(name, surname)
+              `)
+              .order('created_at', { ascending: false });
+
+            if (dateFrom) {
+              contactQuery = contactQuery.gte('created_at', dateFrom);
+            }
+            if (dateTo) {
+              contactQuery = contactQuery.lte('created_at', dateTo);
+            }
+
+            const { data: contactMessages } = await contactQuery;
+
+            if (contactMessages) {
+              allMessages.push(
+                ...contactMessages
+                  .filter((msg: any) => {
+                    const searchIn = `${msg.name} ${msg.email} ${msg.subject || ''} ${msg.message}`.toLowerCase();
+                    return searchIn.includes(searchQuery);
+                  })
+                  .map((msg: any) => ({
+                    id: msg.id,
+                    type: 'contact_form' as const,
+                    from: `${msg.name} <${msg.email}>`,
+                    to: 'Formularz kontaktowy',
+                    subject: msg.subject || 'Wiadomość z formularza',
+                    preview: msg.message.substring(0, 100) + (msg.message.length > 100 ? '...' : ''),
+                    date: msg.created_at,
+                    isRead: msg.status !== 'new',
+                    isStarred: false,
+                    status: msg.status,
+                    assigned_to: msg.assigned_to,
+                    assigned_employee: msg.assigned_employee,
+                  }))
+              );
+            }
+          }
+
+          if (emailAccountId !== 'contact_form') {
+            const { supabase: supabaseClient } = await import('@/lib/supabase');
+            const { data: { user } } = await supabaseClient.auth.getUser();
+
+            let sentQuery = supabase
+              .from('sent_emails')
+              .select('id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)')
+              .order('sent_at', { ascending: false });
+
+            if (dateFrom) {
+              sentQuery = sentQuery.gte('sent_at', dateFrom);
+            }
+            if (dateTo) {
+              sentQuery = sentQuery.lte('sent_at', dateTo);
+            }
+
+            if (emailAccountId !== 'all') {
+              sentQuery = sentQuery.eq('email_account_id', emailAccountId);
+            } else if (user) {
+              const { data: userAccounts } = await supabase
+                .from('employee_email_accounts')
+                .select('id')
+                .eq('employee_id', user.id)
+                .eq('is_active', true);
+
+              if (userAccounts && userAccounts.length > 0) {
+                const accountIds = userAccounts.map(acc => acc.id);
+                sentQuery = sentQuery.in('email_account_id', accountIds);
+              }
+            }
+
+            const { data: sentEmails } = await sentQuery;
+
+            if (sentEmails) {
+              allMessages.push(
+                ...sentEmails
+                  .filter((msg: any) => {
+                    const searchIn = `${msg.to_address} ${msg.subject || ''} ${msg.body || ''}`.toLowerCase();
+                    return searchIn.includes(searchQuery);
+                  })
+                  .map((msg: any) => {
+                    const employeeName = msg.employees ? `${msg.employees.name} ${msg.employees.surname}` : msg.employees?.email || 'Nieznany';
+                    return {
+                      id: msg.id,
+                      type: 'sent' as const,
+                      from: employeeName,
+                      to: msg.to_address,
+                      subject: msg.subject || '(Brak tematu)',
+                      preview: (msg.body || '').substring(0, 100) + ((msg.body || '').length > 100 ? '...' : ''),
+                      date: msg.sent_at,
+                      isRead: true,
+                      isStarred: false,
+                      email_account_id: msg.email_account_id,
+                    };
+                  })
+              );
+            }
+
+            let receivedQuery = supabase
+              .from('received_emails')
+              .select(`
+                id,
+                from_address,
+                to_address,
+                subject,
+                received_date,
+                is_read,
+                is_starred,
+                assigned_to,
+                email_account_id,
+                assigned_employee:employees!assigned_to(name, surname)
+              `)
+              .order('received_date', { ascending: false });
+
+            if (dateFrom) {
+              receivedQuery = receivedQuery.gte('received_date', dateFrom);
+            }
+            if (dateTo) {
+              receivedQuery = receivedQuery.lte('received_date', dateTo);
+            }
+
+            if (emailAccountId !== 'all') {
+              receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
+            } else if (user) {
+              const { data: userAccounts } = await supabase
+                .from('employee_email_accounts')
+                .select('id')
+                .eq('employee_id', user.id)
+                .eq('is_active', true);
+
+              if (userAccounts && userAccounts.length > 0) {
+                const accountIds = userAccounts.map(acc => acc.id);
+                receivedQuery = receivedQuery.in('email_account_id', accountIds);
+              }
+            }
+
+            const { data: receivedEmails } = await receivedQuery;
+
+            if (receivedEmails) {
+              allMessages.push(
+                ...receivedEmails
+                  .filter((msg: any) => {
+                    const searchIn = `${msg.from_address} ${msg.to_address} ${msg.subject || ''}`.toLowerCase();
+                    return searchIn.includes(searchQuery);
+                  })
+                  .map((msg: any) => ({
+                    id: msg.id,
+                    type: 'received' as const,
+                    from: msg.from_address,
+                    to: msg.to_address,
+                    subject: msg.subject || '(Brak tematu)',
+                    preview: '',
+                    date: msg.received_date,
+                    isRead: msg.is_read,
+                    isStarred: msg.is_starred,
+                    assigned_to: msg.assigned_to,
+                    assigned_employee: msg.assigned_employee,
+                    email_account_id: msg.email_account_id,
+                  }))
+              );
+            }
+          }
+
+          allMessages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+          const filteredMessages = filterType === 'all'
+            ? allMessages
+            : allMessages.filter(msg => msg.type === filterType);
+
+          return {
+            data: {
+              messages: filteredMessages,
+              total: filteredMessages.length,
+            },
+          };
+        } catch (error) {
+          console.error('Error searching messages:', error);
+          return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
+        }
+      },
+      keepUnusedDataFor: 60,
+    }),
   }),
   overrideExisting: false,
 });
@@ -384,6 +596,8 @@ export const messagesApi = api.injectEndpoints({
 export const {
   useGetMessagesListQuery,
   useGetMessageDetailsQuery,
+  useSearchMessagesQuery,
+  useLazySearchMessagesQuery,
   useMarkMessageAsReadMutation,
   useToggleStarMessageMutation,
   useDeleteMessageMutation,

@@ -10,13 +10,15 @@ import {
   Inbox,
   Loader2,
   Shield,
+  Calendar,
+  X,
 } from 'lucide-react';
 import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
-import { useGetMessagesListQuery, useMarkMessageAsReadMutation, useDeleteMessageMutation, useToggleStarMessageMutation } from '@/store/api/messagesApi';
+import { useGetMessagesListQuery, useMarkMessageAsReadMutation, useDeleteMessageMutation, useToggleStarMessageMutation, useLazySearchMessagesQuery } from '@/store/api/messagesApi';
 
 export default function AllEmailAccountsPage() {
   const router = useRouter();
@@ -34,6 +36,10 @@ export default function AllEmailAccountsPage() {
   const [offset, setOffset] = useState(0);
   const [allMessages, setAllMessages] = useState<any[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [isSearchMode, setIsSearchMode] = useState(false);
   const pageSize = 50;
   const observerTarget = useRef<HTMLDivElement>(null);
 
@@ -45,12 +51,51 @@ export default function AllEmailAccountsPage() {
     limit: pageSize,
     filterType,
   }, {
-    skip: !selectedAccount || emailAccounts.length === 0 || !isAdmin,
+    skip: !selectedAccount || emailAccounts.length === 0 || !isAdmin || isSearchMode,
   });
+
+  const [triggerSearch, { data: searchData, isLoading: isSearching }] = useLazySearchMessagesQuery();
 
   const [markAsRead] = useMarkMessageAsReadMutation();
   const [deleteMessage] = useDeleteMessageMutation();
   const [toggleStar] = useToggleStarMessageMutation();
+
+  const handleAdvancedSearch = async () => {
+    if (!searchQuery.trim()) {
+      showSnackbar('Wprowadź frazę do wyszukania', 'warning');
+      return;
+    }
+
+    setIsSearchMode(true);
+    setAllMessages([]);
+
+    try {
+      const result = await triggerSearch({
+        emailAccountId: selectedAccount,
+        query: searchQuery,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        filterType,
+      }).unwrap();
+
+      setAllMessages(result.messages);
+      showSnackbar(`Znaleziono ${result.total} wiadomości`, 'success');
+    } catch (error) {
+      console.error('Search error:', error);
+      showSnackbar('Błąd podczas wyszukiwania', 'error');
+    }
+  };
+
+  const handleClearSearch = () => {
+    setIsSearchMode(false);
+    setSearchQuery('');
+    setDateFrom('');
+    setDateTo('');
+    setShowAdvancedSearch(false);
+    setOffset(0);
+    setAllMessages([]);
+    refetch();
+  };
 
   useEffect(() => {
     if (messagesData?.messages) {
@@ -393,35 +438,116 @@ export default function AllEmailAccountsPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Szukaj wiadomości..."
-                  className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
-                />
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && searchQuery.trim()) {
+                        handleAdvancedSearch();
+                      }
+                    }}
+                    placeholder="Szukaj wiadomości..."
+                    className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+                    className={`px-4 py-3 rounded-lg transition-colors flex items-center gap-2 ${
+                      showAdvancedSearch
+                        ? 'bg-[#d3bb73] text-[#1c1f33]'
+                        : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
+                    }`}
+                    title="Zaawansowane wyszukiwanie"
+                  >
+                    <Calendar className="w-5 h-5" />
+                  </button>
+                  {isSearchMode && (
+                    <button
+                      onClick={handleClearSearch}
+                      className="px-4 py-3 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors flex items-center gap-2"
+                      title="Wyczyść wyszukiwanie"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={fetchEmailsFromServer}
+                    disabled={isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
+                    className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    title="Pobierz nowe wiadomości z serwera email"
+                  >
+                    <Inbox className="w-5 h-5" />
+                    <span className="hidden sm:inline">Pobierz z serwera</span>
+                  </button>
+                  <button
+                    onClick={() => isSearchMode ? handleClearSearch() : refetch()}
+                    disabled={isLoading}
+                    className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={fetchEmailsFromServer}
-                  disabled={isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                  className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title="Pobierz nowe wiadomości z serwera email"
-                >
-                  <Inbox className="w-5 h-5" />
-                  <span className="hidden sm:inline">Pobierz z serwera</span>
-                </button>
-                <button
-                  onClick={() => refetch()}
-                  disabled={isLoading}
-                  className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
+
+              {showAdvancedSearch && (
+                <div className="bg-[#0f1119] rounded-lg p-4 space-y-4">
+                  <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">Zaawansowane wyszukiwanie</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs text-[#e5e4e2]/70 mb-2">Data od</label>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="w-full px-3 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#e5e4e2]/70 mb-2">Data do</label>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="w-full px-3 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none text-sm"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={handleAdvancedSearch}
+                        disabled={!searchQuery.trim() || isSearching}
+                        className="w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isSearching ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Wyszukiwanie...
+                          </>
+                        ) : (
+                          <>
+                            <Search className="w-4 h-4" />
+                            Szukaj w całej historii
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  {isSearchMode && allMessages.length > 0 && (
+                    <div className="pt-2 border-t border-[#d3bb73]/10">
+                      <p className="text-xs text-[#e5e4e2]/60">
+                        Tryb wyszukiwania aktywny: {allMessages.length} wyników
+                        {dateFrom && ` • Od: ${new Date(dateFrom).toLocaleDateString('pl-PL')}`}
+                        {dateTo && ` • Do: ${new Date(dateTo).toLocaleDateString('pl-PL')}`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
