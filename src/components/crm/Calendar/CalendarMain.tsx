@@ -103,7 +103,7 @@ export default function CalendarMain() {
       if (session?.user?.id) {
         const { data } = await supabase
           .from('employees')
-          .select('id, name, surname, permissions')
+          .select('id, name, surname, permissions, role')
           .eq('id', session.user.id)
           .single();
         setCurrentEmployee(data);
@@ -227,9 +227,23 @@ export default function CalendarMain() {
     setCurrentDate(new Date());
   };
 
+  const canCreateEvents = () => {
+    if (!currentEmployee) return false;
+    return (
+      currentEmployee.role === 'admin' ||
+      currentEmployee.permissions?.includes('calendar_manage')
+    );
+  };
+
   const handleNewEvent = (date?: Date) => {
     setModalInitialDate(date);
-    setShowTypeSelector(true);
+    const canCreate = canCreateEvents();
+
+    if (!canCreate) {
+      setIsMeetingModalOpen(true);
+    } else {
+      setShowTypeSelector(true);
+    }
   };
 
   const handleEventTypeSelect = (type: 'business' | 'individual' | 'meeting') => {
@@ -364,17 +378,26 @@ export default function CalendarMain() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-light text-[#e5e4e2]">Kalendarz</h1>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleNewMeeting()}
-              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
-            >
-              <CalendarIcon className="h-4 w-4" />
-            </button>
+            {canCreateEvents() && (
+              <button
+                onClick={() => handleNewMeeting()}
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+              >
+                <CalendarIcon className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={() => handleNewEvent()}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="h-4 w-4" />
+              {canCreateEvents() ? (
+                <Plus className="h-4 w-4" />
+              ) : (
+                <>
+                  <CalendarIcon className="h-4 w-4" />
+                  <span>Spotkanie</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -389,6 +412,7 @@ export default function CalendarMain() {
           isOpen={showTypeSelector}
           onClose={() => setShowTypeSelector(false)}
           onSelectType={handleEventTypeSelect}
+          canCreateEvents={canCreateEvents()}
         />
 
         <EventWizard
@@ -489,20 +513,31 @@ export default function CalendarMain() {
             ))}
           </div>
 
-          <button
-            onClick={() => handleNewMeeting()}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 md:px-4 md:text-sm"
-          >
-            <CalendarIcon className="h-4 w-4" />
-            <span className="hidden md:inline">Spotkanie</span>
-          </button>
+          {canCreateEvents() && (
+            <button
+              onClick={() => handleNewMeeting()}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 md:px-4 md:text-sm"
+            >
+              <CalendarIcon className="h-4 w-4" />
+              <span className="hidden md:inline">Spotkanie</span>
+            </button>
+          )}
 
           <button
             onClick={() => handleNewEvent()}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:px-4 md:text-sm"
           >
-            <Plus className="h-4 w-4" />
-            <span className="hidden md:inline">Nowe wydarzenie</span>
+            {canCreateEvents() ? (
+              <>
+                <Plus className="h-4 w-4" />
+                <span className="hidden md:inline">Nowe wydarzenie</span>
+              </>
+            ) : (
+              <>
+                <CalendarIcon className="h-4 w-4" />
+                <span className="hidden md:inline">Nowe spotkanie</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -826,8 +861,17 @@ export default function CalendarMain() {
                 }}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Plus className="h-4 w-4" />
-                Dodaj nowe wydarzenie tego dnia
+                {canCreateEvents() ? (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    Dodaj nowe wydarzenie tego dnia
+                  </>
+                ) : (
+                  <>
+                    <CalendarIcon className="h-4 w-4" />
+                    Dodaj nowe spotkanie tego dnia
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -838,6 +882,7 @@ export default function CalendarMain() {
         isOpen={showTypeSelector}
         onClose={() => setShowTypeSelector(false)}
         onSelectType={handleEventTypeSelect}
+        canCreateEvents={canCreateEvents()}
       />
 
       <EventWizard
