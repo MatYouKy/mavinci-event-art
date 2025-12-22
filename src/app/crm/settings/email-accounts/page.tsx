@@ -50,6 +50,7 @@ export default function AllEmailAccountsPage() {
     offset,
     limit: pageSize,
     filterType,
+    showOnlyOpened: true,
   }, {
     skip: !selectedAccount || emailAccounts.length === 0 || !isAdmin || isSearchMode,
   });
@@ -219,12 +220,12 @@ export default function AllEmailAccountsPage() {
         .from('employee_email_accounts')
         .select('*, employees!fk_employee_email_accounts_employee_id(name, surname)')
         .eq('is_active', true)
+        .eq('employee_id', currentEmployee.id)
         .order('employee_id');
 
       if (error) throw error;
 
       const accounts = [
-        { id: 'all', email_address: 'Wszystkie konta', from_name: 'Wszystkie konta systemowe' },
         { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz kontaktowy' },
         ...(data || []).map((acc: any) => ({
           ...acc,

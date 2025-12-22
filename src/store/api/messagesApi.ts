@@ -28,6 +28,7 @@ export interface FetchMessagesParams {
   limit?: number;
   filterType?: 'all' | 'contact_form' | 'sent' | 'received';
   includeBody?: boolean;
+  showOnlyOpened?: boolean;
 }
 
 export const messagesApi = api.injectEndpoints({
@@ -36,13 +37,28 @@ export const messagesApi = api.injectEndpoints({
       { messages: MessageListItem[]; hasMore: boolean; total: number },
       FetchMessagesParams
     >({
-      queryFn: async ({ emailAccountId, offset = 0, limit = 50, filterType = 'all' }, { getState }: any) => {
+      queryFn: async ({ emailAccountId, offset = 0, limit = 50, filterType = 'all', showOnlyOpened = false }, { getState }: any) => {
         try {
           const { supabase } = await import('@/lib/supabase');
           const allMessages: MessageListItem[] = [];
 
-          if (emailAccountId === 'all' || emailAccountId === 'contact_form') {
-            const { data: contactMessages } = await supabase
+          const { data: { user } } = await supabase.auth.getUser();
+
+          const { data: currentEmployee } = user
+            ? await supabase
+                .from('employees')
+                .select('permissions')
+                .eq('id', user.id)
+                .maybeSingle()
+            : { data: null };
+
+          const isAdmin = currentEmployee?.permissions?.includes('admin');
+          const hasMessagesManage = currentEmployee?.permissions?.includes('messages:manage');
+          const hasMessagesView = currentEmployee?.permissions?.includes('messages:view');
+          const canViewContactForm = isAdmin || hasMessagesManage;
+
+          if ((emailAccountId === 'all' || emailAccountId === 'contact_form') && canViewContactForm) {
+            let contactMessagesQuery = supabase
               .from('contact_messages')
               .select(`
                 id,
@@ -57,6 +73,12 @@ export const messagesApi = api.injectEndpoints({
               `)
               .order('created_at', { ascending: false })
               .range(offset, offset + limit);
+
+            if (showOnlyOpened) {
+              contactMessagesQuery = contactMessagesQuery.neq('status', 'new');
+            }
+
+            const { data: contactMessages } = await contactMessagesQuery;
 
             if (contactMessages) {
               allMessages.push(
@@ -79,9 +101,6 @@ export const messagesApi = api.injectEndpoints({
           }
 
           if (emailAccountId !== 'contact_form') {
-            const { supabase: supabaseClient } = await import('@/lib/supabase');
-            const { data: { user } } = await supabaseClient.auth.getUser();
-
             let sentQuery = supabase
               .from('sent_emails')
               .select('id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)')
@@ -143,6 +162,10 @@ export const messagesApi = api.injectEndpoints({
               `)
               .order('received_date', { ascending: false })
               .range(offset, offset + limit);
+
+            if (showOnlyOpened) {
+              receivedQuery = receivedQuery.eq('is_read', true);
+            }
 
             if (emailAccountId !== 'all') {
               receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
