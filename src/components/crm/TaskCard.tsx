@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Calendar, GripVertical, Edit, Trash2, UserPlus, MessageSquare } from 'lucide-react';
+import { memo } from 'react';
 import TaskAssigneeAvatars from './TaskAssigneeAvatars';
 
 interface Task {
@@ -67,7 +68,7 @@ const priorityLabels = {
   urgent: 'Pilne',
 };
 
-export default function TaskCard({
+const TaskCard = memo(function TaskCard({
   task,
   isDragging = false,
   canManage = false,
@@ -204,4 +205,6 @@ export default function TaskCard({
       )}
     </div>
   );
-}
+});
+
+export default TaskCard;

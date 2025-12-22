@@ -141,7 +141,7 @@ export const tasksApi = createApi({
                 task_assignees: assigneesResult.data || [],
                 currently_working_employee: workingEmployeeResult.data,
                 comments_count: commentsCountResult.count || 0,
-              } as TaskListItem;
+              };
             })
           );
 
@@ -159,7 +159,7 @@ export const tasksApi = createApi({
             return a.order_index - b.order_index;
           });
 
-          return { data: sortedTasks };
+          return { data: sortedTasks as unknown as TaskListItem[] };
         } catch (error: any) {
           return { error: { status: 'CUSTOM_ERROR', error: error.message } };
         }
@@ -376,6 +376,25 @@ export const tasksApi = createApi({
           return { data: undefined };
         } catch (error: any) {
           return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+        }
+      },
+      async onQueryStarted({ id, ...updates }, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          tasksApi.util.updateQueryData('getTasksList', undefined, (draft) => {
+            const task = draft.find((t) => t.id === id);
+            if (task && updates.board_column) {
+              task.board_column = updates.board_column as any;
+              if (updates.currently_working_by !== undefined) {
+                task.currently_working_by = updates.currently_working_by;
+              }
+            }
+          })
+        );
+
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
         }
       },
       invalidatesTags: (result, error, { id }) => [

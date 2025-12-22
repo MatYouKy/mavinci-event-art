@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { Plus, CheckSquare, User, Calendar, MoreVertical, X, Trash2, CreditCard as Edit, GripVertical, Play, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -13,6 +13,128 @@ import { useGetTasksListQuery, useCreateTaskMutation, useUpdateTaskMutation, use
 type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 type TaskStatus = 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled';
 type TaskBoardColumn = 'todo' | 'in_progress' | 'review' | 'completed';
+
+interface TaskColumnProps {
+  column: { id: string; label: string; color: string };
+  tasks: any[];
+  draggedTask: any | null;
+  dragOverColumn: TaskBoardColumn | null;
+  canManage: boolean;
+  canCreate: boolean;
+  activeTimer: any;
+  isMobile: boolean;
+  onDragOver: (e: React.DragEvent, columnId: string) => void;
+  onDragLeave: () => void;
+  onDrop: (columnId: string) => void;
+  onDragStart: (task: any) => void;
+  onDragEnd: () => void;
+  onEdit: (task?: any, defaultColumn?: string) => void;
+  onDelete: (taskId: string) => void;
+  onStartTimer: (task: any) => void;
+}
+
+const TaskColumn = memo(function TaskColumn({
+  column,
+  tasks,
+  draggedTask,
+  dragOverColumn,
+  canManage,
+  canCreate,
+  activeTimer,
+  isMobile,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragStart,
+  onDragEnd,
+  onEdit,
+  onDelete,
+  onStartTimer,
+}: TaskColumnProps) {
+  return (
+    <div
+      onDragOver={(e) => onDragOver(e, column.id)}
+      onDragLeave={onDragLeave}
+      onDrop={() => onDrop(column.id)}
+      className={`flex flex-col border-2 bg-[#1c1f33] transition-all ${
+        dragOverColumn === column.id ? 'border-[#d3bb73] bg-[#d3bb73]/5' : column.color
+      } ${isMobile ? 'w-full rounded-lg p-2' : 'flex-shrink-0 rounded-xl p-4'}`}
+      style={{
+        width: isMobile ? '100%' : '320px',
+        height: '100%',
+      }}
+    >
+      <div
+        className={`flex flex-shrink-0 items-center justify-between ${isMobile ? 'mb-2' : 'mb-4'}`}
+      >
+        <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-[#e5e4e2]/60">{tasks.length}</span>
+          {canCreate && (
+            <button
+              onClick={() => onEdit(undefined, column.id)}
+              className="rounded p-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+              title="Dodaj zadanie"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div
+        className={`flex-1 overflow-y-auto ${isMobile ? '-mr-1 space-y-2 pr-1' : '-mr-2 space-y-3 pr-2'}`}
+      >
+        {tasks.map((task) => (
+          <div
+            key={task.id}
+            draggable
+            onDragStart={() => onDragStart(task)}
+            onDragEnd={onDragEnd}
+            className="cursor-move"
+          >
+            <TaskCard
+              task={task}
+              isDragging={draggedTask?.id === task.id}
+              canManage={canManage}
+              showDragHandle={true}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              additionalActions={
+                <button
+                  onClick={() => onStartTimer(task)}
+                  disabled={activeTimer?.task_id === task.id}
+                  className={`flex w-full items-center justify-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                    activeTimer?.task_id === task.id
+                      ? 'cursor-default bg-green-500/20 text-green-400'
+                      : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
+                  }`}
+                  title={
+                    activeTimer?.task_id === task.id
+                      ? 'Timer aktywny'
+                      : 'Rozpocznij zadanie'
+                  }
+                >
+                  {activeTimer?.task_id === task.id ? (
+                    <>
+                      <Clock className="h-3 w-3 animate-pulse" />
+                      <span>Aktywny</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3 w-3" />
+                      <span>Rozpocznij</span>
+                    </>
+                  )}
+                </button>
+              }
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
 
 interface Task {
   id: string;
@@ -57,7 +179,7 @@ export default function TasksPage() {
   const canCreateTasks = canCreateInModule('tasks');
   const canManageTasks = canManageModule('tasks');
 
-  const { data: tasks = [], isLoading: loading } = useGetTasksListQuery();
+  const { data: tasks = [], isLoading: loading, refetch } = useGetTasksListQuery();
   const [createTask] = useCreateTaskMutation();
   const [updateTask] = useUpdateTaskMutation();
   const [deleteTask] = useDeleteTaskMutation();
@@ -114,153 +236,38 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchEmployees();
+  }, []);
 
+  useEffect(() => {
+    if (currentEmployee) {
+      checkActiveTimer();
+    }
+  }, [currentEmployee]);
+
+  useEffect(() => {
     const tasksChannel = supabase
-      .channel('tasks_changes')
+      .channel('tasks_realtime')
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'tasks',
+          filter: 'is_private=eq.false'
         },
-        async (payload) => {
-          const updatedTask = payload.new as Task;
-
-          const { data: assignees } = await supabase
-            .from('task_assignees')
-            .select('employee_id')
-            .eq('task_id', updatedTask.id);
-
-          const assigneesWithEmployees = await Promise.all(
-            (assignees || []).map(async (assignee) => {
-              const { data: employee } = await supabase
-                .from('employees')
-                .select('name, surname, avatar_url, avatar_metadata')
-                .eq('id', assignee.employee_id)
-                .maybeSingle();
-
-              return {
-                employee_id: assignee.employee_id,
-                employees: employee || {
-                  name: '',
-                  surname: '',
-                  avatar_url: null,
-                  avatar_metadata: null,
-                },
-              };
-            }),
-          );
-
-          let currently_working_employee = null;
-          if (updatedTask.currently_working_by) {
-            const { data: workingEmployee } = await supabase
-              .from('employees')
-              .select('name, surname, avatar_url, avatar_metadata')
-              .eq('id', updatedTask.currently_working_by)
-              .maybeSingle();
-
-            currently_working_employee = workingEmployee;
-          }
-
-          const { count } = await supabase
-            .from('task_comments')
-            .select('*', { count: 'exact', head: true })
-            .eq('task_id', updatedTask.id);
+        () => {
+          refetch();
         },
       )
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'tasks',
-        },
-        async (payload) => {
-          const newTask = payload.new as Task;
-
-          const { data: assignees } = await supabase
-            .from('task_assignees')
-            .select('employee_id')
-            .eq('task_id', newTask.id);
-
-          const assigneesWithEmployees = await Promise.all(
-            (assignees || []).map(async (assignee) => {
-              const { data: employee } = await supabase
-                .from('employees')
-                .select('name, surname, avatar_url, avatar_metadata')
-                .eq('id', assignee.employee_id)
-                .maybeSingle();
-
-              return {
-                employee_id: assignee.employee_id,
-                employees: employee || {
-                  name: '',
-                  surname: '',
-                  avatar_url: null,
-                  avatar_metadata: null,
-                },
-              };
-            }),
-          );
-
-          let currently_working_employee = null;
-          if (newTask.currently_working_by) {
-            const { data: workingEmployee } = await supabase
-              .from('employees')
-              .select('name, surname, avatar_url, avatar_metadata')
-              .eq('id', newTask.currently_working_by)
-              .maybeSingle();
-
-            currently_working_employee = workingEmployee;
-          }
-
-          const { count } = await supabase
-            .from('task_comments')
-            .select('*', { count: 'exact', head: true })
-            .eq('task_id', newTask.id);
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'tasks',
-        },
-        (payload) => {
-          const deletedTaskId = payload.old.id;
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'task_assignees',
         },
-        async (payload) => {
-          const newAssignee = payload.new as any;
-
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('name, surname, avatar_url, avatar_metadata')
-            .eq('id', newAssignee.employee_id)
-            .maybeSingle();
-
-          if (employee) {
-          }
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'task_assignees',
-        },
-        (payload) => {
-          const deletedAssignee = payload.old as any;
+        () => {
+          refetch();
         },
       )
       .on(
@@ -270,14 +277,8 @@ export default function TasksPage() {
           schema: 'public',
           table: 'task_comments',
         },
-        async (payload) => {
-          const comment = payload.eventType === 'DELETE' ? payload.old : payload.new;
-          const taskId = comment.task_id;
-
-          const { count } = await supabase
-            .from('task_comments')
-            .select('*', { count: 'exact', head: true })
-            .eq('task_id', taskId);
+        () => {
+          refetch();
         },
       )
       .subscribe();
@@ -285,13 +286,7 @@ export default function TasksPage() {
     return () => {
       supabase.removeChannel(tasksChannel);
     };
-  }, []);
-
-  useEffect(() => {
-    if (currentEmployee) {
-      checkActiveTimer();
-    }
-  }, [currentEmployee]);
+  }, [refetch]);
 
   const fetchEmployees = async () => {
     try {
@@ -483,7 +478,7 @@ export default function TasksPage() {
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = useCallback(async (taskId: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć to zadanie? Usunięte zostaną również wszystkie powiązane wpisy czasu pracy. Ta operacja jest nieodwracalna.',
       'Usuń zadanie',
@@ -498,9 +493,9 @@ export default function TasksPage() {
       console.error('Error deleting task:', error);
       showSnackbar(error.message || 'Błąd podczas usuwania zadania', 'error');
     }
-  };
+  }, [deleteTask, showConfirm, showSnackbar]);
 
-  const handleAutoScroll = (e: React.DragEvent) => {
+  const handleAutoScroll = useCallback((e: React.DragEvent) => {
     if (!scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
@@ -524,28 +519,28 @@ export default function TasksPage() {
         container.scrollLeft += scrollSpeed;
       }, 16);
     }
-  };
+  }, []);
 
-  const stopAutoScroll = () => {
+  const stopAutoScroll = useCallback(() => {
     if (autoScrollIntervalRef.current) {
       clearInterval(autoScrollIntervalRef.current);
       autoScrollIntervalRef.current = null;
     }
-  };
+  }, []);
 
-  const handleDragStart = (task: Task) => {
+  const handleDragStart = useCallback((task: Task) => {
     setDraggedTask(task);
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent, columnId: string) => {
+  const handleDragOver = useCallback((e: React.DragEvent, columnId: string) => {
     e.preventDefault();
     setDragOverColumn(columnId as TaskBoardColumn);
     handleAutoScroll(e);
-  };
+  }, [handleAutoScroll]);
 
-  const handleDragLeave = () => {
+  const handleDragLeave = useCallback(() => {
     setDragOverColumn(null);
-  };
+  }, []);
 
   const handleDrop = async (columnId: string) => {
     if (!draggedTask || draggedTask.board_column === columnId) {
@@ -635,9 +630,9 @@ export default function TasksPage() {
     }
   };
 
-  const getTasksByColumn = (columnId: string) => {
+  const getTasksByColumn = useCallback((columnId: string) => {
     return tasks.filter((task) => task.board_column === columnId);
-  };
+  }, [tasks]);
 
   const minSwipeDistance = 50;
 
@@ -714,93 +709,28 @@ export default function TasksPage() {
           }}
         >
           {(isMobile ? [columns[activeColumnIndex]] : columns).map((column) => (
-            <div
+            <TaskColumn
               key={column.id}
-              onDragOver={(e) => handleDragOver(e, column.id)}
+              column={column}
+              tasks={getTasksByColumn(column.id)}
+              draggedTask={draggedTask}
+              dragOverColumn={dragOverColumn}
+              canManage={canManageTasks}
+              canCreate={canCreateTasks}
+              activeTimer={activeTimer}
+              isMobile={isMobile}
+              onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              onDrop={() => handleDrop(column.id)}
-              className={`flex flex-col border-2 bg-[#1c1f33] transition-all ${
-                dragOverColumn === column.id ? 'border-[#d3bb73] bg-[#d3bb73]/5' : column.color
-              } ${isMobile ? 'w-full rounded-lg p-2' : 'flex-shrink-0 rounded-xl p-4'}`}
-              style={{
-                width: isMobile ? '100%' : '320px',
-                height: '100%',
+              onDrop={handleDrop}
+              onDragStart={handleDragStart}
+              onDragEnd={() => {
+                setDraggedTask(null);
+                stopAutoScroll();
               }}
-            >
-              <div
-                className={`flex flex-shrink-0 items-center justify-between ${isMobile ? 'mb-2' : 'mb-4'}`}
-              >
-                <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-[#e5e4e2]/60">
-                    {getTasksByColumn(column.id).length}
-                  </span>
-                  {canCreateTasks && (
-                    <button
-                      onClick={() => handleOpenModal(undefined, column.id)}
-                      className="rounded p-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
-                      title="Dodaj zadanie"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div
-                className={`flex-1 overflow-y-auto ${isMobile ? '-mr-1 space-y-2 pr-1' : '-mr-2 space-y-3 pr-2'}`}
-              >
-                {getTasksByColumn(column.id).map((task) => (
-                  <div
-                    key={task.id}
-                    draggable
-                    onDragStart={() => handleDragStart(task)}
-                    onDragEnd={() => {
-                      setDraggedTask(null);
-                      stopAutoScroll();
-                    }}
-                    className="cursor-move"
-                  >
-                    <TaskCard
-                      task={task}
-                      isDragging={draggedTask?.id === task.id}
-                      canManage={canManageTasks}
-                      showDragHandle={true}
-                      onEdit={handleOpenModal}
-                      onDelete={handleDeleteTask}
-                      additionalActions={
-                        <button
-                          onClick={() => handleStartTimer(task)}
-                          disabled={activeTimer?.task_id === task.id}
-                          className={`flex w-full items-center justify-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
-                            activeTimer?.task_id === task.id
-                              ? 'cursor-default bg-green-500/20 text-green-400'
-                              : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
-                          }`}
-                          title={
-                            activeTimer?.task_id === task.id
-                              ? 'Timer aktywny'
-                              : 'Rozpocznij zadanie'
-                          }
-                        >
-                          {activeTimer?.task_id === task.id ? (
-                            <>
-                              <Clock className="h-3 w-3 animate-pulse" />
-                              <span>Aktywny</span>
-                            </>
-                          ) : (
-                            <>
-                              <Play className="h-3 w-3" />
-                              <span>Rozpocznij</span>
-                            </>
-                          )}
-                        </button>
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+              onEdit={handleOpenModal}
+              onDelete={handleDeleteTask}
+              onStartTimer={handleStartTimer}
+            />
           ))}
         </div>
       </div>
