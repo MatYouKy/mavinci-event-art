@@ -237,9 +237,14 @@ export default function TaskDetailPage() {
                 },
               };
 
-              setChatItems(prev => [...prev, chatItem].sort(
-                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-              ));
+              setChatItems(prev => {
+                const exists = prev.some(item => item.id === newAttachment.id);
+                if (exists) return prev;
+
+                return [...prev, chatItem].sort(
+                  (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                );
+              });
             }
           }
         )
@@ -352,6 +357,8 @@ export default function TaskDetailPage() {
         const tempId = `temp-${Date.now()}-${i}`;
         tempIds.push(tempId);
 
+        const blobUrl = isImage(file.type) ? URL.createObjectURL(file) : null;
+
         const optimisticAttachment: ChatItem = {
           id: tempId,
           type: 'attachment',
@@ -369,7 +376,7 @@ export default function TaskDetailPage() {
             event_file_id: null,
             is_linked: false,
             file_name: file.name,
-            file_url: null,
+            file_url: blobUrl,
             file_type: file.type,
             file_size: file.size,
             uploaded_by: currentEmployee.id,
@@ -393,13 +400,16 @@ export default function TaskDetailPage() {
           .from('event-files')
           .upload(filePath, file);
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          throw uploadError;
+        }
 
         const { data: { publicUrl } } = supabase.storage
           .from('event-files')
           .getPublicUrl(filePath);
 
-        const { error: dbError } = await supabase
+        const { data: newAttachment, error: dbError } = await supabase
           .from('task_attachments')
           .insert({
             task_id: taskId,
@@ -408,9 +418,30 @@ export default function TaskDetailPage() {
             file_type: file.type,
             file_size: file.size,
             uploaded_by: currentEmployee.id,
-          });
+          })
+          .select()
+          .single();
 
-        if (dbError) throw dbError;
+        if (dbError) {
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          throw dbError;
+        }
+
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+
+        setChatItems(prev => prev.map(item =>
+          item.id === tempId
+            ? {
+                ...item,
+                id: newAttachment.id,
+                attachment: {
+                  ...item.attachment!,
+                  id: newAttachment.id,
+                  file_url: publicUrl,
+                },
+              }
+            : item
+        ));
       }
 
       showSnackbar(`Dodano ${files.length} plik(ów)`, 'success');
@@ -592,7 +623,6 @@ export default function TaskDetailPage() {
       if (error) throw error;
 
       showSnackbar('Usunięto osobę z zadania', 'success');
-      fetchTask();
     } catch (error) {
       console.error('Error removing assignee:', error);
       showSnackbar('Błąd podczas usuwania osoby', 'error');
@@ -1036,7 +1066,7 @@ export default function TaskDetailPage() {
                             <img
                               src={item.attachment.file_url}
                               alt={item.attachment.file_name}
-                              className="w-32 h-20 object-cover rounded"
+                              className="max-h-16 w-auto object-cover rounded"
                             />
                           ) : (
                             <div className="w-8 h-8 rounded bg-[#d3bb73]/10 flex items-center justify-center">
@@ -1126,7 +1156,7 @@ export default function TaskDetailPage() {
                             <img
                               src={item.attachment.file_url}
                               alt={item.attachment.file_name}
-                              className="w-48 h-32 object-cover rounded-lg"
+                              className="max-h-16 w-auto object-cover rounded-lg"
                             />
                           ) : (
                             <div className="w-12 h-12 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center">
@@ -1248,7 +1278,7 @@ export default function TaskDetailPage() {
           onClose={() => setShowLinkFileModal(false)}
           taskId={taskId}
           eventId={task.event_id}
-          onFileLinked={fetchChatItems}
+          onFileLinked={() => {}}
         />
       )}
 
