@@ -85,9 +85,7 @@ export default function MobileCalendarView({
 
   const handleEventClick = (event: CalendarEvent) => {
     if ((event as any).is_meeting) {
-      alert(
-        `Spotkanie: ${event.name}\n\nData: ${new Date(event.event_date).toLocaleString('pl-PL')}\nLokalizacja: ${event.location || 'Brak'}\n\nNotatki: ${(event as any).meeting_data?.notes || 'Brak'}`,
-      );
+      router.push(`/crm/calendar/meeting/${event.id}`);
     } else {
       router.push(`/crm/events/${event.id}`);
     }

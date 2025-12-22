@@ -22,7 +22,7 @@ interface Meeting {
     id: string;
     name: string;
   };
-  event?: {
+  events?: {
     id: string;
     name: string;
   };
@@ -84,7 +84,7 @@ export default function MeetingDetailPage() {
         .select(`
           *,
           location:locations(id, name),
-          event:events(id, name),
+          events!event_id(id, name),
           creator:employees!meetings_created_by_fkey(id, full_name),
           participants:meeting_participants(
             id,
@@ -429,14 +429,14 @@ export default function MeetingDetailPage() {
             </div>
           )}
 
-          {meeting.event && (
+          {meeting.events && (
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#13161f] p-4">
               <p className="text-sm text-[#d3bb73]">Powiązane wydarzenie:</p>
               <button
                 onClick={() => router.push(`/crm/events/${meeting.event_id}`)}
                 className="mt-1 text-[#e5e4e2] hover:underline"
               >
-                {meeting.event.name}
+                {meeting.events.name}
               </button>
             </div>
           )}
