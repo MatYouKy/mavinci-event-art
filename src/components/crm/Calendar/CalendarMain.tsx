@@ -452,6 +452,12 @@ export default function CalendarMain() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
           <button
+            onClick={() => router.push('/crm/calendar/meetings')}
+            className="hidden rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73] hover:text-[#1c1f33] md:block"
+          >
+            Wszystkie spotkania
+          </button>
+          <button
             onClick={() => handleDateChange('prev')}
             className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
           >
