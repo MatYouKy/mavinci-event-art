@@ -136,6 +136,38 @@ export default function MessagesPage() {
     }
   }, [isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
 
+  const fetchEmailAccounts = useCallback(async () => {
+    if (!currentEmployee) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('employee_email_accounts')
+        .select('*')
+        .eq('is_active', true)
+        .eq('employee_id', currentEmployee.id);
+
+      if (error) throw error;
+
+      const accounts = [
+        ...(data && data.length > 0 ? [
+          { id: 'all', email_address: 'Wszystkie moje konta', from_name: 'Wszystkie moje konta' },
+        ] : []),
+        ...(canManage ? [{ id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' }] : []),
+        ...(data || []),
+      ];
+
+      setEmailAccounts(accounts);
+
+      if (accounts.length > 0) {
+        setSelectedAccount(accounts[0].id);
+      } else {
+        showSnackbar('Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem.', 'warning');
+      }
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
+    }
+  }, [currentEmployee, canManage, showSnackbar]);
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -162,7 +194,16 @@ export default function MessagesPage() {
     if (currentEmployee) {
       fetchEmailAccounts();
     }
-  }, [currentEmployee]);
+  }, [currentEmployee, fetchEmailAccounts]);
+
+  useEffect(() => {
+    if (!canManage && selectedAccount === 'contact_form') {
+      setSelectedAccount('all');
+    }
+    if (!canManage && filterType === 'contact_form') {
+      setFilterType('all');
+    }
+  }, [canManage, selectedAccount, filterType]);
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
@@ -228,38 +269,6 @@ export default function MessagesPage() {
       supabase.removeChannel(receivedChannel);
     };
   }, [currentEmployee, emailAccounts, selectedAccount, refetch]);
-
-  const fetchEmailAccounts = async () => {
-    if (!currentEmployee) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('employee_email_accounts')
-        .select('*')
-        .eq('is_active', true)
-        .eq('employee_id', currentEmployee.id);
-
-      if (error) throw error;
-
-      const accounts = [
-        ...(data && data.length > 0 ? [
-          { id: 'all', email_address: 'Wszystkie moje konta', from_name: 'Wszystkie moje konta' },
-        ] : []),
-        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz' },
-        ...(data || []),
-      ];
-
-      setEmailAccounts(accounts);
-
-      if (accounts.length > 0) {
-        setSelectedAccount(accounts[0].id);
-      } else {
-        showSnackbar('Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem.', 'warning');
-      }
-    } catch (error) {
-      console.error('Error fetching email accounts:', error);
-    }
-  };
 
   const handleMessageClick = async (messageId: string, messageType: 'contact_form' | 'sent' | 'received', isRead: boolean) => {
     router.push(`/crm/messages/${messageId}?type=${messageType}`);
@@ -562,7 +571,7 @@ export default function MessagesPage() {
                   className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   <option value="all">Wszystkie</option>
-                  <option value="contact_form">Formularz</option>
+                  {canManage && <option value="contact_form">Formularz</option>}
                   <option value="received">Odebrane</option>
                   <option value="sent">Wysłane</option>
                 </select>

@@ -125,6 +125,37 @@ export default function AllEmailAccountsPage() {
     }
   }, [isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
 
+  const fetchEmailAccounts = useCallback(async () => {
+    if (!currentEmployee || !isAdmin) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('employee_email_accounts')
+        .select('*, employees!fk_employee_email_accounts_employee_id(name, surname)')
+        .eq('is_active', true)
+        .eq('employee_id', currentEmployee.id)
+        .order('employee_id');
+
+      if (error) throw error;
+
+      const accounts = [
+        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz kontaktowy' },
+        ...(data || []).map((acc: any) => ({
+          ...acc,
+          from_name: `${acc.from_name} (${acc.employees?.name} ${acc.employees?.surname})`,
+        })),
+      ];
+
+      setEmailAccounts(accounts);
+
+      if (accounts.length > 0) {
+        setSelectedAccount(accounts[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
+    }
+  }, [currentEmployee, isAdmin]);
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -151,7 +182,7 @@ export default function AllEmailAccountsPage() {
     if (currentEmployee && isAdmin) {
       fetchEmailAccounts();
     }
-  }, [currentEmployee, isAdmin]);
+  }, [currentEmployee, isAdmin, fetchEmailAccounts]);
 
   useEffect(() => {
     if (!currentEmployee || emailAccounts.length === 0 || !isAdmin) return;
@@ -211,37 +242,6 @@ export default function AllEmailAccountsPage() {
       supabase.removeChannel(receivedChannel);
     };
   }, [currentEmployee, emailAccounts, selectedAccount, refetch, isAdmin]);
-
-  const fetchEmailAccounts = async () => {
-    if (!currentEmployee || !isAdmin) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('employee_email_accounts')
-        .select('*, employees!fk_employee_email_accounts_employee_id(name, surname)')
-        .eq('is_active', true)
-        .eq('employee_id', currentEmployee.id)
-        .order('employee_id');
-
-      if (error) throw error;
-
-      const accounts = [
-        { id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz kontaktowy' },
-        ...(data || []).map((acc: any) => ({
-          ...acc,
-          from_name: `${acc.from_name} (${acc.employees?.name} ${acc.employees?.surname})`,
-        })),
-      ];
-
-      setEmailAccounts(accounts);
-
-      if (accounts.length > 0) {
-        setSelectedAccount(accounts[0].id);
-      }
-    } catch (error) {
-      console.error('Error fetching email accounts:', error);
-    }
-  };
 
   const handleMessageClick = async (messageId: string, messageType: 'contact_form' | 'sent' | 'received', isRead: boolean) => {
     router.push(`/crm/messages/${messageId}?type=${messageType}`);
