@@ -1,17 +1,6 @@
 'use client';
 
-import {
-  ShieldCheck,
-  LogOut,
-  Settings,
-  User,
-  ChevronDown,
-  LayoutDashboard,
-  Globe,
-  CreditCard as Edit3,
-  Eye,
-  Bell,
-} from 'lucide-react';
+import { ChevronDown, Edit3, Eye, LayoutDashboard, LogOut, Settings } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEditMode } from '../contexts/EditModeContext';
@@ -19,9 +8,9 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAppSelector } from '../store/hooks';
 import { supabase } from '@/lib/supabase';
-import NotificationCenter from './crm/NotificationCenter';
-import { canEditWebsite, isAdmin } from '@/lib/permissions';
 import { useMobile } from '@/hooks/useMobile';
+import NotificationCenter from './crm/NotificationCenter';
+import { canEditWebsite } from '@/lib/permissions';
 
 const navLinks = [
   { label: 'O Nas', href: '/o-nas' },
@@ -338,9 +327,9 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
               </Link>
             </div>
 
-            {/* <div className="hidden items-center gap-3 md:flex">
+            <div className="hidden items-center gap-3 md:flex">
               {isAuthenticated && <NotificationCenter />}
-              {isAuthenticated ? (
+              {isAuthenticated && (
                 <div className="relative" ref={dropdownRef}>
                   <button
                     onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -482,20 +471,10 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                     </div>
                   )}
                 </div>
-              ) : (
-                <>
-                  <button
-                    onClick={handleLoginClick}
-                    className="flex items-center gap-2 rounded-full bg-[#800020]/20 px-4 py-2 text-sm font-medium text-[#d3bb73] transition-colors duration-200 hover:bg-[#800020]/30"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    Zaloguj się
-                  </button>
-                </>
               )}
-            </div> */}
+            </div>
 
-            {/* <button
+            <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="text-white md:hidden"
               aria-label="Toggle menu"
@@ -517,11 +496,11 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                   />
                 )}
               </svg>
-            </button> */}
+            </button>
           </div>
         </div>
 
-        {/* {isMenuOpen && (
+        {isMenuOpen && (
           <div className="mt-2 max-h-[80vh] overflow-y-auto rounded-b-3xl bg-[#1c1f33]/95 backdrop-blur-lg md:hidden">
             <div className="space-y-3 px-4 py-4">
               {navLinks.map((link) => {
@@ -586,15 +565,15 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                 )}
               </div>
               <Link
-                    href="/#kontakt"
-                    onClick={() => setIsMenuOpen(false)}
-                    className={`block py-2 text-sm font-light text-white/90 hover:text-white ${
-                      'text-[#e5e4e2]/90 hover:text-[#d3bb73]' // normalny
-                    }`}
-                  >
-                    Kontakt
-                  </Link>
-              {isAuthenticated ? (
+                href="/#kontakt"
+                onClick={() => setIsMenuOpen(false)}
+                className={`block py-2 text-sm font-light text-white/90 hover:text-white ${
+                  'text-[#e5e4e2]/90 hover:text-[#d3bb73]' // normalny
+                }`}
+              >
+                Kontakt
+              </Link>
+              {isAuthenticated && (
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2">
                     {avatarUrl ? (
@@ -665,17 +644,10 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                     Wyloguj się
                   </button>
                 </div>
-              ) : (
-                <button
-                  onClick={handleLoginClick}
-                  className="mt-4 w-full rounded-full bg-[#800020]/20 px-6 py-2 text-sm font-medium text-[#d3bb73]"
-                >
-                  Zaloguj się
-                </button>
               )}
             </div>
           </div>
-        )} */}
+        )}
       </nav>
     </>
   );
