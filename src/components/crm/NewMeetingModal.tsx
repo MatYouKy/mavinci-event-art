@@ -5,6 +5,8 @@ import { X, Calendar, MapPin, Users, FileText, Link, Clock } from 'lucide-react'
 import { supabase } from '@/lib/supabase';
 import LocationAutocomplete from './LocationAutocomplete';
 import RelatedEventsSelector from './RelatedEventsSelector';
+import { useCreateMeetingMutation } from '@/store/api/calendarApi';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface NewMeetingModalProps {
   isOpen: boolean;
@@ -33,6 +35,9 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
   const [color, setColor] = useState('#d3bb73');
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [createMeeting] = useCreateMeetingMutation();
+  const { showSnackbar } = useSnackbar();
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -118,13 +123,6 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
     setIsSaving(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        showSnackbar('Musisz być zalogowany', 'error');
-        setIsSaving(false);
-        return;
-      }
-
       const datetimeStart = isAllDay
         ? `${dateStart}T00:00:00Z`
         : `${dateStart}T${timeStart}:00Z`;
@@ -136,52 +134,37 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
           ? `${dateEnd || dateStart}T23:59:59Z`
           : null;
 
-      const { data: meeting, error: meetingError } = await supabase
-        .from('meetings')
-        .insert({
-          title,
-          location_id: locationId,
-          location_text: locationText || null,
-          datetime_start: datetimeStart,
-          datetime_end: datetimeEnd,
-          is_all_day: isAllDay,
-          notes: notes || null,
-          related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : null,
-          color,
-          created_by: session.user.id,
-        })
-        .select()
-        .single();
+      const participantsData = participants.map(p => ({
+        employee_id: p.type === 'employee' ? p.id : undefined,
+        contact_id: p.type === 'contact' ? p.id : undefined,
+      }));
 
-      if (meetingError) throw meetingError;
+      const result = await createMeeting({
+        title,
+        location_id: locationId,
+        location_text: locationText || null,
+        datetime_start: datetimeStart,
+        datetime_end: datetimeEnd,
+        is_all_day: isAllDay,
+        notes: notes || null,
+        related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : null,
+        color,
+        participants: participantsData.length > 0 ? participantsData : undefined,
+      }).unwrap();
 
-      if (meeting && participants.length > 0) {
-        const participantRows = participants.map(p => ({
-          meeting_id: meeting.id,
-          employee_id: p.type === 'employee' ? p.id : null,
-          contact_id: p.type === 'contact' ? p.id : null,
-        }));
-
-        const { error: participantsError } = await supabase
-          .from('meeting_participants')
-          .insert(participantRows);
-
-        if (participantsError) {
-          console.error('Error adding participants:', participantsError);
-          showSnackbar('Błąd podczas dodawania uczestników', 'warning');
-        }
-      }
+      console.log('✅ Meeting created successfully:', result.id, result.title);
 
       showSnackbar('Spotkanie zostało utworzone pomyślnie', 'success');
 
       handleClose();
 
       setTimeout(() => {
+        console.log('🔄 Calling onSuccess callback');
         onSuccess?.();
-      }, 500);
+      }, 300);
     } catch (err: any) {
       console.error('Error creating meeting:', err);
-      showSnackbar(err?.message || 'Błąd podczas tworzenia spotkania', 'error');
+      showSnackbar(err?.error || err?.message || 'Błąd podczas tworzenia spotkania', 'error');
     } finally {
       setIsSaving(false);
     }

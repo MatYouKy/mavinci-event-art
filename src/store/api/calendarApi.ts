@@ -182,13 +182,14 @@ export const calendarApi = createApi({
     createMeeting: builder.mutation<any, {
       title: string;
       datetime_start: string;
-      datetime_end?: string;
+      datetime_end?: string | null;
       is_all_day?: boolean;
       color?: string;
-      notes?: string;
-      location_id?: string;
-      location_text?: string;
+      notes?: string | null;
+      location_id?: string | null;
+      location_text?: string | null;
       event_id?: string;
+      related_event_ids?: string[] | null;
       participants?: Array<{ employee_id?: string; contact_id?: string }>;
     }>({
       async queryFn(meetingData) {

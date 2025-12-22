@@ -163,6 +163,9 @@ export default function CalendarMain() {
 
   useEffect(() => {
     if (calendarEvents) {
+      console.log('📅 Calendar events updated:', calendarEvents.length, 'events');
+      console.log('Meetings:', calendarEvents.filter(e => e.is_meeting).length);
+      console.log('Events:', calendarEvents.filter(e => !e.is_meeting).length);
       setAllEvents([...calendarEvents]);
     }
   }, [calendarEvents]);
@@ -430,6 +433,7 @@ export default function CalendarMain() {
           isOpen={isMeetingModalOpen}
           onClose={() => setIsMeetingModalOpen(false)}
           onSuccess={() => {
+            console.log('🔄 RefetchEvents called from NewMeetingModal');
             refetchEvents();
           }}
           initialDate={modalInitialDate}
