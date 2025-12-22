@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail } from 'lucide-react';
+import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
+import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface ViewModePreference {
@@ -54,6 +55,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showAddEmailModal, setShowAddEmailModal] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [systemEmail, setSystemEmail] = useState<string | null>(null);
 
@@ -545,51 +547,78 @@ export default function SettingsPage() {
       {activeTab === 'system-email' && (
         <div className="space-y-6">
           <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-            <h3 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Konto email systemowe
-            </h3>
-            <p className="text-sm text-[#e5e4e2]/60 mb-6">
-              Wybierz konto email, które będzie używane do wysyłania automatycznych wiadomości z systemu (zaproszenia do wydarzeń, notyfikacje, oferty, faktury)
-            </p>
-
-            <div className="space-y-3 mb-6">
-              {emailAccounts.map((account) => (
-                <label
-                  key={account.id}
-                  className="flex items-center justify-between p-4 bg-[#0f1119] rounded-lg cursor-pointer hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
-                >
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="system-email"
-                      value={account.id}
-                      checked={systemEmail === account.id}
-                      onChange={(e) => setSystemEmail(e.target.value)}
-                      className="w-5 h-5 text-[#d3bb73] border-[#d3bb73]/30 focus:ring-[#d3bb73]/50"
-                    />
-                    <Mail className={`w-5 h-5 ${systemEmail === account.id ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`} />
-                    <div>
-                      <div className="text-[#e5e4e2] font-medium">{account.from_name}</div>
-                      <div className="text-xs text-[#e5e4e2]/60">{account.email_address}</div>
-                      {account.is_system_account && (
-                        <div className="text-xs text-[#d3bb73] mt-1">Aktywne konto systemowe</div>
-                      )}
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            <div className="flex gap-3">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-light text-[#e5e4e2]">
+                  Konto email systemowe
+                </h3>
+                <p className="text-sm text-[#e5e4e2]/60 mt-1">
+                  Wybierz konto email, które będzie używane do wysyłania automatycznych wiadomości z systemu
+                </p>
+              </div>
               <button
-                onClick={saveSystemEmail}
-                disabled={saving || !systemEmail}
-                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                onClick={() => setShowAddEmailModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
               >
-                <Save className="w-4 h-4" />
-                {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
+                <Plus className="w-4 h-4" />
+                Dodaj konto email
               </button>
             </div>
+
+            {emailAccounts.length === 0 ? (
+              <div className="text-center py-12">
+                <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <p className="text-[#e5e4e2]/60 mb-4">Brak skonfigurowanych kont email</p>
+                <button
+                  onClick={() => setShowAddEmailModal(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Dodaj pierwsze konto
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3 mb-6 mt-6">
+                  {emailAccounts.map((account) => (
+                    <label
+                      key={account.id}
+                      className="flex items-center justify-between p-4 bg-[#0f1119] rounded-lg cursor-pointer hover:bg-[#1c1f33] transition-colors border border-[#d3bb73]/10"
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="system-email"
+                          value={account.id}
+                          checked={systemEmail === account.id}
+                          onChange={(e) => setSystemEmail(e.target.value)}
+                          className="w-5 h-5 text-[#d3bb73] border-[#d3bb73]/30 focus:ring-[#d3bb73]/50"
+                        />
+                        <Mail className={`w-5 h-5 ${systemEmail === account.id ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`} />
+                        <div>
+                          <div className="text-[#e5e4e2] font-medium">{account.from_name}</div>
+                          <div className="text-xs text-[#e5e4e2]/60">{account.email_address}</div>
+                          {account.is_system_account && (
+                            <div className="text-xs text-[#d3bb73] mt-1">Aktywne konto systemowe</div>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={saveSystemEmail}
+                    disabled={saving || !systemEmail}
+                    className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -682,6 +711,15 @@ export default function SettingsPage() {
       <ChangePasswordModal
         isOpen={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
+      />
+
+      <AddSystemEmailModal
+        isOpen={showAddEmailModal}
+        onClose={() => setShowAddEmailModal(false)}
+        onSuccess={() => {
+          fetchEmailAccounts();
+          setShowAddEmailModal(false);
+        }}
       />
     </div>
   );
