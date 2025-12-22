@@ -61,7 +61,13 @@ export default function DayView({
                     style={{
                       top: `${top}px`,
                       minHeight: `${Math.max(height, 60)}px`,
-                      ...(event.category?.color
+                      ...(event.is_meeting
+                        ? {
+                            backgroundColor: '#FFFFFF20',
+                            borderColor: '#FFFFFF50',
+                            color: '#FFFFFF',
+                          }
+                        : event.category?.color
                         ? {
                             backgroundColor: `${event.category.color}20`,
                             borderColor: `${event.category.color}50`,
@@ -146,7 +152,19 @@ export default function DayView({
                         )}
                         <span>{event.name}</span>
                       </h4>
-                      {event.category && (
+                      {event.is_meeting && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded border whitespace-nowrap"
+                          style={{
+                            backgroundColor: '#FFFFFF20',
+                            borderColor: '#FFFFFF50',
+                            color: '#FFFFFF',
+                          }}
+                        >
+                          Spotkanie
+                        </span>
+                      )}
+                      {!event.is_meeting && event.category && (
                         <span
                           className="text-[10px] px-2 py-0.5 rounded border whitespace-nowrap"
                           style={{

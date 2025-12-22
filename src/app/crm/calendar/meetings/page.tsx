@@ -67,7 +67,6 @@ export default function MeetingsListPage() {
         .select(`
           *,
           location:locations(id, name),
-          event:events(id, name),
           creator:employees!meetings_created_by_fkey(id, full_name),
           participants:meeting_participants(
             id,

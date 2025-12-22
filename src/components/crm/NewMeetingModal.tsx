@@ -32,7 +32,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
   const [isAllDay, setIsAllDay] = useState(false);
   const [notes, setNotes] = useState('');
   const [relatedEventIds, setRelatedEventIds] = useState<string[]>([]);
-  const [color, setColor] = useState('#d3bb73');
+  const [color, setColor] = useState('#FFFFFF');
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 

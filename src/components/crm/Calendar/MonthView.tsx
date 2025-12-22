@@ -119,7 +119,13 @@ export default function MonthView({
                           <div
                             className="text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity relative z-10 cursor-pointer font-medium"
                             style={
-                              event.category?.color
+                              event.is_meeting
+                                ? {
+                                    backgroundColor: '#FFFFFF20',
+                                    borderColor: '#FFFFFF40',
+                                    color: '#FFFFFF',
+                                  }
+                                : event.category?.color
                                 ? {
                                     backgroundColor: `${event.category.color}15`,
                                     borderColor: `${event.category.color}40`,
