@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
@@ -121,6 +121,7 @@ const statusLabels: Record<string, string> = {
 export default function EventDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const eventId = params.id as string;
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
@@ -131,6 +132,33 @@ export default function EventDetailPage() {
   const { employees } = useEventTeam(eventId);
   const { data: eventEmployees } = useGetEventEmployeesQuery(eventId);
   console.log('---eventEmployees', eventEmployees);
+
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+    const info = searchParams.get('info');
+    const eventName = searchParams.get('event');
+
+    if (success === 'invitation_accepted') {
+      showSnackbar(
+        `Zaproszenie do wydarzenia "${eventName}" zostało zaakceptowane`,
+        'success'
+      );
+      router.replace(`/crm/events/${eventId}`);
+    } else if (error === 'invalid_token') {
+      showSnackbar('Nieprawidłowy lub nieważny token zaproszenia', 'error');
+      router.replace(`/crm/events/${eventId}`);
+    } else if (error === 'token_expired') {
+      showSnackbar('Token zaproszenia wygasł. Zaloguj się do systemu aby potwierdzić udział.', 'error');
+      router.replace(`/crm/events/${eventId}`);
+    } else if (info === 'already_responded') {
+      showSnackbar('Już odpowiedziałeś na to zaproszenie', 'info');
+      router.replace(`/crm/events/${eventId}`);
+    } else if (error === 'update_failed') {
+      showSnackbar('Nie udało się zaktualizować statusu zaproszenia', 'error');
+      router.replace(`/crm/events/${eventId}`);
+    }
+  }, [searchParams, eventId, router, showSnackbar]);
 
   useEffect(() => {
     (async () => {

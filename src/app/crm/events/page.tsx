@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Plus,
   Search,
@@ -46,8 +46,32 @@ type SortDirection = 'asc' | 'desc';
 
 export default function EventsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const { getViewMode, setViewMode } = useUserPreferences();
+
+  useEffect(() => {
+    const error = searchParams.get('error');
+    const info = searchParams.get('info');
+    const eventName = searchParams.get('event');
+
+    if (error === 'invalid_token') {
+      showSnackbar('Nieprawidłowy lub nieważny token zaproszenia', 'error');
+      router.replace('/crm/events');
+    } else if (error === 'token_expired') {
+      showSnackbar('Token zaproszenia wygasł. Zaloguj się do systemu aby potwierdzić udział.', 'error');
+      router.replace('/crm/events');
+    } else if (info === 'invitation_rejected') {
+      showSnackbar(
+        `Zaproszenie do wydarzenia "${eventName}" zostało odrzucone`,
+        'info'
+      );
+      router.replace('/crm/events');
+    } else if (error === 'update_failed') {
+      showSnackbar('Nie udało się zaktualizować statusu zaproszenia', 'error');
+      router.replace('/crm/events');
+    }
+  }, [searchParams, router, showSnackbar]);
   const [events, setEvents] = useState<any[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
