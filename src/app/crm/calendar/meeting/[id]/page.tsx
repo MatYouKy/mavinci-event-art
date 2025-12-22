@@ -14,15 +14,11 @@ interface Meeting {
   datetime_start: string;
   datetime_end: string | null;
   notes: string | null;
-  event_id: string | null;
+  related_event_ids: string[] | null;
   created_by: string | null;
   color: string;
   is_all_day: boolean;
   location?: {
-    id: string;
-    name: string;
-  };
-  events?: {
     id: string;
     name: string;
   };
@@ -84,7 +80,6 @@ export default function MeetingDetailPage() {
         .select(`
           *,
           location:locations(id, name),
-          events!event_id(id, name),
           creator:employees!meetings_created_by_fkey(id, full_name),
           participants:meeting_participants(
             id,

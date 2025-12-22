@@ -222,7 +222,6 @@ export const calendarApi = createApi({
       notes?: string | null;
       location_id?: string | null;
       location_text?: string | null;
-      event_id?: string;
       related_event_ids?: string[] | null;
       participants?: Array<{ employee_id?: string; contact_id?: string }>;
     }>({

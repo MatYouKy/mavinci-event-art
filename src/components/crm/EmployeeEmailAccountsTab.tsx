@@ -76,30 +76,43 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   };
 
   const toggleAssignment = async (accountId: string, accountType: string) => {
+    console.log('toggleAssignment called:', { accountId, accountType, isAdmin, employeeId });
+
     if (!isAdmin) {
       alert('Tylko administrator może zarządzać przypisaniami kont email');
       return;
     }
 
     const assigned = isAssigned(accountId);
+    console.log('Current assignment status:', assigned);
 
     try {
       if (assigned) {
         const assignment = assignments.find(a => a.email_account_id === accountId);
-        if (!assignment) return;
+        if (!assignment) {
+          console.error('Assignment not found');
+          return;
+        }
 
+        console.log('Deleting assignment:', assignment.id);
         const { error } = await supabase
           .from('employee_email_account_assignments')
           .delete()
           .eq('id', assignment.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Delete error:', error);
+          throw error;
+        }
         alert('Konto zostało odebrane pracownikowi');
       } else {
         if (accountType === 'personal') {
           alert('Konta osobiste są automatycznie przypisane do właściciela');
           return;
         }
+
+        const userData = await supabase.auth.getUser();
+        console.log('Creating assignment for:', { accountId, employeeId, assignedBy: userData.data.user?.id });
 
         const { error } = await supabase
           .from('employee_email_account_assignments')
@@ -108,17 +121,20 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
             employee_id: employeeId,
             can_send: true,
             can_receive: true,
-            assigned_by: (await supabase.auth.getUser()).data.user?.id
+            assigned_by: userData.data.user?.id
           });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Insert error:', error);
+          throw error;
+        }
         alert('Konto zostało przypisane do pracownika');
       }
 
-      fetchAccountsAndAssignments();
+      await fetchAccountsAndAssignments();
     } catch (err) {
       console.error('Error toggling assignment:', err);
-      alert('Błąd podczas zarządzania przypisaniem: ' + (err as Error).message);
+      alert('Błąd podczas zarządzania przypisaniem: ' + JSON.stringify(err));
     }
   };
 
