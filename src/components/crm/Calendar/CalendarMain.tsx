@@ -159,7 +159,7 @@ export default function CalendarMain() {
     }
 
     setEvents(filtered);
-  }, [allEvents, filters, currentEmployee]);
+  }, [allEvents, filters.statuses, filters.categories, filters.clients, filters.myEvents, filters.assignedToMe, filters.employees, currentEmployee?.id]);
 
   useEffect(() => {
     if (calendarEvents) {
@@ -501,7 +501,7 @@ export default function CalendarMain() {
           </button>
 
           <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
-            {(['month', 'week', 'day', ...(isAdmin() ? ['employee' as CalendarView] : [])]).map((v) => (
+            {(['month', 'week', 'day', ...(isAdmin() ? ['employee'] : [])] as CalendarView[]).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}

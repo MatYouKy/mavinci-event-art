@@ -102,12 +102,6 @@ export const calendarApi = createApi({
             console.error('Error fetching meetings:', meetingsResult.error);
           }
 
-          console.log('📊 Calendar API Results:', {
-            events: eventsResult.data?.length || 0,
-            meetings: meetingsResult.data?.length || 0,
-            meetingsError: meetingsResult.error?.message || null
-          });
-
           // Map events
           const events: CalendarEvent[] = (eventsResult.data || []).map((event: any) => ({
             id: event.id,
