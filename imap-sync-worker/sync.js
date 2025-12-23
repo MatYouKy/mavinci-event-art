@@ -8,7 +8,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Debug: Check which key is being used
 const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')
   ? (process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"') ? 'service_role' : 'anon')
   : 'MISSING';
@@ -22,12 +21,7 @@ if (keyType === 'anon') {
 }
 
 const SYNC_INTERVAL = (parseInt(process.env.SYNC_INTERVAL_MINUTES) || 5) * 60 * 1000;
-const MAX_MESSAGES = parseInt(process.env.MAX_MESSAGES_PER_SYNC) || 50;
-
-function getMonthName(month) {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return months[month - 1];
-}
+const MAX_MESSAGES = parseInt(process.env.MAX_MESSAGES_PER_SYNC) || 100;
 
 async function syncAccount(account) {
   console.log(`\n[${new Date().toISOString()}] Synchronizing: ${account.email_address}`);
@@ -56,27 +50,7 @@ async function syncAccount(account) {
     await connection.openBox('INBOX');
     console.log('  ✓ INBOX opened');
 
-    const { data: lastEmail } = await supabase
-      .from('received_emails')
-      .select('received_date')
-      .eq('email_account_id', account.id)
-      .order('received_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    let searchCriteria;
-    if (lastEmail && lastEmail.received_date) {
-      const sinceDate = new Date(lastEmail.received_date);
-      sinceDate.setHours(sinceDate.getHours() - 1);
-      const sinceDateFormatted = sinceDate.toISOString().split('T')[0].replace(/-/g, '-');
-      const [year, month, day] = sinceDateFormatted.split('-');
-      searchCriteria = ['SINCE', `${day}-${getMonthName(parseInt(month))}-${year}`];
-      console.log(`  → Searching for messages since: ${sinceDateFormatted}`);
-    } else {
-      searchCriteria = ['ALL'];
-      console.log('  → Searching for all messages (first sync)');
-    }
-
+    const searchCriteria = ['ALL'];
     const fetchOptions = {
       bodies: ['HEADER', 'TEXT', ''],
       markSeen: false,
@@ -85,9 +59,11 @@ async function syncAccount(account) {
 
     console.log('  → Searching for messages...');
     const messages = await connection.search(searchCriteria, fetchOptions);
-    console.log(`  ✓ Found ${messages.length} messages`);
+    console.log(`  ✓ Found ${messages.length} total messages in INBOX`);
 
-    const recentMessages = lastEmail ? messages : messages.slice(-MAX_MESSAGES);
+    const recentMessages = messages.slice(-MAX_MESSAGES);
+    console.log(`  → Processing last ${recentMessages.length} messages`);
+
     let syncedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
@@ -145,7 +121,8 @@ async function syncAccount(account) {
           }
         } else {
           syncedCount++;
-          console.log(`  ✓ Synced: ${parsed.subject || '(No subject)'}`);
+          const receivedDateStr = parsed.date ? new Date(parsed.date).toLocaleString('pl-PL') : 'unknown';
+          console.log(`  ✓ Synced [${receivedDateStr}]: ${parsed.subject || '(No subject)'}`);
         }
       } catch (parseError) {
         console.error('  ✗ Parse error:', parseError.message);
@@ -153,104 +130,68 @@ async function syncAccount(account) {
       }
     }
 
-    connection.end();
-
-    console.log(`\n  Summary for ${account.email_address}:`);
-    console.log(`    • New messages synced: ${syncedCount}`);
-    console.log(`    • Already in database: ${skippedCount}`);
-    console.log(`    • Errors: ${errorCount}`);
+    await connection.end();
+    console.log(`  ✓ Disconnected`);
+    console.log(`  📊 Results: ${syncedCount} new, ${skippedCount} skipped, ${errorCount} errors`);
 
     await supabase
       .from('employee_email_accounts')
-      .update({
-        last_sync_at: new Date().toISOString(),
-        last_sync_status: errorCount > 0 ? 'partial' : 'success'
-      })
+      .update({ last_sync_at: new Date().toISOString() })
       .eq('id', account.id);
 
-    return { success: true, synced: syncedCount, errors: errorCount };
   } catch (error) {
-    console.error(`\n  ✗ Error syncing account ${account.email_address}:`, error.message);
-
+    console.error(`  ✗ Failed to sync ${account.email_address}:`, error.message);
     await supabase
       .from('employee_email_accounts')
       .update({
-        last_sync_at: new Date().toISOString(),
-        last_sync_status: 'error',
-        last_sync_error: error.message
+        last_sync_at: new Date().toISOString()
       })
       .eq('id', account.id);
-
-    return { success: false, error: error.message };
   }
 }
 
-async function syncAll() {
-  console.log('\n' + '='.repeat(80));
-  console.log(`IMAP SYNC STARTED: ${new Date().toISOString()}`);
-  console.log('='.repeat(80));
+async function syncAllAccounts() {
+  console.log('\n════════════════════════════════════════════');
+  console.log(' 📧 IMAP SYNC WORKER - Starting sync cycle');
+  console.log('════════════════════════════════════════════\n');
 
   try {
     const { data: accounts, error } = await supabase
       .from('employee_email_accounts')
       .select('*')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .not('imap_host', 'is', null);
 
     if (error) {
-      console.error('Error fetching email accounts:', error);
+      console.error('❌ Error fetching accounts:', error);
       return;
     }
 
     if (!accounts || accounts.length === 0) {
-      console.log('\nNo active email accounts found.');
+      console.log('⚠️  No active email accounts found with IMAP configuration.');
       return;
     }
 
-    console.log(`\nFound ${accounts.length} active email account(s)\n`);
-
-    let totalSynced = 0;
-    let totalErrors = 0;
+    console.log(`✓ Found ${accounts.length} active account(s) to sync\n`);
 
     for (const account of accounts) {
-      const result = await syncAccount(account);
-      if (result.success) {
-        totalSynced += result.synced || 0;
-        totalErrors += result.errors || 0;
-      }
+      await syncAccount(account);
     }
 
-    console.log('\n' + '='.repeat(80));
-    console.log('SYNC COMPLETED');
-    console.log(`  • Total messages synced: ${totalSynced}`);
-    console.log(`  • Total errors: ${totalErrors}`);
-    console.log(`  • Next sync in ${SYNC_INTERVAL / 60000} minutes`);
-    console.log('='.repeat(80) + '\n');
+    console.log('\n════════════════════════════════════════════');
+    console.log(' ✅ Sync cycle completed');
+    console.log('════════════════════════════════════════════\n');
+
   } catch (error) {
-    console.error('\n✗ Fatal error during sync:', error);
+    console.error('❌ Fatal error in sync cycle:', error);
   }
 }
 
-console.log('\n' + '='.repeat(80));
-console.log('MAVINCI IMAP SYNC WORKER');
-console.log('='.repeat(80));
-console.log(`Supabase URL: ${process.env.SUPABASE_URL}`);
-console.log(`Sync interval: ${SYNC_INTERVAL / 60000} minutes`);
-console.log(`Max messages per sync: ${MAX_MESSAGES}`);
-console.log('='.repeat(80) + '\n');
+syncAllAccounts();
 
-syncAll();
+setInterval(() => {
+  syncAllAccounts();
+}, SYNC_INTERVAL);
 
-setInterval(syncAll, SYNC_INTERVAL);
-
-process.on('SIGINT', () => {
-  console.log('\n\nShutting down gracefully...');
-  process.exit(0);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('\n✗ Uncaught exception:', error);
-});
-
-process.on('unhandledRejection', (error) => {
-  console.error('\n✗ Unhandled rejection:', error);
-});
+console.log(`\n🔄 IMAP Worker running. Syncing every ${SYNC_INTERVAL / 1000 / 60} minutes.`);
+console.log(`📦 Processing last ${MAX_MESSAGES} messages per account.\n`);
