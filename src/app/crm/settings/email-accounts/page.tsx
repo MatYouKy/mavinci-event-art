@@ -39,8 +39,9 @@ export default function EmailAccountsManagementPage() {
   const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
 
-  const isAdmin = currentEmployee?.permissions?.includes('admin') ||
-                  currentEmployee?.permissions?.includes('messages_manage');
+  const isAdmin =
+    currentEmployee?.permissions?.includes('admin') ||
+    currentEmployee?.permissions?.includes('messages_manage');
 
   useEffect(() => {
     if (isAdmin) {
@@ -53,7 +54,15 @@ export default function EmailAccountsManagementPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('employee_email_accounts')
-        .select('*, employees!employee_email_accounts_employee_id_fkey(name, surname)')
+        .select(
+          `
+          *,
+          employees:employee_id (
+            name,
+            surname
+          )
+        `,
+        )
         .eq('is_active', true)
         .order('account_type', { ascending: true })
         .order('account_name', { ascending: true });
@@ -87,10 +96,10 @@ export default function EmailAccountsManagementPage() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
         <div className="text-center">
-          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Brak dostępu</h2>
+          <Mail className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <h2 className="mb-2 text-2xl font-bold text-white">Brak dostępu</h2>
           <p className="text-[#e5e4e2]/60">Tylko administratorzy mogą zarządzać kontami email.</p>
         </div>
       </div>
@@ -99,49 +108,57 @@ export default function EmailAccountsManagementPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
       </div>
     );
   }
 
-  const personalAccounts = accounts.filter(a => a.account_type === 'personal');
-  const sharedAccounts = accounts.filter(a => a.account_type === 'shared');
-  const systemAccounts = accounts.filter(a => a.account_type === 'system');
+  const personalAccounts = accounts.filter((a) => a.account_type === 'personal');
+  const sharedAccounts = accounts.filter((a) => a.account_type === 'shared');
+  const systemAccounts = accounts.filter((a) => a.account_type === 'system');
 
   const getAccountTypeLabel = (type: string) => {
-    switch(type) {
-      case 'personal': return 'Osobiste';
-      case 'shared': return 'Wspólne';
-      case 'system': return 'Systemowe';
-      default: return type;
+    switch (type) {
+      case 'personal':
+        return 'Osobiste';
+      case 'shared':
+        return 'Wspólne';
+      case 'system':
+        return 'Systemowe';
+      default:
+        return type;
     }
   };
 
   const getAccountTypeColor = (type: string) => {
-    switch(type) {
-      case 'personal': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'shared': return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'system': return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    switch (type) {
+      case 'personal':
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'shared':
+        return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'system':
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      default:
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
   };
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-[#e5e4e2] mb-2">Zarządzanie kontami email</h1>
+            <h1 className="mb-2 text-3xl font-bold text-[#e5e4e2]">Zarządzanie kontami email</h1>
             <p className="text-[#e5e4e2]/60">
               Zarządzaj kontami email osobistymi, wspólnymi i systemowymi
             </p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             Dodaj konto
           </button>
         </div>
@@ -149,18 +166,18 @@ export default function EmailAccountsManagementPage() {
         <div className="space-y-8">
           {/* System Accounts */}
           <section>
-            <div className="flex items-center gap-3 mb-4">
-              <Settings className="w-6 h-6 text-purple-400" />
+            <div className="mb-4 flex items-center gap-3">
+              <Settings className="h-6 w-6 text-purple-400" />
               <h2 className="text-xl font-semibold text-[#e5e4e2]">Konta systemowe</h2>
-              <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded border border-purple-500/30">
+              <span className="rounded border border-purple-500/30 bg-purple-500/20 px-2 py-1 text-xs text-purple-400">
                 {systemAccounts.length}
               </span>
             </div>
-            <p className="text-sm text-[#e5e4e2]/60 mb-4">
+            <p className="mb-4 text-sm text-[#e5e4e2]/60">
               Konta używane do automatycznych powiadomień. Dostępne dla wszystkich pracowników.
             </p>
             {systemAccounts.length === 0 ? (
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8 text-center">
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8 text-center">
                 <p className="text-[#e5e4e2]/40">Brak kont systemowych</p>
               </div>
             ) : (
@@ -172,7 +189,9 @@ export default function EmailAccountsManagementPage() {
                     onEdit={setEditingAccount}
                     onDelete={handleDelete}
                     showPassword={showPasswords[account.id]}
-                    togglePassword={(id) => setShowPasswords({...showPasswords, [id]: !showPasswords[id]})}
+                    togglePassword={(id) =>
+                      setShowPasswords({ ...showPasswords, [id]: !showPasswords[id] })
+                    }
                     getTypeLabel={getAccountTypeLabel}
                     getTypeColor={getAccountTypeColor}
                   />
@@ -183,18 +202,18 @@ export default function EmailAccountsManagementPage() {
 
           {/* Shared Accounts */}
           <section>
-            <div className="flex items-center gap-3 mb-4">
-              <Building2 className="w-6 h-6 text-green-400" />
+            <div className="mb-4 flex items-center gap-3">
+              <Building2 className="h-6 w-6 text-green-400" />
               <h2 className="text-xl font-semibold text-[#e5e4e2]">Konta wspólne</h2>
-              <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded border border-green-500/30">
+              <span className="rounded border border-green-500/30 bg-green-500/20 px-2 py-1 text-xs text-green-400">
                 {sharedAccounts.length}
               </span>
             </div>
-            <p className="text-sm text-[#e5e4e2]/60 mb-4">
+            <p className="mb-4 text-sm text-[#e5e4e2]/60">
               Konta współdzielone przez zespół. Przypisywane do pracowników przez admina.
             </p>
             {sharedAccounts.length === 0 ? (
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8 text-center">
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8 text-center">
                 <p className="text-[#e5e4e2]/40">Brak kont wspólnych</p>
               </div>
             ) : (
@@ -206,7 +225,9 @@ export default function EmailAccountsManagementPage() {
                     onEdit={setEditingAccount}
                     onDelete={handleDelete}
                     showPassword={showPasswords[account.id]}
-                    togglePassword={(id) => setShowPasswords({...showPasswords, [id]: !showPasswords[id]})}
+                    togglePassword={(id) =>
+                      setShowPasswords({ ...showPasswords, [id]: !showPasswords[id] })
+                    }
                     getTypeLabel={getAccountTypeLabel}
                     getTypeColor={getAccountTypeColor}
                   />
@@ -217,18 +238,18 @@ export default function EmailAccountsManagementPage() {
 
           {/* Personal Accounts */}
           <section>
-            <div className="flex items-center gap-3 mb-4">
-              <User className="w-6 h-6 text-blue-400" />
+            <div className="mb-4 flex items-center gap-3">
+              <User className="h-6 w-6 text-blue-400" />
               <h2 className="text-xl font-semibold text-[#e5e4e2]">Konta osobiste</h2>
-              <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded border border-blue-500/30">
+              <span className="rounded border border-blue-500/30 bg-blue-500/20 px-2 py-1 text-xs text-blue-400">
                 {personalAccounts.length}
               </span>
             </div>
-            <p className="text-sm text-[#e5e4e2]/60 mb-4">
+            <p className="mb-4 text-sm text-[#e5e4e2]/60">
               Konta przypisane do konkretnych pracowników. Dostępne tylko dla właściciela.
             </p>
             {personalAccounts.length === 0 ? (
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8 text-center">
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8 text-center">
                 <p className="text-[#e5e4e2]/40">Brak kont osobistych</p>
               </div>
             ) : (
@@ -240,7 +261,9 @@ export default function EmailAccountsManagementPage() {
                     onEdit={setEditingAccount}
                     onDelete={handleDelete}
                     showPassword={showPasswords[account.id]}
-                    togglePassword={(id) => setShowPasswords({...showPasswords, [id]: !showPasswords[id]})}
+                    togglePassword={(id) =>
+                      setShowPasswords({ ...showPasswords, [id]: !showPasswords[id] })
+                    }
                     getTypeLabel={getAccountTypeLabel}
                     getTypeColor={getAccountTypeColor}
                   />
@@ -284,7 +307,7 @@ function AccountCard({
   showPassword,
   togglePassword,
   getTypeLabel,
-  getTypeColor
+  getTypeColor,
 }: {
   account: EmailAccount;
   onEdit: (account: EmailAccount) => void;
@@ -295,17 +318,19 @@ function AccountCard({
   getTypeColor: (type: string) => string;
 }) {
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/20 transition-all">
-      <div className="flex items-start justify-between mb-4">
+    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/20">
+      <div className="mb-4 flex items-start justify-between">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="mb-2 flex items-center gap-3">
             <h3 className="text-lg font-medium text-[#e5e4e2]">{account.account_name}</h3>
-            <span className={`px-2 py-1 rounded text-xs border ${getTypeColor(account.account_type)}`}>
+            <span
+              className={`rounded border px-2 py-1 text-xs ${getTypeColor(account.account_type)}`}
+            >
               {getTypeLabel(account.account_type)}
             </span>
           </div>
-          <p className="text-sm text-[#e5e4e2]/70 flex items-center gap-2 mb-1">
-            <Mail className="w-4 h-4" />
+          <p className="mb-1 flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+            <Mail className="h-4 w-4" />
             {account.email_address}
           </p>
           {account.department && (
@@ -323,52 +348,46 @@ function AccountCard({
         <div className="flex gap-2">
           <button
             onClick={() => onEdit(account)}
-            className="p-2 hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
             title="Edytuj"
           >
-            <Edit className="w-4 h-4 text-[#d3bb73]" />
+            <Edit className="h-4 w-4 text-[#d3bb73]" />
           </button>
           <button
             onClick={() => onDelete(account.id)}
-            className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-red-500/10"
             title="Usuń"
           >
-            <Trash2 className="w-4 h-4 text-red-400" />
+            <Trash2 className="h-4 w-4 text-red-400" />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
         <div className="space-y-2">
-          <h4 className="text-[#d3bb73] font-medium">IMAP (Odbieranie)</h4>
+          <h4 className="font-medium text-[#d3bb73]">IMAP (Odbieranie)</h4>
           <InfoRow label="Serwer" value={`${account.imap_host}:${account.imap_port}`} />
           <InfoRow label="Login" value={account.imap_username} />
           <div className="flex items-center gap-2">
-            <InfoRow
-              label="Hasło"
-              value={showPassword ? account.imap_password : '••••••••'}
-            />
+            <InfoRow label="Hasło" value={showPassword ? account.imap_password : '••••••••'} />
             <button
               onClick={() => togglePassword(account.id)}
-              className="p-1 hover:bg-[#0f1119] rounded"
+              className="rounded p-1 hover:bg-[#0f1119]"
             >
               {showPassword ? (
-                <EyeOff className="w-4 h-4 text-[#e5e4e2]/60" />
+                <EyeOff className="h-4 w-4 text-[#e5e4e2]/60" />
               ) : (
-                <Eye className="w-4 h-4 text-[#e5e4e2]/60" />
+                <Eye className="h-4 w-4 text-[#e5e4e2]/60" />
               )}
             </button>
           </div>
         </div>
 
         <div className="space-y-2">
-          <h4 className="text-[#d3bb73] font-medium">SMTP (Wysyłanie)</h4>
+          <h4 className="font-medium text-[#d3bb73]">SMTP (Wysyłanie)</h4>
           <InfoRow label="Serwer" value={`${account.smtp_host}:${account.smtp_port}`} />
           <InfoRow label="Login" value={account.smtp_username} />
-          <InfoRow
-            label="Hasło"
-            value={showPassword ? account.smtp_password : '••••••••'}
-          />
+          <InfoRow label="Hasło" value={showPassword ? account.smtp_password : '••••••••'} />
         </div>
       </div>
     </div>
@@ -388,7 +407,7 @@ function EditEmailAccountModal({
   isOpen,
   account,
   onClose,
-  onUpdated
+  onUpdated,
 }: {
   isOpen: boolean;
   account: EmailAccount;
@@ -449,27 +468,27 @@ function EditEmailAccountModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-3xl w-full my-8">
-        <h2 className="text-xl font-light text-[#e5e4e2] mb-6">Edytuj konto email</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      <div className="my-8 w-full max-w-3xl rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <h2 className="mb-6 text-xl font-light text-[#e5e4e2]">Edytuj konto email</h2>
 
-        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+        <div className="max-h-[70vh] space-y-6 overflow-y-auto pr-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa konta *</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa konta *</label>
               <input
                 type="text"
                 value={formData.account_name}
                 onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Typ konta *</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ konta *</label>
               <select
                 value={formData.account_type}
                 onChange={(e) => setFormData({ ...formData, account_type: e.target.value as any })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="personal">Osobiste</option>
                 <option value="shared">Wspólne</option>
@@ -479,119 +498,119 @@ function EditEmailAccountModal({
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Adres email *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Adres email *</label>
             <input
               type="email"
               value={formData.email_address}
               onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
           {formData.account_type === 'shared' && (
             <div>
-              <label className="block text-sm text-[#e5e4e2]/60 mb-2">Dział</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Dział</label>
               <input
                 type="text"
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 placeholder="np. Biuro, Finanse, Kadry"
               />
             </div>
           )}
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] min-h-[80px]"
+              className="min-h-[80px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               placeholder="Krótki opis konta"
             />
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
-            <h3 className="text-[#d3bb73] font-medium mb-4">IMAP</h3>
+            <h3 className="mb-4 font-medium text-[#d3bb73]">IMAP</h3>
             <div className="grid grid-cols-2 gap-4">
               <input
                 type="text"
                 value={formData.imap_host}
                 onChange={(e) => setFormData({ ...formData, imap_host: e.target.value })}
                 placeholder="Serwer IMAP"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
               <input
                 type="number"
                 value={formData.imap_port}
                 onChange={(e) => setFormData({ ...formData, imap_port: parseInt(e.target.value) })}
                 placeholder="Port"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
               <input
                 type="text"
                 value={formData.imap_username}
                 onChange={(e) => setFormData({ ...formData, imap_username: e.target.value })}
                 placeholder="Login"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
               <input
                 type="password"
                 value={formData.imap_password}
                 onChange={(e) => setFormData({ ...formData, imap_password: e.target.value })}
                 placeholder="Hasło"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
-            <h3 className="text-[#d3bb73] font-medium mb-4">SMTP</h3>
+            <h3 className="mb-4 font-medium text-[#d3bb73]">SMTP</h3>
             <div className="grid grid-cols-2 gap-4">
               <input
                 type="text"
                 value={formData.smtp_host}
                 onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
                 placeholder="Serwer SMTP"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
               <input
                 type="number"
                 value={formData.smtp_port}
                 onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
                 placeholder="Port"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
               <input
                 type="text"
                 value={formData.smtp_username}
                 onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
                 placeholder="Login"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
               <input
                 type="password"
                 value={formData.smtp_password}
                 onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
                 placeholder="Hasło"
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               />
             </div>
           </div>
         </div>
 
-        <div className="flex gap-3 pt-6 mt-6 border-t border-[#d3bb73]/10">
+        <div className="mt-6 flex gap-3 border-t border-[#d3bb73]/10 pt-6">
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="flex-1 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
           </button>
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded-lg text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
+            className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
           >
             Anuluj
           </button>

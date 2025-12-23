@@ -22,6 +22,7 @@ interface AccountAssignment {
   employee_id: string;
   can_send: boolean;
   can_receive: boolean;
+  can_receive_contact_forms: boolean;
 }
 
 interface Props {
@@ -49,7 +50,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       const [accountsRes, assignmentsRes] = await Promise.all([
         supabase
           .from('employee_email_accounts')
-          .select('id, account_name, email_address, account_type, department, description, is_active, employee_id')
+          .select(
+            'id, account_name, email_address, account_type, department, description, is_active, employee_id',
+          )
           .eq('is_active', true)
           .order('account_type', { ascending: false })
           .order('account_name', { ascending: true }),
@@ -57,7 +60,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         supabase
           .from('employee_email_account_assignments')
           .select('*')
-          .eq('employee_id', employeeId)
+          .eq('employee_id', employeeId),
       ]);
 
       if (accountsRes.error) throw accountsRes.error;
@@ -73,39 +76,29 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   };
 
   const isAssigned = (accountId: string): boolean => {
-    return assignments.some(a => a.email_account_id === accountId);
+    return assignments.some((a) => a.email_account_id === accountId);
   };
 
   const toggleAssignment = async (accountId: string, accountType: string) => {
-    console.log('toggleAssignment called:', { accountId, accountType, isAdmin, employeeId });
-
     if (!isAdmin) {
       alert('Tylko administrator może zarządzać przypisaniami kont email');
       return;
     }
 
     const assigned = isAssigned(accountId);
-    console.log('Current assignment status:', assigned);
 
     try {
       if (assigned) {
-        const assignment = assignments.find(a => a.email_account_id === accountId);
-        if (!assignment) {
-          console.error('Assignment not found');
-          return;
-        }
+        const assignment = assignments.find((a) => a.email_account_id === accountId);
+        if (!assignment) return;
 
-        console.log('Deleting assignment:', assignment.id);
         const { error } = await supabase
           .from('employee_email_account_assignments')
           .delete()
           .eq('id', assignment.id);
 
-        if (error) {
-          console.error('Delete error:', error);
-          throw error;
-        }
-        alert('✓ Dostęp do konta został odebrany. Zmiany są aktywne natychmiast.');
+        if (error) throw error;
+        alert('✓ Dostęp do konta został odebrany.');
       } else {
         if (accountType === 'personal') {
           alert('Konta osobiste są automatycznie przypisane do właściciela');
@@ -113,23 +106,18 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         }
 
         const userData = await supabase.auth.getUser();
-        console.log('Creating assignment for:', { accountId, employeeId, assignedBy: userData.data.user?.id });
 
-        const { error } = await supabase
-          .from('employee_email_account_assignments')
-          .insert({
-            email_account_id: accountId,
-            employee_id: employeeId,
-            can_send: true,
-            can_receive: true,
-            assigned_by: userData.data.user?.id
-          });
+        const { error } = await supabase.from('employee_email_account_assignments').insert({
+          email_account_id: accountId,
+          employee_id: employeeId,
+          can_send: true,
+          can_receive: true,
+          can_receive_contact_forms: false,
+          assigned_by: userData.data.user?.id,
+        });
 
-        if (error) {
-          console.error('Insert error:', error);
-          throw error;
-        }
-        alert('✓ Konto zostało przypisane. Pracownik ma teraz dostęp do tej skrzynki.');
+        if (error) throw error;
+        alert('✓ Konto zostało przypisane.');
       }
 
       await fetchAccountsAndAssignments();
@@ -139,24 +127,56 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     }
   };
 
+  const toggleContactFormAccess = async (accountId: string) => {
+    if (!isAdmin) return;
+
+    const assignment = assignments.find((a) => a.email_account_id === accountId);
+    if (!assignment) {
+      alert('Musisz najpierw przypisać to konto do pracownika');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('employee_email_account_assignments')
+        .update({
+          can_receive_contact_forms: !assignment.can_receive_contact_forms,
+        })
+        .eq('id', assignment.id);
+
+      if (error) throw error;
+
+      await fetchAccountsAndAssignments();
+    } catch (err) {
+      console.error('Error toggling contact form access:', err);
+      alert('Błąd podczas zmiany dostępu do formularza: ' + JSON.stringify(err));
+    }
+  };
+
+  const hasContactFormAccess = (accountId: string): boolean => {
+    const assignment = assignments.find((a) => a.email_account_id === accountId);
+    return assignment?.can_receive_contact_forms || false;
+  };
+
   if (loading) {
-    return <div className="text-[#e5e4e2]/60 text-center py-8">Ładowanie...</div>;
+    return <div className="py-8 text-center text-[#e5e4e2]/60">Ładowanie...</div>;
   }
 
-  const personalAccounts = allAccounts.filter(a => a.account_type === 'personal' && a.employee_id === employeeId);
-  const sharedAccounts = allAccounts.filter(a => a.account_type === 'shared');
-  const systemAccounts = allAccounts.filter(a => a.account_type === 'system');
+  const personalAccounts = allAccounts.filter(
+    (a) => a.account_type === 'personal' && a.employee_id === employeeId,
+  );
+  const sharedAccounts = allAccounts.filter((a) => a.account_type === 'shared');
+  const systemAccounts = allAccounts.filter((a) => a.account_type === 'system');
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-light text-[#e5e4e2]">Konta Email</h3>
-          <p className="text-sm text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             {isEditing
               ? 'Zaznacz/odznacz checkboxy przy kontach wspólnych i systemowych - zmiany są zapisywane automatycznie'
-              : 'Lista kont email dostępnych dla pracownika. Admin może zarządzać dostępem do kont wspólnych i systemowych.'
-            }
+              : 'Lista kont email dostępnych dla pracownika. Admin może zarządzać dostępem do kont wspólnych i systemowych.'}
           </p>
         </div>
         {isAdmin && (
@@ -165,24 +185,24 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
               <>
                 <button
                   onClick={() => setIsEditing(false)}
-                  className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#1c1f33]/80"
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#1c1f33]/80"
                 >
                   Anuluj
                 </button>
                 <button
                   onClick={() => router.push('/crm/settings/email-accounts')}
-                  className="flex items-center gap-2 bg-[#d3bb73]/20 border border-[#d3bb73]/40 text-[#d3bb73] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30"
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/40 bg-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/30"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Dodaj konta
                 </button>
               </>
             ) : (
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90"
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
               >
-                <Edit className="w-4 h-4" />
+                <Edit className="h-4 w-4" />
                 Zarządzaj dostępem
               </button>
             )}
@@ -191,13 +211,13 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       </div>
 
       {allAccounts.length === 0 ? (
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-12 text-center">
-          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 mb-4">Brak skonfigurowanych kont email</p>
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+          <Mail className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="mb-4 text-[#e5e4e2]/60">Brak skonfigurowanych kont email</p>
           {isAdmin && (
             <button
               onClick={() => router.push('/crm/settings/email-accounts')}
-              className="text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+              className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
             >
               Dodaj konta email w ustawieniach
             </button>
@@ -207,15 +227,15 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         <div className="space-y-6">
           {/* Konta osobiste */}
           <div>
-            <h4 className="text-[#d3bb73] font-medium mb-3 flex items-center gap-2">
-              <Mail className="w-5 h-5" />
+            <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
+              <Mail className="h-5 w-5" />
               Konta osobiste
             </h4>
-            <p className="text-xs text-[#e5e4e2]/60 mb-3">
+            <p className="mb-3 text-xs text-[#e5e4e2]/60">
               Konta przypisane bezpośrednio do tego pracownika
             </p>
             {personalAccounts.length === 0 ? (
-              <p className="text-sm text-[#e5e4e2]/40 italic">Brak kont osobistych</p>
+              <p className="text-sm italic text-[#e5e4e2]/40">Brak kont osobistych</p>
             ) : (
               <div className="space-y-2">
                 {personalAccounts.map((account) => (
@@ -235,15 +255,15 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
 
           {/* Konta wspólne */}
           <div>
-            <h4 className="text-[#d3bb73] font-medium mb-3 flex items-center gap-2">
-              <Mail className="w-5 h-5" />
+            <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
+              <Mail className="h-5 w-5" />
               Konta wspólne (działowe)
             </h4>
-            <p className="text-xs text-[#e5e4e2]/60 mb-3">
+            <p className="mb-3 text-xs text-[#e5e4e2]/60">
               Konta współdzielone przez zespół. Admin może przypisywać dostęp.
             </p>
             {sharedAccounts.length === 0 ? (
-              <p className="text-sm text-[#e5e4e2]/40 italic">Brak kont wspólnych</p>
+              <p className="text-sm italic text-[#e5e4e2]/40">Brak kont wspólnych</p>
             ) : (
               <div className="space-y-2">
                 {sharedAccounts.map((account) => (
@@ -263,15 +283,15 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
 
           {/* Konta systemowe */}
           <div>
-            <h4 className="text-[#d3bb73] font-medium mb-3 flex items-center gap-2">
-              <Mail className="w-5 h-5" />
+            <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
+              <Mail className="h-5 w-5" />
               Konta systemowe
             </h4>
-            <p className="text-xs text-[#e5e4e2]/60 mb-3">
+            <p className="mb-3 text-xs text-[#e5e4e2]/60">
               Konta używane do automatycznych powiadomień systemowych. Admin przypisuje dostęp.
             </p>
             {systemAccounts.length === 0 ? (
-              <p className="text-sm text-[#e5e4e2]/40 italic">Brak kont systemowych</p>
+              <p className="text-sm italic text-[#e5e4e2]/40">Brak kont systemowych</p>
             ) : (
               <div className="space-y-2">
                 {systemAccounts.map((account) => (
@@ -283,6 +303,8 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     isAdmin={isAdmin}
                     isPersonal={false}
                     isEditing={isEditing}
+                    hasContactFormAccess={hasContactFormAccess(account.id)}
+                    onToggleContactForm={() => toggleContactFormAccess(account.id)}
                   />
                 ))}
               </div>
@@ -291,24 +313,43 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         </div>
       )}
 
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-4">
-        <h5 className="text-[#d3bb73] font-medium mb-2">Jak to działa?</h5>
-        <ul className="text-sm text-[#e5e4e2]/70 space-y-2">
+      <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-4">
+        <h5 className="mb-2 font-medium text-[#d3bb73]">Jak to działa?</h5>
+        <ul className="space-y-2 text-sm text-[#e5e4e2]/70">
           <li className="flex gap-2">
-            <span className="text-[#d3bb73] font-bold">•</span>
-            <span><strong>Konta osobiste:</strong> Przypisane automatycznie do właściciela, nie można ich odebrać</span>
+            <span className="font-bold text-[#d3bb73]">•</span>
+            <span>
+              <strong>Konta osobiste:</strong> Przypisane automatycznie do właściciela, nie można
+              ich odebrać
+            </span>
           </li>
           <li className="flex gap-2">
-            <span className="text-[#d3bb73] font-bold">•</span>
-            <span><strong>Konta wspólne i systemowe:</strong> Admin przypisuje dostęp ręcznie - kliknij "Zarządzaj dostępem" i zaznacz checkbox przy koncie</span>
+            <span className="font-bold text-[#d3bb73]">•</span>
+            <span>
+              <strong>Konta wspólne i systemowe:</strong> Admin przypisuje dostęp ręcznie - kliknij
+              "Zarządzaj dostępem" i zaznacz checkbox przy koncie
+            </span>
           </li>
           <li className="flex gap-2">
-            <span className="text-[#d3bb73] font-bold">•</span>
-            <span><strong>Efekt w /crm/messages:</strong> Pracownik widzi tylko wiadomości z kont, do których ma dostęp</span>
+            <span className="font-bold text-[#d3bb73]">•</span>
+            <span>
+              <strong>Formularz kontaktowy (konta systemowe):</strong> Dodatkowy checkbox decyduje
+              czy pracownik otrzymuje powiadomienia z formularza kontaktowego na to konto
+            </span>
           </li>
           <li className="flex gap-2">
-            <span className="text-[#d3bb73] font-bold">•</span>
-            <span><strong>Zarządzanie kontami:</strong> Edycja/usuwanie/dodawanie kont w /crm/settings (tylko admin)</span>
+            <span className="font-bold text-[#d3bb73]">•</span>
+            <span>
+              <strong>Efekt w /crm/messages:</strong> Pracownik widzi tylko wiadomości z kont, do
+              których ma dostęp
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-bold text-[#d3bb73]">•</span>
+            <span>
+              <strong>Zarządzanie kontami:</strong> Edycja/usuwanie/dodawanie kont w /crm/settings
+              (tylko admin)
+            </span>
           </li>
         </ul>
       </div>
@@ -322,7 +363,9 @@ function AccountRow({
   onToggle,
   isAdmin,
   isPersonal,
-  isEditing
+  isEditing,
+  hasContactFormAccess,
+  onToggleContactForm,
 }: {
   account: EmailAccount;
   isAssigned: boolean;
@@ -330,92 +373,124 @@ function AccountRow({
   isAdmin: boolean;
   isPersonal: boolean;
   isEditing: boolean;
+  hasContactFormAccess?: boolean;
+  onToggleContactForm?: () => void;
 }) {
   const getAccountTypeLabel = (type: string) => {
-    switch(type) {
-      case 'personal': return 'Osobiste';
-      case 'shared': return 'Wspólne';
-      case 'system': return 'Systemowe';
-      default: return type;
+    switch (type) {
+      case 'personal':
+        return 'Osobiste';
+      case 'shared':
+        return 'Wspólne';
+      case 'system':
+        return 'Systemowe';
+      default:
+        return type;
     }
   };
 
   const getAccountTypeColor = (type: string) => {
-    switch(type) {
-      case 'personal': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'shared': return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'system': return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    switch (type) {
+      case 'personal':
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'shared':
+        return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'system':
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      default:
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
   };
 
   return (
     <div
-      className={`
-        bg-[#0f1119] border rounded-lg p-4 transition-all
-        ${isAssigned
+      className={`rounded-lg border bg-[#0f1119] p-4 transition-all ${
+        isAssigned
           ? 'border-[#d3bb73]/40 bg-[#d3bb73]/5'
           : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/20'
-        }
-      `}
+      } `}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <h5 className="text-[#e5e4e2] font-medium truncate">
-              {account.account_name}
-            </h5>
-            <span className={`px-2 py-0.5 rounded text-xs border ${getAccountTypeColor(account.account_type)}`}>
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex items-center gap-2">
+            <h5 className="truncate font-medium text-[#e5e4e2]">{account.account_name}</h5>
+            <span
+              className={`rounded border px-2 py-0.5 text-xs ${getAccountTypeColor(account.account_type)}`}
+            >
               {getAccountTypeLabel(account.account_type)}
             </span>
             {isAssigned && !isEditing && (
-              <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs border border-[#d3bb73]/30">
+              <span className="rounded border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                 Przypisane
               </span>
             )}
           </div>
-          <p className="text-sm text-[#e5e4e2]/70 flex items-center gap-2">
-            <Mail className="w-4 h-4" />
+          <p className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+            <Mail className="h-4 w-4" />
             {account.email_address}
           </p>
           {account.department && (
-            <p className="text-xs text-[#e5e4e2]/50 mt-1">
-              Dział: {account.department}
-            </p>
+            <p className="mt-1 text-xs text-[#e5e4e2]/50">Dział: {account.department}</p>
           )}
           {account.description && (
-            <p className="text-xs text-[#e5e4e2]/50 mt-1">
-              {account.description}
-            </p>
+            <p className="mt-1 text-xs text-[#e5e4e2]/50">{account.description}</p>
           )}
         </div>
 
         {isEditing && isAdmin && !isPersonal && (
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={isAssigned}
-              onChange={onToggle}
-              className="hidden"
-            />
-            <div className={`
-              relative w-5 h-5 rounded border-2 transition-all
-              ${isAssigned
-                ? 'bg-[#d3bb73] border-[#d3bb73]'
-                : 'border-[#e5e4e2]/30 group-hover:border-[#d3bb73]/50'
-              }
-            `}>
-              {isAssigned && (
-                <CheckSquare className="w-4 h-4 text-[#1c1f33] absolute inset-0.5" strokeWidth={3} />
-              )}
-            </div>
-            <span className="text-sm text-[#e5e4e2]/70 group-hover:text-[#e5e4e2]">
-              {isAssigned ? 'Ma dostęp' : 'Brak dostępu'}
-            </span>
-          </label>
+          <div className="flex flex-col items-end gap-2">
+            <label className="group flex cursor-pointer items-center gap-3">
+              <input type="checkbox" checked={isAssigned} onChange={onToggle} className="hidden" />
+              <div
+                className={`relative h-5 w-5 rounded border-2 transition-all ${
+                  isAssigned
+                    ? 'border-[#d3bb73] bg-[#d3bb73]'
+                    : 'border-[#e5e4e2]/30 group-hover:border-[#d3bb73]/50'
+                } `}
+              >
+                {isAssigned && (
+                  <CheckSquare
+                    className="absolute inset-0.5 h-4 w-4 text-[#1c1f33]"
+                    strokeWidth={3}
+                  />
+                )}
+              </div>
+              <span className="text-sm text-[#e5e4e2]/70 group-hover:text-[#e5e4e2]">
+                {isAssigned ? 'Ma dostęp' : 'Brak dostępu'}
+              </span>
+            </label>
+
+            {account.account_type === 'system' && isAssigned && onToggleContactForm && (
+              <label className="group flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={hasContactFormAccess}
+                  onChange={onToggleContactForm}
+                  className="hidden"
+                />
+                <div
+                  className={`relative h-5 w-5 rounded border-2 transition-all ${
+                    hasContactFormAccess
+                      ? 'border-green-500 bg-green-500'
+                      : 'border-[#e5e4e2]/30 group-hover:border-green-500/50'
+                  } `}
+                >
+                  {hasContactFormAccess && (
+                    <CheckSquare
+                      className="absolute inset-0.5 h-4 w-4 text-white"
+                      strokeWidth={3}
+                    />
+                  )}
+                </div>
+                <span className="text-xs text-[#e5e4e2]/60 group-hover:text-[#e5e4e2]">
+                  Formularz kontaktowy
+                </span>
+              </label>
+            )}
+          </div>
         )}
         {!isEditing && isPersonal && (
-          <span className="px-3 py-1.5 rounded-lg text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20">
+          <span className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-400">
             Właściciel
           </span>
         )}
