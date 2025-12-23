@@ -24,11 +24,6 @@ interface AccountAssignment {
   can_receive: boolean;
 }
 
-interface NotificationPreferences {
-  contact_form_messages: boolean;
-  system_messages: boolean;
-}
-
 interface Props {
   employeeId: string;
   employeeEmail: string;
@@ -41,14 +36,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   const [assignments, setAssignments] = useState<AccountAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
-    contact_form_messages: true,
-    system_messages: true
-  });
 
   useEffect(() => {
     fetchAccountsAndAssignments();
-    fetchNotificationPreferences();
   }, [employeeId]);
 
   const fetchAccountsAndAssignments = async () => {
@@ -79,78 +69,6 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       console.error('Error fetching data:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchNotificationPreferences = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('preferences')
-        .eq('id', employeeId)
-        .single();
-
-      if (error) throw error;
-
-      if (data?.preferences?.notifications) {
-        setNotificationPrefs({
-          contact_form_messages: data.preferences.notifications.contact_form_messages ?? true,
-          system_messages: data.preferences.notifications.system_messages ?? true
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching notification preferences:', err);
-    }
-  };
-
-  const updateNotificationPreference = async (key: keyof NotificationPreferences, value: boolean) => {
-    if (!isAdmin) {
-      alert('Tylko administrator może zmieniać te ustawienia');
-      return;
-    }
-
-    try {
-      // Pobierz aktualne preferencje
-      const { data: currentData, error: fetchError } = await supabase
-        .from('employees')
-        .select('preferences')
-        .eq('id', employeeId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const currentPrefs = currentData?.preferences || {};
-      const currentNotifications = currentPrefs.notifications || {};
-
-      // Zaktualizuj konkretny klucz
-      const updatedNotifications = {
-        ...currentNotifications,
-        [key]: value
-      };
-
-      // Zapisz do bazy
-      const { error: updateError } = await supabase
-        .from('employees')
-        .update({
-          preferences: {
-            ...currentPrefs,
-            notifications: updatedNotifications
-          }
-        })
-        .eq('id', employeeId);
-
-      if (updateError) throw updateError;
-
-      // Zaktualizuj state lokalny
-      setNotificationPrefs(prev => ({
-        ...prev,
-        [key]: value
-      }));
-
-      alert(`Preferencja powiadomień została ${value ? 'włączona' : 'wyłączona'}`);
-    } catch (err) {
-      console.error('Error updating notification preference:', err);
-      alert('Błąd podczas aktualizacji preferencji: ' + JSON.stringify(err));
     }
   };
 
@@ -187,7 +105,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           console.error('Delete error:', error);
           throw error;
         }
-        alert('Konto zostało odebrane pracownikowi');
+        alert('✓ Dostęp do konta został odebrany. Zmiany są aktywne natychmiast.');
       } else {
         if (accountType === 'personal') {
           alert('Konta osobiste są automatycznie przypisane do właściciela');
@@ -211,7 +129,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           console.error('Insert error:', error);
           throw error;
         }
-        alert('Konto zostało przypisane do pracownika');
+        alert('✓ Konto zostało przypisane. Pracownik ma teraz dostęp do tej skrzynki.');
       }
 
       await fetchAccountsAndAssignments();
@@ -236,8 +154,8 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           <h3 className="text-lg font-light text-[#e5e4e2]">Konta Email</h3>
           <p className="text-sm text-[#e5e4e2]/60 mt-1">
             {isEditing
-              ? 'Tryb edycji - przypisuj lub odbieraj dostęp do kont wspólnych'
-              : 'Zarządzaj kontami email dostępnymi dla pracownika'
+              ? 'Kliknij "Przypisz" lub "Odbierz" przy kontach wspólnych - zmiany są zapisywane automatycznie'
+              : 'Lista kont email dostępnych dla pracownika. Admin może zarządzać dostępem do kont wspólnych.'
             }
           </p>
         </div>
@@ -373,96 +291,25 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         </div>
       )}
 
-      {/* Preferencje powiadomień */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h4 className="text-[#d3bb73] font-medium flex items-center gap-2">
-              <Mail className="w-5 h-5" />
-              Preferencje powiadomień
-            </h4>
-            <p className="text-xs text-[#e5e4e2]/60 mt-1">
-              Kontroluj, jakie typy wiadomości pracownik może widzieć
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-[#0d0f1a] rounded-lg border border-[#d3bb73]/10">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-[#e5e4e2]">
-                Wiadomości z formularza kontaktowego
-              </p>
-              <p className="text-xs text-[#e5e4e2]/50 mt-0.5">
-                Powiadomienia o nowych wiadomościach z formularza na stronie
-              </p>
-            </div>
-            <button
-              onClick={() => updateNotificationPreference('contact_form_messages', !notificationPrefs.contact_form_messages)}
-              disabled={!isAdmin || !isEditing}
-              className={`
-                relative w-12 h-6 rounded-full transition-colors
-                ${notificationPrefs.contact_form_messages
-                  ? 'bg-[#d3bb73]'
-                  : 'bg-[#e5e4e2]/20'
-                }
-                ${(!isAdmin || !isEditing) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-              `}
-            >
-              <span
-                className={`
-                  absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform
-                  ${notificationPrefs.contact_form_messages ? 'translate-x-6' : 'translate-x-0'}
-                `}
-              />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between p-3 bg-[#0d0f1a] rounded-lg border border-[#d3bb73]/10">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-[#e5e4e2]">
-                Wiadomości systemowe
-              </p>
-              <p className="text-xs text-[#e5e4e2]/50 mt-0.5">
-                Automatyczne powiadomienia systemowe i alerty
-              </p>
-            </div>
-            <button
-              onClick={() => updateNotificationPreference('system_messages', !notificationPrefs.system_messages)}
-              disabled={!isAdmin || !isEditing}
-              className={`
-                relative w-12 h-6 rounded-full transition-colors
-                ${notificationPrefs.system_messages
-                  ? 'bg-[#d3bb73]'
-                  : 'bg-[#e5e4e2]/20'
-                }
-                ${(!isAdmin || !isEditing) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-              `}
-            >
-              <span
-                className={`
-                  absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform
-                  ${notificationPrefs.system_messages ? 'translate-x-6' : 'translate-x-0'}
-                `}
-              />
-            </button>
-          </div>
-        </div>
-
-        {!isEditing && (
-          <p className="text-xs text-[#e5e4e2]/40 mt-3 italic">
-            Włącz tryb edycji, aby zmienić preferencje powiadomień
-          </p>
-        )}
-      </div>
-
       <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-4">
-        <h5 className="text-[#d3bb73] font-medium mb-2">Informacje</h5>
-        <ul className="text-sm text-[#e5e4e2]/70 space-y-1 list-disc list-inside">
-          <li><strong>Konta osobiste:</strong> Przypisane automatycznie do właściciela</li>
-          <li><strong>Konta wspólne:</strong> Mogą być przypisane do wielu pracowników przez admina</li>
-          <li><strong>Konta systemowe:</strong> Dostępne automatycznie dla wszystkich pracowników</li>
-          <li><strong>Widok wiadomości:</strong> W /crm/messages widzisz tylko wiadomości z przypisanych kont</li>
+        <h5 className="text-[#d3bb73] font-medium mb-2">Jak to działa?</h5>
+        <ul className="text-sm text-[#e5e4e2]/70 space-y-2">
+          <li className="flex gap-2">
+            <span className="text-[#d3bb73] font-bold">•</span>
+            <span><strong>Konta osobiste:</strong> Przypisane automatycznie do właściciela, nie można ich odebrać</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-[#d3bb73] font-bold">•</span>
+            <span><strong>Konta wspólne:</strong> Admin przypisuje dostęp ręcznie - kliknij "Zarządzaj dostępem" i wybierz "Przypisz"/"Odbierz"</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-[#d3bb73] font-bold">•</span>
+            <span><strong>Konta systemowe:</strong> Automatycznie dostępne dla wszystkich z uprawnieniem messages:view</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-[#d3bb73] font-bold">•</span>
+            <span><strong>Efekt w /crm/messages:</strong> Pracownik widzi tylko wiadomości z kont, do których ma dostęp</span>
+          </li>
         </ul>
       </div>
     </div>
