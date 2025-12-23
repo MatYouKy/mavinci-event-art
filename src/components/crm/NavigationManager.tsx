@@ -36,10 +36,71 @@ export default function NavigationManager({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [items, setItems] = useState<NavigationItem[]>(navigation);
   const [saving, setSaving] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   useEffect(() => {
     setItems(navigation);
   }, [navigation]);
+
+  useEffect(() => {
+    fetchUnreadCount();
+
+    const contactChannel = supabase
+      .channel('messages-unread-count')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contact_messages',
+        },
+        () => {
+          fetchUnreadCount();
+        }
+      )
+      .subscribe();
+
+    const receivedChannel = supabase
+      .channel('received-emails-unread-count')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'received_emails',
+        },
+        () => {
+          fetchUnreadCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(contactChannel);
+      supabase.removeChannel(receivedChannel);
+    };
+  }, []);
+
+  const fetchUnreadCount = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) return;
+
+      const { count: contactCount } = await supabase
+        .from('contact_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'unread');
+
+      const { count: emailCount } = await supabase
+        .from('received_emails')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_read', false);
+
+      setUnreadMessagesCount((contactCount || 0) + (emailCount || 0));
+    } catch (error) {
+      console.error('Error fetching unread messages count:', error);
+    }
+  };
 
   const handleDragStart = (e: DragEvent<HTMLLIElement>, index: number) => {
     setDraggedIndex(index);
@@ -195,7 +256,7 @@ export default function NavigationManager({
                   onClick={onClose}
                   className={`flex items-center ${
                     sidebarCollapsed ? 'justify-center' : 'gap-3'
-                  } px-4 py-3 rounded-lg text-sm font-light transition-all duration-200 ${
+                  } px-4 py-3 rounded-lg text-sm font-light transition-all duration-200 relative ${
                     isActive
                       ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
                       : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
@@ -205,8 +266,20 @@ export default function NavigationManager({
                   {isEditMode && !sidebarCollapsed && (
                     <GripVertical className="w-4 h-4 text-[#e5e4e2]/40" />
                   )}
-                  <item.icon className="w-5 h-5" />
+                  <div className="relative">
+                    <item.icon className="w-5 h-5" />
+                    {item.key === 'messages' && unreadMessagesCount > 0 && (
+                      <div className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full">
+                        {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                      </div>
+                    )}
+                  </div>
                   {!sidebarCollapsed && <span>{item.name}</span>}
+                  {!sidebarCollapsed && item.key === 'messages' && unreadMessagesCount > 0 && (
+                    <span className="ml-auto flex items-center justify-center min-w-[22px] h-[22px] px-1.5 bg-red-500 text-white text-xs font-semibold rounded-full">
+                      {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                    </span>
+                  )}
                 </Link>
               </li>
             );
