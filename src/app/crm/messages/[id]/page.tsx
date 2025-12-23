@@ -198,16 +198,17 @@ export default function MessageDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-[#0f1119]">
-      <div className="max-w-5xl mx-auto p-6">
+      <div className="max-w-5xl mx-auto p-3 sm:p-6">
         <div className="bg-[#1c1f33] rounded-lg shadow-xl border border-[#d3bb73]/20">
-          <div className="p-6 border-b border-[#d3bb73]/20">
-            <div className="flex items-center justify-between mb-6">
+          <div className="p-3 sm:p-6 border-b border-[#d3bb73]/20">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
               <button
                 onClick={() => router.push('/crm/messages')}
-                className="flex items-center gap-2 text-[#e5e4e2]/70 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base text-[#e5e4e2]/70 hover:text-white transition-colors"
               >
-                <ArrowLeft className="w-5 h-5" />
-                Powrót do listy
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Powrót do listy</span>
+                <span className="sm:hidden">Powrót</span>
               </button>
 
               <ResponsiveActionBar
@@ -248,14 +249,14 @@ export default function MessageDetailPage({ params }: PageProps) {
               />
             </div>
 
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h1 className="text-3xl font-bold text-white mb-4">{message.subject}</h1>
-                <div className="space-y-2 text-sm text-[#e5e4e2]/70">
-                  <p>
+            <div className="flex items-start justify-between mb-3 sm:mb-4 gap-2">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-3xl font-bold text-white mb-2 sm:mb-4 break-words">{message.subject}</h1>
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-[#e5e4e2]/70">
+                  <p className="break-all">
                     <strong className="text-white">Od:</strong> {message.from}
                   </p>
-                  <p>
+                  <p className="break-all">
                     <strong className="text-white">Do:</strong> {message.to}
                   </p>
                   <p>
@@ -271,50 +272,50 @@ export default function MessageDetailPage({ params }: PageProps) {
                 </div>
               </div>
               <span
-                className={`text-xs px-3 py-1 rounded ${typeInfo.color} text-white whitespace-nowrap`}
+                className={`text-[10px] sm:text-xs px-2 sm:px-3 py-0.5 sm:py-1 rounded ${typeInfo.color} text-white whitespace-nowrap flex-shrink-0`}
               >
                 {typeInfo.label}
               </span>
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="prose prose-invert max-w-none text-white">
+          <div className="p-3 sm:p-6">
+            <div className="prose prose-invert prose-sm sm:prose-base max-w-none text-white">
               {message.bodyHtml && message.bodyHtml.trim() ? (
                 <div
                   dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
-                  className="text-[#e5e4e2] [&_img]:max-w-full [&_a]:text-[#d3bb73] [&_a]:underline"
+                  className="text-sm sm:text-base text-[#e5e4e2] [&_img]:max-w-full [&_a]:text-[#d3bb73] [&_a]:underline"
                   style={{
                     wordWrap: 'break-word',
                     overflowWrap: 'break-word'
                   }}
                 />
               ) : message.body && message.body.trim() ? (
-                <p className="whitespace-pre-wrap text-[#e5e4e2]">{message.body}</p>
+                <p className="whitespace-pre-wrap text-sm sm:text-base text-[#e5e4e2]">{message.body}</p>
               ) : (
-                <p className="text-[#e5e4e2]/50 italic">Brak treści wiadomości</p>
+                <p className="text-sm sm:text-base text-[#e5e4e2]/50 italic">Brak treści wiadomości</p>
               )}
             </div>
 
             {message.attachments && message.attachments.length > 0 && (
-              <div className="mt-6 border-t border-[#d3bb73]/20 pt-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Paperclip className="w-5 h-5 text-[#d3bb73]" />
-                  <h3 className="text-lg font-semibold text-white">
+              <div className="mt-4 sm:mt-6 border-t border-[#d3bb73]/20 pt-4 sm:pt-6">
+                <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+                  <Paperclip className="w-4 h-4 sm:w-5 sm:h-5 text-[#d3bb73]" />
+                  <h3 className="text-base sm:text-lg font-semibold text-white">
                     Załączniki ({message.attachments.length})
                   </h3>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5 sm:space-y-2">
                   {message.attachments.map((attachment) => (
                     <div
                       key={attachment.id}
-                      className="flex items-center justify-between p-3 bg-[#0f1119] rounded-lg border border-[#d3bb73]/20 hover:bg-[#d3bb73]/5 transition-colors"
+                      className="flex items-center justify-between p-2 sm:p-3 bg-[#0f1119] rounded-lg border border-[#d3bb73]/20 hover:bg-[#d3bb73]/5 transition-colors gap-2"
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <Paperclip className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
+                      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                        <Paperclip className="w-3 h-3 sm:w-4 sm:h-4 text-[#d3bb73] flex-shrink-0" />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-white truncate">{attachment.filename}</p>
-                          <p className="text-xs text-[#e5e4e2]/50">
+                          <p className="text-xs sm:text-sm text-white truncate">{attachment.filename}</p>
+                          <p className="text-[10px] sm:text-xs text-[#e5e4e2]/50">
                             {(attachment.size_bytes / 1024).toFixed(1)} KB
                           </p>
                         </div>
@@ -341,10 +342,10 @@ export default function MessageDetailPage({ params }: PageProps) {
                             showSnackbar('Błąd podczas pobierania załącznika', 'error');
                           }
                         }}
-                        className="flex items-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                        className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors flex-shrink-0"
                       >
-                        <Download className="w-4 h-4" />
-                        <span className="text-sm">Pobierz</span>
+                        <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="text-xs sm:text-sm hidden sm:inline">Pobierz</span>
                       </button>
                     </div>
                   ))}
