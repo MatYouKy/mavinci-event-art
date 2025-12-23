@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Mail, Plus, Edit, Trash2, Eye, EyeOff, Building2, User, Settings } from 'lucide-react';
+import { Mail, Plus, CreditCard as Edit, Trash2, Eye, EyeOff, Building2, User, Settings } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 
