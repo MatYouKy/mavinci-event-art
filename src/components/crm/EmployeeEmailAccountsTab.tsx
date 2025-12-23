@@ -300,15 +300,15 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           </li>
           <li className="flex gap-2">
             <span className="text-[#d3bb73] font-bold">•</span>
-            <span><strong>Konta wspólne:</strong> Admin przypisuje dostęp ręcznie - kliknij "Zarządzaj dostępem" i wybierz "Przypisz"/"Odbierz"</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-[#d3bb73] font-bold">•</span>
-            <span><strong>Konta systemowe:</strong> Automatycznie dostępne dla wszystkich z uprawnieniem messages:view</span>
+            <span><strong>Konta wspólne i systemowe:</strong> Admin przypisuje dostęp ręcznie - kliknij "Zarządzaj dostępem" i wybierz "Przypisz"/"Odbierz"</span>
           </li>
           <li className="flex gap-2">
             <span className="text-[#d3bb73] font-bold">•</span>
             <span><strong>Efekt w /crm/messages:</strong> Pracownik widzi tylko wiadomości z kont, do których ma dostęp</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-[#d3bb73] font-bold">•</span>
+            <span><strong>Zarządzanie kontami:</strong> Edycja/usuwanie/dodawanie kont w /crm/settings (tylko admin)</span>
           </li>
         </ul>
       </div>
