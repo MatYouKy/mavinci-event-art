@@ -16,10 +16,19 @@ export interface MessageListItem {
   email_account_id?: string;
 }
 
+export interface EmailAttachment {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  storage_path: string;
+}
+
 export interface MessageDetails extends MessageListItem {
   body: string;
   bodyHtml?: string;
   originalData: any;
+  attachments?: EmailAttachment[];
 }
 
 export interface FetchMessagesParams {
@@ -355,6 +364,12 @@ export const messagesApi = api.injectEndpoints({
               .single();
 
             if (data) {
+              const { data: attachments } = await supabase
+                .from('email_attachments')
+                .select('id, filename, content_type, size_bytes, storage_path')
+                .eq('email_id', id)
+                .eq('email_type', 'received');
+
               messageData = {
                 id: data.id,
                 type: 'received',
@@ -371,6 +386,7 @@ export const messagesApi = api.injectEndpoints({
                 assigned_employee: data.assigned_employee,
                 email_account_id: data.email_account_id,
                 originalData: data,
+                attachments: attachments || [],
               };
             }
           }

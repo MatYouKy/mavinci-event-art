@@ -644,13 +644,13 @@ export default function MessagesPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119]">
-      <div className="mx-auto max-w-7xl p-6">
+      <div className="mx-auto max-w-7xl p-3 sm:p-6">
         <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
-          <div className="border-b border-[#d3bb73]/20 p-6">
-            <div className="mb-6 flex items-center justify-between">
+          <div className="border-b border-[#d3bb73]/20 p-3 sm:p-6">
+            <div className="mb-4 sm:mb-6 flex items-center justify-between">
               <div>
-                <h1 className="mb-2 text-3xl font-bold text-white">Wiadomości</h1>
-                <p className="text-[#e5e4e2]/60">
+                <h1 className="mb-1 sm:mb-2 text-xl sm:text-3xl font-bold text-white">Wiadomości</h1>
+                <p className="text-xs sm:text-base text-[#e5e4e2]/60">
                   {canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}
                 </p>
               </div>
@@ -708,10 +708,10 @@ export default function MessagesPage() {
               </div>
             </div>
 
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center gap-4">
+            <div className="mt-3 sm:mt-4 space-y-3 sm:space-y-4">
+              <div className="flex items-center gap-2 sm:gap-4">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
+                  <Search className="absolute left-2 sm:left-3 top-1/2 h-4 w-4 sm:h-5 sm:w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
                   <input
                     type="text"
                     value={searchQuery}
@@ -721,29 +721,29 @@ export default function MessagesPage() {
                         handleAdvancedSearch();
                       }
                     }}
-                    placeholder="Szukaj wiadomości..."
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-4 text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    placeholder="Szukaj..."
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 sm:py-3 pl-8 sm:pl-10 pr-3 sm:pr-4 text-sm sm:text-base text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 sm:gap-2">
                   <button
                     onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                    className={`flex items-center gap-2 rounded-lg px-4 py-3 transition-colors ${
+                    className={`flex items-center gap-1 sm:gap-2 rounded-lg px-2.5 sm:px-4 py-2 sm:py-3 transition-colors ${
                       showAdvancedSearch
                         ? 'bg-[#d3bb73] text-[#1c1f33]'
                         : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
                     }`}
                     title="Zaawansowane wyszukiwanie"
                   >
-                    <Calendar className="h-5 w-5" />
+                    <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
                   </button>
                   {isSearchMode && (
                     <button
                       onClick={handleClearSearch}
-                      className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-3 text-red-400 transition-colors hover:bg-red-500/30"
+                      className="flex items-center gap-1 sm:gap-2 rounded-lg bg-red-500/20 px-2.5 sm:px-4 py-2 sm:py-3 text-red-400 transition-colors hover:bg-red-500/30"
                       title="Wyczyść wyszukiwanie"
                     >
-                      <X className="h-5 w-5" />
+                      <X className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                   )}
                   {canManage && (
@@ -752,19 +752,19 @@ export default function MessagesPage() {
                       disabled={
                         isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'
                       }
-                      className="flex items-center gap-2 rounded-lg bg-blue-500/20 px-4 py-3 text-blue-400 transition-colors hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="hidden sm:flex items-center gap-2 rounded-lg bg-blue-500/20 px-4 py-3 text-blue-400 transition-colors hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                       title="Pobierz nowe wiadomości z serwera email"
                     >
                       <Inbox className="h-5 w-5" />
-                      <span className="hidden sm:inline">Pobierz z serwera</span>
+                      <span className="hidden lg:inline">Pobierz z serwera</span>
                     </button>
                   )}
                   <button
                     onClick={() => (isSearchMode ? handleClearSearch() : refetch())}
                     disabled={isLoading}
-                    className="rounded-lg bg-[#d3bb73]/20 px-6 py-3 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
+                    className="rounded-lg bg-[#d3bb73]/20 px-3 sm:px-6 py-2 sm:py-3 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
                   >
-                    <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-4 w-4 sm:h-5 sm:w-5 ${isLoading ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
               </div>
@@ -845,27 +845,27 @@ export default function MessagesPage() {
                   return (
                     <div
                       key={message.id}
-                      className={`p-4 transition-colors hover:bg-[#d3bb73]/5 ${
+                      className={`p-2 sm:p-4 transition-colors hover:bg-[#d3bb73]/5 ${
                         !message.isRead ? 'bg-[#d3bb73]/5 font-semibold' : ''
                       }`}
                     >
-                      <div className="mb-2 flex items-start justify-between">
+                      <div className="mb-1.5 sm:mb-2 flex items-start justify-between gap-2">
                         <div
                           className="min-w-0 flex-1 cursor-pointer"
                           onClick={() =>
                             handleMessageClick(message.id, message.type, message.isRead)
                           }
                         >
-                          <div className="mb-1 flex items-center gap-2">
-                            <span className="truncate text-white">{message.from}</span>
+                          <div className="mb-0.5 sm:mb-1 flex items-center gap-1.5 sm:gap-2">
+                            <span className="truncate text-sm sm:text-base text-white">{message.from}</span>
                             {!message.isRead && (
-                              <span className="h-2 w-2 rounded-full bg-[#d3bb73]"></span>
+                              <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-[#d3bb73] flex-shrink-0"></span>
                             )}
                           </div>
-                          <p className="truncate text-sm text-[#e5e4e2]/70">{message.subject}</p>
+                          <p className="truncate text-xs sm:text-sm text-[#e5e4e2]/70">{message.subject}</p>
                         </div>
-                        <div className="ml-2 flex items-center gap-2">
-                          <span className="whitespace-nowrap text-xs text-[#e5e4e2]/50">
+                        <div className="ml-2 flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                          <span className="whitespace-nowrap text-[10px] sm:text-xs text-[#e5e4e2]/50">
                             {formatDate(message.date)}
                           </span>
                           {(message.type === 'contact_form' || message.type === 'received') && (
@@ -903,17 +903,16 @@ export default function MessagesPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded px-2 py-1 text-xs ${typeInfo.color} text-white`}>
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className={`rounded px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs ${typeInfo.color} text-white`}>
                           {typeInfo.label}
                         </span>
                         {message.assigned_employee && (
-                          <span className="rounded border border-purple-500/30 bg-purple-500/20 px-2 py-1 text-xs text-purple-300">
-                            Przypisano: {message.assigned_employee.name}{' '}
-                            {message.assigned_employee.surname}
+                          <span className="rounded border border-purple-500/30 bg-purple-500/20 px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs text-purple-300">
+                            {message.assigned_employee.name} {message.assigned_employee.surname}
                           </span>
                         )}
-                        <p className="flex-1 truncate text-sm text-[#e5e4e2]/50">
+                        <p className="hidden sm:block flex-1 truncate text-sm text-[#e5e4e2]/50">
                           {message.preview}
                         </p>
                       </div>

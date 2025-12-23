@@ -13,6 +13,8 @@ import {
   Forward,
   Trash2,
   Pin,
+  Paperclip,
+  Download,
 } from 'lucide-react';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useState, useEffect } from 'react';
@@ -293,6 +295,62 @@ export default function MessageDetailPage({ params }: PageProps) {
                 <p className="text-[#e5e4e2]/50 italic">Brak treści wiadomości</p>
               )}
             </div>
+
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="mt-6 border-t border-[#d3bb73]/20 pt-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Paperclip className="w-5 h-5 text-[#d3bb73]" />
+                  <h3 className="text-lg font-semibold text-white">
+                    Załączniki ({message.attachments.length})
+                  </h3>
+                </div>
+                <div className="space-y-2">
+                  {message.attachments.map((attachment) => (
+                    <div
+                      key={attachment.id}
+                      className="flex items-center justify-between p-3 bg-[#0f1119] rounded-lg border border-[#d3bb73]/20 hover:bg-[#d3bb73]/5 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <Paperclip className="w-4 h-4 text-[#d3bb73] flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-white truncate">{attachment.filename}</p>
+                          <p className="text-xs text-[#e5e4e2]/50">
+                            {(attachment.size_bytes / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const { data, error } = await supabase.storage
+                              .from('email-attachments')
+                              .download(attachment.storage_path);
+
+                            if (error) throw error;
+
+                            const url = URL.createObjectURL(data);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = attachment.filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                          } catch (error) {
+                            console.error('Error downloading attachment:', error);
+                            showSnackbar('Błąd podczas pobierania załącznika', 'error');
+                          }
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span className="text-sm">Pobierz</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
