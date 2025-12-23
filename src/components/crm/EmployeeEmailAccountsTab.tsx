@@ -154,8 +154,8 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           <h3 className="text-lg font-light text-[#e5e4e2]">Konta Email</h3>
           <p className="text-sm text-[#e5e4e2]/60 mt-1">
             {isEditing
-              ? 'Kliknij "Przypisz" lub "Odbierz" przy kontach wspólnych - zmiany są zapisywane automatycznie'
-              : 'Lista kont email dostępnych dla pracownika. Admin może zarządzać dostępem do kont wspólnych.'
+              ? 'Zaznacz/odznacz checkboxy przy kontach wspólnych i systemowych - zmiany są zapisywane automatycznie'
+              : 'Lista kont email dostępnych dla pracownika. Admin może zarządzać dostępem do kont wspólnych i systemowych.'
             }
           </p>
         </div>
@@ -268,7 +268,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
               Konta systemowe
             </h4>
             <p className="text-xs text-[#e5e4e2]/60 mb-3">
-              Konta używane do automatycznych powiadomień systemowych. Dostępne dla wszystkich.
+              Konta używane do automatycznych powiadomień systemowych. Admin przypisuje dostęp.
             </p>
             {systemAccounts.length === 0 ? (
               <p className="text-sm text-[#e5e4e2]/40 italic">Brak kont systemowych</p>
@@ -278,9 +278,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                   <AccountRow
                     key={account.id}
                     account={account}
-                    isAssigned={true}
-                    onToggle={() => {}}
-                    isAdmin={false}
+                    isAssigned={isAssigned(account.id)}
+                    onToggle={() => toggleAssignment(account.id, account.account_type)}
+                    isAdmin={isAdmin}
                     isPersonal={false}
                     isEditing={isEditing}
                   />
@@ -300,7 +300,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           </li>
           <li className="flex gap-2">
             <span className="text-[#d3bb73] font-bold">•</span>
-            <span><strong>Konta wspólne i systemowe:</strong> Admin przypisuje dostęp ręcznie - kliknij "Zarządzaj dostępem" i wybierz "Przypisz"/"Odbierz"</span>
+            <span><strong>Konta wspólne i systemowe:</strong> Admin przypisuje dostęp ręcznie - kliknij "Zarządzaj dostępem" i zaznacz checkbox przy koncie</span>
           </li>
           <li className="flex gap-2">
             <span className="text-[#d3bb73] font-bold">•</span>
@@ -368,7 +368,7 @@ function AccountRow({
             <span className={`px-2 py-0.5 rounded text-xs border ${getAccountTypeColor(account.account_type)}`}>
               {getAccountTypeLabel(account.account_type)}
             </span>
-            {isAssigned && (
+            {isAssigned && !isEditing && (
               <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs border border-[#d3bb73]/30">
                 Przypisane
               </span>
@@ -390,38 +390,33 @@ function AccountRow({
           )}
         </div>
 
-        {isEditing && isAdmin && !isPersonal && account.account_type !== 'system' && (
-          <button
-            onClick={onToggle}
-            className={`
-              flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+        {isEditing && isAdmin && !isPersonal && (
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={isAssigned}
+              onChange={onToggle}
+              className="hidden"
+            />
+            <div className={`
+              relative w-5 h-5 rounded border-2 transition-all
               ${isAssigned
-                ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
-                : 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 hover:bg-[#d3bb73]/30'
+                ? 'bg-[#d3bb73] border-[#d3bb73]'
+                : 'border-[#e5e4e2]/30 group-hover:border-[#d3bb73]/50'
               }
-            `}
-          >
-            {isAssigned ? (
-              <>
-                <CheckSquare className="w-4 h-4" />
-                Odbierz
-              </>
-            ) : (
-              <>
-                <Square className="w-4 h-4" />
-                Przypisz
-              </>
-            )}
-          </button>
+            `}>
+              {isAssigned && (
+                <CheckSquare className="w-4 h-4 text-[#1c1f33] absolute inset-0.5" strokeWidth={3} />
+              )}
+            </div>
+            <span className="text-sm text-[#e5e4e2]/70 group-hover:text-[#e5e4e2]">
+              {isAssigned ? 'Ma dostęp' : 'Brak dostępu'}
+            </span>
+          </label>
         )}
         {!isEditing && isPersonal && (
           <span className="px-3 py-1.5 rounded-lg text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20">
             Właściciel
-          </span>
-        )}
-        {!isEditing && account.account_type === 'system' && (
-          <span className="px-3 py-1.5 rounded-lg text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">
-            Dla wszystkich
           </span>
         )}
       </div>
