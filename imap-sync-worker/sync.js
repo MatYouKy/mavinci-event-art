@@ -5,18 +5,8 @@ require('dotenv').config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-<<<<<<< HEAD
 const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')
   ? (process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"') ? 'service_role' : 'anon')
-=======
-// Debug: Check which key is being used
-const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY?.includes(
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
-)
-  ? process.env.SUPABASE_SERVICE_ROLE_KEY.includes('"role":"service_role"')
-    ? 'service_role'
-    : 'anon'
->>>>>>> c7477ac (update sync)
   : 'MISSING';
 
 console.log('\n⚠️  KEY TYPE DETECTED:', keyType);
@@ -27,34 +17,8 @@ if (keyType === 'anon') {
   console.log('   Location: Settings > API > service_role (secret)\n');
 }
 
-<<<<<<< HEAD
 const SYNC_INTERVAL = (parseInt(process.env.SYNC_INTERVAL_MINUTES) || 5) * 60 * 1000;
 const MAX_MESSAGES = parseInt(process.env.MAX_MESSAGES_PER_SYNC) || 100;
-=======
-const SYNC_INTERVAL = (parseInt(process.env.SYNC_INTERVAL_MINUTES, 10) || 5) * 60 * 1000;
-const MAX_MESSAGES = parseInt(process.env.MAX_MESSAGES_PER_SYNC, 10) || 50;
-
-// How many days back to search from last sync (IMAP SINCE is day-granular, so we overlap)
-const OVERLAP_DAYS = parseInt(process.env.SYNC_SINCE_OVERLAP_DAYS, 10) || 2;
-
-function getMonthName(month) {
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  return months[month - 1];
-}
->>>>>>> c7477ac (update sync)
 
 function formatImapSinceDate(date) {
   const d = new Date(date);
@@ -96,32 +60,7 @@ async function syncAccount(account) {
     await connection.openBox('INBOX');
     console.log('  ✓ INBOX opened');
 
-<<<<<<< HEAD
     const searchCriteria = ['ALL'];
-=======
-    // IMPORTANT FIX:
-    // Do NOT base "since" on parsed email Date header (can be stale / wrong).
-    // Instead base it on worker's last_sync_at (your system clock), with overlap.
-    const lastSyncAt = safeDate(account.last_sync_at);
-    let searchCriteria;
-
-    if (lastSyncAt) {
-      const sinceDate = new Date(lastSyncAt);
-      sinceDate.setUTCDate(sinceDate.getUTCDate() - OVERLAP_DAYS);
-      const imapSince = formatImapSinceDate(sinceDate);
-
-      // ✅ Correct format for imap-simple / node-imap
-      searchCriteria = [['SINCE', imapSince]];
-
-      console.log(
-        `  → Searching for messages SINCE (overlap ${OVERLAP_DAYS}d): ${imapSince} (last_sync_at: ${lastSyncAt.toISOString()})`,
-      );
-    } else {
-      searchCriteria = ['ALL'];
-      console.log('  → Searching for all messages (first sync)');
-    }
-
->>>>>>> c7477ac (update sync)
     const fetchOptions = {
       // '' gets the full raw message
       bodies: ['HEADER', 'TEXT', ''],
@@ -136,19 +75,6 @@ async function syncAccount(account) {
     const recentMessages = messages.slice(-MAX_MESSAGES);
     console.log(`  → Processing last ${recentMessages.length} messages`);
 
-<<<<<<< HEAD
-=======
-    // Sort by IMAP INTERNALDATE (node-imap puts it in attributes.date) when available
-    const sorted = messages.slice().sort((a, b) => {
-      const ad = a?.attributes?.date ? new Date(a.attributes.date).getTime() : 0;
-      const bd = b?.attributes?.date ? new Date(b.attributes.date).getTime() : 0;
-      return ad - bd;
-    });
-
-    // Always cap processing per sync to avoid huge runs.
-    const recentMessages = sorted.length > MAX_MESSAGES ? sorted.slice(-MAX_MESSAGES) : sorted;
-
->>>>>>> c7477ac (update sync)
     let syncedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
@@ -248,15 +174,7 @@ async function syncAccount(account) {
 
     await supabase
       .from('employee_email_accounts')
-<<<<<<< HEAD
       .update({ last_sync_at: new Date().toISOString() })
-=======
-      .update({
-        last_sync_at: new Date().toISOString(),
-        last_sync_status: errorCount > 0 ? 'partial' : 'success',
-        last_sync_error: null,
-      })
->>>>>>> c7477ac (update sync)
       .eq('id', account.id);
 
   } catch (error) {
@@ -264,13 +182,7 @@ async function syncAccount(account) {
     await supabase
       .from('employee_email_accounts')
       .update({
-<<<<<<< HEAD
         last_sync_at: new Date().toISOString()
-=======
-        last_sync_at: new Date().toISOString(),
-        last_sync_status: 'error',
-        last_sync_error: error.message,
->>>>>>> c7477ac (update sync)
       })
       .eq('id', account.id);
   }
@@ -301,14 +213,7 @@ async function syncAllAccounts() {
     console.log(`✓ Found ${accounts.length} active account(s) to sync\n`);
 
     for (const account of accounts) {
-<<<<<<< HEAD
       await syncAccount(account);
-=======
-      const result = await syncAccount(account);
-      if (result.success) totalSynced += result.synced || 0;
-      if (result.errors) totalErrors += result.errors;
-      if (!result.success) totalErrors += 1; // licz chociaż 1 błąd per konto
->>>>>>> c7477ac (update sync)
     }
 
     console.log('\n════════════════════════════════════════════');
@@ -320,18 +225,7 @@ async function syncAllAccounts() {
   }
 }
 
-<<<<<<< HEAD
 syncAllAccounts();
-=======
-console.log('\n' + '='.repeat(80));
-console.log('MAVINCI IMAP SYNC WORKER');
-console.log('='.repeat(80));
-console.log(`Supabase URL: ${process.env.SUPABASE_URL}`);
-console.log(`Sync interval: ${SYNC_INTERVAL / 60000} minutes`);
-console.log(`Max messages per sync: ${MAX_MESSAGES}`);
-console.log(`Overlap days for SINCE: ${OVERLAP_DAYS}`);
-console.log('='.repeat(80) + '\n');
->>>>>>> c7477ac (update sync)
 
 setInterval(() => {
   syncAllAccounts();
