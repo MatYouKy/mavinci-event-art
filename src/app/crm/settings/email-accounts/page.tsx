@@ -57,7 +57,7 @@ export default function EmailAccountsManagementPage() {
         .select(
           `
           *,
-          employees:employee_id (
+          employees!employee_email_accounts_employee_id_fkey (
             name,
             surname
           )
