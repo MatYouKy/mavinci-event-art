@@ -63,7 +63,7 @@ export default function EmailAccountsManagementPage() {
           )
         `,
         )
-        .eq('is_active', true)
+        .order('is_active', { ascending: false })
         .order('account_type', { ascending: true })
         .order('account_name', { ascending: true });
 
