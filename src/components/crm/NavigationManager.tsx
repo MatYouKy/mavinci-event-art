@@ -50,7 +50,20 @@ export default function NavigationManager({
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'contact_messages',
+        },
+        (payload) => {
+          const newMessage = payload.new as any;
+          showSnackbar(`Nowa wiadomość z formularza: ${newMessage.subject || 'Wiadomość z formularza'}`, 'info');
+          fetchUnreadCount();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
           schema: 'public',
           table: 'contact_messages',
         },
@@ -65,7 +78,20 @@ export default function NavigationManager({
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'received_emails',
+        },
+        (payload) => {
+          const newEmail = payload.new as any;
+          showSnackbar(`Nowy email: ${newEmail.subject || '(No subject)'}`, 'info');
+          fetchUnreadCount();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
           schema: 'public',
           table: 'received_emails',
         },
@@ -79,7 +105,7 @@ export default function NavigationManager({
       supabase.removeChannel(contactChannel);
       supabase.removeChannel(receivedChannel);
     };
-  }, []);
+  }, [showSnackbar]);
 
   const fetchUnreadCount = async () => {
     try {

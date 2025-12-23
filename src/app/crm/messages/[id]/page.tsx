@@ -12,7 +12,9 @@ import {
   Reply,
   Forward,
   Trash2,
+  Pin,
 } from 'lucide-react';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useState, useEffect } from 'react';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import { supabase } from '@/lib/supabase';
@@ -206,53 +208,42 @@ export default function MessageDetailPage({ params }: PageProps) {
                 Powrót do listy
               </button>
 
-              <div className="flex items-center gap-2">
-                {message.type === 'received' && (
-                  <button
-                    onClick={handleToggleStar}
-                    className="p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73] transition-colors"
-                    title={message.isStarred ? 'Usuń gwiazdkę' : 'Oznacz gwiazdką'}
-                  >
-                    {message.isStarred ? (
-                      <Star className="w-5 h-5 fill-[#d3bb73] text-[#d3bb73]" />
+              <ResponsiveActionBar
+                actions={[
+                  ...(message.type === 'received' ? [{
+                    label: message.isStarred ? 'Usuń gwiazdkę' : 'Oznacz gwiazdką',
+                    onClick: handleToggleStar,
+                    icon: message.isStarred ? (
+                      <Star className="w-4 h-4 fill-[#d3bb73] text-[#d3bb73]" />
                     ) : (
-                      <StarOff className="w-5 h-5" />
-                    )}
-                  </button>
-                )}
-
-                {canManage && (message.type === 'contact_form' || message.type === 'received') && (
-                  <>
-                    <button
-                      onClick={() => setShowReplyModal(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
-                    >
-                      <Reply className="w-4 h-4" />
-                      Odpowiedz
-                    </button>
-
-                    {message.type === 'received' && (
-                      <button
-                        onClick={() => setShowForwardModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors"
-                      >
-                        <Forward className="w-4 h-4" />
-                        Przekaż
-                      </button>
-                    )}
-                  </>
-                )}
-
-                {canManage && (
-                  <button
-                    onClick={handleDelete}
-                    className="p-2 text-red-400 hover:text-red-300 transition-colors"
-                    title="Usuń wiadomość"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
+                      <StarOff className="w-4 h-4" />
+                    ),
+                    variant: 'default' as const,
+                    show: true,
+                  }] : []),
+                  ...(canManage && (message.type === 'contact_form' || message.type === 'received') ? [{
+                    label: 'Odpowiedz',
+                    onClick: () => setShowReplyModal(true),
+                    icon: <Reply className="w-4 h-4" />,
+                    variant: 'primary' as const,
+                    show: true,
+                  }] : []),
+                  ...(canManage && message.type === 'received' ? [{
+                    label: 'Przekaż',
+                    onClick: () => setShowForwardModal(true),
+                    icon: <Forward className="w-4 h-4" />,
+                    variant: 'default' as const,
+                    show: true,
+                  }] : []),
+                  ...(canManage ? [{
+                    label: 'Usuń',
+                    onClick: handleDelete,
+                    icon: <Trash2 className="w-4 h-4" />,
+                    variant: 'danger' as const,
+                    show: true,
+                  }] : []),
+                ]}
+              />
             </div>
 
             <div className="flex items-start justify-between mb-4">
@@ -287,13 +278,19 @@ export default function MessageDetailPage({ params }: PageProps) {
 
           <div className="p-6">
             <div className="prose prose-invert max-w-none text-white">
-              {message.bodyHtml ? (
+              {message.bodyHtml && message.bodyHtml.trim() ? (
                 <div
                   dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
-                  className="text-[#e5e4e2]"
+                  className="text-[#e5e4e2] [&_img]:max-w-full [&_a]:text-[#d3bb73] [&_a]:underline"
+                  style={{
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word'
+                  }}
                 />
-              ) : (
+              ) : message.body && message.body.trim() ? (
                 <p className="whitespace-pre-wrap text-[#e5e4e2]">{message.body}</p>
+              ) : (
+                <p className="text-[#e5e4e2]/50 italic">Brak treści wiadomości</p>
               )}
             </div>
           </div>

@@ -259,11 +259,16 @@ export const messagesApi = api.injectEndpoints({
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
         }
       },
-      providesTags: (result, error, { emailAccountId }) => [
-        { type: 'Message', id: 'LIST' },
-        { type: 'Message', id: emailAccountId },
-      ],
-      keepUnusedDataFor: 300,
+      providesTags: (result, error, { emailAccountId, filterType }) => {
+        const tags: any[] = [{ type: 'Message', id: 'LIST' }];
+        if (result) {
+          result.messages.forEach(msg => {
+            tags.push({ type: 'Message', id: msg.id });
+          });
+        }
+        return tags;
+      },
+      keepUnusedDataFor: 600,
     }),
 
     getMessageDetails: builder.query<

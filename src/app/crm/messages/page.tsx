@@ -372,7 +372,7 @@ export default function MessagesPage() {
     messageType: 'contact_form' | 'sent' | 'received',
     isRead: boolean,
   ) => {
-    router.push(`/crm/messages/${messageId}?type=${messageType}`);
+    window.open(`/crm/messages/${messageId}?type=${messageType}`, '_blank', 'noopener,noreferrer');
 
     if (!isRead && (messageType === 'contact_form' || messageType === 'received')) {
       await markAsRead({ id: messageId, type: messageType });
