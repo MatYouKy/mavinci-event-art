@@ -47,6 +47,7 @@ export default function MessagesPage() {
     assignedTo: string | null;
   } | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<any>(null);
+  const [hasContactFormAccess, setHasContactFormAccess] = useState(false);
   const [forwardMessage, setForwardMessage] = useState<any>(null);
   const [offset, setOffset] = useState(0);
   const [allMessages, setAllMessages] = useState<any[]>([]);
@@ -177,7 +178,8 @@ export default function MessagesPage() {
         .eq('id', user.id)
         .maybeSingle();
 
-      const hasContactFormAccess = employeeData?.can_receive_contact_forms || false;
+      const hasAccess = employeeData?.can_receive_contact_forms || false;
+      setHasContactFormAccess(hasAccess);
 
       let assignedAccounts = [];
       if (assignedAccountIds.length > 0) {
@@ -237,7 +239,7 @@ export default function MessagesPage() {
               },
             ]
           : []),
-        ...(canManage
+        ...(hasAccess || canManage
           ? [
               {
                 id: 'contact_form',
@@ -291,13 +293,14 @@ export default function MessagesPage() {
   }, [currentEmployee, fetchEmailAccounts]);
 
   useEffect(() => {
-    if (!canManage && selectedAccount === 'contact_form') {
+    const hasAccess = hasContactFormAccess || canManage;
+    if (!hasAccess && selectedAccount === 'contact_form') {
       setSelectedAccount('all');
     }
-    if (!canManage && filterType === 'contact_form') {
+    if (!hasAccess && filterType === 'contact_form') {
       setFilterType('all');
     }
-  }, [canManage, selectedAccount, filterType]);
+  }, [hasContactFormAccess, canManage, selectedAccount, filterType]);
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
@@ -696,7 +699,9 @@ export default function MessagesPage() {
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   <option value="all">Wszystkie</option>
-                  {canManage && <option value="contact_form">Formularz</option>}
+                  {(hasContactFormAccess || canManage) && (
+                    <option value="contact_form">Formularz</option>
+                  )}
                   <option value="received">Odebrane</option>
                   <option value="sent">Wysłane</option>
                 </select>
