@@ -24,6 +24,11 @@ if (keyType === 'anon') {
 const SYNC_INTERVAL = (parseInt(process.env.SYNC_INTERVAL_MINUTES) || 5) * 60 * 1000;
 const MAX_MESSAGES = parseInt(process.env.MAX_MESSAGES_PER_SYNC) || 50;
 
+function getMonthName(month) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return months[month - 1];
+}
+
 async function syncAccount(account) {
   console.log(`\n[${new Date().toISOString()}] Synchronizing: ${account.email_address}`);
 
@@ -51,7 +56,27 @@ async function syncAccount(account) {
     await connection.openBox('INBOX');
     console.log('  ✓ INBOX opened');
 
-    const searchCriteria = ['ALL'];
+    const { data: lastEmail } = await supabase
+      .from('received_emails')
+      .select('received_date')
+      .eq('email_account_id', account.id)
+      .order('received_date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let searchCriteria;
+    if (lastEmail && lastEmail.received_date) {
+      const sinceDate = new Date(lastEmail.received_date);
+      sinceDate.setHours(sinceDate.getHours() - 1);
+      const sinceDateFormatted = sinceDate.toISOString().split('T')[0].replace(/-/g, '-');
+      const [year, month, day] = sinceDateFormatted.split('-');
+      searchCriteria = ['SINCE', `${day}-${getMonthName(parseInt(month))}-${year}`];
+      console.log(`  → Searching for messages since: ${sinceDateFormatted}`);
+    } else {
+      searchCriteria = ['ALL'];
+      console.log('  → Searching for all messages (first sync)');
+    }
+
     const fetchOptions = {
       bodies: ['HEADER', 'TEXT', ''],
       markSeen: false,
@@ -62,7 +87,7 @@ async function syncAccount(account) {
     const messages = await connection.search(searchCriteria, fetchOptions);
     console.log(`  ✓ Found ${messages.length} messages`);
 
-    const recentMessages = messages.slice(-MAX_MESSAGES);
+    const recentMessages = lastEmail ? messages : messages.slice(-MAX_MESSAGES);
     let syncedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
