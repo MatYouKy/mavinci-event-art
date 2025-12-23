@@ -269,7 +269,11 @@ export const messagesApi = api.injectEndpoints({
         }
       },
       providesTags: (result, error, { emailAccountId, filterType }) => {
-        const tags: any[] = [{ type: 'Message', id: 'LIST' }];
+        const tags: any[] = [
+          { type: 'Message', id: 'LIST' },
+          { type: 'Message', id: `LIST-${emailAccountId}` },
+          { type: 'Message', id: `LIST-${emailAccountId}-${filterType}` },
+        ];
         if (result) {
           result.messages.forEach(msg => {
             tags.push({ type: 'Message', id: msg.id });
@@ -277,7 +281,7 @@ export const messagesApi = api.injectEndpoints({
         }
         return tags;
       },
-      keepUnusedDataFor: 600,
+      keepUnusedDataFor: 3600,
     }),
 
     getMessageDetails: builder.query<
@@ -402,7 +406,7 @@ export const messagesApi = api.injectEndpoints({
         }
       },
       providesTags: (result, error, { id }) => [{ type: 'Message', id }],
-      keepUnusedDataFor: 600,
+      keepUnusedDataFor: 3600,
     }),
 
     markMessageAsRead: builder.mutation<void, { id: string; type: 'contact_form' | 'received' }>({
@@ -426,7 +430,6 @@ export const messagesApi = api.injectEndpoints({
       },
       invalidatesTags: (result, error, { id }) => [
         { type: 'Message', id },
-        { type: 'Message', id: 'LIST' },
       ],
     }),
 
@@ -444,7 +447,6 @@ export const messagesApi = api.injectEndpoints({
       },
       invalidatesTags: (result, error, { id }) => [
         { type: 'Message', id },
-        { type: 'Message', id: 'LIST' },
       ],
     }),
 
@@ -705,7 +707,7 @@ export const messagesApi = api.injectEndpoints({
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
         }
       },
-      keepUnusedDataFor: 60,
+      keepUnusedDataFor: 300,
     }),
   }),
   overrideExisting: false,

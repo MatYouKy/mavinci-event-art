@@ -56,6 +56,7 @@ export default function MessagesPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [isSearchMode, setIsSearchMode] = useState(false);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const pageSize = 50;
   const observerTarget = useRef<HTMLDivElement>(null);
 
@@ -149,11 +150,15 @@ export default function MessagesPage() {
   const fetchEmailAccounts = useCallback(async () => {
     if (!currentEmployee) return;
 
+    setIsLoadingAccounts(true);
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setIsLoadingAccounts(false);
+        return;
+      }
 
       const { data: personalAccounts, error: personalError } = await supabase
         .from('employee_email_accounts')
@@ -256,13 +261,13 @@ export default function MessagesPage() {
 
       if (accounts.length > 0) {
         setSelectedAccount(accounts[0].id);
-      } else {
-        showSnackbar('Nie masz dostępu do żadnych kont email.', 'warning');
       }
     } catch (error) {
       console.error('Error fetching email accounts:', error);
+    } finally {
+      setIsLoadingAccounts(false);
     }
-  }, [currentEmployee, canManage, showSnackbar]);
+  }, [currentEmployee, canManage]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -618,7 +623,18 @@ export default function MessagesPage() {
     );
   }
 
-  if (emailAccounts.length === 0 && !isLoading && currentEmployee) {
+  if (isLoadingAccounts) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
+        <div className="text-center">
+          <Loader2 className="mx-auto mb-4 h-16 w-16 animate-spin text-[#d3bb73]" />
+          <p className="text-[#e5e4e2]/60">Ładowanie kont email...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (emailAccounts.length === 0 && currentEmployee) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
         <div className="mx-auto max-w-md p-6 text-center">
