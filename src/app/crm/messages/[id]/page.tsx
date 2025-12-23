@@ -211,7 +211,7 @@ export default function MessageDetailPage({ params }: PageProps) {
               <ResponsiveActionBar
                 actions={[
                   ...(message.type === 'received' ? [{
-                    label: message.isStarred ? 'Usuń gwiazdkę' : 'Oznacz gwiazdką',
+                    label: message.isStarred ? 'Usuń ' : 'Oznacz',
                     onClick: handleToggleStar,
                     icon: message.isStarred ? (
                       <Star className="w-4 h-4 fill-[#d3bb73] text-[#d3bb73]" />

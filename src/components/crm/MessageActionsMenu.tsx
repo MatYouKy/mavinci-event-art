@@ -114,7 +114,6 @@ export default function MessageActionsMenu({
               className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
             >
               <Star className={`w-4 h-4 ${isStarred ? 'fill-yellow-500 text-yellow-500' : ''}`} />
-              <span>{isStarred ? 'Usuń gwiazdkę' : 'Oznacz gwiazdką'}</span>
             </button>
           )}
 
