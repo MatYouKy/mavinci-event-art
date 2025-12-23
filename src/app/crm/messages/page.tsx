@@ -3,23 +3,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import {
-  Mail,
-  RefreshCw,
-  Search,
-  Plus,
-  Inbox,
-  Loader2,
-  Calendar,
-  X,
-} from 'lucide-react';
+import { Mail, RefreshCw, Search, Plus, Inbox, Loader2, Calendar, X } from 'lucide-react';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
-import { useGetMessagesListQuery, useMarkMessageAsReadMutation, useDeleteMessageMutation, useToggleStarMessageMutation, useLazySearchMessagesQuery } from '@/store/api/messagesApi';
+import {
+  useGetMessagesListQuery,
+  useMarkMessageAsReadMutation,
+  useDeleteMessageMutation,
+  useToggleStarMessageMutation,
+  useLazySearchMessagesQuery,
+} from '@/store/api/messagesApi';
 
 const translateSubject = (subject: string): string => {
   if (!subject) return 'Wiadomość z formularza';
@@ -44,7 +41,11 @@ export default function MessagesPage() {
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [messageToAssign, setMessageToAssign] = useState<{id: string, type: 'contact_form' | 'received', assignedTo: string | null} | null>(null);
+  const [messageToAssign, setMessageToAssign] = useState<{
+    id: string;
+    type: 'contact_form' | 'received';
+    assignedTo: string | null;
+  } | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<any>(null);
   const [forwardMessage, setForwardMessage] = useState<any>(null);
   const [offset, setOffset] = useState(0);
@@ -57,16 +58,25 @@ export default function MessagesPage() {
   const pageSize = 50;
   const observerTarget = useRef<HTMLDivElement>(null);
 
-  const { data: messagesData, isLoading, isFetching, refetch } = useGetMessagesListQuery({
-    emailAccountId: selectedAccount,
-    offset,
-    limit: pageSize,
-    filterType,
-  }, {
-    skip: !selectedAccount || emailAccounts.length === 0 || isSearchMode,
-  });
+  const {
+    data: messagesData,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useGetMessagesListQuery(
+    {
+      emailAccountId: selectedAccount,
+      offset,
+      limit: pageSize,
+      filterType,
+    },
+    {
+      skip: !selectedAccount || emailAccounts.length === 0 || isSearchMode,
+    },
+  );
 
-  const [triggerSearch, { data: searchData, isLoading: isSearching }] = useLazySearchMessagesQuery();
+  const [triggerSearch, { data: searchData, isLoading: isSearching }] =
+    useLazySearchMessagesQuery();
 
   const [markAsRead] = useMarkMessageAsReadMutation();
   const [deleteMessage] = useDeleteMessageMutation();
@@ -113,9 +123,9 @@ export default function MessagesPage() {
       if (offset === 0) {
         setAllMessages(messagesData.messages);
       } else {
-        setAllMessages(prev => {
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMessages = messagesData.messages.filter(m => !existingIds.has(m.id));
+        setAllMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMessages = messagesData.messages.filter((m) => !existingIds.has(m.id));
           return [...prev, ...newMessages];
         });
       }
@@ -131,7 +141,7 @@ export default function MessagesPage() {
   const loadMore = useCallback(() => {
     if (!isLoadingMore && messagesData?.hasMore && !isFetching) {
       setIsLoadingMore(true);
-      setOffset(prev => prev + pageSize);
+      setOffset((prev) => prev + pageSize);
     }
   }, [isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
 
@@ -139,14 +149,55 @@ export default function MessagesPage() {
     if (!currentEmployee) return;
 
     try {
-      const { data, error} = await supabase
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: personalAccounts, error: personalError } = await supabase
         .from('employee_email_accounts')
         .select('*')
-        .eq('is_active', true)
-        .order('account_type', { ascending: false })
-        .order('account_name', { ascending: true });
+        .eq('employee_id', user.id)
+        .eq('is_active', true);
 
-      if (error) throw error;
+      if (personalError) throw personalError;
+
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('employee_email_account_assignments')
+        .select('email_account_id')
+        .eq('employee_id', user.id);
+
+      if (assignmentsError) throw assignmentsError;
+
+      const assignedAccountIds = assignments?.map((a) => a.email_account_id) || [];
+
+      let assignedAccounts = [];
+      if (assignedAccountIds.length > 0) {
+        const { data: assignedData, error: assignedError } = await supabase
+          .from('employee_email_accounts')
+          .select('*')
+          .in('id', assignedAccountIds)
+          .eq('is_active', true);
+
+        if (assignedError) throw assignedError;
+        assignedAccounts = assignedData || [];
+      }
+
+      const allUserAccounts = [...(personalAccounts || []), ...assignedAccounts];
+      const uniqueAccounts = Array.from(
+        new Map(allUserAccounts.map((acc) => [acc.id, acc])).values(),
+      );
+
+      const data = uniqueAccounts.sort((a, b) => {
+        if (a.account_type !== b.account_type) {
+          const order = { system: 0, shared: 1, personal: 2 };
+          return (
+            order[b.account_type as keyof typeof order] -
+            order[a.account_type as keyof typeof order]
+          );
+        }
+        return a.account_name.localeCompare(b.account_name);
+      });
 
       const getAccountTypeBadge = (accountType: string) => {
         if (accountType === 'system') return '🔧';
@@ -162,16 +213,32 @@ export default function MessagesPage() {
         return `${badge} ${account.account_name}`;
       };
 
-      const formattedAccounts = (data || []).map(acc => ({
+      const formattedAccounts = (data || []).map((acc) => ({
         ...acc,
-        display_name: formatAccountName(acc)
+        display_name: formatAccountName(acc),
       }));
 
       const accounts = [
-        ...(formattedAccounts.length > 0 ? [
-          { id: 'all', email_address: 'Wszystkie dostępne konta', from_name: 'Wszystkie konta', display_name: '📧 Wszystkie konta' },
-        ] : []),
-        ...(canManage ? [{ id: 'contact_form', email_address: 'Formularz kontaktowy', from_name: 'Formularz', display_name: '📝 Formularz kontaktowy' }] : []),
+        ...(formattedAccounts.length > 0
+          ? [
+              {
+                id: 'all',
+                email_address: 'Wszystkie dostępne konta',
+                from_name: 'Wszystkie konta',
+                display_name: '📧 Wszystkie konta',
+              },
+            ]
+          : []),
+        ...(canManage
+          ? [
+              {
+                id: 'contact_form',
+                email_address: 'Formularz kontaktowy',
+                from_name: 'Formularz',
+                display_name: '📝 Formularz kontaktowy',
+              },
+            ]
+          : []),
         ...formattedAccounts,
       ];
 
@@ -194,7 +261,7 @@ export default function MessagesPage() {
           loadMore();
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
 
     const currentTarget = observerTarget.current;
@@ -244,7 +311,7 @@ export default function MessagesPage() {
         },
         () => {
           refetch();
-        }
+        },
       )
       .subscribe();
 
@@ -261,7 +328,7 @@ export default function MessagesPage() {
           if (selectedAccount !== 'contact_form') {
             refetch();
           }
-        }
+        },
       )
       .subscribe();
 
@@ -278,7 +345,7 @@ export default function MessagesPage() {
           if (selectedAccount !== 'contact_form') {
             refetch();
           }
-        }
+        },
       )
       .subscribe();
 
@@ -289,7 +356,11 @@ export default function MessagesPage() {
     };
   }, [currentEmployee, emailAccounts, selectedAccount, refetch]);
 
-  const handleMessageClick = async (messageId: string, messageType: 'contact_form' | 'sent' | 'received', isRead: boolean) => {
+  const handleMessageClick = async (
+    messageId: string,
+    messageType: 'contact_form' | 'sent' | 'received',
+    isRead: boolean,
+  ) => {
     router.push(`/crm/messages/${messageId}?type=${messageType}`);
 
     if (!isRead && (messageType === 'contact_form' || messageType === 'received')) {
@@ -312,10 +383,7 @@ export default function MessagesPage() {
   const handleStar = async (messageId: string, isStarred: boolean) => {
     try {
       await toggleStar({ id: messageId, isStarred }).unwrap();
-      showSnackbar(
-        isStarred ? 'Usunięto gwiazdkę' : 'Oznaczono gwiazdką',
-        'success'
-      );
+      showSnackbar(isStarred ? 'Usunięto gwiazdkę' : 'Oznaczono gwiazdką', 'success');
     } catch (error) {
       console.error('Error toggling star:', error);
       showSnackbar('Błąd podczas oznaczania wiadomości', 'error');
@@ -326,7 +394,11 @@ export default function MessagesPage() {
     showSnackbar('Funkcja archiwizacji będzie wkrótce dostępna', 'info');
   };
 
-  const handleAssign = (messageId: string, messageType: 'contact_form' | 'received', assignedTo: string | null) => {
+  const handleAssign = (
+    messageId: string,
+    messageType: 'contact_form' | 'received',
+    assignedTo: string | null,
+  ) => {
     setMessageToAssign({ id: messageId, type: messageType, assignedTo });
     setShowAssignModal(true);
   };
@@ -371,7 +443,9 @@ export default function MessagesPage() {
     try {
       showSnackbar('Pobieranie wiadomości z serwera...', 'info');
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) return;
 
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-emails`;
@@ -379,7 +453,7 @@ export default function MessagesPage() {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -401,14 +475,22 @@ export default function MessagesPage() {
     }
   };
 
-  const handleSendNewMessage = async (data: { to: string; subject: string; body: string; bodyHtml: string; attachments?: File[] }) => {
+  const handleSendNewMessage = async (data: {
+    to: string;
+    subject: string;
+    body: string;
+    bodyHtml: string;
+    attachments?: File[];
+  }) => {
     if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
       showSnackbar('Wybierz konto email do wysłania', 'warning');
       return;
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) {
         showSnackbar('Musisz być zalogowany', 'error');
         return;
@@ -420,7 +502,10 @@ export default function MessagesPage() {
           try {
             const arrayBuffer = await file.arrayBuffer();
             const base64 = btoa(
-              new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+              new Uint8Array(arrayBuffer).reduce(
+                (data, byte) => data + String.fromCharCode(byte),
+                '',
+              ),
             );
             attachmentsBase64.push({
               filename: file.name,
@@ -439,7 +524,7 @@ export default function MessagesPage() {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -499,19 +584,23 @@ export default function MessagesPage() {
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'contact_form': return { label: 'Formularz', color: 'bg-blue-500' };
-      case 'sent': return { label: 'Wysłane', color: 'bg-green-500' };
-      case 'received': return { label: 'Odebrane', color: 'bg-purple-500' };
-      default: return { label: type, color: 'bg-gray-500' };
+      case 'contact_form':
+        return { label: 'Formularz', color: 'bg-blue-500' };
+      case 'sent':
+        return { label: 'Wysłane', color: 'bg-green-500' };
+      case 'received':
+        return { label: 'Odebrane', color: 'bg-purple-500' };
+      default:
+        return { label: type, color: 'bg-gray-500' };
     }
   };
 
   if (!canView && !canManage) {
     return (
-      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
         <div className="text-center">
-          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Brak dostępu</h2>
+          <Mail className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <h2 className="mb-2 text-2xl font-bold text-white">Brak dostępu</h2>
           <p className="text-[#e5e4e2]/60">Nie masz uprawnień do przeglądania wiadomości.</p>
         </div>
       </div>
@@ -520,20 +609,19 @@ export default function MessagesPage() {
 
   if (emailAccounts.length === 0 && !isLoading && currentEmployee) {
     return (
-      <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6">
-          <Mail className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Brak kont email</h2>
-          <p className="text-[#e5e4e2]/60 mb-4">
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
+        <div className="mx-auto max-w-md p-6 text-center">
+          <Mail className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <h2 className="mb-2 text-2xl font-bold text-white">Brak kont email</h2>
+          <p className="mb-4 text-[#e5e4e2]/60">
             {canManage
               ? 'Nie masz jeszcze skonfigurowanych kont email. Przejdź do ustawień pracownika, aby dodać konto.'
-              : 'Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem, aby uzyskać dostęp do poczty.'
-            }
+              : 'Nie masz skonfigurowanych kont email. Skontaktuj się z administratorem, aby uzyskać dostęp do poczty.'}
           </p>
           {canManage && (
             <button
-              onClick={() => window.location.href = `/crm/employees/${currentEmployee.id}`}
-              className="px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors"
+              onClick={() => (window.location.href = `/crm/employees/${currentEmployee.id}`)}
+              className="rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#c5ad65]"
             >
               Przejdź do ustawień
             </button>
@@ -545,34 +633,44 @@ export default function MessagesPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119]">
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="bg-[#1c1f33] rounded-lg shadow-xl border border-[#d3bb73]/20 overflow-hidden">
-          <div className="p-6 border-b border-[#d3bb73]/20">
-            <div className="flex items-center justify-between mb-6">
+      <div className="mx-auto max-w-7xl p-6">
+        <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+          <div className="border-b border-[#d3bb73]/20 p-6">
+            <div className="mb-6 flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Wiadomości</h1>
-                <p className="text-[#e5e4e2]/60">{canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}</p>
+                <h1 className="mb-2 text-3xl font-bold text-white">Wiadomości</h1>
+                <p className="text-[#e5e4e2]/60">
+                  {canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}
+                </p>
               </div>
               {canManage && (
                 <button
                   onClick={() => setShowNewMessageModal(true)}
-                  disabled={selectedAccount === 'all' || selectedAccount === 'contact_form' || emailAccounts.length <= 2}
-                  className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={selectedAccount === 'all' || selectedAccount === 'contact_form' ? 'Wybierz konkretne konto email' : 'Napisz nową wiadomość'}
+                  disabled={
+                    selectedAccount === 'all' ||
+                    selectedAccount === 'contact_form' ||
+                    emailAccounts.length <= 2
+                  }
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#c5ad65] disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    selectedAccount === 'all' || selectedAccount === 'contact_form'
+                      ? 'Wybierz konkretne konto email'
+                      : 'Napisz nową wiadomość'
+                  }
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="h-5 w-5" />
                   Nowa Wiadomość
                 </button>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Konto Email</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Konto Email</label>
                 <select
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   {emailAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
@@ -583,11 +681,11 @@ export default function MessagesPage() {
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">Filtruj po typie</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Filtruj po typie</label>
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value as any)}
-                  className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   <option value="all">Wszystkie</option>
                   {canManage && <option value="contact_form">Formularz</option>}
@@ -599,8 +697,8 @@ export default function MessagesPage() {
 
             <div className="mt-4 space-y-4">
               <div className="flex items-center gap-4">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
                   <input
                     type="text"
                     value={searchQuery}
@@ -611,87 +709,91 @@ export default function MessagesPage() {
                       }
                     }}
                     placeholder="Szukaj wiadomości..."
-                    className="w-full pl-10 pr-4 py-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-4 text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                    className={`px-4 py-3 rounded-lg transition-colors flex items-center gap-2 ${
+                    className={`flex items-center gap-2 rounded-lg px-4 py-3 transition-colors ${
                       showAdvancedSearch
                         ? 'bg-[#d3bb73] text-[#1c1f33]'
                         : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
                     }`}
                     title="Zaawansowane wyszukiwanie"
                   >
-                    <Calendar className="w-5 h-5" />
+                    <Calendar className="h-5 w-5" />
                   </button>
                   {isSearchMode && (
                     <button
                       onClick={handleClearSearch}
-                      className="px-4 py-3 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors flex items-center gap-2"
+                      className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-3 text-red-400 transition-colors hover:bg-red-500/30"
                       title="Wyczyść wyszukiwanie"
                     >
-                      <X className="w-5 h-5" />
+                      <X className="h-5 w-5" />
                     </button>
                   )}
                   {canManage && (
                     <button
                       onClick={fetchEmailsFromServer}
-                      disabled={isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'}
-                      className="px-4 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      disabled={
+                        isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'
+                      }
+                      className="flex items-center gap-2 rounded-lg bg-blue-500/20 px-4 py-3 text-blue-400 transition-colors hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                       title="Pobierz nowe wiadomości z serwera email"
                     >
-                      <Inbox className="w-5 h-5" />
+                      <Inbox className="h-5 w-5" />
                       <span className="hidden sm:inline">Pobierz z serwera</span>
                     </button>
                   )}
                   <button
-                    onClick={() => isSearchMode ? handleClearSearch() : refetch()}
+                    onClick={() => (isSearchMode ? handleClearSearch() : refetch())}
                     disabled={isLoading}
-                    className="px-6 py-3 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                    className="rounded-lg bg-[#d3bb73]/20 px-6 py-3 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
               </div>
 
               {showAdvancedSearch && (
-                <div className="bg-[#0f1119] rounded-lg p-4 space-y-4">
-                  <h3 className="text-sm font-medium text-[#e5e4e2] mb-3">Zaawansowane wyszukiwanie</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-4 rounded-lg bg-[#0f1119] p-4">
+                  <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]">
+                    Zaawansowane wyszukiwanie
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
-                      <label className="block text-xs text-[#e5e4e2]/70 mb-2">Data od</label>
+                      <label className="mb-2 block text-xs text-[#e5e4e2]/70">Data od</label>
                       <input
                         type="date"
                         value={dateFrom}
                         onChange={(e) => setDateFrom(e.target.value)}
-                        className="w-full px-3 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none text-sm"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-[#e5e4e2]/70 mb-2">Data do</label>
+                      <label className="mb-2 block text-xs text-[#e5e4e2]/70">Data do</label>
                       <input
                         type="date"
                         value={dateTo}
                         onChange={(e) => setDateTo(e.target.value)}
-                        className="w-full px-3 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-white focus:border-[#d3bb73] focus:outline-none text-sm"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
                     <div className="flex items-end">
                       <button
                         onClick={handleAdvancedSearch}
                         disabled={!searchQuery.trim() || isSearching}
-                        className="w-full px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#c5ad65] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#c5ad65] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isSearching ? (
                           <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <Loader2 className="h-4 w-4 animate-spin" />
                             Wyszukiwanie...
                           </>
                         ) : (
                           <>
-                            <Search className="w-4 h-4" />
+                            <Search className="h-4 w-4" />
                             Szukaj w całej historii
                           </>
                         )}
@@ -699,7 +801,7 @@ export default function MessagesPage() {
                     </div>
                   </div>
                   {isSearchMode && allMessages.length > 0 && (
-                    <div className="pt-2 border-t border-[#d3bb73]/10">
+                    <div className="border-t border-[#d3bb73]/10 pt-2">
                       <p className="text-xs text-[#e5e4e2]/60">
                         Tryb wyszukiwania aktywny: {allMessages.length} wyników
                         {dateFrom && ` • Od: ${new Date(dateFrom).toLocaleDateString('pl-PL')}`}
@@ -712,15 +814,15 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          <div className="overflow-y-auto max-h-[600px]">
+          <div className="max-h-[600px] overflow-y-auto">
             {isLoading ? (
               <div className="p-8 text-center text-[#e5e4e2]/60">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
+                <RefreshCw className="mx-auto mb-2 h-8 w-8 animate-spin" />
                 Ładowanie wiadomości...
               </div>
             ) : filteredMessages.length === 0 ? (
               <div className="p-8 text-center">
-                <Inbox className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <Inbox className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                 <p className="text-[#e5e4e2]/60">Brak wiadomości</p>
               </div>
             ) : (
@@ -730,25 +832,27 @@ export default function MessagesPage() {
                   return (
                     <div
                       key={message.id}
-                      className={`p-4 hover:bg-[#d3bb73]/5 transition-colors ${
-                        !message.isRead ? 'font-semibold bg-[#d3bb73]/5' : ''
+                      className={`p-4 transition-colors hover:bg-[#d3bb73]/5 ${
+                        !message.isRead ? 'bg-[#d3bb73]/5 font-semibold' : ''
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="mb-2 flex items-start justify-between">
                         <div
-                          className="flex-1 min-w-0 cursor-pointer"
-                          onClick={() => handleMessageClick(message.id, message.type, message.isRead)}
+                          className="min-w-0 flex-1 cursor-pointer"
+                          onClick={() =>
+                            handleMessageClick(message.id, message.type, message.isRead)
+                          }
                         >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-white truncate">{message.from}</span>
+                          <div className="mb-1 flex items-center gap-2">
+                            <span className="truncate text-white">{message.from}</span>
                             {!message.isRead && (
-                              <span className="w-2 h-2 rounded-full bg-[#d3bb73]"></span>
+                              <span className="h-2 w-2 rounded-full bg-[#d3bb73]"></span>
                             )}
                           </div>
-                          <p className="text-sm text-[#e5e4e2]/70 truncate">{message.subject}</p>
+                          <p className="truncate text-sm text-[#e5e4e2]/70">{message.subject}</p>
                         </div>
-                        <div className="flex items-center gap-2 ml-2">
-                          <span className="text-xs text-[#e5e4e2]/50 whitespace-nowrap">
+                        <div className="ml-2 flex items-center gap-2">
+                          <span className="whitespace-nowrap text-xs text-[#e5e4e2]/50">
                             {formatDate(message.date)}
                           </span>
                           {(message.type === 'contact_form' || message.type === 'received') && (
@@ -757,43 +861,64 @@ export default function MessagesPage() {
                               messageType={message.type}
                               isStarred={message.isStarred}
                               onReply={() => handleReply(message)}
-                              onForward={message.type === 'received' ? () => handleForward(message) : undefined}
-                              onAssign={() => handleAssign(message.id, message.type as 'contact_form' | 'received', message.assigned_to || null)}
+                              onForward={
+                                message.type === 'received'
+                                  ? () => handleForward(message)
+                                  : undefined
+                              }
+                              onAssign={() =>
+                                handleAssign(
+                                  message.id,
+                                  message.type as 'contact_form' | 'received',
+                                  message.assigned_to || null,
+                                )
+                              }
                               onDelete={() => handleDelete(message.id, message.type)}
                               onMove={() => handleMove(message.id)}
-                              onStar={message.type === 'received' ? () => handleStar(message.id, message.isStarred) : undefined}
-                              onArchive={message.type === 'received' ? () => handleArchive(message) : undefined}
+                              onStar={
+                                message.type === 'received'
+                                  ? () => handleStar(message.id, message.isStarred)
+                                  : undefined
+                              }
+                              onArchive={
+                                message.type === 'received'
+                                  ? () => handleArchive(message)
+                                  : undefined
+                              }
                               canManage={canManage}
                             />
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs px-2 py-1 rounded ${typeInfo.color} text-white`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded px-2 py-1 text-xs ${typeInfo.color} text-white`}>
                           {typeInfo.label}
                         </span>
                         {message.assigned_employee && (
-                          <span className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            Przypisano: {message.assigned_employee.name} {message.assigned_employee.surname}
+                          <span className="rounded border border-purple-500/30 bg-purple-500/20 px-2 py-1 text-xs text-purple-300">
+                            Przypisano: {message.assigned_employee.name}{' '}
+                            {message.assigned_employee.surname}
                           </span>
                         )}
-                        <p className="text-sm text-[#e5e4e2]/50 truncate flex-1">{message.preview}</p>
+                        <p className="flex-1 truncate text-sm text-[#e5e4e2]/50">
+                          {message.preview}
+                        </p>
                       </div>
                     </div>
                   );
                 })}
 
                 {messagesData?.hasMore && (
-                  <div ref={observerTarget} className="p-6 flex items-center justify-center">
+                  <div ref={observerTarget} className="flex items-center justify-center p-6">
                     <div className="flex items-center gap-3 text-[#d3bb73]">
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <Loader2 className="h-5 w-5 animate-spin" />
                       <span className="text-sm">Ładowanie więcej wiadomości...</span>
                     </div>
                   </div>
                 )}
 
                 {!messagesData?.hasMore && filteredMessages.length > 0 && (
-                  <div className="p-4 text-center text-[#e5e4e2]/40 text-sm">
+                  <div className="p-4 text-center text-sm text-[#e5e4e2]/40">
                     Koniec listy wiadomości
                   </div>
                 )}
@@ -813,12 +938,20 @@ export default function MessagesPage() {
         onSend={handleSendNewMessage}
         initialTo={replyToMessage?.from || ''}
         initialSubject={
-          replyToMessage ? `Re: ${replyToMessage.subject}` :
-          forwardMessage ? `Fwd: ${forwardMessage.subject}` :
-          ''
+          replyToMessage
+            ? `Re: ${replyToMessage.subject}`
+            : forwardMessage
+              ? `Fwd: ${forwardMessage.subject}`
+              : ''
         }
-        initialBody={replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.preview}` : ''}
-        forwardedBody={forwardMessage ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${formatDate(forwardMessage.date)}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.preview}` : ''}
+        initialBody={
+          replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.preview}` : ''
+        }
+        forwardedBody={
+          forwardMessage
+            ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${formatDate(forwardMessage.date)}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.preview}`
+            : ''
+        }
         selectedAccountId={selectedAccount}
       />
 

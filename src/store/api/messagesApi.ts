@@ -37,30 +37,35 @@ export const messagesApi = api.injectEndpoints({
       { messages: MessageListItem[]; hasMore: boolean; total: number },
       FetchMessagesParams
     >({
-      queryFn: async ({ emailAccountId, offset = 0, limit = 50, filterType = 'all', showOnlyOpened = false }, { getState }: any) => {
+      queryFn: async (
+        { emailAccountId, offset = 0, limit = 50, filterType = 'all', showOnlyOpened = false },
+        { getState }: any,
+      ) => {
         try {
           const { supabase } = await import('@/lib/supabase');
           const allMessages: MessageListItem[] = [];
 
-          const { data: { user } } = await supabase.auth.getUser();
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
 
           const { data: currentEmployee } = user
-            ? await supabase
-                .from('employees')
-                .select('permissions')
-                .eq('id', user.id)
-                .maybeSingle()
+            ? await supabase.from('employees').select('permissions').eq('id', user.id).maybeSingle()
             : { data: null };
 
           const isAdmin = currentEmployee?.permissions?.includes('admin');
-          const hasMessagesManage = currentEmployee?.permissions?.includes('messages:manage');
-          const hasMessagesView = currentEmployee?.permissions?.includes('messages:view');
+          const hasMessagesManage = currentEmployee?.permissions?.includes('messages_manage');
+          const hasMessagesView = currentEmployee?.permissions?.includes('messages_view');
           const canViewContactForm = isAdmin || hasMessagesManage;
 
-          if ((emailAccountId === 'all' || emailAccountId === 'contact_form') && canViewContactForm) {
+          if (
+            (emailAccountId === 'all' || emailAccountId === 'contact_form') &&
+            canViewContactForm
+          ) {
             let contactMessagesQuery = supabase
               .from('contact_messages')
-              .select(`
+              .select(
+                `
                 id,
                 name,
                 email,
@@ -70,7 +75,8 @@ export const messagesApi = api.injectEndpoints({
                 status,
                 assigned_to,
                 assigned_employee:employees!assigned_to(name, surname)
-              `)
+              `,
+              )
               .order('created_at', { ascending: false })
               .range(offset, offset + limit);
 
@@ -95,7 +101,7 @@ export const messagesApi = api.injectEndpoints({
                   status: msg.status,
                   assigned_to: msg.assigned_to,
                   assigned_employee: msg.assigned_employee,
-                }))
+                })),
               );
             }
           }
@@ -103,21 +109,32 @@ export const messagesApi = api.injectEndpoints({
           if (emailAccountId !== 'contact_form') {
             let sentQuery = supabase
               .from('sent_emails')
-              .select('id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)')
+              .select(
+                'id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)',
+              )
               .order('sent_at', { ascending: false })
               .range(offset, offset + limit);
 
             if (emailAccountId !== 'all') {
               sentQuery = sentQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const { data: userAccounts } = await supabase
+              const { data: personalAccounts } = await supabase
                 .from('employee_email_accounts')
                 .select('id')
                 .eq('employee_id', user.id)
                 .eq('is_active', true);
 
-              if (userAccounts && userAccounts.length > 0) {
-                const accountIds = userAccounts.map(acc => acc.id);
+              const { data: assignedAccounts } = await supabase
+                .from('employee_email_account_assignments')
+                .select('email_account_id')
+                .eq('employee_id', user.id);
+
+              const accountIds = [
+                ...(personalAccounts?.map((acc) => acc.id) || []),
+                ...(assignedAccounts?.map((acc) => acc.email_account_id) || []),
+              ];
+
+              if (accountIds.length > 0) {
                 sentQuery = sentQuery.in('email_account_id', accountIds);
               }
             }
@@ -142,13 +159,14 @@ export const messagesApi = api.injectEndpoints({
                     isStarred: false,
                     email_account_id: msg.email_account_id,
                   };
-                })
+                }),
               );
             }
 
             let receivedQuery = supabase
               .from('received_emails')
-              .select(`
+              .select(
+                `
                 id,
                 from_address,
                 to_address,
@@ -159,7 +177,8 @@ export const messagesApi = api.injectEndpoints({
                 assigned_to,
                 email_account_id,
                 assigned_employee:employees!assigned_to(name, surname)
-              `)
+              `,
+              )
               .order('received_date', { ascending: false })
               .range(offset, offset + limit);
 
@@ -170,14 +189,23 @@ export const messagesApi = api.injectEndpoints({
             if (emailAccountId !== 'all') {
               receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const { data: userAccounts } = await supabase
+              const { data: personalAccounts } = await supabase
                 .from('employee_email_accounts')
                 .select('id')
                 .eq('employee_id', user.id)
                 .eq('is_active', true);
 
-              if (userAccounts && userAccounts.length > 0) {
-                const accountIds = userAccounts.map(acc => acc.id);
+              const { data: assignedAccounts } = await supabase
+                .from('employee_email_account_assignments')
+                .select('email_account_id')
+                .eq('employee_id', user.id);
+
+              const accountIds = [
+                ...(personalAccounts?.map((acc) => acc.id) || []),
+                ...(assignedAccounts?.map((acc) => acc.email_account_id) || []),
+              ];
+
+              if (accountIds.length > 0) {
                 receivedQuery = receivedQuery.in('email_account_id', accountIds);
               }
             }
@@ -199,16 +227,17 @@ export const messagesApi = api.injectEndpoints({
                   assigned_to: msg.assigned_to,
                   assigned_employee: msg.assigned_employee,
                   email_account_id: msg.email_account_id,
-                }))
+                })),
               );
             }
           }
 
           allMessages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-          const filteredMessages = filterType === 'all'
-            ? allMessages
-            : allMessages.filter(msg => msg.type === filterType);
+          const filteredMessages =
+            filterType === 'all'
+              ? allMessages
+              : allMessages.filter((msg) => msg.type === filterType);
 
           const hasMore = filteredMessages.length > limit;
           const messages = hasMore ? filteredMessages.slice(0, limit) : filteredMessages;
@@ -232,7 +261,10 @@ export const messagesApi = api.injectEndpoints({
       keepUnusedDataFor: 300,
     }),
 
-    getMessageDetails: builder.query<MessageDetails, { id: string; type: 'contact_form' | 'sent' | 'received' }>({
+    getMessageDetails: builder.query<
+      MessageDetails,
+      { id: string; type: 'contact_form' | 'sent' | 'received' }
+    >({
       queryFn: async ({ id, type }) => {
         try {
           const { supabase } = await import('@/lib/supabase');
@@ -241,10 +273,12 @@ export const messagesApi = api.injectEndpoints({
           if (type === 'contact_form') {
             const { data } = await supabase
               .from('contact_messages')
-              .select(`
+              .select(
+                `
                 *,
                 assigned_employee:employees!assigned_to(name, surname)
-              `)
+              `,
+              )
               .eq('id', id)
               .single();
 
@@ -301,10 +335,12 @@ export const messagesApi = api.injectEndpoints({
           } else if (type === 'received') {
             const { data } = await supabase
               .from('received_emails')
-              .select(`
+              .select(
+                `
                 *,
                 assigned_employee:employees!assigned_to(name, surname)
-              `)
+              `,
+              )
               .eq('id', id)
               .single();
 
@@ -354,10 +390,7 @@ export const messagesApi = api.injectEndpoints({
               .update({ status: 'read', read_at: new Date().toISOString() })
               .eq('id', id);
           } else if (type === 'received') {
-            await supabase
-              .from('received_emails')
-              .update({ is_read: true })
-              .eq('id', id);
+            await supabase.from('received_emails').update({ is_read: true }).eq('id', id);
           }
 
           return { data: undefined };
@@ -365,7 +398,10 @@ export const messagesApi = api.injectEndpoints({
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
         }
       },
-      invalidatesTags: (result, error, { id }) => [{ type: 'Message', id }, { type: 'Message', id: 'LIST' }],
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'Message', id },
+        { type: 'Message', id: 'LIST' },
+      ],
     }),
 
     toggleStarMessage: builder.mutation<void, { id: string; isStarred: boolean }>({
@@ -373,26 +409,33 @@ export const messagesApi = api.injectEndpoints({
         try {
           const { supabase } = await import('@/lib/supabase');
 
-          await supabase
-            .from('received_emails')
-            .update({ is_starred: !isStarred })
-            .eq('id', id);
+          await supabase.from('received_emails').update({ is_starred: !isStarred }).eq('id', id);
 
           return { data: undefined };
         } catch (error) {
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
         }
       },
-      invalidatesTags: (result, error, { id }) => [{ type: 'Message', id }, { type: 'Message', id: 'LIST' }],
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'Message', id },
+        { type: 'Message', id: 'LIST' },
+      ],
     }),
 
-    deleteMessage: builder.mutation<void, { id: string; type: 'contact_form' | 'sent' | 'received' }>({
+    deleteMessage: builder.mutation<
+      void,
+      { id: string; type: 'contact_form' | 'sent' | 'received' }
+    >({
       queryFn: async ({ id, type }) => {
         try {
           const { supabase } = await import('@/lib/supabase');
 
           const tableName =
-            type === 'contact_form' ? 'contact_messages' : type === 'received' ? 'received_emails' : 'sent_emails';
+            type === 'contact_form'
+              ? 'contact_messages'
+              : type === 'received'
+                ? 'received_emails'
+                : 'sent_emails';
 
           await supabase.from(tableName).delete().eq('id', id);
 
@@ -423,7 +466,8 @@ export const messagesApi = api.injectEndpoints({
           if (emailAccountId === 'all' || emailAccountId === 'contact_form') {
             let contactQuery = supabase
               .from('contact_messages')
-              .select(`
+              .select(
+                `
                 id,
                 name,
                 email,
@@ -433,7 +477,8 @@ export const messagesApi = api.injectEndpoints({
                 status,
                 assigned_to,
                 assigned_employee:employees!assigned_to(name, surname)
-              `)
+              `,
+              )
               .order('created_at', { ascending: false });
 
             if (dateFrom) {
@@ -449,7 +494,8 @@ export const messagesApi = api.injectEndpoints({
               allMessages.push(
                 ...contactMessages
                   .filter((msg: any) => {
-                    const searchIn = `${msg.name} ${msg.email} ${msg.subject || ''} ${msg.message}`.toLowerCase();
+                    const searchIn =
+                      `${msg.name} ${msg.email} ${msg.subject || ''} ${msg.message}`.toLowerCase();
                     return searchIn.includes(searchQuery);
                   })
                   .map((msg: any) => ({
@@ -458,25 +504,30 @@ export const messagesApi = api.injectEndpoints({
                     from: `${msg.name} <${msg.email}>`,
                     to: 'Formularz kontaktowy',
                     subject: msg.subject || 'Wiadomość z formularza',
-                    preview: msg.message.substring(0, 100) + (msg.message.length > 100 ? '...' : ''),
+                    preview:
+                      msg.message.substring(0, 100) + (msg.message.length > 100 ? '...' : ''),
                     date: msg.created_at,
                     isRead: msg.status !== 'new',
                     isStarred: false,
                     status: msg.status,
                     assigned_to: msg.assigned_to,
                     assigned_employee: msg.assigned_employee,
-                  }))
+                  })),
               );
             }
           }
 
           if (emailAccountId !== 'contact_form') {
             const { supabase: supabaseClient } = await import('@/lib/supabase');
-            const { data: { user } } = await supabaseClient.auth.getUser();
+            const {
+              data: { user },
+            } = await supabaseClient.auth.getUser();
 
             let sentQuery = supabase
               .from('sent_emails')
-              .select('id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)')
+              .select(
+                'id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)',
+              )
               .order('sent_at', { ascending: false });
 
             if (dateFrom) {
@@ -489,14 +540,23 @@ export const messagesApi = api.injectEndpoints({
             if (emailAccountId !== 'all') {
               sentQuery = sentQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const { data: userAccounts } = await supabase
+              const { data: personalAccounts } = await supabase
                 .from('employee_email_accounts')
                 .select('id')
                 .eq('employee_id', user.id)
                 .eq('is_active', true);
 
-              if (userAccounts && userAccounts.length > 0) {
-                const accountIds = userAccounts.map(acc => acc.id);
+              const { data: assignedAccounts } = await supabase
+                .from('employee_email_account_assignments')
+                .select('email_account_id')
+                .eq('employee_id', user.id);
+
+              const accountIds = [
+                ...(personalAccounts?.map((acc) => acc.id) || []),
+                ...(assignedAccounts?.map((acc) => acc.email_account_id) || []),
+              ];
+
+              if (accountIds.length > 0) {
                 sentQuery = sentQuery.in('email_account_id', accountIds);
               }
             }
@@ -507,30 +567,36 @@ export const messagesApi = api.injectEndpoints({
               allMessages.push(
                 ...sentEmails
                   .filter((msg: any) => {
-                    const searchIn = `${msg.to_address} ${msg.subject || ''} ${msg.body || ''}`.toLowerCase();
+                    const searchIn =
+                      `${msg.to_address} ${msg.subject || ''} ${msg.body || ''}`.toLowerCase();
                     return searchIn.includes(searchQuery);
                   })
                   .map((msg: any) => {
-                    const employeeName = msg.employees ? `${msg.employees.name} ${msg.employees.surname}` : msg.employees?.email || 'Nieznany';
+                    const employeeName = msg.employees
+                      ? `${msg.employees.name} ${msg.employees.surname}`
+                      : msg.employees?.email || 'Nieznany';
                     return {
                       id: msg.id,
                       type: 'sent' as const,
                       from: employeeName,
                       to: msg.to_address,
                       subject: msg.subject || '(Brak tematu)',
-                      preview: (msg.body || '').substring(0, 100) + ((msg.body || '').length > 100 ? '...' : ''),
+                      preview:
+                        (msg.body || '').substring(0, 100) +
+                        ((msg.body || '').length > 100 ? '...' : ''),
                       date: msg.sent_at,
                       isRead: true,
                       isStarred: false,
                       email_account_id: msg.email_account_id,
                     };
-                  })
+                  }),
               );
             }
 
             let receivedQuery = supabase
               .from('received_emails')
-              .select(`
+              .select(
+                `
                 id,
                 from_address,
                 to_address,
@@ -541,7 +607,8 @@ export const messagesApi = api.injectEndpoints({
                 assigned_to,
                 email_account_id,
                 assigned_employee:employees!assigned_to(name, surname)
-              `)
+              `,
+              )
               .order('received_date', { ascending: false });
 
             if (dateFrom) {
@@ -561,7 +628,7 @@ export const messagesApi = api.injectEndpoints({
                 .eq('is_active', true);
 
               if (userAccounts && userAccounts.length > 0) {
-                const accountIds = userAccounts.map(acc => acc.id);
+                const accountIds = userAccounts.map((acc) => acc.id);
                 receivedQuery = receivedQuery.in('email_account_id', accountIds);
               }
             }
@@ -572,7 +639,8 @@ export const messagesApi = api.injectEndpoints({
               allMessages.push(
                 ...receivedEmails
                   .filter((msg: any) => {
-                    const searchIn = `${msg.from_address} ${msg.to_address} ${msg.subject || ''}`.toLowerCase();
+                    const searchIn =
+                      `${msg.from_address} ${msg.to_address} ${msg.subject || ''}`.toLowerCase();
                     return searchIn.includes(searchQuery);
                   })
                   .map((msg: any) => ({
@@ -588,16 +656,17 @@ export const messagesApi = api.injectEndpoints({
                     assigned_to: msg.assigned_to,
                     assigned_employee: msg.assigned_employee,
                     email_account_id: msg.email_account_id,
-                  }))
+                  })),
               );
             }
           }
 
           allMessages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-          const filteredMessages = filterType === 'all'
-            ? allMessages
-            : allMessages.filter(msg => msg.type === filterType);
+          const filteredMessages =
+            filterType === 'all'
+              ? allMessages
+              : allMessages.filter((msg) => msg.type === filterType);
 
           return {
             data: {
