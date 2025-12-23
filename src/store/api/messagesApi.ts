@@ -50,13 +50,18 @@ export const messagesApi = api.injectEndpoints({
           } = await supabase.auth.getUser();
 
           const { data: currentEmployee } = user
-            ? await supabase.from('employees').select('permissions').eq('id', user.id).maybeSingle()
+            ? await supabase
+                .from('employees')
+                .select('permissions, can_receive_contact_forms')
+                .eq('id', user.id)
+                .maybeSingle()
             : { data: null };
 
           const isAdmin = currentEmployee?.permissions?.includes('admin');
           const hasMessagesManage = currentEmployee?.permissions?.includes('messages_manage');
           const hasMessagesView = currentEmployee?.permissions?.includes('messages_view');
-          const canViewContactForm = isAdmin || hasMessagesManage;
+          const canViewContactForm =
+            isAdmin || hasMessagesManage || currentEmployee?.can_receive_contact_forms;
 
           if (
             (emailAccountId === 'all' || emailAccountId === 'contact_form') &&

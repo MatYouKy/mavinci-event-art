@@ -31,16 +31,38 @@ interface Props {
   isAdmin: boolean;
 }
 
+interface Employee {
+  can_receive_contact_forms: boolean;
+}
+
 export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, isAdmin }: Props) {
   const router = useRouter();
   const [allAccounts, setAllAccounts] = useState<EmailAccount[]>([]);
   const [assignments, setAssignments] = useState<AccountAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [employee, setEmployee] = useState<Employee | null>(null);
 
   useEffect(() => {
     fetchAccountsAndAssignments();
+    fetchEmployee();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
+
+  const fetchEmployee = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('can_receive_contact_forms')
+        .eq('id', employeeId)
+        .maybeSingle();
+
+      if (error) throw error;
+      setEmployee(data);
+    } catch (err) {
+      console.error('Error fetching employee:', err);
+    }
+  };
 
   const fetchAccountsAndAssignments = async () => {
     try {
@@ -127,35 +149,25 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     }
   };
 
-  const toggleContactFormAccess = async (accountId: string) => {
+  const toggleContactFormAccess = async () => {
     if (!isAdmin) return;
-
-    const assignment = assignments.find((a) => a.email_account_id === accountId);
-    if (!assignment) {
-      alert('Musisz najpierw przypisać to konto do pracownika');
-      return;
-    }
 
     try {
       const { error } = await supabase
-        .from('employee_email_account_assignments')
+        .from('employees')
         .update({
-          can_receive_contact_forms: !assignment.can_receive_contact_forms,
+          can_receive_contact_forms: !employee?.can_receive_contact_forms,
         })
-        .eq('id', assignment.id);
+        .eq('id', employeeId);
 
       if (error) throw error;
 
-      await fetchAccountsAndAssignments();
+      await fetchEmployee();
+      alert('✓ Dostęp do formularza kontaktowego został zaktualizowany.');
     } catch (err) {
       console.error('Error toggling contact form access:', err);
       alert('Błąd podczas zmiany dostępu do formularza: ' + JSON.stringify(err));
     }
-  };
-
-  const hasContactFormAccess = (accountId: string): boolean => {
-    const assignment = assignments.find((a) => a.email_account_id === accountId);
-    return assignment?.can_receive_contact_forms || false;
   };
 
   if (loading) {
@@ -303,12 +315,60 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     isAdmin={isAdmin}
                     isPersonal={false}
                     isEditing={isEditing}
-                    hasContactFormAccess={hasContactFormAccess(account.id)}
-                    onToggleContactForm={() => toggleContactFormAccess(account.id)}
                   />
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Dostęp do formularza kontaktowego - niezależna sekcja */}
+          <div className="border-t border-[#d3bb73]/10 pt-6">
+            <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
+              <CheckSquare className="h-5 w-5" />
+              Formularz kontaktowy
+            </h4>
+            <p className="mb-3 text-xs text-[#e5e4e2]/60">
+              Dostęp do wiadomości z formularza kontaktowego na stronie. Niezależny od kont email.
+            </p>
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-green-500/20 p-2">
+                    <CheckSquare className="h-5 w-5 text-green-400" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-[#e5e4e2]">Dostęp do formularza kontaktowego</p>
+                    <p className="text-xs text-[#e5e4e2]/60">
+                      {employee?.can_receive_contact_forms
+                        ? 'Pracownik widzi wiadomości z formularza'
+                        : 'Pracownik nie ma dostępu do formularza'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={toggleContactFormAccess}
+                  disabled={!isAdmin || !isEditing}
+                  className={`rounded-lg p-2 transition-all ${
+                    !isAdmin || !isEditing ? 'cursor-not-allowed opacity-50' : 'hover:bg-[#0f1119]'
+                  }`}
+                  title={
+                    !isAdmin
+                      ? 'Tylko admin może zarządzać'
+                      : !isEditing
+                        ? 'Włącz tryb edycji'
+                        : employee?.can_receive_contact_forms
+                          ? 'Odbierz dostęp'
+                          : 'Nadaj dostęp'
+                  }
+                >
+                  {employee?.can_receive_contact_forms ? (
+                    <CheckSquare className="h-6 w-6 text-green-400" />
+                  ) : (
+                    <Square className="h-6 w-6 text-[#e5e4e2]/30" />
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -327,14 +387,14 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
             <span className="font-bold text-[#d3bb73]">•</span>
             <span>
               <strong>Konta wspólne i systemowe:</strong> Admin przypisuje dostęp ręcznie - kliknij
-              "Zarządzaj dostępem" i zaznacz checkbox przy koncie
+              &quot;Zarządzaj dostępem&quot; i zaznacz checkbox przy koncie
             </span>
           </li>
           <li className="flex gap-2">
             <span className="font-bold text-[#d3bb73]">•</span>
             <span>
-              <strong>Formularz kontaktowy (konta systemowe):</strong> Dodatkowy checkbox decyduje
-              czy pracownik otrzymuje powiadomienia z formularza kontaktowego na to konto
+              <strong>Formularz kontaktowy:</strong> Niezależna opcja kontrolująca dostęp do
+              wiadomości z formularza na stronie
             </span>
           </li>
           <li className="flex gap-2">
@@ -364,8 +424,6 @@ function AccountRow({
   isAdmin,
   isPersonal,
   isEditing,
-  hasContactFormAccess,
-  onToggleContactForm,
 }: {
   account: EmailAccount;
   isAssigned: boolean;
@@ -373,8 +431,6 @@ function AccountRow({
   isAdmin: boolean;
   isPersonal: boolean;
   isEditing: boolean;
-  hasContactFormAccess?: boolean;
-  onToggleContactForm?: () => void;
 }) {
   const getAccountTypeLabel = (type: string) => {
     switch (type) {
@@ -459,34 +515,6 @@ function AccountRow({
                 {isAssigned ? 'Ma dostęp' : 'Brak dostępu'}
               </span>
             </label>
-
-            {account.account_type === 'system' && isAssigned && onToggleContactForm && (
-              <label className="group flex cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={hasContactFormAccess}
-                  onChange={onToggleContactForm}
-                  className="hidden"
-                />
-                <div
-                  className={`relative h-5 w-5 rounded border-2 transition-all ${
-                    hasContactFormAccess
-                      ? 'border-green-500 bg-green-500'
-                      : 'border-[#e5e4e2]/30 group-hover:border-green-500/50'
-                  } `}
-                >
-                  {hasContactFormAccess && (
-                    <CheckSquare
-                      className="absolute inset-0.5 h-4 w-4 text-white"
-                      strokeWidth={3}
-                    />
-                  )}
-                </div>
-                <span className="text-xs text-[#e5e4e2]/60 group-hover:text-[#e5e4e2]">
-                  Formularz kontaktowy
-                </span>
-              </label>
-            )}
           </div>
         )}
         {!isEditing && isPersonal && (

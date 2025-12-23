@@ -171,6 +171,14 @@ export default function MessagesPage() {
 
       const assignedAccountIds = assignments?.map((a) => a.email_account_id) || [];
 
+      const { data: employeeData } = await supabase
+        .from('employees')
+        .select('can_receive_contact_forms')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const hasContactFormAccess = employeeData?.can_receive_contact_forms || false;
+
       let assignedAccounts = [];
       if (assignedAccountIds.length > 0) {
         const { data: assignedData, error: assignedError } = await supabase
