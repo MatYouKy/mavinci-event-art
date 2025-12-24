@@ -268,7 +268,10 @@ export default function NotificationCenter() {
     try {
       const { error } = await supabase
         .from('employee_assignments')
-        .update({ status })
+        .update({
+          status,
+          responded_at: new Date().toISOString()
+        })
         .eq('id', assignmentId);
 
       if (error) throw error;
@@ -278,16 +281,24 @@ export default function NotificationCenter() {
         'success'
       );
 
-      // Update the notification in state to hide buttons immediately
+      // Update the notification in state to show status immediately
       setNotifications((prev) =>
         prev.map((n) =>
           n.recipient_id === recipientId
-            ? { ...n, metadata: { ...n.metadata, requires_response: false } }
+            ? {
+                ...n,
+                metadata: {
+                  ...n.metadata,
+                  requires_response: false,
+                  assignment_status: status,
+                  responded_at: new Date().toISOString()
+                }
+              }
             : n
         )
       );
 
-      // Also fetch fresh data
+      // Also fetch fresh data to ensure sync
       await fetchNotifications();
     } catch (error) {
       console.error('Error responding to assignment:', error);
@@ -486,28 +497,62 @@ export default function NotificationCenter() {
                             </span>
                           </div>
 
-                          {notification.metadata?.requires_response && notification.metadata?.assignment_id && (
+                          {notification.metadata?.assignment_id && (
                             <div className="flex items-center gap-2 mt-3">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAssignmentResponse(notification.metadata.assignment_id, 'accepted', notification.recipient_id);
-                                }}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-500/30 transition-colors"
-                              >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                Akceptuj
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAssignmentResponse(notification.metadata.assignment_id, 'rejected', notification.recipient_id);
-                                }}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/30 transition-colors"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                                Odrzuć
-                              </button>
+                              {notification.metadata?.requires_response ? (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAssignmentResponse(notification.metadata.assignment_id, 'accepted', notification.recipient_id);
+                                    }}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-500/30 transition-colors"
+                                  >
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    Akceptuj
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAssignmentResponse(notification.metadata.assignment_id, 'rejected', notification.recipient_id);
+                                    }}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/30 transition-colors"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    Odrzuć
+                                  </button>
+                                </>
+                              ) : notification.metadata?.assignment_status === 'accepted' ? (
+                                <div className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs font-medium">
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  Zaakceptowano
+                                  {notification.metadata?.responded_at && (
+                                    <span className="ml-1 text-green-400/60">
+                                      {new Date(notification.metadata.responded_at).toLocaleDateString('pl-PL', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : notification.metadata?.assignment_status === 'rejected' ? (
+                                <div className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs font-medium">
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  Odrzucono
+                                  {notification.metadata?.responded_at && (
+                                    <span className="ml-1 text-red-400/60">
+                                      {new Date(notification.metadata.responded_at).toLocaleDateString('pl-PL', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : null}
                             </div>
                           )}
 
