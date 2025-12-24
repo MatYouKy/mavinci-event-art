@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Mail, Plus, Trash2, Eye, EyeOff, Edit, CheckSquare, Square } from 'lucide-react';
+import { Mail, Plus, Trash2, Eye, EyeOff, Edit, CheckSquare, Square, X, Save } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -47,6 +47,24 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   const [isEditingPersonalEmail, setIsEditingPersonalEmail] = useState(false);
   const [personalEmailInput, setPersonalEmailInput] = useState('');
   const [notificationPreference, setNotificationPreference] = useState<'work' | 'personal' | 'both' | 'none'>('work');
+  const [showPersonalAccountModal, setShowPersonalAccountModal] = useState(false);
+  const [personalAccountData, setPersonalAccountData] = useState({
+    account_name: '',
+    from_name: '',
+    email_address: '',
+    imap_host: '',
+    imap_port: 993,
+    imap_username: '',
+    imap_password: '',
+    imap_use_ssl: true,
+    smtp_host: '',
+    smtp_port: 587,
+    smtp_username: '',
+    smtp_password: '',
+    smtp_use_tls: true,
+    description: '',
+  });
+  const [showPasswords, setShowPasswords] = useState(false);
 
   useEffect(() => {
     fetchAccountsAndAssignments();
@@ -84,9 +102,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       const [accountsRes, assignmentsRes] = await Promise.all([
         supabase
           .from('employee_email_accounts')
-          .select(
-            'id, account_name, email_address, account_type, department, description, is_active, employee_id',
-          )
+          .select('*')
           .eq('is_active', true)
           .order('account_type', { ascending: false })
           .order('account_name', { ascending: true }),
@@ -221,6 +237,92 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     setPersonalEmailInput(employee?.personal_email || '');
     setNotificationPreference(employee?.notification_email_preference || 'work');
     setIsEditingPersonalEmail(false);
+  };
+
+  const openPersonalAccountModal = (existingAccount?: EmailAccount) => {
+    if (existingAccount) {
+      setPersonalAccountData({
+        account_name: existingAccount.account_name,
+        from_name: (existingAccount as any).from_name || '',
+        email_address: existingAccount.email_address,
+        imap_host: (existingAccount as any).imap_host || '',
+        imap_port: (existingAccount as any).imap_port || 993,
+        imap_username: (existingAccount as any).imap_username || '',
+        imap_password: (existingAccount as any).imap_password || '',
+        imap_use_ssl: (existingAccount as any).imap_use_ssl ?? true,
+        smtp_host: (existingAccount as any).smtp_host || '',
+        smtp_port: (existingAccount as any).smtp_port || 587,
+        smtp_username: (existingAccount as any).smtp_username || '',
+        smtp_password: (existingAccount as any).smtp_password || '',
+        smtp_use_tls: (existingAccount as any).smtp_use_tls ?? true,
+        description: existingAccount.description || '',
+      });
+    } else {
+      setPersonalAccountData({
+        account_name: '',
+        from_name: '',
+        email_address: '',
+        imap_host: '',
+        imap_port: 993,
+        imap_username: '',
+        imap_password: '',
+        imap_use_ssl: true,
+        smtp_host: '',
+        smtp_port: 587,
+        smtp_username: '',
+        smtp_password: '',
+        smtp_use_tls: true,
+        description: '',
+      });
+    }
+    setShowPasswords(false);
+    setShowPersonalAccountModal(true);
+  };
+
+  const savePersonalAccount = async () => {
+    if (!isAdmin) {
+      alert('Tylko administrator może zarządzać kontami osobistymi');
+      return;
+    }
+
+    if (!personalAccountData.account_name || !personalAccountData.email_address) {
+      alert('Nazwa konta i adres email są wymagane');
+      return;
+    }
+
+    try {
+      const existingAccount = personalAccounts.length > 0 ? personalAccounts[0] : null;
+
+      const accountPayload = {
+        ...personalAccountData,
+        account_type: 'personal' as const,
+        employee_id: employeeId,
+        is_active: true,
+      };
+
+      if (existingAccount) {
+        const { error } = await supabase
+          .from('employee_email_accounts')
+          .update(accountPayload)
+          .eq('id', existingAccount.id);
+
+        if (error) throw error;
+        alert('✓ Konto osobiste zostało zaktualizowane.');
+      } else {
+        const { error } = await supabase
+          .from('employee_email_accounts')
+          .insert([accountPayload]);
+
+        if (error) throw error;
+        alert('✓ Konto osobiste zostało utworzone.');
+      }
+
+      setShowPersonalAccountModal(false);
+      await fetchAccountsAndAssignments();
+    } catch (err: any) {
+      console.error('Error saving personal account:', err);
+      alert('Błąd podczas zapisywania konta: ' + (err?.message || JSON.stringify(err)));
+    }
   };
 
   if (loading) {
@@ -383,13 +485,26 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
 
           {/* Konta osobiste */}
           <div>
-            <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
-              <Mail className="h-5 w-5" />
-              Konta osobiste
-            </h4>
-            <p className="mb-3 text-xs text-[#e5e4e2]/60">
-              Konta przypisane bezpośrednio do tego pracownika
-            </p>
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h4 className="flex items-center gap-2 font-medium text-[#d3bb73]">
+                  <Mail className="h-5 w-5" />
+                  Konta osobiste
+                </h4>
+                <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                  Konta przypisane bezpośrednio do tego pracownika
+                </p>
+              </div>
+              {isAdmin && (
+                <button
+                  onClick={() => openPersonalAccountModal(personalAccounts[0])}
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#e5e4e2] hover:bg-[#1c1f33]"
+                >
+                  <Edit className="h-4 w-4" />
+                  {personalAccounts.length > 0 ? 'Edytuj' : 'Dodaj konto'}
+                </button>
+              )}
+            </div>
             {personalAccounts.length === 0 ? (
               <p className="text-sm italic text-[#e5e4e2]/40">Brak kont osobistych</p>
             ) : (
@@ -563,6 +678,290 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           </li>
         </ul>
       </div>
+
+      {/* Modal dodawania/edycji konta osobistego */}
+      {showPersonalAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] shadow-xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#0f1119] p-6">
+              <h3 className="text-xl font-medium text-[#e5e4e2]">
+                {personalAccounts.length > 0 ? 'Edytuj konto osobiste' : 'Dodaj konto osobiste'}
+              </h3>
+              <button
+                onClick={() => setShowPersonalAccountModal(false)}
+                className="rounded-lg p-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-6 p-6">
+              {/* Podstawowe informacje */}
+              <div>
+                <h4 className="mb-4 font-medium text-[#d3bb73]">Podstawowe informacje</h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Nazwa konta <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={personalAccountData.account_name}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, account_name: e.target.value })
+                      }
+                      placeholder="np. Boston, Jan Kowalski"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Nazwa nadawcy <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={personalAccountData.from_name}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, from_name: e.target.value })
+                      }
+                      placeholder="np. Jan Kowalski"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Adres email <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={personalAccountData.email_address}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, email_address: e.target.value })
+                      }
+                      placeholder="np. boston@mavinci.pl"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Opis</label>
+                    <textarea
+                      value={personalAccountData.description}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, description: e.target.value })
+                      }
+                      placeholder="Opcjonalny opis konta"
+                      rows={2}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Ustawienia IMAP */}
+              <div>
+                <h4 className="mb-4 font-medium text-[#d3bb73]">Konfiguracja IMAP (odbieranie)</h4>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                        Host <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={personalAccountData.imap_host}
+                        onChange={(e) =>
+                          setPersonalAccountData({ ...personalAccountData, imap_host: e.target.value })
+                        }
+                        placeholder="imap.gmail.com"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                        Port <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={personalAccountData.imap_port}
+                        onChange={(e) =>
+                          setPersonalAccountData({
+                            ...personalAccountData,
+                            imap_port: parseInt(e.target.value) || 993,
+                          })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Nazwa użytkownika <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={personalAccountData.imap_username}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, imap_username: e.target.value })
+                      }
+                      placeholder="Zazwyczaj adres email"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Hasło <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPasswords ? 'text' : 'password'}
+                        value={personalAccountData.imap_password}
+                        onChange={(e) =>
+                          setPersonalAccountData({
+                            ...personalAccountData,
+                            imap_password: e.target.value,
+                          })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 pr-10 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords(!showPasswords)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+                      >
+                        {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="imap_ssl"
+                      checked={personalAccountData.imap_use_ssl}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, imap_use_ssl: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-[#d3bb73]/20"
+                    />
+                    <label htmlFor="imap_ssl" className="text-sm text-[#e5e4e2]">
+                      Użyj SSL
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ustawienia SMTP */}
+              <div>
+                <h4 className="mb-4 font-medium text-[#d3bb73]">Konfiguracja SMTP (wysyłanie)</h4>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                        Host <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={personalAccountData.smtp_host}
+                        onChange={(e) =>
+                          setPersonalAccountData({ ...personalAccountData, smtp_host: e.target.value })
+                        }
+                        placeholder="smtp.gmail.com"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                        Port <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={personalAccountData.smtp_port}
+                        onChange={(e) =>
+                          setPersonalAccountData({
+                            ...personalAccountData,
+                            smtp_port: parseInt(e.target.value) || 587,
+                          })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Nazwa użytkownika <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={personalAccountData.smtp_username}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, smtp_username: e.target.value })
+                      }
+                      placeholder="Zazwyczaj adres email"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Hasło <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPasswords ? 'text' : 'password'}
+                        value={personalAccountData.smtp_password}
+                        onChange={(e) =>
+                          setPersonalAccountData({
+                            ...personalAccountData,
+                            smtp_password: e.target.value,
+                          })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 pr-10 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="smtp_tls"
+                      checked={personalAccountData.smtp_use_tls}
+                      onChange={(e) =>
+                        setPersonalAccountData({ ...personalAccountData, smtp_use_tls: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-[#d3bb73]/20"
+                    />
+                    <label htmlFor="smtp_tls" className="text-sm text-[#e5e4e2]">
+                      Użyj TLS
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#d3bb73]/20 bg-[#0f1119] p-6">
+              <button
+                onClick={() => setShowPersonalAccountModal(false)}
+                className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#1c1f33]/80"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={savePersonalAccount}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              >
+                <Save className="h-4 w-4" />
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
