@@ -33,6 +33,8 @@ interface Props {
 
 interface Employee {
   can_receive_contact_forms: boolean;
+  personal_email: string | null;
+  notification_email_preference: 'work' | 'personal' | 'both' | 'none';
 }
 
 export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, isAdmin }: Props) {
@@ -42,6 +44,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [isEditingPersonalEmail, setIsEditingPersonalEmail] = useState(false);
+  const [personalEmailInput, setPersonalEmailInput] = useState('');
+  const [notificationPreference, setNotificationPreference] = useState<'work' | 'personal' | 'both' | 'none'>('work');
 
   useEffect(() => {
     fetchAccountsAndAssignments();
@@ -49,11 +54,18 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
+  useEffect(() => {
+    if (employee) {
+      setPersonalEmailInput(employee.personal_email || '');
+      setNotificationPreference(employee.notification_email_preference || 'work');
+    }
+  }, [employee]);
+
   const fetchEmployee = async () => {
     try {
       const { data, error } = await supabase
         .from('employees')
-        .select('can_receive_contact_forms')
+        .select('can_receive_contact_forms, personal_email, notification_email_preference')
         .eq('id', employeeId)
         .maybeSingle();
 
@@ -170,6 +182,47 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     }
   };
 
+  const updatePersonalEmail = async () => {
+    if (!isAdmin) {
+      alert('Tylko administrator może edytować email osobisty');
+      return;
+    }
+
+    try {
+      const emailToSave = personalEmailInput.trim() || null;
+
+      if (notificationPreference === 'personal' || notificationPreference === 'both') {
+        if (!emailToSave) {
+          alert('Email osobisty jest wymagany gdy preferencja powiadomień to "personal" lub "both"');
+          return;
+        }
+      }
+
+      const { error } = await supabase
+        .from('employees')
+        .update({
+          personal_email: emailToSave,
+          notification_email_preference: notificationPreference,
+        })
+        .eq('id', employeeId);
+
+      if (error) throw error;
+
+      await fetchEmployee();
+      setIsEditingPersonalEmail(false);
+      alert('✓ Email osobisty został zaktualizowany.');
+    } catch (err: any) {
+      console.error('Error updating personal email:', err);
+      alert('Błąd podczas aktualizacji: ' + (err?.message || JSON.stringify(err)));
+    }
+  };
+
+  const cancelEditPersonalEmail = () => {
+    setPersonalEmailInput(employee?.personal_email || '');
+    setNotificationPreference(employee?.notification_email_preference || 'work');
+    setIsEditingPersonalEmail(false);
+  };
+
   if (loading) {
     return <div className="py-8 text-center text-[#e5e4e2]/60">Ładowanie...</div>;
   }
@@ -237,6 +290,97 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Email osobisty pracownika - tylko admin */}
+          {isAdmin && (
+            <div className="border-b border-[#d3bb73]/10 pb-6">
+              <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
+                <Mail className="h-5 w-5" />
+                Email osobisty pracownika
+              </h4>
+              <p className="mb-3 text-xs text-[#e5e4e2]/60">
+                Email prywatny pracownika używany do powiadomień poza systemem. Tylko admin może edytować.
+              </p>
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+                {isEditingPersonalEmail ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                        Email osobisty
+                      </label>
+                      <input
+                        type="email"
+                        value={personalEmailInput}
+                        onChange={(e) => setPersonalEmailInput(e.target.value)}
+                        placeholder="np. jan.kowalski@gmail.com"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                        Preferencja powiadomień email
+                      </label>
+                      <select
+                        value={notificationPreference}
+                        onChange={(e) => setNotificationPreference(e.target.value as any)}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      >
+                        <option value="work">Tylko służbowy ({employeeEmail})</option>
+                        <option value="personal">Tylko osobisty</option>
+                        <option value="both">Oba (służbowy + osobisty)</option>
+                        <option value="none">Brak emaili (tylko powiadomienia w systemie)</option>
+                      </select>
+                      <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                        Wybierz na jaki adres wysyłać powiadomienia o wydarzeniach i zadaniach
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={updatePersonalEmail}
+                        className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                      >
+                        Zapisz
+                      </button>
+                      <button
+                        onClick={cancelEditPersonalEmail}
+                        className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#1c1f33]/80"
+                      >
+                        Anuluj
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex items-center gap-2">
+                        <p className="font-medium text-[#e5e4e2]">
+                          {employee?.personal_email || (
+                            <span className="italic text-[#e5e4e2]/40">Nie ustawiono</span>
+                          )}
+                        </p>
+                      </div>
+                      <p className="text-xs text-[#e5e4e2]/60">
+                        Preferencja powiadomień:{' '}
+                        <span className="font-medium text-[#d3bb73]">
+                          {notificationPreference === 'work' && 'Tylko służbowy'}
+                          {notificationPreference === 'personal' && 'Tylko osobisty'}
+                          {notificationPreference === 'both' && 'Oba (służbowy + osobisty)'}
+                          {notificationPreference === 'none' && 'Brak emaili'}
+                        </span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setIsEditingPersonalEmail(true)}
+                      className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#e5e4e2] hover:bg-[#1c1f33]"
+                    >
+                      <Edit className="h-4 w-4" />
+                      Edytuj
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Konta osobiste */}
           <div>
             <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
@@ -376,6 +520,12 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
       <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-4">
         <h5 className="mb-2 font-medium text-[#d3bb73]">Jak to działa?</h5>
         <ul className="space-y-2 text-sm text-[#e5e4e2]/70">
+          <li className="flex gap-2">
+            <span className="font-bold text-[#d3bb73]">•</span>
+            <span>
+              <strong>Email osobisty:</strong> Admin ustawia prywatny email pracownika i wybiera gdzie wysyłać powiadomienia (służbowy/osobisty/oba/brak)
+            </span>
+          </li>
           <li className="flex gap-2">
             <span className="font-bold text-[#d3bb73]">•</span>
             <span>
