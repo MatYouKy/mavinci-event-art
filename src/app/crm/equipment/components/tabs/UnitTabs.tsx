@@ -172,6 +172,8 @@ export function UnitsTab({
   const [showEventsHistory, setShowEventsHistory] = useState(false);
   const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
   const [bulkActionInProgress, setBulkActionInProgress] = useState(false);
+  const [addMultiple, setAddMultiple] = useState(false);
+  const [quantityToAdd, setQuantityToAdd] = useState(1);
 
   useEffect(() => {
     (async () => {
@@ -218,6 +220,8 @@ export function UnitsTab({
         estimated_repair_date: unit.estimated_repair_date || '',
         thumbnail_url: unit.thumbnail_url || '',
       });
+      setAddMultiple(false);
+      setQuantityToAdd(1);
     } else {
       setEditingUnit(null);
       setUnitForm({
@@ -235,6 +239,8 @@ export function UnitsTab({
         estimated_repair_date: '',
         thumbnail_url: '',
       });
+      setAddMultiple(false);
+      setQuantityToAdd(1);
     }
     setShowModal(true);
   };
@@ -277,20 +283,38 @@ export function UnitsTab({
         if (error) throw error;
         showSnackbar?.('Jednostka zaktualizowana pomyślnie', 'success');
       } else {
-        const { error } = await supabase.from('equipment_units').insert({
-          equipment_id: equipment.id,
-          unit_serial_number: unitForm.unit_serial_number || null,
-          status: unitForm.status,
-          location_id: unitForm.location_id || null,
-          condition_notes: unitForm.condition_notes || null,
-          purchase_date: unitForm.purchase_date || null,
-          last_service_date: unitForm.last_service_date || null,
-          estimated_repair_date: unitForm.estimated_repair_date || null,
-          thumbnail_url: unitForm.thumbnail_url || null,
-        });
+        const quantity = addMultiple ? Math.max(1, quantityToAdd) : 1;
+        const unitsToInsert = [];
+
+        for (let i = 0; i < quantity; i++) {
+          const serialNumber = unitForm.unit_serial_number
+            ? quantity > 1
+              ? `${unitForm.unit_serial_number} #${i + 1}`
+              : unitForm.unit_serial_number
+            : null;
+
+          unitsToInsert.push({
+            equipment_id: equipment.id,
+            unit_serial_number: serialNumber,
+            status: unitForm.status,
+            location_id: unitForm.location_id || null,
+            condition_notes: unitForm.condition_notes || null,
+            purchase_date: unitForm.purchase_date || null,
+            last_service_date: unitForm.last_service_date || null,
+            estimated_repair_date: unitForm.estimated_repair_date || null,
+            thumbnail_url: unitForm.thumbnail_url || null,
+          });
+        }
+
+        const { error } = await supabase.from('equipment_units').insert(unitsToInsert);
 
         if (error) throw error;
-        showSnackbar?.('Jednostka dodana pomyślnie', 'success');
+        showSnackbar?.(
+          quantity > 1
+            ? `Dodano ${quantity} jednostek pomyślnie`
+            : 'Jednostka dodana pomyślnie',
+          'success',
+        );
       }
 
       setShowModal(false);
@@ -1044,6 +1068,52 @@ export function UnitsTab({
                       </div>
                     </div>
 
+                    {!editingUnit && (
+                      <div className="mt-6 space-y-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+                        <label className="flex cursor-pointer items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={addMultiple}
+                            onChange={(e) => setAddMultiple(e.target.checked)}
+                            className="h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-[#e5e4e2]">
+                              Dodaj wiele jednostek naraz
+                            </div>
+                            <div className="text-xs text-[#e5e4e2]/60">
+                              Przydatne dla sprzętu identycznego (np. nogi teleskopowe)
+                            </div>
+                          </div>
+                        </label>
+
+                        {addMultiple && (
+                          <div>
+                            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                              Ile jednostek dodać?
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="500"
+                              value={quantityToAdd}
+                              onChange={(e) => setQuantityToAdd(parseInt(e.target.value) || 1)}
+                              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                              placeholder="np. 30"
+                            />
+                            <p className="mt-2 text-xs text-[#e5e4e2]/40">
+                              {quantityToAdd > 1 &&
+                                unitForm.unit_serial_number &&
+                                `Numery seryjne: ${unitForm.unit_serial_number} #1, ${unitForm.unit_serial_number} #2, ...`}
+                              {quantityToAdd > 1 &&
+                                !unitForm.unit_serial_number &&
+                                'Jednostki zostaną dodane bez numerów seryjnych'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="mt-6 flex gap-3">
                       <button
                         onClick={() => setShowModal(false)}
@@ -1057,7 +1127,11 @@ export function UnitsTab({
                           disabled={saving}
                           className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                         >
-                          {saving ? 'Zapisywanie...' : 'Zapisz'}
+                          {saving
+                            ? 'Zapisywanie...'
+                            : !editingUnit && addMultiple && quantityToAdd > 1
+                              ? `Dodaj ${quantityToAdd} jednostek`
+                              : 'Zapisz'}
                         </button>
                       )}
                     </div>
