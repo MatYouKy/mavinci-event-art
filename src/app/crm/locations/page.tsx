@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   MapPin,
@@ -9,9 +9,7 @@ import {
   Trash2,
   Building,
   Phone,
-  Mail,
   User,
-  FileText,
   ExternalLink,
   Search,
   Grid3x3,
@@ -23,7 +21,6 @@ import {
   X,
   MapPinned,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import GoogleMapsPicker from '@/components/crm/GoogleMapsPicker';
 import { ILocation } from './type';
@@ -74,7 +71,7 @@ export default function LocationsPage() {
 
   // Filtrowanie i sortowanie
   const filteredAndSortedLocations = useMemo(() => {
-    let filtered = locations as unknown as ILocation[];
+    let filtered = [...locations];
 
     // Wyszukiwanie
     if (searchQuery) {
@@ -119,7 +116,7 @@ export default function LocationsPage() {
   // Lista unikalnych miast
   const cities = useMemo(() => {
     const citySet = new Set<string>();
-    (locations as unknown as ILocation[]).forEach((loc: ILocation) => {
+    locations.forEach((loc) => {
       if (loc.city) citySet.add(loc.city);
     });
     return Array.from(citySet).sort();
