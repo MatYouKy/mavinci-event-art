@@ -14,11 +14,13 @@ export interface Action {
 interface ResponsiveActionBarProps {
   actions: Action[];
   mobileBreakpoint?: number;
+  disabledBackground?: boolean;
 }
 
 export default function ResponsiveActionBar({
   actions,
-  mobileBreakpoint = 768
+  mobileBreakpoint = 768,
+  disabledBackground = false,
 }: ResponsiveActionBarProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -86,7 +88,11 @@ export default function ResponsiveActionBar({
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setShowMenu(!showMenu)}
-          className="flex items-center justify-center w-10 h-10 bg-[#d3bb73]/10 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+          className={
+            disabledBackground
+              ? "flex items-center justify-center w-10 h-10 rounded-lg bg-transparent text-[#e5e4e2]/70 hover:text-[#e5e4e2] transition-colors"
+              : "flex items-center justify-center w-10 h-10 bg-[#d3bb73]/10 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+          }
           aria-label="Akcje"
         >
           <MoreVertical className="w-5 h-5" />

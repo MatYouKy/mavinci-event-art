@@ -1,13 +1,12 @@
 import { EquipmentUnit } from '@/store/slices/equipmentSlice';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  CreditCard as Edit, X, Plus, Trash2, Upload, Package, History, Copy,
-} from 'lucide-react';
+import { CreditCard as Edit, X, Plus, Trash2, Upload, Package, History, Copy } from 'lucide-react';
 import { uploadImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { UpdateCableQuantityModal } from '../modals/UpdateCableQuantityModal';
 import { UnitEventsModal } from '../modals/UnitEventsModal';
 import { useUpdateCableQuantityMutation } from '../../store/equipmentApi';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 /** ---------- flag types ---------- */
 type Flags = {
@@ -44,7 +43,7 @@ function getCategoryFlagFromHierarchy(
   currentCategory: CategoryLite | undefined,
   allCategories: CategoryLite[] | undefined,
   flag: string,
-  defaultValue = false
+  defaultValue = false,
 ): boolean {
   if (!currentCategory) return defaultValue;
 
@@ -73,10 +72,7 @@ function resolveCategoryFlags(equipment: any): Flags {
 
 /** Merge helpers (rightmost wins) */
 function mergeFlags(...parts: Array<Partial<Flags> | undefined>): Flags {
-  return parts.reduce<Flags>(
-    (acc, p) => ({ ...acc, ...(p || {}) }),
-    { ...DEFAULT_FLAGS }
-  );
+  return parts.reduce<Flags>((acc, p) => ({ ...acc, ...(p || {}) }), { ...DEFAULT_FLAGS });
 }
 
 /** Optional: keep ephemeral flags per equipment in localStorage */
@@ -86,7 +82,7 @@ function useEphemeralFlags(equipmentId?: string, initial?: Partial<Flags>) {
     if (!storageKey) return initial || {};
     try {
       const raw = localStorage.getItem(storageKey);
-      return raw ? { ...(JSON.parse(raw) as Partial<Flags>) } : (initial || {});
+      return raw ? { ...(JSON.parse(raw) as Partial<Flags>) } : initial || {};
     } catch {
       return initial || {};
     }
@@ -114,10 +110,10 @@ export function UnitsTab({
   customFlags,
 }: any & { customFlags?: Partial<Flags> }) {
   /** 1) flags from category (inherited) */
-  const categoryFlags = useMemo(() => resolveCategoryFlags(equipment), [
-    equipment?.warehouse_categories,
-    equipment?.all_warehouse_categories,
-  ]);
+  const categoryFlags = useMemo(
+    () => resolveCategoryFlags(equipment),
+    [equipment?.warehouse_categories, equipment?.all_warehouse_categories],
+  );
 
   console.log(categoryFlags, 'categoryFlags');
 
@@ -127,7 +123,7 @@ export function UnitsTab({
   /** 3) final flags used by the tab (DEFAULT → category → ephemeral → props.custom) */
   const flags = useMemo(
     () => mergeFlags(DEFAULT_FLAGS, categoryFlags, savedEphemeralFlags, customFlags),
-    [categoryFlags, savedEphemeralFlags, customFlags]
+    [categoryFlags, savedEphemeralFlags, customFlags],
   );
 
   // Quantity-only mode if cable OR final simple_quantity flag
@@ -147,7 +143,7 @@ export function UnitsTab({
 
   const [showModal, setShowModal] = useState(false);
   const [newQuantity, setNewQuantity] = useState(
-    isSimpleStock ? (equipment?.cable_stock_quantity || 0) : units.length
+    isSimpleStock ? equipment?.cable_stock_quantity || 0 : units.length,
   );
 
   const [editingUnit, setEditingUnit] = useState<EquipmentUnit | null>(null);
@@ -281,19 +277,17 @@ export function UnitsTab({
         if (error) throw error;
         showSnackbar?.('Jednostka zaktualizowana pomyślnie', 'success');
       } else {
-        const { error } = await supabase
-          .from('equipment_units')
-          .insert({
-            equipment_id: equipment.id,
-            unit_serial_number: unitForm.unit_serial_number || null,
-            status: unitForm.status,
-            location_id: unitForm.location_id || null,
-            condition_notes: unitForm.condition_notes || null,
-            purchase_date: unitForm.purchase_date || null,
-            last_service_date: unitForm.last_service_date || null,
-            estimated_repair_date: unitForm.estimated_repair_date || null,
-            thumbnail_url: unitForm.thumbnail_url || null,
-          });
+        const { error } = await supabase.from('equipment_units').insert({
+          equipment_id: equipment.id,
+          unit_serial_number: unitForm.unit_serial_number || null,
+          status: unitForm.status,
+          location_id: unitForm.location_id || null,
+          condition_notes: unitForm.condition_notes || null,
+          purchase_date: unitForm.purchase_date || null,
+          last_service_date: unitForm.last_service_date || null,
+          estimated_repair_date: unitForm.estimated_repair_date || null,
+          thumbnail_url: unitForm.thumbnail_url || null,
+        });
 
         if (error) throw error;
         showSnackbar?.('Jednostka dodana pomyślnie', 'success');
@@ -363,7 +357,7 @@ export function UnitsTab({
         `
         *,
         employees(name, surname)
-      `
+      `,
       )
       .eq('unit_id', unitId)
       .order('created_at', { ascending: false });
@@ -478,25 +472,56 @@ export function UnitsTab({
     }
   };
 
+  const unitActions = useMemo(() => {
+    const bulkVisible = selectedUnitIds.size > 0 && canEditHere && !flags.disable_units;
+
+    return [
+      {
+        label: `Duplikuj (${selectedUnitIds.size})`,
+        onClick: handleBulkDuplicate,
+        icon: <Copy className="h-4 w-4" />,
+        variant: 'default' as const,
+        show: bulkVisible,
+        disabled: bulkActionInProgress,
+      },
+      {
+        label: `Usuń (${selectedUnitIds.size})`,
+        onClick: handleBulkDelete,
+        icon: <Trash2 className="h-4 w-4" />,
+        variant: 'danger' as const,
+        show: bulkVisible,
+        disabled: bulkActionInProgress,
+      },
+      {
+        label: 'Dodaj jednostkę',
+        onClick: () => handleOpenModal(),
+        icon: <Plus className="h-4 w-4" />,
+        variant: 'primary' as const,
+        show: canEditHere && !flags.disable_units,
+        disabled: false,
+      },
+    ];
+  }, [
+    selectedUnitIds.size,
+    canEditHere,
+    flags.disable_units,
+    bulkActionInProgress,
+    handleBulkDuplicate,
+    handleBulkDelete,
+    handleOpenModal,
+  ]);
+
   /** ---- quick “Tab flags” toolbar (ephemeral toggles) ---- */
-  const FlagChip = ({
-    k,
-    label,
-  }: {
-    k: keyof Flags;
-    label: string;
-  }) => {
+  const FlagChip = ({ k, label }: { k: keyof Flags; label: string }) => {
     const enabled = !!flags[k];
     return (
       <button
         type="button"
-        onClick={() =>
-          setSavedEphemeralFlags((prev) => ({ ...(prev || {}), [k]: !enabled }))
-        }
-        className={`px-2 py-1 rounded text-xs border ${
+        onClick={() => setSavedEphemeralFlags((prev) => ({ ...(prev || {}), [k]: !enabled }))}
+        className={`rounded border px-2 py-1 text-xs ${
           enabled
-            ? 'bg-[#d3bb73] text-[#1c1f33] border-[#d3bb73]'
-            : 'bg-[#0f1119] text-[#e5e4e2]/70 border-[#d3bb73]/20'
+            ? 'border-[#d3bb73] bg-[#d3bb73] text-[#1c1f33]'
+            : 'border-[#d3bb73]/20 bg-[#0f1119] text-[#e5e4e2]/70'
         }`}
         title="Ephemeral (not saved to DB)"
       >
@@ -518,18 +543,18 @@ export function UnitsTab({
           <FlagChip k="read_only" label="read_only" />
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-8">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
           <div className="text-center">
-            <div className="text-6xl font-light text-[#d3bb73] mb-4">
+            <div className="mb-4 text-6xl font-light text-[#d3bb73]">
               {equipment?.cable_stock_quantity || 0}
             </div>
-            <div className="text-lg text-[#e5e4e2]/60 mb-4">Ilość na stanie (szt.)</div>
+            <div className="mb-4 text-lg text-[#e5e4e2]/60">Ilość na stanie (szt.)</div>
             {canEditHere && (
               <button
                 onClick={() => setShowQuantityModal(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors mx-auto"
+                className="mx-auto flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 Ustaw ilość
               </button>
             )}
@@ -558,87 +583,115 @@ export function UnitsTab({
         <FlagChip k="read_only" label="read_only" />
       </div>
 
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h3 className="text-lg font-medium text-[#e5e4e2]">Zarządzanie jednostkami</h3>
           {units.length > 0 && canEditHere && !flags.disable_units && (
-            <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60 cursor-pointer hover:text-[#e5e4e2]">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
               <input
                 type="checkbox"
                 checked={selectedUnitIds.size === units.length}
                 onChange={handleSelectAllUnits}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                className="h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
               />
               Zaznacz wszystkie
             </label>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {selectedUnitIds.size > 0 && canEditHere && !flags.disable_units && (
-            <>
-              <button
-                onClick={handleBulkDuplicate}
-                disabled={bulkActionInProgress}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50"
-              >
-                <Copy className="w-4 h-4" />
-                Duplikuj ({selectedUnitIds.size})
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                disabled={bulkActionInProgress}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
-              >
-                <Trash2 className="w-4 h-4" />
-                Usuń ({selectedUnitIds.size})
-              </button>
-            </>
-          )}
-          {canEditHere && !flags.disable_units && (
-            <button
-              onClick={() => handleOpenModal()}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Dodaj jednostkę
-            </button>
-          )}
+          <ResponsiveActionBar actions={unitActions} />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-[#1c1f33] border border-green-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Dostępne</div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-green-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Dostępne</div>
           <div className="text-2xl font-light text-green-400">{groupedUnits.available.length}</div>
         </div>
-        <div className="bg-[#1c1f33] border border-red-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Uszkodzone</div>
+        <div className="rounded-xl border border-red-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Uszkodzone</div>
           <div className="text-2xl font-light text-red-400">{groupedUnits.damaged.length}</div>
         </div>
-        <div className="bg-[#1c1f33] border border-orange-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Serwis</div>
-          <div className="text-2xl font-light text-orange-400">{groupedUnits.in_service.length}</div>
+        <div className="rounded-xl border border-orange-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Serwis</div>
+          <div className="text-2xl font-light text-orange-400">
+            {groupedUnits.in_service.length}
+          </div>
         </div>
-        <div className="bg-[#1c1f33] border border-gray-500/10 rounded-xl p-4">
-          <div className="text-sm text-[#e5e4e2]/60 mb-1">Wycofane</div>
+        <div className="rounded-xl border border-gray-500/10 bg-[#1c1f33] p-4">
+          <div className="mb-1 text-sm text-[#e5e4e2]/60">Wycofane</div>
           <div className="text-2xl font-light text-gray-400">{groupedUnits.retired.length}</div>
         </div>
       </div>
 
       {units.length === 0 ? (
-        <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
-          <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 mb-2">Brak jednostek</p>
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
+          <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="mb-2 text-[#e5e4e2]/60">Brak jednostek</p>
           <p className="text-sm text-[#e5e4e2]/40">Dodaj pierwszą jednostkę sprzętu</p>
         </div>
       ) : (
         <div className="space-y-3">
           {units.map((unit: EquipmentUnit) => {
             const isUnavailable = unit.status === 'damaged' || unit.status === 'in_service';
+
+            const unitRowActions = useMemo(() => {
+              const canEdit = canEditHere && !flags.disable_units;
+
+              return (unit: any) => {
+                const items = [];
+
+                if (!flags.hide_events) {
+                  items.push({
+                    key: 'events',
+                    label: 'Historia zdarzeń',
+                    icon: <History className="h-4 w-4" />,
+                    onClick: () => handleShowEvents(unit),
+                    variant: 'default' as const,
+                  });
+                }
+
+                if (canEdit) {
+                  items.push(
+                    {
+                      key: 'duplicate',
+                      label: 'Duplikuj jednostkę',
+                      icon: <Copy className="h-4 w-4" />,
+                      onClick: () => handleDuplicateUnit(unit),
+                      variant: 'default' as const,
+                    },
+                    {
+                      key: 'edit',
+                      label: 'Edytuj',
+                      icon: <Edit className="h-4 w-4" />,
+                      onClick: () => handleOpenModal(unit),
+                      variant: 'primary' as const,
+                    },
+                    {
+                      key: 'delete',
+                      label: 'Usuń',
+                      icon: <Trash2 className="h-4 w-4" />,
+                      onClick: () => handleDeleteUnit(unit.id),
+                      variant: 'danger' as const,
+                    },
+                  );
+                }
+
+                return items;
+              };
+            }, [
+              canEditHere,
+              flags.disable_units,
+              flags.hide_events,
+              handleShowEvents,
+              handleDuplicateUnit,
+              handleOpenModal,
+              handleDeleteUnit,
+            ]);
             return (
               <div
                 key={unit.id}
-                className={`bg-[#1c1f33] border rounded-xl p-4 ${
+                className={`rounded-xl border bg-[#1c1f33] p-4 ${
                   isUnavailable ? 'border-red-500/20 opacity-60' : 'border-[#d3bb73]/10'
                 } ${selectedUnitIds.has(unit.id) ? 'ring-2 ring-[#d3bb73]' : ''}`}
               >
@@ -649,7 +702,7 @@ export function UnitsTab({
                         type="checkbox"
                         checked={selectedUnitIds.has(unit.id)}
                         onChange={() => handleToggleSelectUnit(unit.id)}
-                        className="w-5 h-5 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+                        className="h-5 w-5 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
                       />
                     </div>
                   )}
@@ -657,31 +710,31 @@ export function UnitsTab({
                     <img
                       src={unit.thumbnail_url}
                       alt="Miniaturka"
-                      className="w-20 h-20 object-cover rounded-lg border border-[#d3bb73]/20"
+                      className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
                     />
                   )}
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <div className="mb-2 flex flex-wrap items-center gap-3">
                       {flags.requires_serial ? (
                         unit.unit_serial_number ? (
-                          <span className="font-mono text-[#e5e4e2] font-medium">
+                          <span className="font-mono font-medium text-[#e5e4e2]">
                             SN: {unit.unit_serial_number}
                           </span>
                         ) : (
-                          <span className="text-[#e5e4e2]/60 italic">Brak numeru seryjnego</span>
+                          <span className="italic text-[#e5e4e2]/60">Brak numeru seryjnego</span>
                         )
                       ) : unit.unit_serial_number ? (
-                        <span className="font-mono text-[#e5e4e2] font-medium">
+                        <span className="font-mono font-medium text-[#e5e4e2]">
                           SN: {unit.unit_serial_number}
                         </span>
                       ) : null}
 
-                      <span className={`px-2 py-1 rounded text-xs ${statusColors[unit.status]}`}>
+                      <span className={`rounded px-2 py-1 text-xs ${statusColors[unit.status]}`}>
                         {statusLabels[unit.status]}
                       </span>
 
                       {isUnavailable && (
-                        <span className="px-2 py-1 rounded text-xs bg-red-500/20 text-red-300 border border-red-500/30">
+                        <span className="rounded border border-red-500/30 bg-red-500/20 px-2 py-1 text-xs text-red-300">
                           Niedostępny
                         </span>
                       )}
@@ -694,7 +747,7 @@ export function UnitsTab({
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                       {unit.storage_locations && (
                         <div>
                           <span className="text-[#e5e4e2]/60">Lokalizacja:</span>{' '}
@@ -726,40 +779,8 @@ export function UnitsTab({
                     )}
                   </div>
 
-                  <div className="flex gap-2 ml-4">
-                    {!flags.hide_events && (
-                      <button
-                        onClick={() => handleShowEvents(unit)}
-                        className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
-                        title="Historia zdarzeń"
-                      >
-                        <History className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {canEditHere && !flags.disable_units && (
-                      <>
-                        <button
-                          onClick={() => handleDuplicateUnit(unit)}
-                          className="p-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
-                          title="Duplikuj jednostkę"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenModal(unit)}
-                          className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUnit(unit.id)}
-                          className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
+                  <div className="ml-4 flex gap-2">
+                    <ResponsiveActionBar actions={unitRowActions(unit)} disabledBackground/>
                   </div>
                 </div>
               </div>
@@ -771,30 +792,30 @@ export function UnitsTab({
       {showModal &&
         (() => {
           return (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-                <h3 className="text-xl font-light text-[#e5e4e2] mb-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+                <h3 className="mb-4 text-xl font-light text-[#e5e4e2]">
                   {isSimpleStock
                     ? 'Ustaw ilość na stanie'
                     : editingUnit
-                    ? 'Edytuj jednostkę'
-                    : 'Dodaj nową jednostkę'}
+                      ? 'Edytuj jednostkę'
+                      : 'Dodaj nową jednostkę'}
                 </h3>
 
                 {isSimpleStock ? (
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Ilość sztuk</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość sztuk</label>
                       <input
                         type="number"
                         value={newQuantity}
                         onChange={(e) => setNewQuantity(parseInt(e.target.value) || 0)}
                         min="0"
-                        className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] text-lg focus:outline-none focus:border-[#d3bb73]/30"
+                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-3 text-lg text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                         placeholder="np. 50"
                         autoFocus
                       />
-                      <p className="text-sm text-[#e5e4e2]/40 mt-2">
+                      <p className="mt-2 text-sm text-[#e5e4e2]/40">
                         Wprowadź łączną ilość sztuk tego sprzętu
                       </p>
                     </div>
@@ -805,18 +826,21 @@ export function UnitsTab({
                           setShowModal(false);
                           setNewQuantity(equipment?.cable_stock_quantity || 0);
                         }}
-                        className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                        className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                       >
                         Anuluj
                       </button>
                       {canEditHere && (
                         <button
                           onClick={async () => {
-                            await updateCableQty({ equipmentId: equipment.id, quantity: newQuantity }).unwrap();
+                            await updateCableQty({
+                              equipmentId: equipment.id,
+                              quantity: newQuantity,
+                            }).unwrap();
                             setShowModal(false);
                             showSnackbar?.('Ilość zaktualizowana pomyślnie', 'success');
                           }}
-                          className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                          className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                         >
                           Zapisz
                         </button>
@@ -827,27 +851,27 @@ export function UnitsTab({
                   <>
                     <div className="space-y-4">
                       {unitForm.thumbnail_url && (
-                        <div className="relative w-32 h-32 mx-auto">
+                        <div className="relative mx-auto h-32 w-32">
                           <img
                             src={unitForm.thumbnail_url}
                             alt="Miniaturka"
-                            className="w-full h-full object-cover rounded-lg border border-[#d3bb73]/20"
+                            className="h-full w-full rounded-lg border border-[#d3bb73]/20 object-cover"
                           />
                           {canEditHere && !flags.disable_units && (
                             <button
                               onClick={() =>
                                 setUnitForm((prev) => ({ ...prev, thumbnail_url: '' }))
                               }
-                              className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                              className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
                             >
-                              <X className="w-4 h-4" />
+                              <X className="h-4 w-4" />
                             </button>
                           )}
                         </div>
                       )}
 
                       <div>
-                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                        <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                           Miniaturka (opcjonalne)
                         </label>
                         <input
@@ -861,22 +885,22 @@ export function UnitsTab({
                         {canEditHere && !flags.disable_units && (
                           <label
                             htmlFor="unit-thumbnail-upload"
-                            className={`flex items-center justify-center gap-2 w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] cursor-pointer hover:border-[#d3bb73]/30 transition-colors ${
+                            className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30 ${
                               uploadingThumb ? 'opacity-50' : ''
                             }`}
                           >
-                            <Upload className="w-4 h-4" />
+                            <Upload className="h-4 w-4" />
                             {uploadingThumb
                               ? 'Przesyłanie...'
                               : unitForm.thumbnail_url
-                              ? 'Zmień zdjęcie'
-                              : 'Dodaj zdjęcie'}
+                                ? 'Zmień zdjęcie'
+                                : 'Dodaj zdjęcie'}
                           </label>
                         )}
                       </div>
 
                       <div>
-                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                        <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                           Numer seryjny{flags.requires_serial ? ' (wymagany)' : ' (opcjonalny)'}
                         </label>
                         <input
@@ -889,19 +913,19 @@ export function UnitsTab({
                             }))
                           }
                           disabled={!canEditHere || flags.disable_units}
-                          className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                          className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           placeholder="np. SN123456"
                         />
-                        <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                        <p className="mt-1 text-xs text-[#e5e4e2]/40">
                           {flags.requires_serial
                             ? 'To pole jest wymagane dla tej kategorii sprzętu'
                             : 'Pozostaw puste dla sprzętu bez numeru seryjnego'}
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Status</label>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status</label>
                           <select
                             value={unitForm.status}
                             onChange={(e) =>
@@ -911,7 +935,7 @@ export function UnitsTab({
                               }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           >
                             <option value="available">Dostępny</option>
                             <option value="damaged">Uszkodzony</option>
@@ -921,14 +945,16 @@ export function UnitsTab({
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja</label>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Lokalizacja
+                          </label>
                           <select
                             value={unitForm.location_id}
                             onChange={(e) =>
                               setUnitForm((prev) => ({ ...prev, location_id: e.target.value }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           >
                             <option value="">Brak lokalizacji</option>
                             {locations.map((loc) => (
@@ -940,7 +966,9 @@ export function UnitsTab({
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">Data zakupu</label>
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                            Data zakupu
+                          </label>
                           <input
                             type="date"
                             value={unitForm.purchase_date}
@@ -948,12 +976,12 @@ export function UnitsTab({
                               setUnitForm((prev) => ({ ...prev, purchase_date: e.target.value }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                             Ostatni serwis
                           </label>
                           <input
@@ -966,12 +994,12 @@ export function UnitsTab({
                               }))
                             }
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                             Szacowana dostępność
                           </label>
                           <input
@@ -988,15 +1016,15 @@ export function UnitsTab({
                               flags.disable_units ||
                               (unitForm.status !== 'damaged' && unitForm.status !== 'in_service')
                             }
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                           />
-                          <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                          <p className="mt-1 text-xs text-[#e5e4e2]/40">
                             Dla jednostek uszkodzonych lub w serwisie
                           </p>
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                             Notatki o stanie
                           </label>
                           <textarea
@@ -1009,17 +1037,17 @@ export function UnitsTab({
                             }
                             rows={3}
                             disabled={!canEditHere || flags.disable_units}
-                            className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30 disabled:opacity-50"
+                            className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none disabled:opacity-50"
                             placeholder="Notatki o stanie technicznym, usterki, naprawy..."
                           />
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex gap-3 mt-6">
+                    <div className="mt-6 flex gap-3">
                       <button
                         onClick={() => setShowModal(false)}
-                        className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                        className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                       >
                         Anuluj
                       </button>
@@ -1027,7 +1055,7 @@ export function UnitsTab({
                         <button
                           onClick={handleSaveUnit}
                           disabled={saving}
-                          className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                          className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                         >
                           {saving ? 'Zapisywanie...' : 'Zapisz'}
                         </button>

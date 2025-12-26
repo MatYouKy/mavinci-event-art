@@ -128,8 +128,11 @@ export default function EventDetailPage() {
   const { offers, refetch: refetchOffers } = useEventOffers(eventId);
   const { equipment } = useEventEquipment(eventId);
   const { employees } = useEventTeam(eventId);
-  const { data: eventEmployees } = useGetEventEmployeesQuery(eventId);
-  console.log('---eventEmployees', eventEmployees);
+  const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
+
+  useEffect(() => {
+    setTeamEmployees(employees || []);
+  }, [employees]);
 
   useEffect(() => {
     const success = searchParams.get('success');
@@ -138,16 +141,16 @@ export default function EventDetailPage() {
     const eventName = searchParams.get('event');
 
     if (success === 'invitation_accepted') {
-      showSnackbar(
-        `Zaproszenie do wydarzenia "${eventName}" zostało zaakceptowane`,
-        'success'
-      );
+      showSnackbar(`Zaproszenie do wydarzenia "${eventName}" zostało zaakceptowane`, 'success');
       router.replace(`/crm/events/${eventId}`);
     } else if (error === 'invalid_token') {
       showSnackbar('Nieprawidłowy lub nieważny token zaproszenia', 'error');
       router.replace(`/crm/events/${eventId}`);
     } else if (error === 'token_expired') {
-      showSnackbar('Token zaproszenia wygasł. Zaloguj się do systemu aby potwierdzić udział.', 'error');
+      showSnackbar(
+        'Token zaproszenia wygasł. Zaloguj się do systemu aby potwierdzić udział.',
+        'error',
+      );
       router.replace(`/crm/events/${eventId}`);
     } else if (info === 'already_responded') {
       showSnackbar('Już odpowiedziałeś na to zaproszenie', 'info');
@@ -176,8 +179,6 @@ export default function EventDetailPage() {
   } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
-
-  console.log('---event', event);
 
   const { data: contact } = useGetContactByIdQuery(event?.contact_person_id);
   const { getById } = useLocations();
@@ -304,7 +305,10 @@ export default function EventDetailPage() {
 
         if (employee?.event_tabs && employee.event_tabs.length > 0) {
           eventTabs = employee.event_tabs;
-        } else if (employee?.access_levels?.event_tabs && employee.access_levels.event_tabs.length > 0) {
+        } else if (
+          employee?.access_levels?.event_tabs &&
+          employee.access_levels.event_tabs.length > 0
+        ) {
           eventTabs = employee.access_levels.event_tabs;
         }
 
@@ -485,22 +489,24 @@ export default function EventDetailPage() {
   //   }
   // };
 
-  const handleRemoveEmployee = async (employeeId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tego pracownika z eventu?')) return;
+  const handleRemoveEmployee = async (assignmentId: string) => {
+    const ok = await showConfirm('Czy na pewno chcesz usunąć tego pracownika z eventu?');
+    if (!ok) return;
 
     try {
-      const { error } = await supabase.from('employee_assignments').delete().eq('id', employeeId);
+      const { error } = await supabase.from('employee_assignments').delete().eq('id', assignmentId);
 
       if (error) {
         console.error('Error removing employee:', error);
-        alert('Błąd podczas usuwania pracownika');
+        showSnackbar('Błąd podczas usuwania pracownika', 'error');
         return;
       }
 
-      // await logChange('employee_removed', `Usunięto pracownika z eventu (ID: ${employeeId})`);
+      setTeamEmployees((prev) => prev.filter((a) => a.id !== assignmentId));
+      showSnackbar('Pracownik został usunięty z eventu', 'success');
     } catch (err) {
       console.error('Error:', err);
-      alert('Wystąpił błąd');
+      showSnackbar('Wystąpił błąd', 'error');
     }
   };
 
@@ -659,7 +665,6 @@ export default function EventDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-
           <ResponsiveActionBar actions={actions} />
         </div>
       </div>
@@ -883,26 +888,28 @@ export default function EventDetailPage() {
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-lg font-light text-[#e5e4e2]">Zespół</h2>
             {canManageTeam && (
-              <button
-                onClick={() => {
-                  setShowAddEmployeeModal(true);
-                }}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-              >
-                <Plus className="h-4 w-4" />
-                Dodaj osobę
-              </button>
+              <ResponsiveActionBar
+                actions={[
+                  {
+                    label: 'Dodaj osobę',
+                    onClick: () => setShowAddEmployeeModal(true),
+                    icon: <Plus className="h-4 w-4" />,
+                    variant: 'primary',
+                  },
+                ]}
+                disabledBackground
+              />
             )}
           </div>
 
-          {employees?.length === 0 ? (
+          {teamEmployees?.length === 0 ? (
             <div className="py-12 text-center">
               <Users className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak przypisanych pracowników</p>
             </div>
           ) : (
             <TeamMembersList
-              employees={employees}
+              employees={teamEmployees}
               onRemove={handleRemoveEmployee}
               canManageTeam={canManageTeam}
               currentUserId={currentUserId}

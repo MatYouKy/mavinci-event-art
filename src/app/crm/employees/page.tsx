@@ -15,6 +15,7 @@ import {
   EmployeeDetailedView,
 } from '@/components/crm/EmployeeViews';
 import { IEmployee } from './type';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 // interface Employee {
 //   id: string;
@@ -140,28 +141,26 @@ export default function EmployeesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="mt-3">
           <h2 className="text-2xl font-light text-[#e5e4e2]">Pracownicy</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">Zarządzaj zespołem i uprawnieniami</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 ">
           {canAddEmployee && (
-            <>
-              <button
-                onClick={() => router.push('/crm/settings/access-levels')}
-                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-sm font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
-              >
-                <Lock className="h-4 w-4" />
-                Poziomy dostępu
-              </button>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-              >
-                <Plus className="h-4 w-4" />
-                Dodaj pracownika
-              </button>
-            </>
+            <ResponsiveActionBar
+              actions={[
+                {
+                  label: 'Poziomy dostępu',
+                  onClick: () => router.push('/crm/settings/access-levels'),
+                  icon: <Lock className="h-4 w-4" />,
+                },
+                {
+                  label: 'Dodaj pracownika',
+                  onClick: () => setShowAddModal(true),
+                  icon: <Plus className="h-4 w-4" />,
+                },
+              ]}
+            />  
           )}
         </div>
       </div>

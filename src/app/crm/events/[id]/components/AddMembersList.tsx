@@ -4,6 +4,9 @@ import { X } from 'lucide-react';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { EditIcon, Trash2, User, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import { Employee } from '@/lib/permissions';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { IEmployee } from '@/app/crm/employees/type';
+import { EmployeeAssignment } from '@/components/crm/Calendar';
 
 interface TeamMembersListProps {
   employees: Employee[] | any[];
@@ -24,11 +27,7 @@ export function TeamMembersList({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');
   const [editResponsibilities, setEditResponsibilities] = useState('');
-  const [removeModal, setRemoveModal] = useState<{
-    isOpen: boolean;
-    id: string;
-    name: string;
-  } | null>(null);
+
   const [permissionsModal, setPermissionsModal] = useState<{
     isOpen: boolean;
     assignment: any;
@@ -82,7 +81,7 @@ export function TeamMembersList({
     }
   };
 
-  const startEdit = (item: Employee) => {
+  const startEdit = (item: any) => {
     setEditingId(item.id);
     setEditRole(item.role || '');
     setEditResponsibilities(item.responsibilities || '');
@@ -173,39 +172,36 @@ export function TeamMembersList({
 
                 <div className="flex items-center gap-2">
                   {!isEditing && canManageTeam && (
-                    <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          startEdit(item);
-                        }}
-                        className="rounded p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
-                      >
-                        <EditIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRemoveModal({
-                            isOpen: true,
-                            id: item.id,
-                            name:
-                              item.employee.nickname ||
-                              `${item.employee.name} ${item.employee.surname}`,
-                          });
-                        }}
-                        className="rounded p-2 text-red-400 transition-colors hover:bg-red-400/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ResponsiveActionBar
+                        disabledBackground
+                        actions={[
+                          {
+                            label: '',
+                            onClick: () => startEdit(item),
+                            icon: <EditIcon className="h-4 w-4" />,
+                            variant: 'primary',
+                            show: true,
+                          },
+                          {
+                            label: '',
+                            onClick: () => openPermissionsModal(item),
+                            icon: <User className="h-4 w-4" />,
+                            variant: 'default',
+                            show: true,
+                          },
+                          {
+                            label: ``,
+                            onClick: () =>
+                              onRemove(item.id),
+                            icon: <Trash2 className="h-4 w-4" />,
+                            variant: 'danger',
+                            show: true,
+                          },
+                        ]}
+                      />
+                    </div>
                   )}
-                  {!isEditing &&
-                    (isExpanded ? (
-                      <ChevronUp className="h-5 w-5 text-[#e5e4e2]/60" />
-                    ) : (
-                      <ChevronDown className="h-5 w-5 text-[#e5e4e2]/60" />
-                    ))}
                 </div>
               </div>
 
@@ -248,124 +244,10 @@ export function TeamMembersList({
                   </div>
                 </div>
               )}
-
-              {isExpanded && !isEditing && (
-                <div className="space-y-3 border-t border-[#d3bb73]/10 p-4">
-                  {item.responsibilities && (
-                    <div className="border-b border-[#d3bb73]/10 pb-3">
-                      <div className="mb-1 text-xs text-[#e5e4e2]/60">
-                        Zakres odpowiedzialności:
-                      </div>
-                      <p className="whitespace-pre-wrap text-sm text-[#e5e4e2]/80">
-                        {item.responsibilities}
-                      </p>
-                    </div>
-                  )}
-
-                  {canManageTeam && (
-                    <div className="pt-2">
-                      <button
-                        onClick={() => openPermissionsModal(item)}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
-                      >
-                        <User className="h-4 w-4" />
-                        Zarządzaj uprawnieniami
-                      </button>
-                    </div>
-                  )}
-
-                  {(item.can_edit_event ||
-                    item.can_edit_agenda ||
-                    item.can_edit_tasks ||
-                    item.can_edit_files ||
-                    item.can_edit_event ||
-                    item.can_edit_equipment ||
-                    item.can_invite_members ||
-                    item.can_view_budget) && (
-                    <div className="border-t border-[#d3bb73]/10 pt-2">
-                      <div className="mb-2 text-xs text-[#e5e4e2]/60">Nadane uprawnienia:</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {item.can_edit_event && (
-                          <span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-xs text-blue-400">
-                            Edycja wydarzenia
-                          </span>
-                        )}
-                        {item.can_edit_agenda && (
-                          <span className="rounded border border-purple-500/20 bg-purple-500/10 px-2 py-1 text-xs text-purple-400">
-                            Edycja agendy
-                          </span>
-                        )}
-                        {item.can_edit_tasks && (
-                          <span className="rounded border border-green-500/20 bg-green-500/10 px-2 py-1 text-xs text-green-400">
-                            Zarządzanie zadaniami
-                          </span>
-                        )}
-                        {item.can_edit_files && (
-                          <span className="rounded border border-yellow-500/20 bg-yellow-500/10 px-2 py-1 text-xs text-yellow-400">
-                            Zarządzanie plikami
-                          </span>
-                        )}
-                        {item.can_edit_equipment && (
-                          <span className="rounded border border-orange-500/20 bg-orange-500/10 px-2 py-1 text-xs text-orange-400">
-                            Zarządzanie sprzętem
-                          </span>
-                        )}
-                        {item.can_invite_members && (
-                          <span className="rounded border border-pink-500/20 bg-pink-500/10 px-2 py-1 text-xs text-pink-400">
-                            Zapraszanie członków
-                          </span>
-                        )}
-                        {item.can_view_budget && (
-                          <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-400">
-                            Widok budżetu
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           );
         })}
       </div>
-
-      {removeModal?.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
-            <div className="mb-6 flex items-start gap-4">
-              <div className="rounded-lg bg-red-500/10 p-3">
-                <AlertCircle className="h-6 w-6 text-red-400" />
-              </div>
-              <div>
-                <h2 className="mb-2 text-xl font-light text-[#e5e4e2]">Usuń z zespołu</h2>
-                <p className="text-[#e5e4e2]/60">
-                  Czy na pewno chcesz usunąć{' '}
-                  <span className="text-[#d3bb73]">{removeModal.name}</span> z zespołu wydarzenia?
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  onRemove(removeModal.id);
-                  setRemoveModal(null);
-                }}
-                className="flex-1 rounded-lg bg-red-500 px-4 py-2 font-medium text-white hover:bg-red-600"
-              >
-                Usuń
-              </button>
-              <button
-                onClick={() => setRemoveModal(null)}
-                className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
-              >
-                Anuluj
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {permissionsModal?.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

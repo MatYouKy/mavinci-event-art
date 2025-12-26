@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Dices, CircleDot, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { supabase } from '@/lib/supabase';
 

@@ -3,14 +3,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Plus, Search, Package, Grid, List, Plug, Trash2, ChevronRight,
-  FolderTree, Layers, MapPin, Cable, Copy
+  Plus,
+  Search,
+  Package,
+  Grid,
+  List,
+  Plug,
+  Trash2,
+  ChevronRight,
+  FolderTree,
+  Layers,
+  MapPin,
+  Cable,
+  Copy,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ThreeDotMenu } from '@/components/UI/ThreeDotMenu/ThreeDotMenu';
-import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { supabase } from '@/lib/supabase';
 
 // ⬇️ RTK Query – feed + kategorie + delete
@@ -42,8 +55,8 @@ interface EquipmentListItem {
   id: string;
   name: string;
   warehouse_category_id: string | null;
-  brand?: string | null;          // dla kits może być null
-  model?: string | null;          // dla kits może być null
+  brand?: string | null; // dla kits może być null
+  model?: string | null; // dla kits może być null
   thumbnail_url: string | null;
   created_at?: string | null;
   is_kit?: boolean;
@@ -61,6 +74,8 @@ export default function EquipmentPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   // Paginacja do infinite scroll
   const [page, setPage] = useState(0);
@@ -70,8 +85,12 @@ export default function EquipmentPage() {
   const categoryId = activeTab !== 'all' && activeTab !== 'cables' ? activeTab : null;
 
   // Hooki RTKQ
-  const { data: categories = [], isLoading: catLoading, isError: catError, refetch: refetchCats } =
-    useGetEquipmentCategoriesQuery();
+  const {
+    data: categories = [],
+    isLoading: catLoading,
+    isError: catError,
+    refetch: refetchCats,
+  } = useGetEquipmentCategoriesQuery();
 
   const {
     data: feed,
@@ -85,7 +104,7 @@ export default function EquipmentPage() {
     itemType: itemTypeFilter,
     showCablesOnly: activeTab === 'cables',
     page,
-    limit
+    limit,
   });
 
   const [deleteEquipment, { isLoading: deleting }] = useDeleteEquipmentMutation();
@@ -110,7 +129,7 @@ export default function EquipmentPage() {
           setPage((p) => p + 1);
         }
       },
-      { rootMargin: '800px' }
+      { rootMargin: '800px' },
     );
 
     io.observe(el);
@@ -118,12 +137,12 @@ export default function EquipmentPage() {
   }, [hasMore, isFetching]);
 
   // Lista elementów do renderu
-  const items: EquipmentListItem[] = useMemo(() => feed?.items ?? [], [feed]);
+  const items: EquipmentCatalogItem[] = useMemo(() => feed?.items ?? [], [feed]);
 
   // Kategorie – helpery
   const mainCategories: WarehouseCategory[] = useMemo(
     () => categories.filter((c) => c.level === 1),
-    [categories]
+    [categories],
   );
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -181,23 +200,31 @@ export default function EquipmentPage() {
 
       if (fetchError) throw fetchError;
 
-      const { name, warehouse_category_id, brand, model, description, thumbnail_url,
-              dimensions_cm, weight_kg, power_consumption_w, storage_location_id } = original;
+      const {
+        name,
+        warehouse_category_id,
+        brand,
+        model,
+        description,
+        thumbnail_url,
+        dimensions_cm,
+        weight_kg,
+        power_consumption_w,
+        storage_location_id,
+      } = original;
 
-      const { error: insertError } = await supabase
-        .from('equipment_items')
-        .insert({
-          name: `${name} (kopia)`,
-          warehouse_category_id,
-          brand,
-          model,
-          description,
-          thumbnail_url,
-          dimensions_cm,
-          weight_kg,
-          power_consumption_w,
-          storage_location_id,
-        });
+      const { error: insertError } = await supabase.from('equipment_items').insert({
+        name: `${name} (kopia)`,
+        warehouse_category_id,
+        brand,
+        model,
+        description,
+        thumbnail_url,
+        dimensions_cm,
+        weight_kg,
+        power_consumption_w,
+        storage_location_id,
+      });
 
       if (insertError) throw insertError;
 
@@ -210,12 +237,67 @@ export default function EquipmentPage() {
     }
   };
 
+  const equipmentActions = useMemo(() => {
+    const actions: Action[] = [];
+
+    if (canManageModule('equipment')) {
+      actions.push(
+        {
+          label: 'Kategorie',
+          onClick: () => router.push('/crm/equipment/categories'),
+          icon: <FolderTree className="h-4 w-4" />,
+          variant: 'default',
+          show: true,
+        },
+        {
+          label: 'Zestawy',
+          onClick: () => router.push('/crm/equipment/kits'),
+          icon: <Layers className="h-4 w-4" />,
+          variant: 'default',
+          show: true,
+        },
+        {
+          label: 'Lokalizacje',
+          onClick: () => router.push('/crm/equipment/locations'),
+          icon: <MapPin className="h-4 w-4" />,
+          variant: 'default',
+          show: true,
+        },
+        {
+          label: 'Przewody',
+          onClick: () => router.push('/crm/equipment/cables'),
+          icon: <Cable className="h-4 w-4" />,
+          variant: 'default',
+          show: true,
+        },
+      );
+    }
+
+    if (canCreateInModule('equipment')) {
+      actions.push({
+        label: 'Dodaj',
+        onClick: () => router.push('/crm/equipment/new'),
+        icon: <Plus className="h-4 w-4" />,
+        variant: 'primary',
+        show: true,
+      });
+    }
+
+    return actions;
+  }, [router, canManageModule, canCreateInModule]);
+
   // Błędy / loading (kategorie albo feed)
   if (isError || catError) {
     return (
       <div className="text-[#e5e4e2]/80">
         Coś poszło nie tak.{' '}
-        <button className="underline" onClick={() => { refetch(); refetchCats(); }}>
+        <button
+          className="underline"
+          onClick={() => {
+            refetch();
+            refetchCats();
+          }}
+        >
           Spróbuj ponownie
         </button>
       </div>
@@ -223,380 +305,380 @@ export default function EquipmentPage() {
   }
 
   if (isLoading || catLoading) {
-    return <div className="flex items-center justify-center h-64 text-[#e5e4e2]/60">Ładowanie...</div>;
+    return (
+      <div className="flex h-64 items-center justify-center text-[#e5e4e2]/60">Ładowanie...</div>
+    );
   }
 
   return (
     <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
+      <div className="mt-2 flex items-center justify-between">
         <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn</h2>
-
-        {/* Desktop */}
-        <div className="hidden md:flex gap-2">
-          {canManageModule('equipment') && (
-            <>
-              <button
-                onClick={() => router.push('/crm/equipment/categories')}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
-              >
-                <FolderTree className="w-4 h-4" />
-                Kategorie
-              </button>
-              <button
-                onClick={() => router.push('/crm/equipment/kits')}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
-              >
-                <Layers className="w-4 h-4" />
-                Zestawy
-              </button>
-              <button
-                onClick={() => router.push('/crm/equipment/locations')}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
-              >
-                <MapPin className="w-4 h-4" />
-                Lokalizacje
-              </button>
-              <button
-                onClick={() => router.push('/crm/equipment/cables')}
-                className="flex items-center gap-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] px-4 py-2 rounded-lg hover:border-[#d3bb73]/40"
-              >
-                <Cable className="w-4 h-4" />
-                Przewody
-              </button>
-            </>
-          )}
-          {canCreateInModule('equipment') && (
-            <button
-              onClick={() => router.push('/crm/equipment/new')}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
-            >
-              <Plus className="w-4 h-4" />
-              Dodaj
-            </button>
-          )}
-        </div>
-
-        {/* Mobile */}
-        <div className="flex md:hidden gap-2">
-          {canManageModule('equipment') && (
-            <div className="relative">
-              <ThreeDotMenu
-                menuPosition="right-top"
-                menu_items={[
-                  {
-                    children: (
-                      <div className="flex items-center gap-2 px-4 py-2">
-                        <FolderTree className="w-4 h-4" />
-                        <span>Kategorie</span>
-                      </div>
-                    ),
-                    onClick: () => router.push('/crm/equipment/categories'),
-                  },
-                  {
-                    children: (
-                      <div className="flex items-center gap-2 px-4 py-2">
-                        <Layers className="w-4 h-4" />
-                        <span>Zestawy</span>
-                      </div>
-                    ),
-                    onClick: () => router.push('/crm/equipment/kits'),
-                  },
-                  {
-                    children: (
-                      <div className="flex items-center gap-2 px-4 py-2">
-                        <MapPin className="w-4 h-4" />
-                        <span>Lokalizacje</span>
-                      </div>
-                    ),
-                    onClick: () => router.push('/crm/equipment/locations'),
-                  },
-                  {
-                    children: (
-                      <div className="flex items-center gap-2 px-4 py-2">
-                        <Cable className="w-4 h-4" />
-                        <span>Przewody</span>
-                      </div>
-                    ),
-                    onClick: () => router.push('/crm/equipment/cables'),
-                  },
-                ]}
-              />
-            </div>
-          )}
-          {canCreateInModule('equipment') && (
-            <button
-              onClick={() => router.push('/crm/equipment/new')}
-              className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
-            >
-              <Plus className="w-4 h-4" />
-              Dodaj
-            </button>
-          )}
+        <div className="flex items-center gap-3 pt-2">
+          <ResponsiveActionBar actions={equipmentActions} />
         </div>
       </div>
 
       {/* TABS */}
-      <div className="flex gap-2 border-b border-[#d3bb73]/10 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('all')}
-          className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === 'all' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
-        >
-          <div className="flex items-center gap-2">
-            <Package className="w-4 h-4" />
-            Wszystko
-          </div>
-          {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
-        </button>
+      {/* Filtry typu + Search + toggle view */}
+      <div className="flex items-center gap-4">
+        {/* Desktop: zostaje jak było */}
+        <div className="hidden gap-2 md:flex">
+          {(['all', 'equipment', 'kits'] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => setItemTypeFilter(k)}
+              className={`rounded-lg px-4 py-2 text-sm transition-colors ${
+                itemTypeFilter === k
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+              }`}
+            >
+              {k === 'all' ? 'Wszystko' : k === 'equipment' ? 'Tylko sprzęt' : 'Tylko zestawy'}
+            </button>
+          ))}
+        </div>
 
-        {mainCategories.filter(cat => cat.name !== 'PRZEWODY').map((cat) => (
+        <div className="hidden flex-1 gap-4 md:flex">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
+            <input
+              type="text"
+              placeholder="Szukaj..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] py-2.5 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`rounded-lg p-2 ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+            >
+              <List className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`rounded-lg p-2 ${viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+            >
+              <Grid className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile: tylko ikonki */}
+        <div className="flex w-full items-center gap-2 md:hidden">
+          {/* Lupka */}
           <button
-            key={cat.id}
-            onClick={() => setActiveTab(cat.id)}
-            className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === cat.id ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
+            onClick={() => setIsSearchOpen(true)}
+            className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-2 text-[#e5e4e2]"
+            aria-label="Szukaj"
           >
-            {cat.name}
-            {activeTab === cat.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
+            <Search className="h-5 w-5" />
           </button>
-        ))}
 
-        <button
-          onClick={() => setActiveTab('cables')}
-          className={`px-4 py-2 text-sm relative whitespace-nowrap ${activeTab === 'cables' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
-        >
-          <div className="flex items-center gap-2">
-            <Plug className="w-4 h-4" />
-            Kable
+          {/* Filtry */}
+          <button
+            onClick={() => setIsFilterOpen(true)}
+            className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-2 text-[#e5e4e2]"
+            aria-label="Filtry"
+          >
+            {/* jeśli nie masz Filter icon w lucide, użyj SlidersHorizontal */}
+            <SlidersHorizontal className="h-5 w-5" />
+          </button>
+
+          <div className="flex-1" />
+
+          {/* Toggle view */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`rounded-lg p-2 ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+              aria-label="Widok listy"
+            >
+              <List className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`rounded-lg p-2 ${viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+              aria-label="Widok siatki"
+            >
+              <Grid className="h-5 w-5" />
+            </button>
           </div>
-          {activeTab === 'cables' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />}
-        </button>
+        </div>
       </div>
 
-      {/* Filtry typu */}
-      <div className="flex gap-2">
-            {(['all', 'equipment', 'kits'] as const).map((k) => (
-              <button
-                key={k}
-                onClick={() => setItemTypeFilter(k)}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  itemTypeFilter === k ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
-                }`}
-              >
-                {k === 'all' ? 'Wszystko' : k === 'equipment' ? 'Tylko sprzęt' : 'Tylko zestawy'}
-              </button>
-            ))}
-          </div>
-
-          {/* Search + toggle view */}
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
-              <input
-                type="text"
-                placeholder="Szukaj..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg pl-10 pr-4 py-2.5 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
-              >
-                <List className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
-              >
-                <Grid className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Lista */}
-          {items.length === 0 ? (
-            <div className="text-center py-12 text-[#e5e4e2]/60">Brak sprzętu</div>
-          ) : viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {items.map((item) => {
-                const stock = getStock(item);
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => {
-                      if (item.is_kit) {
-                        router.push(`/crm/equipment/kits?edit=${item.id}`);
-                      } else {
-                        router.push(`/crm/equipment/${item.id}`);
-                      }
-                    }}
-                    className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/30 cursor-pointer relative"
+      {/* MODAL: Search */}
+      {isSearchOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setIsSearchOpen(false)}
+            aria-label="Zamknij"
+          />
+          <div className="absolute left-1/2 top-6 w-[calc(100%-24px)] -translate-x-1/2 rounded-2xl border border-[#d3bb73]/15 bg-[#0f1119] p-4 shadow-2xl">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Szukaj..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] py-2.5 pl-10 pr-10 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                />
+                {!!searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+                    aria-label="Wyczyść"
                   >
-{canManageModule('equipment') && (
-  <div
-    className="absolute top-2 right-2"
-    onClick={(e) => e.stopPropagation()}
-  >
-    <ResponsiveActionBar
-      actions={[
-        {
-          label: 'Duplikuj',
-          onClick: () => {
-            void handleDuplicate(item.id);
-          },
-          icon: <Copy className="w-4 h-4" />,
-          variant: 'default',
-        },
-        {
-          label: deleting ? 'Usuwanie…' : 'Usuń',
-          onClick: () => {
-            // ignorujemy Promise żeby zgadzał się typ () => void
-            void handleDelete(item.id);
-          },
-          icon: <Trash2 className="w-4 h-4" />,
-          variant: 'danger',
-        },
-      ]}
-    />
-  </div>
-)}
-                    <div className="relative">
-                      {item.thumbnail_url ? (
-                        <img src={item.thumbnail_url} alt={item.name} className="w-full h-32 object-cover rounded-lg mb-4" />
-                      ) : (
-                        <div className="w-full h-32 bg-[#0f1119] rounded-lg mb-4 flex items-center justify-center">
-                          <Package className="w-12 h-12 text-[#e5e4e2]/40" />
-                        </div>
-                      )}
-                      {item.is_kit && (
-                        <div className="absolute top-2 left-2 bg-[#d3bb73] text-[#1c1f33] text-xs font-medium px-2 py-1 rounded">
-                          ZESTAW
-                        </div>
-                      )}
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={() => setIsSearchOpen(false)}
+                className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+              >
+                Zamknij
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Filters */}
+      {isFilterOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setIsFilterOpen(false)}
+            aria-label="Zamknij"
+          />
+          <div className="absolute left-1/2 top-6 w-[calc(100%-24px)] -translate-x-1/2 rounded-2xl border border-[#d3bb73]/15 bg-[#0f1119] p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-medium text-[#e5e4e2]">Filtry</div>
+              <button
+                onClick={() => setIsFilterOpen(false)}
+                className="rounded-md p-1 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+                aria-label="Zamknij"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {(['all', 'equipment', 'kits'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => {
+                    setItemTypeFilter(k);
+                    setIsFilterOpen(false);
+                  }}
+                  className={`rounded-lg px-4 py-2 text-left text-sm transition-colors ${
+                    itemTypeFilter === k
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
+                  }`}
+                >
+                  {k === 'all' ? 'Wszystko' : k === 'equipment' ? 'Tylko sprzęt' : 'Tylko zestawy'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lista */}
+      {items.length === 0 ? (
+        <div className="py-12 text-center text-[#e5e4e2]/60">Brak sprzętu</div>
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => {
+            const stock = getStock(item);
+            return (
+              <div
+                key={item.id}
+                onClick={() => {
+                  if (item.is_kit) {
+                    router.push(`/crm/equipment/kits?edit=${item.id}`);
+                  } else {
+                    router.push(`/crm/equipment/${item.id}`);
+                  }
+                }}
+                className="relative cursor-pointer rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 hover:border-[#d3bb73]/30"
+              >
+                {canManageModule('equipment') && (
+                  <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
+                    <ResponsiveActionBar
+                      actions={[
+                        {
+                          label: 'Duplikuj',
+                          onClick: () => {
+                            void handleDuplicate(item.id);
+                          },
+                          icon: <Copy className="h-4 w-4" />,
+                          variant: 'default',
+                        },
+                        {
+                          label: deleting ? 'Usuwanie…' : 'Usuń',
+                          onClick: () => {
+                            // ignorujemy Promise żeby zgadzał się typ () => void
+                            void handleDelete(item.id);
+                          },
+                          icon: <Trash2 className="h-4 w-4" />,
+                          variant: 'danger',
+                        },
+                      ]}
+                    />
+                  </div>
+                )}
+                <div className="relative">
+                  {item.thumbnail_url ? (
+                    <img
+                      src={item.thumbnail_url}
+                      alt={item.name}
+                      className="mb-4 h-32 w-full rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="mb-4 flex h-32 w-full items-center justify-center rounded-lg bg-[#0f1119]">
+                      <Package className="h-12 w-12 text-[#e5e4e2]/40" />
                     </div>
-                    <h3 className="text-[#e5e4e2] font-medium mb-2">
-                      {item.name}
-                      {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
-                    </h3>
+                  )}
+                  {item.is_kit && (
+                    <div className="absolute left-2 top-2 rounded bg-[#d3bb73] px-2 py-1 text-xs font-medium text-[#1c1f33]">
+                      ZESTAW
+                    </div>
+                  )}
+                </div>
+                <h3 className="mb-2 font-medium text-[#e5e4e2]">
+                  {item.name}
+                  {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
+                </h3>
+                {item.warehouse_category_id && (
+                  <p className="mb-2 flex items-center gap-1 text-xs text-[#e5e4e2]/40">
+                    <ChevronRight className="h-3 w-3" />
+                    {getCategoryPath(item.warehouse_category_id)}
+                  </p>
+                )}
+                <div className="flex justify-between text-sm">
+                  {item.is_kit ? (
+                    <span className="italic text-[#e5e4e2]/60">Zestaw</span>
+                  ) : (
+                    <span className={stock.color}>
+                      {stock.available}/{stock.total}
+                    </span>
+                  )}
+                  {item.brand && <span className="text-[#e5e4e2]/60">{item.brand}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+          {items.map((item) => {
+            const stock = getStock(item);
+            return (
+              <div
+                key={item.id}
+                onClick={() => {
+                  if (item.is_kit) {
+                    router.push(`/crm/equipment/kits?edit=${item.id}`);
+                  } else {
+                    router.push(`/crm/equipment/${item.id}`);
+                  }
+                }}
+                className="flex cursor-pointer items-center gap-4 border-b border-[#d3bb73]/5 p-4 last:border-0 hover:bg-[#0f1119]"
+              >
+                <div className="relative">
+                  {item.thumbnail_url ? (
+                    <img
+                      src={item.thumbnail_url}
+                      alt={item.name}
+                      className="h-12 w-12 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#0f1119]">
+                      <Package className="h-6 w-6 text-[#e5e4e2]/40" />
+                    </div>
+                  )}
+                  {item.is_kit && (
+                    <div className="absolute -left-1 -top-1 rounded bg-[#d3bb73] px-1 text-[10px] font-medium text-[#1c1f33]">
+                      KIT
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-medium text-[#e5e4e2]">
+                    {item.name}
+                    {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
+                  </h3>
+                  <div className="flex gap-2 text-sm text-[#e5e4e2]/60">
+                    {item.brand && <span>{item.brand}</span>}
                     {item.warehouse_category_id && (
-                      <p className="text-xs text-[#e5e4e2]/40 mb-2 flex items-center gap-1">
-                        <ChevronRight className="w-3 h-3" />
-                        {getCategoryPath(item.warehouse_category_id)}
-                      </p>
+                      <>
+                        <span>•</span>
+                        <span className="flex items-center gap-1">
+                          <ChevronRight className="h-3 w-3" />
+                          {getCategoryPath(item.warehouse_category_id)}
+                        </span>
+                      </>
                     )}
-                    <div className="flex justify-between text-sm">
-                      {item.is_kit ? (
-                        <span className="text-[#e5e4e2]/60 italic">Zestaw</span>
-                      ) : (
-                        <span className={stock.color}>
-                          {stock.available}/{stock.total}
-                        </span>
-                      )}
-                      {item.brand && <span className="text-[#e5e4e2]/60">{item.brand}</span>}
-                    </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
-              {items.map((item) => {
-                const stock = getStock(item);
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => {
-                      if (item.is_kit) {
-                        router.push(`/crm/equipment/kits?edit=${item.id}`);
-                      } else {
-                        router.push(`/crm/equipment/${item.id}`);
-                      }
-                    }}
-                    className="flex items-center gap-4 p-4 hover:bg-[#0f1119] cursor-pointer border-b border-[#d3bb73]/5 last:border-0"
-                  >
-                    <div className="relative">
-                      {item.thumbnail_url ? (
-                        <img src={item.thumbnail_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover" />
-                      ) : (
-                        <div className="w-12 h-12 bg-[#0f1119] rounded-lg flex items-center justify-center">
-                          <Package className="w-6 h-6 text-[#e5e4e2]/40" />
-                        </div>
-                      )}
-                      {item.is_kit && (
-                        <div className="absolute -top-1 -left-1 bg-[#d3bb73] text-[#1c1f33] text-[10px] font-medium px-1 rounded">
-                          KIT
-                        </div>
-                      )}
+                </div>
+                <div className="flex items-center gap-4">
+                  {item.is_kit ? (
+                    <span className="text-sm italic text-[#e5e4e2]/60">Zestaw</span>
+                  ) : (
+                    <span className={`text-sm ${stock.color}`}>
+                      {stock.available}/{stock.total}
+                    </span>
+                  )}
+                  {canManageModule('equipment') && (
+                    <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
+                      <ResponsiveActionBar
+                        actions={[
+                          {
+                            label: 'Duplikuj',
+                            onClick: () => {
+                              void handleDuplicate(item.id);
+                            },
+                            icon: <Copy className="h-4 w-4" />,
+                            variant: 'default',
+                          },
+                          {
+                            label: deleting ? 'Usuwanie…' : 'Usuń',
+                            onClick: () => {
+                              // ignorujemy Promise żeby zgadzał się typ () => void
+                              void handleDelete(item.id);
+                            },
+                            icon: <Trash2 className="h-4 w-4" />,
+                            variant: 'danger',
+                          },
+                        ]}
+                      />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-[#e5e4e2] font-medium">
-                        {item.name}
-                        {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
-                      </h3>
-                      <div className="flex gap-2 text-sm text-[#e5e4e2]/60">
-                        {item.brand && <span>{item.brand}</span>}
-                        {item.warehouse_category_id && (
-                          <>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <ChevronRight className="w-3 h-3" />
-                              {getCategoryPath(item.warehouse_category_id)}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      {item.is_kit ? (
-                        <span className="text-sm text-[#e5e4e2]/60 italic">Zestaw</span>
-                      ) : (
-                        <span className={`text-sm ${stock.color}`}>
-                          {stock.available}/{stock.total}
-                        </span>
-                      )}
-                      {canManageModule('equipment') && (
-  <div
-    className="absolute top-2 right-2"
-    onClick={(e) => e.stopPropagation()}
-  >
-    <ResponsiveActionBar
-      actions={[
-        {
-          label: 'Duplikuj',
-          onClick: () => {
-            void handleDuplicate(item.id);
-          },
-          icon: <Copy className="w-4 h-4" />,
-          variant: 'default',
-        },
-        {
-          label: deleting ? 'Usuwanie…' : 'Usuń',
-          onClick: () => {
-            // ignorujemy Promise żeby zgadzał się typ () => void
-            void handleDelete(item.id);
-          },
-          icon: <Trash2 className="w-4 h-4" />,
-          variant: 'danger',
-        },
-      ]}
-    />
-  </div>
-)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-          {/* Sentinel do infinite scroll + status */}
-          <div ref={sentinelRef} />
-          {isFetching && <div className="py-6 text-center text-[#e5e4e2]/60">Ładowanie…</div>}
-          {!hasMore && !isFetching && items.length > 0 && (
-            <div className="py-6 text-center text-[#e5e4e2]/40">To już wszystko 🎉</div>
-          )}
+      {/* Sentinel do infinite scroll + status */}
+      <div ref={sentinelRef} />
+      {isFetching && <div className="py-6 text-center text-[#e5e4e2]/60">Ładowanie…</div>}
+      {!hasMore && !isFetching && items.length > 0 && (
+        <div className="py-6 text-center text-[#e5e4e2]/40">To już wszystko 🎉</div>
+      )}
     </div>
   );
 }

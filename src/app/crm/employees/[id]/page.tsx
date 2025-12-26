@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -35,6 +35,7 @@ import { uploadImage } from '@/lib/storage';
 import { IUploadImage, IImage } from '@/types/image';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import PrivateTasksBoard from '@/components/crm/PrivateTasksBoard';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 interface ImagePosition {
   posX: number;
@@ -285,6 +286,47 @@ export default function EmployeeDetailPage() {
     }
   };
 
+  const profileActions = useMemo<Action[]>(() => {
+    const canEditHere = (canEdit || isOwnProfile) === true;
+
+    // nie ma uprawnień -> brak akcji
+    if (!canEditHere) return [];
+
+    // tryb podglądu
+    if (!isEditing) {
+      return [
+        {
+          label: 'Edytuj',
+          onClick: () => setIsEditing(true),
+          icon: <Edit className="h-4 w-4" />,
+          variant: 'primary',
+          show: true,
+        },
+      ];
+    }
+
+    // tryb edycji
+    return [
+      {
+        label: 'Zapisz',
+        onClick: handleSave,
+        icon: <Save className="h-4 w-4" />,
+        variant: 'primary',
+        show: true,
+      },
+      {
+        label: 'Anuluj',
+        onClick: () => {
+          setIsEditing(false);
+          setEditedData(employee);
+        },
+        icon: <X className="h-4 w-4" />,
+        variant: 'danger',
+        show: true,
+      },
+    ];
+  }, [canEdit, isOwnProfile, isEditing, handleSave, employee]);
+
   const handleSaveImage = async (
     imageType: 'avatar' | 'background',
     payload: { file?: File; image: IUploadImage },
@@ -495,35 +537,7 @@ export default function EmployeeDetailPage() {
             {employee.occupation || getRoleLabel(employee.role)}
           </p>
         </div>
-        {(canEdit || isOwnProfile) && !isEditing ? (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-          >
-            <Edit className="h-4 w-4" />
-            Edytuj
-          </button>
-        ) : isEditing ? (
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-            >
-              <Save className="h-4 w-4" />
-              Zapisz
-            </button>
-            <button
-              onClick={() => {
-                setIsEditing(false);
-                setEditedData(employee);
-              }}
-              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-            >
-              <X className="h-4 w-4" />
-              Anuluj
-            </button>
-          </div>
-        ) : null}
+        <ResponsiveActionBar actions={profileActions} />
       </div>
 
       <Formik

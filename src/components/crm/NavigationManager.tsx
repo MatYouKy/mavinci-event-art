@@ -301,11 +301,6 @@ export default function NavigationManager({
                     )}
                   </div>
                   {!sidebarCollapsed && <span>{item.name}</span>}
-                  {!sidebarCollapsed && item.key === 'messages' && unreadMessagesCount > 0 && (
-                    <span className="ml-auto flex items-center justify-center min-w-[22px] h-[22px] px-1.5 bg-red-500 text-white text-xs font-semibold rounded-full">
-                      {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
-                    </span>
-                  )}
                 </Link>
               </li>
             );
