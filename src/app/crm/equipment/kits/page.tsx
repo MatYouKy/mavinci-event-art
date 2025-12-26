@@ -91,6 +91,8 @@ export default function KitsPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [equipmentSearchTerm, setEquipmentSearchTerm] = useState('');
+  const [cableSearchTerm, setCableSearchTerm] = useState('');
 
   useEffect(() => {
     fetchCategories();
@@ -541,6 +543,20 @@ export default function KitsPage() {
 
   const filtered = kits.filter((kit) => kit.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
+  const filteredEquipment = equipment.filter((eq) => {
+    const searchLower = equipmentSearchTerm.toLowerCase();
+    return (
+      eq.name.toLowerCase().includes(searchLower) ||
+      eq.brand?.toLowerCase().includes(searchLower) ||
+      eq.model?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  const filteredCables = cables.filter((cable) => {
+    const searchLower = cableSearchTerm.toLowerCase();
+    return cable.name.toLowerCase().includes(searchLower);
+  });
+
   if (viewingKit && !isEditMode) {
     const category = categories.find((c) => c.id === viewingKit.warehouse_category_id);
     return (
@@ -873,7 +889,10 @@ export default function KitsPage() {
               <div>
                 <div className="mb-4 flex items-center gap-2">
                   <button
-                    onClick={() => setItemType('equipment')}
+                    onClick={() => {
+                      setItemType('equipment');
+                      setEquipmentSearchTerm('');
+                    }}
                     className={`rounded-lg px-4 py-2 text-sm transition-colors ${
                       itemType === 'equipment'
                         ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -883,7 +902,10 @@ export default function KitsPage() {
                     Sprzęt
                   </button>
                   <button
-                    onClick={() => setItemType('cable')}
+                    onClick={() => {
+                      setItemType('cable');
+                      setCableSearchTerm('');
+                    }}
                     className={`rounded-lg px-4 py-2 text-sm transition-colors ${
                       itemType === 'cable'
                         ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -894,17 +916,33 @@ export default function KitsPage() {
                   </button>
                 </div>
 
-                <label className="mb-4 block text-sm text-[#e5e4e2]/60">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Dodaj {itemType === 'equipment' ? 'sprzęt' : 'przewody'} do zestawu
                 </label>
+
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
+                  <input
+                    type="text"
+                    placeholder={`Szukaj ${itemType === 'equipment' ? 'sprzętu' : 'przewodów'}...`}
+                    value={itemType === 'equipment' ? equipmentSearchTerm : cableSearchTerm}
+                    onChange={(e) =>
+                      itemType === 'equipment'
+                        ? setEquipmentSearchTerm(e.target.value)
+                        : setCableSearchTerm(e.target.value)
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] py-2 pl-9 pr-4 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
+                  />
+                </div>
+
                 <div className="max-h-96 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
                   {itemType === 'equipment' ? (
-                    equipment.length === 0 ? (
+                    filteredEquipment.length === 0 ? (
                       <div className="p-4 text-center text-[#e5e4e2]/40">
-                        Brak dostępnego sprzętu
+                        {equipmentSearchTerm ? 'Nie znaleziono sprzętu' : 'Brak dostępnego sprzętu'}
                       </div>
                     ) : (
-                      equipment.map((eq) => {
+                      filteredEquipment.map((eq) => {
                         const isInKit = kitItems.some((item) => item.equipment_id === eq.id);
                         const availableUnits =
                           eq.equipment_units?.filter((u) => u.status === 'available').length || 0;
@@ -959,12 +997,12 @@ export default function KitsPage() {
                         );
                       })
                     )
-                  ) : cables.length === 0 ? (
+                  ) : filteredCables.length === 0 ? (
                     <div className="p-4 text-center text-[#e5e4e2]/40">
-                      Brak dostępnych przewodów
+                      {cableSearchTerm ? 'Nie znaleziono przewodów' : 'Brak dostępnych przewodów'}
                     </div>
                   ) : (
-                    cables.map((cable) => {
+                    filteredCables.map((cable) => {
                       const isInKit = kitItems.some((item) => item.cable_id === cable.id);
                       return (
                         <label
