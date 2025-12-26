@@ -179,7 +179,7 @@ export function DetailsTab({
                   className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
                 />
               ) : (
-                <div className="text-[#e5e4e2]">{equipment.description || '-'}</div>
+                <pre className="text-[#e5e4e2] whitespace-pre-wrap font-sans">{equipment.description || '-'}</pre>
               )}
             </div>
 

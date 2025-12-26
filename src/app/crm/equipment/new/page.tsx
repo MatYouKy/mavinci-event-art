@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, Trash2, Upload, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/storage';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useGetStorageLocationsQuery } from '../store/equipmentApi';
 
 interface Category {
   id: string;
@@ -37,6 +38,8 @@ export default function NewEquipmentPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
 
+  const { data: storageLocations = [] } = useGetStorageLocationsQuery();
+
   useEffect(() => {
     if (!employeeLoading && !canCreate) {
       router.push('/crm/equipment');
@@ -64,7 +67,7 @@ export default function NewEquipmentPage() {
     barcode: '',
     notes: '',
     initial_quantity: '0',
-    storage_location: '',
+    storage_location_id: '',
     min_stock_level: '0',
   });
 
@@ -181,6 +184,7 @@ export default function NewEquipmentPage() {
           serial_number: formData.serial_number || null,
           barcode: formData.barcode || null,
           notes: formData.notes || null,
+          storage_location_id: formData.storage_location_id || null,
           is_active: true,
         })
         .select()
@@ -196,7 +200,6 @@ export default function NewEquipmentPage() {
             .update({
               total_quantity: initialQty,
               available_quantity: initialQty,
-              storage_location: formData.storage_location || null,
               min_stock_level: parseInt(formData.min_stock_level) || 0,
             })
             .eq('equipment_id', equipmentData.id);
@@ -207,7 +210,7 @@ export default function NewEquipmentPage() {
             equipment_id: equipmentData.id,
             unit_serial_number: `${equipmentData.id.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
             status: 'available',
-            location: formData.storage_location || null,
+            location_id: formData.storage_location_id || null,
             purchase_date: formData.purchase_date || null,
           }));
 
@@ -595,14 +598,19 @@ export default function NewEquipmentPage() {
 
             <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Lokalizacja w magazynie</label>
-              <input
-                type="text"
-                name="storage_location"
-                value={formData.storage_location}
+              <select
+                name="storage_location_id"
+                value={formData.storage_location_id}
                 onChange={handleInputChange}
                 className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
-                placeholder="np. Regał A, Półka 3"
-              />
+              >
+                <option value="">Wybierz lokalizację</option>
+                {storageLocations.map((loc: any) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
