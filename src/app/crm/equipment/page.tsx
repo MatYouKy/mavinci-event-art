@@ -33,6 +33,8 @@ import {
   useDeleteEquipmentMutation,
 } from './store/equipmentApi';
 
+import type { EquipmentCatalogItem } from './hooks/useEquipmentCatalog';
+
 type UnitStatus = 'available' | 'damaged' | 'in_service' | 'retired';
 
 interface WarehouseCategory {

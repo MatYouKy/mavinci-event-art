@@ -31,11 +31,11 @@ export function AddEquipmentModal({
   const { showSnackbar } = useSnackbar();
 
   const { items, isLoading, isFetching, hasMore, loadMore } = useEquipmentCatalog({
-    q: '',
+    q: searchQuery,
     categoryId: null,
-    itemType: 'all', // 'equipment' | 'kits' | 'all'
+    itemType: mode === 'kit' ? 'kits' : 'equipment',
     showCablesOnly: false,
-    limit: 24,
+    limit: 50,
     activeOnly: true,
   });
 
@@ -47,17 +47,6 @@ export function AddEquipmentModal({
     () => (items ?? []).filter((x) => x.is_kit === false && !x.is_cable),
     [items],
   );
-
-  const filteredItems = useMemo(() => {
-    if (!searchQuery) return equipmentItems;
-    const q = searchQuery.toLowerCase();
-    return equipmentItems.filter(
-      (item) =>
-        (item.name ?? '').toLowerCase().includes(q) ||
-        (item.brand ?? '').toLowerCase().includes(q) ||
-        (item.model ?? '').toLowerCase().includes(q),
-    );
-  }, [searchQuery, equipmentItems]);
 
   useEffect(() => {
     loadMore();
@@ -267,15 +256,19 @@ export function AddEquipmentModal({
 
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Wybierz sprzęt * ({filteredItems.length} wyników)
+                  Wybierz sprzęt * ({equipmentItems.length} wyników)
                 </label>
                 <div className="max-h-60 overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
-                  {filteredItems.length === 0 ? (
+                  {isLoading ? (
+                    <div className="p-4 text-center text-sm text-[#e5e4e2]/60">
+                      Ładowanie...
+                    </div>
+                  ) : equipmentItems.length === 0 ? (
                     <div className="p-4 text-center text-sm text-[#e5e4e2]/60">
                       Brak wyników wyszukiwania
                     </div>
                   ) : (
-                    filteredItems.map((item) => (
+                    equipmentItems.map((item) => (
                       <button
                         key={item.id}
                         type="button"
