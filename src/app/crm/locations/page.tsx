@@ -46,7 +46,6 @@ export default function LocationsPage() {
     create,
     deleteById,
   } = useLocations();
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingLocation, setEditingLocation] = useState<ILocation | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -203,18 +202,17 @@ export default function LocationsPage() {
     };
 
     try {
-    if (editingLocation) {
-      await updateById(editingLocation.id, dataToSave);
-    } else {
-      await create(dataToSave);
+      if (editingLocation) {
+        await updateById(editingLocation.id, dataToSave);
+        showSnackbar('Lokalizacja zaktualizowana', 'success');
+      } else {
+        await create(dataToSave);
+        showSnackbar('Lokalizacja dodana', 'success');
+      }
+      setShowModal(false);
+    } catch (error) {
+      showSnackbar('Błąd podczas zapisywania lokalizacji', 'error');
     }
-  } catch (error) {
-    showSnackbar('Błąd podczas zapisywania lokalizacji', 'error');
-  } finally {
-    setLoading(false);
-  }
-
-
   };
 
   const handleDelete = async (id: string) => {
@@ -361,7 +359,7 @@ export default function LocationsPage() {
         </div>
 
         {/* Content */}
-        {loading ? (
+        {isLoading ? (
           <div className="py-12 text-center text-[#e5e4e2]/50">Ładowanie...</div>
         ) : filteredAndSortedLocations.length === 0 ? (
           <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] py-12 text-center">
