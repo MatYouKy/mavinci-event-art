@@ -560,6 +560,9 @@ export default function EquipmentPage() {
                 <h3 className="mb-2 font-medium text-[#e5e4e2]">
                   {item.name}
                   {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
+                  {item.is_active === false && (
+                    <span className="ml-2 text-xs text-red-400">NIEAKTYWNY</span>
+                  )}
                 </h3>
                 {item.warehouse_category_id && (
                   <p className="mb-2 flex items-center gap-1 text-xs text-[#e5e4e2]/40">
@@ -619,6 +622,9 @@ export default function EquipmentPage() {
                   <h3 className="font-medium text-[#e5e4e2]">
                     {item.name}
                     {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
+                    {item.is_active === false && (
+                      <span className="ml-2 text-xs text-red-400">NIEAKTYWNY</span>
+                    )}
                   </h3>
                   <div className="flex gap-2 text-sm text-[#e5e4e2]/60">
                     {item.brand && <span>{item.brand}</span>}

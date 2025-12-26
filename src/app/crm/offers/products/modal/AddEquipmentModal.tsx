@@ -36,6 +36,7 @@ export function AddEquipmentModal({
     itemType: 'all', // 'equipment' | 'kits' | 'all'
     showCablesOnly: false,
     limit: 24,
+    activeOnly: true,
   });
 
   const { add } = useManageProduct({ productId });

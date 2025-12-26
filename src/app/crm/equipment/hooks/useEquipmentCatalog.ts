@@ -17,6 +17,7 @@ export type EquipmentCatalogItem = {
   description?: string | null;
   created_at?: string | null;
   available_quantity: number | null;
+  is_active?: boolean;
 
   // equipment-only:
   brand?: string | null;
@@ -39,6 +40,7 @@ type Params = {
   showCablesOnly?: boolean;
   limit?: number;
   enabled?: boolean;
+  activeOnly?: boolean;
 };
 
 export function useEquipmentCatalog({
@@ -48,13 +50,14 @@ export function useEquipmentCatalog({
   showCablesOnly = false,
   limit = 24,
   enabled = true,
+  activeOnly = false,
 }: Params) {
   const [page, setPage] = useState(0);
 
-  // Query (RTKQ robi cache i merge u Ciebie w endpoint’cie)
+  // Query (RTKQ robi cache i merge u Ciebie w endpoint'cie)
   const feedArgs = useMemo(
-    () => ({ q, categoryId, itemType, showCablesOnly, page, limit }),
-    [q, categoryId, itemType, showCablesOnly, page, limit],
+    () => ({ q, categoryId, itemType, showCablesOnly, page, limit, activeOnly }),
+    [q, categoryId, itemType, showCablesOnly, page, limit, activeOnly],
   );
 
   const { data, isFetching, isLoading, isError, error, refetch } = useGetEquipmentFeedQuery(
@@ -70,7 +73,7 @@ export function useEquipmentCatalog({
   // reset page gdy zmieniają się filtry (page -> 0)
   useEffect(() => {
     setPage(0);
-  }, [q, categoryId, itemType, showCablesOnly, limit]);
+  }, [q, categoryId, itemType, showCablesOnly, limit, activeOnly]);
 
   const items = data?.items ?? [];
 
@@ -87,7 +90,7 @@ export function useEquipmentCatalog({
 
     // opcjonalnie: trigger lazy (nie jest konieczne, bo zmiana page uruchomi query)
     // ale to daje możliwość await i obsługi błędu tu
-    await triggerFeed({ q, categoryId, itemType, showCablesOnly, page: nextPage, limit }).unwrap();
+    await triggerFeed({ q, categoryId, itemType, showCablesOnly, page: nextPage, limit, activeOnly }).unwrap();
   }, [
     enabled,
     isFetching,
@@ -99,6 +102,7 @@ export function useEquipmentCatalog({
     itemType,
     showCablesOnly,
     limit,
+    activeOnly,
   ]);
 
   const reset = useCallback(() => {

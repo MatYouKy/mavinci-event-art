@@ -12,6 +12,7 @@ type FeedParams = {
   showCablesOnly?: boolean; // czy pokazać tylko kable
   page?: number; // numer strony (0,1,2…)
   limit?: number; // ile rekordów na stronę
+  activeOnly?: boolean; // czy pokazać tylko aktywne
 };
 
 export const equipmentApi = createApi({
@@ -49,13 +50,12 @@ export const equipmentApi = createApi({
           .from('equipment_items')
           .select(
             `
-        id, name, warehouse_category_id, brand, model, thumbnail_url, description,
+        id, name, warehouse_category_id, brand, model, thumbnail_url, description, is_active,
         warehouse_categories:warehouse_categories(*),
         equipment_units:equipment_units(id, status)
       `,
           )
           .is('deleted_at', null)
-          .eq('is_active', true)
           .order('name');
         if (itemsErr) return { error: itemsErr as any };
 
@@ -69,10 +69,10 @@ export const equipmentApi = createApi({
         warehouse_category_id,
         thumbnail_url,
         description,
+        is_active,
         warehouse_categories:warehouse_categories(*)
       `,
           )
-          .eq('is_active', true)
           .order('name');
         if (kitsErr) return { error: kitsErr as any };
 
@@ -104,6 +104,7 @@ export const equipmentApi = createApi({
         showCablesOnly = false,
         page = 0,
         limit = 24,
+        activeOnly = false,
       }) {
         const from = page * limit;
         const to = from + limit - 1;
@@ -172,16 +173,16 @@ export const equipmentApi = createApi({
           .from('equipment_items')
           .select(
             `
-            id, name, warehouse_category_id, brand, model, thumbnail_url, description, created_at,
+            id, name, warehouse_category_id, brand, model, thumbnail_url, description, created_at, is_active,
             equipment_units:equipment_units(id, status)
           `,
             { count: 'exact' },
           )
           .is('deleted_at', null)
-          .eq('is_active', true)
           .order('created_at', { ascending: false })
           .range(from, to);
 
+        if (activeOnly) itemsQ = itemsQ.eq('is_active', true);
         if (q) itemsQ = itemsQ.or(`name.ilike.%${q}%,brand.ilike.%${q}%`);
         if (categoryIds.length > 0) itemsQ = itemsQ.in('warehouse_category_id', categoryIds);
 
@@ -190,14 +191,14 @@ export const equipmentApi = createApi({
           .from('equipment_kits')
           .select(
             `
-            id, name, warehouse_category_id, thumbnail_url, description, created_at
+            id, name, warehouse_category_id, thumbnail_url, description, created_at, is_active
           `,
             { count: 'exact' },
           )
-          .eq('is_active', true)
           .order('created_at', { ascending: false })
           .range(from, to);
 
+        if (activeOnly) kitsQ = kitsQ.eq('is_active', true);
         if (q) kitsQ = kitsQ.ilike('name', `%${q}%`);
         if (categoryIds.length > 0) kitsQ = kitsQ.in('warehouse_category_id', categoryIds);
 
@@ -237,8 +238,8 @@ export const equipmentApi = createApi({
       },
       // cache po parametrach
       serializeQueryArgs: ({ endpointName, queryArgs }) => {
-        const { q = '', categoryId = null, itemType = 'all' } = queryArgs ?? {};
-        return `${endpointName}|q:${q}|cat:${categoryId}|type:${itemType}`;
+        const { q = '', categoryId = null, itemType = 'all', activeOnly = false } = queryArgs ?? {};
+        return `${endpointName}|q:${q}|cat:${categoryId}|type:${itemType}|active:${activeOnly}`;
       },
       // po zmianie page nie chcemy nadpisać cache klucza — RTKQ wywoła merge
       merge: (currentCache, newData) => {
