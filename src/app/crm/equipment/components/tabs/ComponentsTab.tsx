@@ -30,7 +30,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     description: '',
     maxQuantity: 999,
     thumbnail_url: '',
-    technical_specs: {} as Record<string, string>
+    technical_specs: {} as Record<string, string>,
+    is_optional: false
   });
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [techSpecKey, setTechSpecKey] = useState('');
@@ -260,8 +261,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         : newComponent.component_name,
       quantity: newComponent.quantity,
       description: newComponent.description || null,
-      is_included: true,
+      is_included: !newComponent.is_optional,
       is_integral: componentType === 'custom',
+      is_optional: newComponent.is_optional,
       thumbnail_url: componentType === 'custom' ? (newComponent.thumbnail_url || null) : null,
       technical_specs: componentType === 'custom' && Object.keys(newComponent.technical_specs).length > 0
         ? newComponent.technical_specs
@@ -274,7 +276,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       description: '',
       maxQuantity: 999,
       thumbnail_url: '',
-      technical_specs: {}
+      technical_specs: {},
+      is_optional: false
     });
     setComponentType('from_warehouse');
     setIsAdding(false);
@@ -373,6 +376,19 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               placeholder="Opis (opcjonalnie)"
               className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2]"
             />
+          </div>
+
+          <div className="flex items-center gap-3 p-4 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg">
+            <input
+              type="checkbox"
+              id="is-optional-checkbox"
+              checked={newComponent.is_optional}
+              onChange={(e) => setNewComponent((p) => ({ ...p, is_optional: e.target.checked }))}
+              className="w-4 h-4 text-[#d3bb73] focus:ring-[#d3bb73] rounded border-[#d3bb73]/30"
+            />
+            <label htmlFor="is-optional-checkbox" className="text-[#e5e4e2] cursor-pointer">
+              Komponent opcjonalny (nie wliczony domyślnie w zestaw)
+            </label>
           </div>
 
           {componentType === 'custom' && (
@@ -477,7 +493,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                   description: '',
                   maxQuantity: 999,
                   thumbnail_url: '',
-                  technical_specs: {}
+                  technical_specs: {},
+                  is_optional: false
                 });
               }}
               className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
@@ -491,9 +508,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         </div>
       )}
 
-      {equipment.equipment_components?.length ? (
+      {equipment.equipment_components?.filter((c: any) => !c.is_optional).length ? (
         <div className="space-y-3">
-          {equipment.equipment_components.map((c: any) => {
+          {equipment.equipment_components.filter((c: any) => !c.is_optional).map((c: any) => {
             const thumbnailUrl = c.thumbnail_url || c.equipment_items?.thumbnail_url;
             const hasDetails = c.technical_specs && Object.keys(c.technical_specs).length > 0;
 
@@ -579,7 +596,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
           <div>
             <h3 className="text-lg font-medium text-[#e5e4e2]">Skład opcjonalny (pasujący)</h3>
             <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              Produkty z magazynu które pasują jako akcesoria do tego sprzętu
+              Opcjonalne komponenty i produkty z magazynu które pasują jako akcesoria
             </p>
           </div>
           {isEditing && (
@@ -593,8 +610,84 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
           )}
         </div>
 
-        {compatibleItems.length > 0 ? (
+        {(equipment.equipment_components?.filter((c: any) => c.is_optional).length > 0 || compatibleItems.length > 0) ? (
           <div className="space-y-3">
+            {equipment.equipment_components?.filter((c: any) => c.is_optional).map((c: any) => {
+              const thumbnailUrl = c.thumbnail_url || c.equipment_items?.thumbnail_url;
+              const hasDetails = c.technical_specs && Object.keys(c.technical_specs).length > 0;
+
+              return (
+                <div key={c.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-4">
+                  <div className="flex items-start gap-4">
+                    <button
+                      onClick={() => {
+                        setSelectedComponent(c);
+                        setShowComponentDetailModal(true);
+                      }}
+                      className="flex-shrink-0 hover:opacity-80 transition-opacity"
+                    >
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt={c.component_name}
+                          className="w-20 h-20 object-cover rounded-lg border border-[#d3bb73]/20"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 bg-[#0f1119] rounded-lg flex items-center justify-center border border-[#d3bb73]/20">
+                          <Package className="w-8 h-8 text-[#e5e4e2]/20" />
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedComponent(c);
+                        setShowComponentDetailModal(true);
+                      }}
+                      className="flex-1 text-left hover:bg-[#d3bb73]/5 rounded-lg p-2 -m-2 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="text-[#e5e4e2] font-medium">{c.component_name}</div>
+                        <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+                          Opcjonalny
+                        </span>
+                        {c.component_equipment_id ? (
+                          <span className="text-xs px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded">
+                            Z magazynu
+                          </span>
+                        ) : c.is_integral && (
+                          <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
+                            Integralny
+                          </span>
+                        )}
+                      </div>
+                      {c.description && <div className="text-sm text-[#e5e4e2]/60 mt-1">{c.description}</div>}
+                      {hasDetails && (
+                        <div className="mt-2 space-y-1">
+                          {Object.entries(c.technical_specs).slice(0, 2).map(([key, value]: [string, any]) => (
+                            <div key={key} className="text-xs text-[#e5e4e2]/60">
+                              <span className="font-medium">{key}:</span> {value}
+                            </div>
+                          ))}
+                          {Object.keys(c.technical_specs).length > 2 && (
+                            <div className="text-xs text-[#d3bb73] italic cursor-pointer hover:underline">
+                              +{Object.keys(c.technical_specs).length - 2} więcej parametrów (kliknij aby zobaczyć)
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                    <div className="flex items-center gap-3">
+                      <div className="text-[#d3bb73] font-medium">x{c.quantity}</div>
+                      {isEditing && (
+                        <button onClick={() => onDelete(c.id)} className="p-2 text-red-400 hover:text-red-300">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
             {compatibleItems.map((item: any) => {
               const compatEquip = item.compatible_equipment;
               const availableQty = getAvailableQuantity(compatEquip);
@@ -660,9 +753,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         ) : (
           <div className="text-center py-12 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl">
             <Package className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-            <p className="text-[#e5e4e2]/60">Brak pasujących produktów</p>
+            <p className="text-[#e5e4e2]/60">Brak opcjonalnych komponentów i pasujących produktów</p>
             <p className="text-sm text-[#e5e4e2]/40 mt-1">
-              Dodaj produkty które pasują jako akcesoria do tego sprzętu
+              Zaznacz checkbox "Opcjonalny" przy dodawaniu komponentu lub dodaj produkty z magazynu
             </p>
           </div>
         )}
