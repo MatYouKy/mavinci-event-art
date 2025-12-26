@@ -61,6 +61,8 @@ export default function OfferDetailPage() {
   const [canSendManage, setCanSendManage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState('draft');
 
   const basicInfoRef = useRef<OfferBasicInfoHandle | null>(null);
 
@@ -97,6 +99,12 @@ export default function OfferDetailPage() {
       setCanSendManage(isAdmin || isCreator);
     }
   }, [offer, currentUser]);
+
+  useEffect(() => {
+    if (offer) {
+      setSelectedStatus(offer.status);
+    }
+  }, [offer]);
 
   const handleDeleteOffer = useCallback(async () => {
     if (!offer) return;
@@ -167,6 +175,29 @@ export default function OfferDetailPage() {
   const handleOfferUpdated = () => {
     refetch();
     setIsEditing(false);
+  };
+
+  const handleUpdateStatus = async () => {
+    if (!offer || selectedStatus === offer.status) {
+      setIsEditingStatus(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('offers')
+        .update({ status: selectedStatus })
+        .eq('id', offerId);
+
+      if (error) throw error;
+
+      showSnackbar('Status oferty zaktualizowany', 'success');
+      refetch();
+      setIsEditingStatus(false);
+    } catch (err) {
+      console.error('Error updating status:', err);
+      showSnackbar('Błąd podczas aktualizacji statusu', 'error');
+    }
   };
 
   const actions = useMemo(() => {
@@ -253,13 +284,46 @@ export default function OfferDetailPage() {
         <div className="flex items-center gap-3">
           {canSendManage && <ResponsiveActionBar actions={actions} />}
 
-          <span
-            className={`rounded-lg border px-4 py-2 text-sm ${
-              statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
-            }`}
-          >
-            {statusLabels[offer.status] || offer.status}
-          </span>
+          {canSendManage && isEditingStatus ? (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              >
+                <option value="draft">Szkic</option>
+                <option value="sent">Wysłana</option>
+                <option value="accepted">Zaakceptowana</option>
+                <option value="rejected">Odrzucona</option>
+                <option value="expired">Wygasła</option>
+              </select>
+              <button
+                onClick={handleUpdateStatus}
+                className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => {
+                  setIsEditingStatus(false);
+                  setSelectedStatus(offer.status);
+                }}
+                className="rounded-lg border border-red-500/30 bg-red-500/20 px-3 py-2 text-sm text-red-400 hover:bg-red-500/30"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => canSendManage && setIsEditingStatus(true)}
+              disabled={!canSendManage}
+              className={`rounded-lg border px-4 py-2 text-sm transition-opacity ${
+                statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
+              } ${canSendManage ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+            >
+              {statusLabels[offer.status] || offer.status}
+            </button>
+          )}
         </div>
       </div>
 

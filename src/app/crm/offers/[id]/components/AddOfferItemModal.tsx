@@ -85,6 +85,8 @@ export default function AddOfferItemModal({
     setLoading(true);
 
     try {
+      const calculatedDiscountAmount = (quantity * unitPrice * discountPercent) / 100;
+
       const { error } = await supabase.from('offer_items').insert({
         offer_id: offerId,
         product_id: selectedProduct.id,
@@ -95,7 +97,7 @@ export default function AddOfferItemModal({
         unit_price: unitPrice,
         unit_cost: 0,
         discount_percent: discountPercent,
-        discount_amount: 0,
+        discount_amount: calculatedDiscountAmount,
         transport_cost: 0,
         logistics_cost: 0,
         display_order: 999,
