@@ -98,12 +98,10 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             <MapPin className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
             <div className="flex-1">
               <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
-              {location ? (
+              {location && location.name ? (
                 <div className="group relative inline-block">
                   <button
-                    onClick={() =>
-                      location?.id && router.push(`/crm/locations/${location.id}`)
-                    }
+                    onClick={() => location.id && router.push(`/crm/locations/${location.id}`)}
                     className="text-left text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
                   >
                     {location.name}
@@ -141,7 +139,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                   </div>
                 </div>
               ) : (
-                <p className="text-[#e5e4e2]">{location?.name || 'Brak lokalizacji'}</p>
+                <p className="text-[#e5e4e2]">Brak lokalizacji</p>
               )}
             </div>
           </div>

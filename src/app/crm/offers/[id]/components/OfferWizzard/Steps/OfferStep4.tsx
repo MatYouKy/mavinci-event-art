@@ -8,7 +8,12 @@ import {
   AlertTriangle,
   Wrench,
   Users,
+  ChevronDown,
+  ChevronRight,
+  Package,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 interface EquipmentItem {
   id: string;
@@ -24,6 +29,31 @@ interface Subcontractor {
   specialization?: string[] | null;
 }
 
+interface ProductEquipment {
+  equipment_item_id?: string;
+  cable_id?: string;
+  kit_id?: string;
+  quantity: number;
+  is_optional?: boolean;
+  equipment_items?: {
+    id: string;
+    name: string;
+    brand?: string;
+    model?: string;
+    thumbnail_url?: string;
+  };
+  cables?: {
+    id: string;
+    name: string;
+    length_meters?: number;
+    thumbnail_url?: string;
+  };
+  equipment_kits?: {
+    id: string;
+    name: string;
+    thumbnail_url?: string;
+  };
+}
 
 interface OfferStep4Props {
   offerItems: IOfferItem[];
@@ -67,6 +97,57 @@ export default function OfferStep4({
   removeOfferItem,
   calculateTotal,
 }: OfferStep4Props) {
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const [productEquipment, setProductEquipment] = useState<Record<string, ProductEquipment[]>>({});
+
+  useEffect(() => {
+    const fetchProductEquipment = async () => {
+      const productIds = offerItems
+        .filter((item) => item.product_id)
+        .map((item) => item.product_id);
+
+      if (productIds.length === 0) return;
+
+      const { data, error } = await supabase
+        .from('offer_product_equipment')
+        .select(
+          `
+          equipment_item_id,
+          cable_id,
+          kit_id,
+          quantity,
+          is_optional,
+          product_id,
+          equipment_items:equipment_item_id(id, name, brand, model, thumbnail_url),
+          cables:cable_id(id, name, length_meters, thumbnail_url),
+          equipment_kits:kit_id(id, name, thumbnail_url)
+        `
+        )
+        .in('product_id', productIds);
+
+      if (error) {
+        console.error('Error fetching product equipment:', error);
+        return;
+      }
+
+      const equipmentByProduct: Record<string, ProductEquipment[]> = {};
+      data?.forEach((eq: any) => {
+        if (!equipmentByProduct[eq.product_id]) {
+          equipmentByProduct[eq.product_id] = [];
+        }
+        equipmentByProduct[eq.product_id].push(eq);
+      });
+
+      setProductEquipment(equipmentByProduct);
+    };
+
+    fetchProductEquipment();
+  }, [offerItems]);
+
+  const toggleExpand = (itemId: string) => {
+    setExpandedItems((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -386,43 +467,72 @@ export default function OfferStep4({
             </tr>
           </thead>
           <tbody>
-            {offerItems.map((item) => (
-              <tr key={item.id} className="border-t border-[#d3bb73]/10">
-                <td className="px-4 py-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-[#e5e4e2]">{item.name}</span>
-                      {item.needs_subcontractor && (
-                        <div
-                          className="flex items-center gap-1 rounded bg-orange-500/20 px-2 py-0.5 text-xs text-orange-400"
-                          title="Wymaga uzupełnienia podwykonawcy"
-                        >
-                          <AlertTriangle className="h-3 w-3" />
-                          <span>Niekompletne</span>
+            {offerItems.map((item) => {
+              const hasProductEquipment =
+                item.product_id && productEquipment[item.product_id]?.length > 0;
+              const isExpanded = expandedItems[item.id];
+
+              return (
+                <>
+                  <tr key={item.id} className="border-t border-[#d3bb73]/10">
+                    <td className="px-4 py-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          {hasProductEquipment && (
+                            <button
+                              onClick={() => toggleExpand(item.id)}
+                              className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                          )}
+                          <span className="font-medium text-[#e5e4e2]">{item.name}</span>
+                          {item.needs_subcontractor && (
+                            <div
+                              className="flex items-center gap-1 rounded bg-orange-500/20 px-2 py-0.5 text-xs text-orange-400"
+                              title="Wymaga uzupełnienia podwykonawcy"
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              <span>Niekompletne</span>
+                            </div>
+                          )}
+                          {hasProductEquipment && (
+                            <div
+                              className="flex items-center gap-1 text-xs text-[#d3bb73]"
+                              title="Ma przypisany sprzęt z produktu"
+                            >
+                              <Wrench className="h-3 w-3" />
+                              <span>
+                                {productEquipment[item.product_id].length} poz.
+                              </span>
+                            </div>
+                          )}
+                          {item.equipment_ids && item.equipment_ids.length > 0 && !hasProductEquipment && (
+                            <div
+                              className="flex items-center gap-1 text-xs text-[#d3bb73]/60"
+                              title="Ma przypisany sprzęt"
+                            >
+                              <Wrench className="h-3 w-3" />
+                            </div>
+                          )}
+                          {item.subcontractor_id && (
+                            <div
+                              className="flex items-center gap-1 text-xs text-blue-400/60"
+                              title="Ma przypisanego podwykonawcę"
+                            >
+                              <Users className="h-3 w-3" />
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {item.equipment_ids && item.equipment_ids.length > 0 && (
-                        <div
-                          className="flex items-center gap-1 text-xs text-[#d3bb73]/60"
-                          title="Ma przypisany sprzęt"
-                        >
-                          <Wrench className="h-3 w-3" />
-                        </div>
-                      )}
-                      {item.subcontractor_id && (
-                        <div
-                          className="flex items-center gap-1 text-xs text-blue-400/60"
-                          title="Ma przypisanego podwykonawcę"
-                        >
-                          <Users className="h-3 w-3" />
-                        </div>
-                      )}
-                    </div>
-                    {item.description && (
-                      <div className="text-xs text-[#e5e4e2]/60">{item.description}</div>
-                    )}
-                  </div>
-                </td>
+                        {item.description && (
+                          <div className="text-xs text-[#e5e4e2]/60">{item.description}</div>
+                        )}
+                      </div>
+                    </td>
                 <td className="px-4 py-3">
                   <input
                     type="number"
@@ -464,20 +574,103 @@ export default function OfferStep4({
                     step="0.01"
                   />
                 </td>
-                <td className="px-4 py-3 text-right font-medium text-[#d3bb73]">
-                  {item.subtotal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => removeOfferItem(item.id)}
-                    className="rounded p-1 text-red-400 hover:bg-red-500/20"
-                    title="Usuń"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    <td className="px-4 py-3 text-right font-medium text-[#d3bb73]">
+                      {item.subtotal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => removeOfferItem(item.id)}
+                        className="rounded p-1 text-red-400 hover:bg-red-500/20"
+                        title="Usuń"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Equipment Details Row */}
+                  {isExpanded && hasProductEquipment && (
+                    <tr className="bg-[#0f1119]">
+                      <td colSpan={7} className="px-4 py-3">
+                        <div className="ml-8 space-y-2">
+                          <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
+                            Sprzęt przypisany do produktu:
+                          </div>
+                          <div className="space-y-2">
+                            {productEquipment[item.product_id].map((eq, idx) => {
+                              const equipment = eq.equipment_items;
+                              const cable = eq.cables;
+                              const kit = eq.equipment_kits;
+                              const displayItem = equipment || cable || kit;
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3"
+                                >
+                                  {displayItem?.thumbnail_url ? (
+                                    <img
+                                      src={displayItem.thumbnail_url}
+                                      alt={displayItem.name}
+                                      className="h-10 w-10 rounded object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-10 w-10 items-center justify-center rounded bg-[#0f1119]">
+                                      <Package className="h-5 w-5 text-[#e5e4e2]/40" />
+                                    </div>
+                                  )}
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-[#e5e4e2]">
+                                        {displayItem?.name || 'Nieznany element'}
+                                      </span>
+                                      {cable && (
+                                        <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                                          Przewód
+                                        </span>
+                                      )}
+                                      {kit && (
+                                        <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
+                                          Zestaw
+                                        </span>
+                                      )}
+                                      {eq.is_optional && (
+                                        <span className="rounded bg-orange-500/20 px-2 py-0.5 text-xs text-orange-400">
+                                          Opcjonalny
+                                        </span>
+                                      )}
+                                    </div>
+                                    {equipment?.brand && (
+                                      <div className="text-xs text-[#e5e4e2]/60">
+                                        {equipment.brand}
+                                        {equipment.model && ` ${equipment.model}`}
+                                      </div>
+                                    )}
+                                    {cable?.length_meters && (
+                                      <div className="text-xs text-[#e5e4e2]/60">
+                                        {cable.length_meters}m
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-sm font-medium text-[#d3bb73]">
+                                      x{eq.quantity * item.quantity}
+                                    </div>
+                                    <div className="text-xs text-[#e5e4e2]/40">
+                                      {eq.quantity} na jednostkę
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
           </tbody>
           <tfoot className="border-t-2 border-[#d3bb73]/30 bg-[#0f1119]">
             <tr>
