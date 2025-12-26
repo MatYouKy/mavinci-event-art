@@ -502,7 +502,7 @@ export const offerWizardApi = createApi({
             .select(
               `
               *,
-              category:offer_product_categories(name, icon)
+              category:event_categories(name, icon)
             `,
             )
             .eq('is_active', true)
@@ -521,7 +521,7 @@ export const offerWizardApi = createApi({
       queryFn: async () => {
         try {
           const { data, error } = await supabase
-            .from('offer_product_categories')
+            .from('event_categories')
             .select('*')
             .eq('is_active', true)
             .order('display_order');

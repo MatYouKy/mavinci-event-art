@@ -52,7 +52,7 @@ export default function AddOfferItemModal({
         .from('offer_products')
         .select(`
           *,
-          category:offer_product_categories(name)
+          category:event_categories(name)
         `)
         .eq('is_active', true)
         .order('name');

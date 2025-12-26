@@ -270,7 +270,7 @@ export default function OffersPage() {
   const fetchCategories = async () => {
     try {
       const { data, error } = await supabase
-        .from('offer_product_categories')
+        .from('event_categories')
         .select('*')
         .eq('is_active', true)
         .order('display_order');
@@ -290,7 +290,7 @@ export default function OffersPage() {
         .select(
           `
           *,
-          category:offer_product_categories(id, name, icon)
+          category:event_categories(id, name, icon)
         `,
         )
         .order('display_order');

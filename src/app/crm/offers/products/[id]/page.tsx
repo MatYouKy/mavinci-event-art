@@ -149,7 +149,7 @@ export default function ProductDetailPage() {
         .select(
           `
           *,
-          category:offer_product_categories(id, name)
+          category:event_categories(id, name)
         `,
         )
         .eq('id', params.id)
@@ -613,6 +613,7 @@ export default function ProductDetailPage() {
                 disabled={!canEdit}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
               >
+                <option value="">-- Wybierz kategorię --</option>
                 {categories.map((cat) => (
                   <option key={cat.id} value={cat.id}>
                     {cat.name}

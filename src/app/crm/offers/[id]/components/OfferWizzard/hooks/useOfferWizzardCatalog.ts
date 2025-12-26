@@ -16,7 +16,7 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
     (async () => {
       const pRes = await supabase
         .from('offer_products')
-        .select(`*, category:offer_product_categories(name, icon)`)
+        .select(`*, category:event_categories(name, icon)`)
         .eq('is_active', true)
         .order('display_order');
 
@@ -25,7 +25,7 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
       if (!pRes.error && pRes.data) setProducts(pRes.data as any);
 
       const cRes = await supabase
-        .from('offer_product_categories')
+        .from('event_categories')
         .select('*')
         .eq('is_active', true)
         .order('display_order');
