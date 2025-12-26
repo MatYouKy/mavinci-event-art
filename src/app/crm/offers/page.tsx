@@ -273,7 +273,7 @@ export default function OffersPage() {
         .from('event_categories')
         .select('*')
         .eq('is_active', true)
-        .order('display_order');
+        .order('order_index');
 
       if (error) throw error;
       if (data) setCategories(data);
@@ -290,7 +290,7 @@ export default function OffersPage() {
         .select(
           `
           *,
-          category:event_categories(id, name, icon)
+          category:event_categories(id, name, icon_id, custom_icon:custom_icons(id, name, svg_code, preview_color))
         `,
         )
         .order('display_order');

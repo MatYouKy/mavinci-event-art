@@ -16,7 +16,7 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
     (async () => {
       const pRes = await supabase
         .from('offer_products')
-        .select(`*, category:event_categories(name, icon)`)
+        .select(`*, category:event_categories(name, icon_id, custom_icon:custom_icons(id, name, svg_code, preview_color))`)
         .eq('is_active', true)
         .order('display_order');
 
@@ -28,7 +28,7 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
         .from('event_categories')
         .select('*')
         .eq('is_active', true)
-        .order('display_order');
+        .order('order_index');
 
       if (!cRes.error && cRes.data) setCategories(cRes.data);
     })();

@@ -502,7 +502,7 @@ export const offerWizardApi = createApi({
             .select(
               `
               *,
-              category:event_categories(name, icon)
+              category:event_categories(name, icon_id, custom_icon:custom_icons(id, name, svg_code, preview_color))
             `,
             )
             .eq('is_active', true)
@@ -524,7 +524,7 @@ export const offerWizardApi = createApi({
             .from('event_categories')
             .select('*')
             .eq('is_active', true)
-            .order('display_order');
+            .order('order_index');
 
           if (error) return { error: toRtkError(error) };
           return { data: (data ?? []) as OfferProductCategoryRow[] };
