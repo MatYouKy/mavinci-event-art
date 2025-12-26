@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { EquipmentConflictRow, OfferItem, SelectedAltMap } from '../types';
+import { EquipmentConflictRow, SelectedAltMap } from '../types';
+import { IOfferItem } from '@/app/crm/offers/types';
 import { buildConflictPayloadItems, buildSubstitutionsForRpc } from '../utils';
 
 export function useOfferWizardConflicts(opts: { eventId: string }) {
@@ -13,7 +14,7 @@ export function useOfferWizardConflicts(opts: { eventId: string }) {
   const [selectedAlt, setSelectedAlt] = useState<SelectedAltMap>({});
   const [equipmentSubstitutions, setEquipmentSubstitutions] = useState<Record<string, any>>({});
 
-  const checkCartConflicts = async (items: OfferItem[], baseConflicts?: EquipmentConflictRow[]) => {
+  const checkCartConflicts = async (items: IOfferItem[], baseConflicts?: EquipmentConflictRow[]) => {
     if (!opts.eventId) return [];
 
     const payload = buildConflictPayloadItems(items);

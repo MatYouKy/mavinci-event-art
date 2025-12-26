@@ -23,17 +23,23 @@ export const OfferDetails = ({ offer }: { offer: any }) => {
       <div className="space-y-3 text-sm">
         <div>
           <p className="text-[#e5e4e2]/60">Utworzona</p>
-          <p className="text-[#e5e4e2]">{new Date(offer.created_at).toLocaleString('pl-PL')}</p>
+          <p className="text-[#e5e4e2]">
+            {offer.created_at ? new Date(offer.created_at).toLocaleString('pl-PL') : '-'}
+          </p>
         </div>
 
         <div>
           <p className="text-[#e5e4e2]/60">Ostatnia aktualizacja</p>
-          <p className="text-[#e5e4e2]">{new Date(offer.updated_at).toLocaleString('pl-PL')}</p>
+          <p className="text-[#e5e4e2]">
+            {offer.updated_at ? new Date(offer.updated_at).toLocaleString('pl-PL') : '-'}
+          </p>
         </div>
 
         <div>
           <p className="text-[#e5e4e2]/60">Wygasa</p>
-          <p className="text-[#e5e4e2]">{new Date(offer.valid_until).toLocaleString('pl-PL')}</p>
+          <p className="text-[#e5e4e2]">
+            {offer.valid_until ? new Date(offer.valid_until).toLocaleString('pl-PL') : '-'}
+          </p>
         </div>
       </div>
     </div>
