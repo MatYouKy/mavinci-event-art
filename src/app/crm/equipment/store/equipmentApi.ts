@@ -54,6 +54,8 @@ export const equipmentApi = createApi({
         equipment_units:equipment_units(id, status)
       `,
           )
+          .is('deleted_at', null)
+          .eq('is_active', true)
           .order('name');
         if (itemsErr) return { error: itemsErr as any };
 
@@ -70,6 +72,7 @@ export const equipmentApi = createApi({
         warehouse_categories:warehouse_categories(*)
       `,
           )
+          .eq('is_active', true)
           .order('name');
         if (kitsErr) return { error: kitsErr as any };
 
@@ -175,6 +178,7 @@ export const equipmentApi = createApi({
             { count: 'exact' },
           )
           .is('deleted_at', null)
+          .eq('is_active', true)
           .order('created_at', { ascending: false })
           .range(from, to);
 
@@ -190,6 +194,7 @@ export const equipmentApi = createApi({
           `,
             { count: 'exact' },
           )
+          .eq('is_active', true)
           .order('created_at', { ascending: false })
           .range(from, to);
 
