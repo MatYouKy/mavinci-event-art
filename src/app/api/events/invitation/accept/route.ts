@@ -7,18 +7,10 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const token = searchParams.get('token');
-  const execute = searchParams.get('execute');
 
   if (!token) {
-    return NextResponse.json(
-      { error: 'Token is required' },
-      { status: 400 }
-    );
-  }
-
-  if (execute !== 'true') {
     return NextResponse.redirect(
-      new URL(`/crm/events/invitation/accept?token=${token}`, request.url)
+      new URL('/invitation/error?message=Brak tokenu zaproszenia', request.url)
     );
   }
 
@@ -50,23 +42,21 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (assignmentError || !assignment) {
-    return NextResponse.json(
-      { error: 'Nieprawidłowy token zaproszenia' },
-      { status: 400 }
+    return NextResponse.redirect(
+      new URL('/invitation/error?message=Nieprawidłowy token zaproszenia', request.url)
     );
   }
 
   if (new Date(assignment.invitation_expires_at) < new Date()) {
-    return NextResponse.json(
-      { error: 'Token zaproszenia wygasł' },
-      { status: 400 }
+    return NextResponse.redirect(
+      new URL('/invitation/error?message=Token zaproszenia wygasł', request.url)
     );
   }
 
   if (assignment.status !== 'pending') {
-    return NextResponse.json(
-      { error: 'To zaproszenie zostało już przetworzone' },
-      { status: 400 }
+    const event = assignment.events as any;
+    return NextResponse.redirect(
+      new URL(`/invitation/success?event=${encodeURIComponent(event?.name || '')}&type=accepted`, request.url)
     );
   }
 
@@ -80,43 +70,13 @@ export async function GET(request: NextRequest) {
 
   if (updateError) {
     console.error('Error accepting invitation:', updateError);
-    return NextResponse.json(
-      { error: 'Nie udało się zaktualizować statusu zaproszenia' },
-      { status: 500 }
+    return NextResponse.redirect(
+      new URL('/invitation/error?message=Nie udało się zaktualizować statusu zaproszenia', request.url)
     );
   }
 
   const event = assignment.events as any;
   const employee = assignment.employees as any;
-
-  const { data: employeeNotifications } = await supabase
-    .from('notification_recipients')
-    .select('notification_id, notifications(*)')
-    .eq('user_id', assignment.employee_id);
-
-  if (employeeNotifications && employeeNotifications.length > 0) {
-    for (const notifRecipient of employeeNotifications) {
-      const notification = notifRecipient.notifications as any;
-      if (
-        notification &&
-        notification.related_entity_id === assignment.event_id &&
-        notification.related_entity_type === 'event' &&
-        notification.metadata?.assignment_id === assignment.id
-      ) {
-        await supabase
-          .from('notifications')
-          .update({
-            metadata: {
-              ...notification.metadata,
-              responded: true,
-              response_status: 'accepted',
-              responded_at: new Date().toISOString()
-            }
-          })
-          .eq('id', notification.id);
-      }
-    }
-  }
 
   if (event.created_by) {
     const { data: creatorNotification, error: notifError } = await supabase
@@ -151,10 +111,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({
-    success: true,
-    eventId: assignment.event_id,
-    eventName: event.name,
-    message: 'Zaproszenie zostało zaakceptowane pomyślnie'
-  });
+  return NextResponse.redirect(
+    new URL(`/invitation/success?event=${encodeURIComponent(event.name)}&type=accepted`, request.url)
+  );
 }
