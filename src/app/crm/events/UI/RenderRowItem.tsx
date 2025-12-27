@@ -28,6 +28,9 @@ type Props = {
   // remove/restore
   onRemove: (row: any) => void;
   onRestore: (row: any) => void;
+
+  // kit expand in checklist
+  onToggleExpandInChecklist?: (rowId: string, expand: boolean) => void;
 };
 
 export function EventEquipmentRow({
@@ -50,6 +53,8 @@ export function EventEquipmentRow({
 
   onRemove,
   onRestore,
+
+  onToggleExpandInChecklist,
 }: Props) {
   const isKit = !!row?.kit;
 
@@ -202,6 +207,20 @@ export function EventEquipmentRow({
             </span>
           )}
         </div>
+
+        {/* checkbox dla rozwijania w checkliście */}
+        {isKit && editable && onToggleExpandInChecklist && (
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={row?.expand_kit_in_checklist || false}
+              onChange={(e) => onToggleExpandInChecklist(row.id, e.target.checked)}
+              className="h-4 w-4 cursor-pointer rounded border-[#d3bb73]/30 text-[#d3bb73] focus:ring-[#d3bb73]"
+              title="Rozwiń zestaw w checkliście sprzętu"
+            />
+            <span className="text-xs text-[#e5e4e2]/60">Rozwiń w checkliście</span>
+          </div>
+        )}
 
         {/* akcje */}
         {!isRemovedFromOffer ? (

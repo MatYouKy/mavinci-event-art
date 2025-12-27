@@ -254,6 +254,13 @@ export const EventEquipmentTab: React.FC = () => {
     }
   };
 
+  const handleToggleExpandInChecklist = async (rowId: string, expand: boolean) => {
+    const ok = await updateEquipment(rowId, { expand_kit_in_checklist: expand });
+    if (ok) {
+      await refetch();
+    }
+  };
+
   const handleAddEquipment = async (selectedItems: SelectedItem[]) => {
     if (!eventId) return;
 
@@ -322,6 +329,7 @@ export const EventEquipmentTab: React.FC = () => {
             category: d.categoryName,
             cable_length: d.cableLength,
             is_kit: d.isKit,
+            expand_kit_in_checklist: row?.expand_kit_in_checklist || false,
             kit_items: d.kitItems,
           };
         });
@@ -440,6 +448,7 @@ export const EventEquipmentTab: React.FC = () => {
       onUpdateQuantity={handleUpdateQuantity}
       onRemove={handleRemoveEquipment}
       onRestore={handleRestoreAutoRow}
+      onToggleExpandInChecklist={handleToggleExpandInChecklist}
     />
   );
 

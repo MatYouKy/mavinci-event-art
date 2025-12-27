@@ -8,6 +8,7 @@ interface EquipmentItem {
 
   cable_length?: number | null;
   is_kit?: boolean;
+  expand_kit_in_checklist?: boolean;
 
   kit_items?: Array<{
     name: string;
@@ -85,7 +86,7 @@ export const buildEquipmentChecklistHtml = ({
         </tr>
       `;
 
-      if (item.is_kit && item.kit_items?.length) {
+      if (item.is_kit && item.expand_kit_in_checklist && item.kit_items?.length) {
         const kitRows = item.kit_items
           .map((k) => {
             const brand = (k.brand || '').trim();
