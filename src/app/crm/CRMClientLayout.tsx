@@ -258,15 +258,22 @@ export default function CRMClientLayout({ children }: { children: React.ReactNod
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session && pathname !== '/crm/login') {
+      const isPublicInvitationPage = pathname?.startsWith('/crm/events/invitation/');
+
+      if (!session && pathname !== '/crm/login' && !isPublicInvitationPage) {
         router.push('/crm/login');
+        return;
+      }
+
+      if (isPublicInvitationPage) {
+        setLoading(false);
         return;
       }
 
       if (session?.user) {
         const { data: employeeData } = await supabase
           .from('employees')
-          .select('id, role, access_level, permissions, navigation_order')
+          .select('id, role, access_level, permissions, navigation_order, last_active_at')
           .eq('email', session.user.email)
           .maybeSingle();
 
@@ -335,7 +342,9 @@ export default function CRMClientLayout({ children }: { children: React.ReactNod
     localStorage.setItem('sidebarCollapsed', String(newState));
   };
 
-  if (pathname === '/crm/login') {
+  const isPublicPage = pathname === '/crm/login' || pathname?.startsWith('/crm/events/invitation/');
+
+  if (isPublicPage) {
     return <>{children}</>;
   }
 
