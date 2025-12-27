@@ -61,43 +61,16 @@ function RejectInvitationContent() {
           status: 'rejected',
           responded_at: new Date().toISOString(),
         })
+        .eq('invitation_token', token)
         .eq('id', assignment.id);
 
       if (updateError) {
-        throw new Error('Nie udało się zaktualizować statusu zaproszenia');
+        console.error('Error updating assignment:', updateError);
+        throw new Error(`Nie udało się zaktualizować statusu zaproszenia: ${updateError.message}`);
       }
 
       const event = assignment.events as any;
       const employee = assignment.employees as any;
-
-      const { data: employeeNotifications } = await supabase
-        .from('notification_recipients')
-        .select('notification_id, notifications(*)')
-        .eq('user_id', assignment.employee_id);
-
-      if (employeeNotifications && employeeNotifications.length > 0) {
-        for (const notifRecipient of employeeNotifications) {
-          const notification = notifRecipient.notifications as any;
-          if (
-            notification &&
-            notification.related_entity_id === assignment.event_id &&
-            notification.related_entity_type === 'event' &&
-            notification.metadata?.assignment_id === assignment.id
-          ) {
-            await supabase
-              .from('notifications')
-              .update({
-                metadata: {
-                  ...notification.metadata,
-                  responded: true,
-                  response_status: 'rejected',
-                  responded_at: new Date().toISOString()
-                }
-              })
-              .eq('id', notification.id);
-          }
-        }
-      }
 
       if (event.created_by) {
         const { data: creatorNotification, error: notifError } = await supabase
@@ -122,13 +95,19 @@ function RejectInvitationContent() {
           .select('id')
           .single();
 
-        if (!notifError && creatorNotification) {
-          await supabase
+        if (notifError) {
+          console.error('Error creating notification:', notifError);
+        } else if (creatorNotification) {
+          const { error: recipientError } = await supabase
             .from('notification_recipients')
             .insert({
               notification_id: creatorNotification.id,
               user_id: event.created_by
             });
+
+          if (recipientError) {
+            console.error('Error adding notification recipient:', recipientError);
+          }
         }
       }
 
