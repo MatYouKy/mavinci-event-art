@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Package, Plus, Printer } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
+import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
 import { useEvent } from '../../../hooks/useEvent';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -23,6 +24,8 @@ import type {
 } from '@/app/crm/equipment/types/equipment.types';
 import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
 import { extractKitItemsFromRow, isKitRow } from '../../helpers/extractKitItemsFromRow';
+import Popover from '@/components/UI/Tooltip';
+import { useKitByIdLazy } from '@/app/crm/equipment/hooks/useKitByIdLazy';
 
 type ItemType = 'item' | 'kit';
 type AvailKey = `${ItemType}-${string}`;
@@ -425,11 +428,6 @@ export const EventEquipmentTab: React.FC = () => {
     }
   };
 
-  const manualRows = useMemo(
-    () => (equipment || []).filter((r: any) => !r.auto_added),
-    [equipment],
-  );
-  const autoRows = useMemo(() => (equipment || []).filter((r: any) => r.auto_added), [equipment]);
 
   const manualKitRows = useMemo(
     () => (equipment || []).filter((r: any) => !r.auto_added && isKitRow(r)),
@@ -439,6 +437,7 @@ export const EventEquipmentTab: React.FC = () => {
     () => (equipment || []).filter((r: any) => r.auto_added && isKitRow(r)),
     [equipment],
   );
+  console.log('autoKitRows', autoKitRows);
 
   const manualItemRows = useMemo(
     () => (equipment || []).filter((r: any) => !r.auto_added && !isKitRow(r)),
@@ -449,156 +448,247 @@ export const EventEquipmentTab: React.FC = () => {
     [equipment],
   );
 
-  const renderKitRow = (row: any, editable: boolean) => {
-    const expanded = expandedKits.has(row.id);
-    const key = getKeyForEventRow(row); // powinno dać "kit-<id>"
-    const limits = getUiLimits((availabilityByKey as any)?.[key]);
 
+
+  const renderKitRow = (row: any, editable: boolean) => {
+    console.log('row', row);
+    const { loadKit, kit } = useKitByIdLazy();
+    useEffect(() => {
+      if (row?.kit?.id) {
+        loadKit(row.kit.id);
+      }
+    }, [row?.kit?.id, loadKit]);
+
+    const isExpanded = expandedKits.has(row.id);
+  
+    const kitName =
+      row?.kit?.name || row?.equipment_kits?.name || row?.name || 'Zestaw';
+  
+    const kitThumb = kit?.thumbnail_url || '';
+  
+    const key = getKeyForEventRow(row); // "kit-<id>"
+    const limits = getUiLimits((availabilityByKey as any)?.[key]);
     const qty = Number(row?.quantity || 1);
     const badge = getStatusBadge(row?.status);
-
-    const kitItems = extractKitItemsFromRow(row);
+  
     const expandInPrint = !!row?.expand_kit_in_checklist;
-
+  
+    const kitItems = extractKitItemsFromRow(row) || [];
+  
+    const toggleExpand = () => {
+      setExpandedKits((prev) => {
+        const next = new Set(prev);
+        next.has(row.id) ? next.delete(row.id) : next.add(row.id);
+        return next;
+      });
+    };
+  
     return (
-      <div key={row.id} className="rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]">
-        <div className="flex items-start gap-3 p-4">
-          {/* expand */}
+      <div key={row.id}>
+        {/* GŁÓWNY WIERSZ – 1:1 jak ProductEquipmentRow */}
+        <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20">
+          {/* chevron */}
           <button
-            className="mt-1 rounded-md border border-[#d3bb73]/20 px-2 py-1 text-xs text-[#e5e4e2]/70 hover:bg-[#1c1f33]"
-            onClick={() => {
-              setExpandedKits((prev) => {
-                const next = new Set(prev);
-                next.has(row.id) ? next.delete(row.id) : next.add(row.id);
-                return next;
-              });
-            }}
+            onClick={toggleExpand}
+            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+            aria-label="Rozwiń zestaw"
           >
-            {expanded ? 'Ukryj' : 'Pokaż'} zawartość
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            />
           </button>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-[#e5e4e2]">
-                  {row?.kit?.name || row?.equipment_kits?.name || row?.name || 'Zestaw'}
-                </div>
-
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                  <span className={`rounded-full border px-2 py-0.5 ${badge.cls}`}>
-                    {badge.label}
-                  </span>
-                  <span className="text-[#e5e4e2]/40">
-                    max add: <span className="text-[#d3bb73]">{limits.maxAdd}</span>
-                  </span>
-                  <span className="text-[#e5e4e2]/40">
-                    max set: <span className="text-[#d3bb73]">{limits.maxSet}</span>
-                  </span>
+  
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {/* THUMB + KIT BADGE */}
+            {kitThumb ? (
+              <Popover
+                trigger={
+                  <div className="relative h-10 w-10">
+                    <img
+                      src={kitThumb}
+                      alt={kitName}
+                      className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+                    />
+                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                      <PackageIcon className="h-3 w-3 text-[#1c1f33]" />
+                    </div>
+                  </div>
+                }
+                content={
+                  <img
+                    src={kitThumb}
+                    alt={kitName}
+                    className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                  />
+                }
+                openOn="hover"
+              />
+            ) : (
+              <div className="relative flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                <PackageIcon className="h-5 w-5 text-[#e5e4e2]/40" />
+                <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                  <PackageIcon className="h-3 w-3 text-[#1c1f33]" />
                 </div>
               </div>
-
-              {/* qty */}
-              <div className="flex items-center gap-2">
-                {editingQuantityId === row.id ? (
-                  <>
-                    <input
-                      type="number"
-                      min={1}
-                      max={limits.maxSet || 1}
-                      value={draftQuantity}
-                      onChange={(e) => setDraftQuantity(Number(e.target.value || 1))}
-                      className="w-20 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                    />
-                    <button
-                      className="rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33]"
-                      onClick={() => handleUpdateQuantity(row.id, draftQuantity, limits.maxSet)}
-                    >
-                      Zapisz
-                    </button>
-                    <button
-                      className="rounded-lg px-3 py-2 text-xs text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
-                      onClick={() => setEditingQuantityId(null)}
-                    >
-                      Anuluj
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-[#e5e4e2]">{qty} szt.</div>
-                      <div className="text-[11px] text-[#e5e4e2]/40">zestawów</div>
-                    </div>
-
-                    {editable && (
-                      <button
-                        className="rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                        onClick={() => {
-                          setEditingQuantityId(row.id);
-                          setDraftQuantity(qty);
-                        }}
-                      >
-                        Zmień
-                      </button>
-                    )}
-
-                    <button
-                      className="rounded-lg border border-red-500/20 px-3 py-2 text-xs text-red-300 hover:bg-red-500/10"
-                      onClick={() => handleRemoveEquipment(row)}
-                    >
-                      Usuń
-                    </button>
-                  </>
-                )}
+            )}
+  
+            {/* NAZWA + status */}
+            <div className="flex min-w-0 flex-col">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium text-[#e5e4e2]">{kitName}</span>
+  
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${badge.cls}`}>
+                  {badge.label}
+                </span>
+              </div>
+  
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/50">
+                <span>
+                  możesz dodać jeszcze <span className="text-[#d3bb73]">{limits.maxAdd}</span>
+                </span>
+                <span>•</span>
+                <span>
+                  max ustawienia <span className="text-[#d3bb73]">{limits.maxSet}</span>
+                </span>
               </div>
             </div>
-
-            {/* checkbox: print kit content */}
-            <div className="mt-3 flex items-center gap-2">
+          </div>
+  
+          {/* ilość + checkbox print */}
+          <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/40">
+            {editingQuantityId === row.id ? (
+              <span className="inline-flex items-center gap-2">
+                <button
+                  className="rounded bg-[#d3bb73] px-2 py-0.5 text-black hover:bg-[#e5c97a]"
+                  onClick={() => handleUpdateQuantity(row.id, draftQuantity, limits.maxSet)}
+                  title="Zapisz"
+                >
+                  ✓
+                </button>
+  
+                <button
+                  className="rounded border border-[#d3bb73]/30 px-2 py-0.5 text-[#e5e4e2]/70 hover:text-red-400"
+                  onClick={() => {
+                    setDraftQuantity(qty);
+                    setEditingQuantityId(null);
+                  }}
+                  title="Anuluj"
+                >
+                  ✕
+                </button>
+  
+                <input
+                  type="number"
+                  min={1}
+                  max={limits.maxSet || 1}
+                  value={draftQuantity}
+                  onChange={(e) => setDraftQuantity(Number(e.target.value || 1))}
+                  className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-sm text-[#e5e4e2]"
+                  autoFocus
+                />
+  
+                <span className="text-[#e5e4e2]/60">szt.</span>
+              </span>
+            ) : (
+              <span
+                className={`text-[#e5e4e2] ${editable ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
+                onClick={() => {
+                  if (!editable) return;
+                  setEditingQuantityId(row.id);
+                  setDraftQuantity(qty);
+                }}
+              >
+                {qty} <span className="text-[#e5e4e2]/60">szt.</span>
+              </span>
+            )}
+  
+            <label className="hidden items-center gap-2 md:flex">
               <input
                 type="checkbox"
                 checked={expandInPrint}
                 onChange={(e) => handleToggleExpandInChecklist(row.id, e.target.checked)}
                 className="h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
               />
-              <span className="text-xs text-[#e5e4e2]/60">
-                Drukuj checklistę wraz z zawartością zestawu
-              </span>
-            </div>
+              <span className="text-xs text-[#e5e4e2]/50">drukuj zawartość</span>
+            </label>
           </div>
+  
+          {/* trash */}
+          {editable && (
+            <div className="flex items-center gap-2 rounded-lg p-2 pt-2 text-red-400/60 transition-colors hover:bg-red-400/10 hover:text-red-400">
+              <button onClick={() => handleRemoveEquipment(row)} aria-label="Usuń zestaw">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
-
-        {/* expanded contents */}
-        {expanded && (
-          <div className="border-t border-[#d3bb73]/10 bg-[#0b0d14] p-4">
+  
+        {/* ROZWINIĘTA ZAWARTOŚĆ – “pod-wiersze” */}
+        {isExpanded && (
+          <div className="ml-9 mt-1 space-y-1">
             {kitItems.length === 0 ? (
-              <div className="text-sm text-[#e5e4e2]/50">Brak danych o zawartości zestawu.</div>
-            ) : (
-              <div className="space-y-2">
-                {kitItems.map((it, idx) => {
-                  const totalQty = it.quantity * qty;
-                  const meta = [it.brand, it.model].filter(Boolean).join(' • ');
-                  return (
-                    <div
-                      key={`${it.name}-${idx}`}
-                      className="flex items-start justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm text-[#e5e4e2]">{it.name}</div>
-                        {meta && <div className="mt-0.5 text-xs text-[#e5e4e2]/45">{meta}</div>}
-                      </div>
-
-                      <div className="shrink-0 text-right text-xs text-[#e5e4e2]/60">
-                        <div>
-                          <span className="text-[#e5e4e2]/35">{it.quantity}×</span>{' '}
-                          <span className="text-[#d3bb73]">{qty}</span>{' '}
-                          <span className="text-[#e5e4e2]/35">=</span>{' '}
-                          <span className="font-medium text-[#e5e4e2]">{totalQty}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-sm text-[#e5e4e2]/50">
+                Brak danych o zawartości zestawu.
               </div>
+            ) : (
+              kitItems.map((it: any, idx: number) => {
+                const itemThumb =
+                  it.thumbnail_url ||
+                  it?.equipment_items?.thumbnail_url ||
+                  it?.image_url ||
+                  it?.equipment_items?.image_url ||
+                  '';
+  
+                const meta = [it.brand, it.model].filter(Boolean).join(' • ');
+                const perKit = Number(it.quantity || 1);
+                const total = perKit * qty;
+  
+                return (
+                  <div
+                    key={`${it.name}-${idx}`}
+                    className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5"
+                  >
+                    {/* thumb */}
+                    {itemThumb ? (
+                      <Popover
+                        trigger={
+                          <img
+                            src={itemThumb}
+                            alt={it.name}
+                            className="h-9 w-9 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+                          />
+                        }
+                        content={
+                          <img
+                            src={itemThumb}
+                            alt={it.name}
+                            className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                          />
+                        }
+                        openOn="hover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                        <PackageIcon className="h-4 w-4 text-[#e5e4e2]/40" />
+                      </div>
+                    )}
+  
+                    {/* name */}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-[#e5e4e2]">{it.name}</div>
+                      {meta && <div className="text-xs text-[#e5e4e2]/50">{meta}</div>}
+                    </div>
+  
+                    {/* qty summary */}
+                    <div className="text-right text-xs text-[#e5e4e2]/60">
+                      <div>
+                        {perKit}×{qty} = <span className="text-[#e5e4e2]">{total}</span>
+                      </div>
+                      <div className="text-[11px] text-[#e5e4e2]/35">razem</div>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         )}
@@ -607,9 +697,6 @@ export const EventEquipmentTab: React.FC = () => {
   };
 
   const renderRow = (row: any, editable: boolean) => {
-    const filterKitItems = row?.kit?.items?.filter(
-      (item: any) => item.equipment_items?.id === row.equipment_items?.id,
-    );
     return (
       <EventEquipmentRow
         key={row.id}

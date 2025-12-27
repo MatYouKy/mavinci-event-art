@@ -1,8 +1,15 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const redirectError = (msg: string) => {
+  redirect(`/invitation/error?message=${encodeURIComponent(msg)}`);
+};
 
 export default async function AcceptInvitationPage({
   searchParams,
@@ -15,7 +22,7 @@ export default async function AcceptInvitationPage({
 
   if (!token) {
     console.log('[accept-invitation] No token provided');
-    redirect('/invitation/error?message=Brak tokenu zaproszenia');
+    redirectError('Brak tokenu zaproszenia');
   }
 
   console.log('[accept-invitation] Supabase URL:', supabaseUrl);
@@ -52,16 +59,18 @@ export default async function AcceptInvitationPage({
 
   if (assignmentError || !assignment) {
     console.log('[accept-invitation] Invalid token or error');
-    redirect('/invitation/error?message=Nieprawidłowy token zaproszenia');
+    redirectError('Nieprawidłowy token zaproszenia');
   }
 
   if (new Date(assignment.invitation_expires_at) < new Date()) {
-    redirect('/invitation/error?message=Token zaproszenia wygasł');
+    redirectError('Token zaproszenia wygasł');
   }
 
   if (assignment.status !== 'pending') {
     const event = assignment.events as any;
-    redirect(`/invitation/success?event=${encodeURIComponent(event?.name || '')}&type=accepted`);
+    redirect(
+      `/invitation/success?event=${encodeURIComponent(event?.name || '')}&type=accepted`,
+    );
   }
 
   console.log('[accept-invitation] Updating assignment to accepted');
@@ -78,7 +87,8 @@ export default async function AcceptInvitationPage({
 
   if (updateError) {
     console.error('[accept-invitation] Error accepting invitation:', updateError);
-    redirect('/invitation/error?message=Nie udało się zaktualizować statusu zaproszenia');
+    // ✅ pokaż dokładny błąd w URL (z kodem), bez 500
+    redirectError(`Nie udało się zaktualizować statusu: ${updateError.code} ${updateError.message}`);
   }
 
   const event = assignment.events as any;
@@ -103,22 +113,31 @@ export default async function AcceptInvitationPage({
           employee_id: assignment.employee_id,
           employee_name: `${employee.name} ${employee.surname}`,
           assignment_id: assignment.id,
-          response_type: 'accepted'
-        }
+          response_type: 'accepted',
+        },
       })
       .select('id')
       .single();
 
     console.log('[accept-invitation] Notification created:', { creatorNotification, notifError });
 
-    if (!notifError && creatorNotification) {
+    if (notifError) {
+      redirectError(`Błąd tworzenia powiadomienia: ${notifError.code} ${notifError.message}`);
+    }
+
+    if (creatorNotification) {
       const { error: recipientError } = await supabase
         .from('notification_recipients')
         .insert({
           notification_id: creatorNotification.id,
-          user_id: event.created_by
+          user_id: event.created_by,
         });
-      console.log('[accept-invitation] Recipient added:', { recipientError });
+
+      if (recipientError) {
+        redirectError(
+          `Błąd dodania odbiorcy powiadomienia: ${recipientError.code} ${recipientError.message}`,
+        );
+      }
     }
   }
 
