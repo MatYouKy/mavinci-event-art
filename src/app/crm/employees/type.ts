@@ -30,6 +30,7 @@ export interface IEmployee {
   is_active: boolean;
   notes: string | null;
   created_at: string;
+  last_active_at: string | null;
   show_on_website: boolean;
   website_bio: string | null;
   linkedin_url: string | null;

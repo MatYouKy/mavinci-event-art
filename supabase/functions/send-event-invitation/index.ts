@@ -153,8 +153,8 @@ Deno.serve(async (req: Request) => {
     const frontendUrl = Deno.env.get("FRONTEND_URL") || "https://mavinci.pl";
     console.log('[send-event-invitation] Frontend URL:', frontendUrl);
 
-    const acceptUrl = `${frontendUrl}/api/events/invitation/accept?token=${assignment.invitation_token}`;
-    const rejectUrl = `${frontendUrl}/api/events/invitation/reject?token=${assignment.invitation_token}`;
+    const acceptUrl = `${frontendUrl}/crm/events/invitation/accept?token=${assignment.invitation_token}`;
+    const rejectUrl = `${frontendUrl}/crm/events/invitation/reject?token=${assignment.invitation_token}`;
     const eventUrl = `${frontendUrl}/crm/events/${event.id}`;
 
     const eventDateFormatted = new Date(event.event_date).toLocaleDateString('pl-PL', {

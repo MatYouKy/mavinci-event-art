@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { XCircle, Loader2, CheckCircle, Home } from 'lucide-react';
@@ -14,6 +14,134 @@ export default function RejectInvitationPage() {
   const [message, setMessage] = useState('');
   const [eventName, setEventName] = useState('');
 
+  const handleRejectInvitation = useCallback(async () => {
+    try {
+      setStatus('loading');
+
+      const { data: assignment, error: assignmentError } = await supabase
+        .from('employee_assignments')
+        .select(`
+          id,
+          status,
+          invitation_expires_at,
+          employee_id,
+          event_id,
+          employees!employee_assignments_employee_id_fkey(
+            id,
+            name,
+            surname,
+            email
+          ),
+          events(
+            id,
+            name,
+            event_date,
+            location,
+            created_by
+          )
+        `)
+        .eq('invitation_token', token)
+        .maybeSingle();
+
+      if (assignmentError || !assignment) {
+        throw new Error('Nieprawidłowy token zaproszenia');
+      }
+
+      if (new Date(assignment.invitation_expires_at) < new Date()) {
+        throw new Error('Token zaproszenia wygasł');
+      }
+
+      if (assignment.status !== 'pending') {
+        throw new Error('To zaproszenie zostało już przetworzone');
+      }
+
+      const { error: updateError } = await supabase
+        .from('employee_assignments')
+        .update({
+          status: 'rejected',
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', assignment.id);
+
+      if (updateError) {
+        throw new Error('Nie udało się zaktualizować statusu zaproszenia');
+      }
+
+      const event = assignment.events as any;
+      const employee = assignment.employees as any;
+
+      const { data: employeeNotifications } = await supabase
+        .from('notification_recipients')
+        .select('notification_id, notifications(*)')
+        .eq('user_id', assignment.employee_id);
+
+      if (employeeNotifications && employeeNotifications.length > 0) {
+        for (const notifRecipient of employeeNotifications) {
+          const notification = notifRecipient.notifications as any;
+          if (
+            notification &&
+            notification.related_entity_id === assignment.event_id &&
+            notification.related_entity_type === 'event' &&
+            notification.metadata?.assignment_id === assignment.id
+          ) {
+            await supabase
+              .from('notifications')
+              .update({
+                metadata: {
+                  ...notification.metadata,
+                  responded: true,
+                  response_status: 'rejected',
+                  responded_at: new Date().toISOString()
+                }
+              })
+              .eq('id', notification.id);
+          }
+        }
+      }
+
+      if (event.created_by) {
+        const { data: creatorNotification, error: notifError } = await supabase
+          .from('notifications')
+          .insert({
+            category: 'employee',
+            title: 'Odrzucenie zaproszenia',
+            message: `${employee.name} ${employee.surname} odrzucił zaproszenie do wydarzenia "${event.name}"`,
+            type: 'info',
+            related_entity_type: 'event',
+            related_entity_id: assignment.event_id,
+            action_url: `/crm/events/${assignment.event_id}`,
+            metadata: {
+              event_id: assignment.event_id,
+              event_name: event.name,
+              employee_id: assignment.employee_id,
+              employee_name: `${employee.name} ${employee.surname}`,
+              assignment_id: assignment.id,
+              response_type: 'rejected'
+            }
+          })
+          .select('id')
+          .single();
+
+        if (!notifError && creatorNotification) {
+          await supabase
+            .from('notification_recipients')
+            .insert({
+              notification_id: creatorNotification.id,
+              user_id: event.created_by
+            });
+        }
+      }
+
+      setEventName(event.name);
+      setStatus('success');
+      setMessage('Twoja decyzja została zapisana');
+    } catch (error: any) {
+      console.error('Error rejecting invitation:', error);
+      setStatus('error');
+      setMessage(error.message || 'Wystąpił błąd podczas odrzucania zaproszenia');
+    }
+  }, [token]);
+
   useEffect(() => {
     if (!token) {
       setStatus('error');
@@ -22,28 +150,7 @@ export default function RejectInvitationPage() {
     }
 
     handleRejectInvitation();
-  }, [token]);
-
-  const handleRejectInvitation = async () => {
-    try {
-      setStatus('loading');
-
-      const response = await fetch(`/api/events/invitation/reject?token=${token}&execute=true`);
-      const result = await response.json();
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || 'Błąd podczas odrzucania zaproszenia');
-      }
-
-      setEventName(result.eventName || 'wydarzenie');
-      setStatus('success');
-      setMessage('Twoja decyzja została zapisana');
-    } catch (error: any) {
-      console.error('Error rejecting invitation:', error);
-      setStatus('error');
-      setMessage(error.message || 'Wystąpił błąd podczas odrzucania zaproszenia');
-    }
-  };
+  }, [token, handleRejectInvitation]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#0f1119] to-[#1c1f33] p-4">

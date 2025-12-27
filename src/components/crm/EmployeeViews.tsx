@@ -33,6 +33,8 @@ export function EmployeeCardsView({ employees, getRoleLabel, getAccessLevelLabel
                 employeeName={`${employee.name} ${employee.surname}`}
                 size={80}
                 className="border-2 border-[#d3bb73]/20 group-hover:border-[#d3bb73]/40 transition-colors"
+                showActivityStatus={true}
+                lastActiveAt={employee.last_active_at}
               />
             </div>
             <h3 className="text-lg font-medium text-[#e5e4e2]">
@@ -125,6 +127,8 @@ export function EmployeeListView({ employees, getRoleLabel, getAccessLevelColor,
             employeeName={`${employee.name} ${employee.surname}`}
             size={48}
             className="flex-shrink-0"
+            showActivityStatus={true}
+            lastActiveAt={employee.last_active_at}
           />
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-medium text-[#e5e4e2] truncate">
@@ -191,6 +195,8 @@ export function EmployeeDetailedView({ employees, getRoleLabel, getAccessLevelLa
                 employeeName={`${employee.name} ${employee.surname}`}
                 size={96}
                 className="border-2 border-[#d3bb73]/20"
+                showActivityStatus={true}
+                lastActiveAt={employee.last_active_at}
               />
             </div>
 
