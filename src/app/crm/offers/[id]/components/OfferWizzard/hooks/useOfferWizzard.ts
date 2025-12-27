@@ -211,6 +211,7 @@ export function useOfferWizardLogic(opts: {
         offerItems: items.offerItems,
         selectedAlt: conflicts.selectedAlt,
         conflicts: conflicts.conflicts,
+        equipmentSubstitutions: conflicts.equipmentSubstitutions,
       });
 
       showDialog({

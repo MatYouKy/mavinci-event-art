@@ -1,0 +1,256 @@
+/*
+  # Create RPC function to check equipment conflicts for offer cart
+
+  1. New Function
+    - `check_offer_cart_equipment_conflicts_v2` - Checks equipment availability and returns conflicts with alternatives
+
+  2. Logic
+    - Takes array of products with quantities
+    - Expands products into equipment items (from offer_product_equipment)
+    - Expands kits into individual items (from equipment_kit_items)
+    - Checks availability for each item against event dates
+    - Applies substitutions from previous selections
+    - Finds alternatives from same warehouse category
+    - Returns conflicts with alternatives
+
+  3. Parameters
+    - `p_event_id` (uuid) - Event ID to check dates
+    - `p_items` (jsonb) - Array of {product_id, quantity}
+    - `p_substitutions` (jsonb) - Array of {from_item_id, to_item_id, qty} for already selected alternatives
+
+  4. Returns
+    - Array of conflicts with structure:
+      {
+        item_type: 'item' | 'kit',
+        item_id: uuid,
+        item_name: text,
+        required_qty: integer,
+        total_qty: integer,
+        reserved_qty: integer,
+        available_qty: integer,
+        shortage_qty: integer,
+        conflict_until: timestamp,
+        conflicts: jsonb[],
+        alternatives: jsonb[]
+      }
+*/
+
+-- Drop all versions of the function
+DROP FUNCTION IF EXISTS check_offer_cart_equipment_conflicts_v2(uuid, jsonb, jsonb);
+DROP FUNCTION IF EXISTS check_offer_cart_equipment_conflicts_v2(uuid, jsonb);
+DROP FUNCTION IF EXISTS check_offer_cart_equipment_conflicts_v2;
+
+CREATE OR REPLACE FUNCTION check_offer_cart_equipment_conflicts_v2(
+  p_event_id uuid,
+  p_items jsonb,
+  p_substitutions jsonb DEFAULT '[]'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_start_date timestamptz;
+  v_end_date timestamptz;
+  v_result jsonb := '[]'::jsonb;
+  v_product record;
+  v_equipment record;
+  v_kit_item record;
+  v_item_demand jsonb := '{}'::jsonb;
+  v_substitutions_map jsonb := '{}'::jsonb;
+  v_conflict jsonb;
+  v_alternatives jsonb;
+  v_alt record;
+  v_item_id text;
+  v_required_qty integer;
+  v_total_qty integer;
+  v_reserved_qty integer;
+  v_available_qty integer;
+  v_item_name text;
+  v_warehouse_category_id uuid;
+  v_demand integer;
+  v_existing_demand integer;
+  i integer;
+BEGIN
+  -- Get event dates
+  SELECT start_date, end_date INTO v_start_date, v_end_date
+  FROM events
+  WHERE id = p_event_id;
+
+  IF v_start_date IS NULL THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  -- Build substitutions map for quick lookup: {from_item_id: {to_item_id, qty}}
+  IF p_substitutions IS NOT NULL AND jsonb_array_length(p_substitutions) > 0 THEN
+    FOR i IN 0..jsonb_array_length(p_substitutions) - 1 LOOP
+      v_substitutions_map := jsonb_set(
+        v_substitutions_map,
+        ARRAY[(p_substitutions->i->>'from_item_id')],
+        jsonb_build_object(
+          'to_item_id', p_substitutions->i->>'to_item_id',
+          'qty', COALESCE((p_substitutions->i->>'qty')::integer, 1)
+        )
+      );
+    END LOOP;
+  END IF;
+
+  -- Step 1: Expand products into equipment items and aggregate demand
+  FOR i IN 0..jsonb_array_length(p_items) - 1 LOOP
+    v_product := jsonb_populate_record(null::record, p_items->i);
+
+    -- Get equipment for this product (both items and kits)
+    FOR v_equipment IN
+      SELECT
+        ope.equipment_item_id,
+        ope.equipment_kit_id,
+        ope.quantity as product_qty,
+        ope.is_optional
+      FROM offer_product_equipment ope
+      WHERE ope.product_id = (v_product->>'product_id')::uuid
+        AND ope.is_optional = false
+    LOOP
+
+      -- If it's a kit, expand into individual items
+      IF v_equipment.equipment_kit_id IS NOT NULL THEN
+        FOR v_kit_item IN
+          SELECT
+            eki.equipment_id as item_id,
+            eki.quantity as kit_item_qty
+          FROM equipment_kit_items eki
+          WHERE eki.kit_id = v_equipment.equipment_kit_id
+        LOOP
+          -- Calculate total demand for this item
+          v_item_id := v_kit_item.item_id::text;
+          v_demand := COALESCE((v_product->>'quantity')::integer, 1) *
+                      v_equipment.product_qty *
+                      v_kit_item.kit_item_qty;
+
+          -- Check if already substituted
+          IF v_substitutions_map ? v_item_id THEN
+            v_item_id := v_substitutions_map->v_item_id->>'to_item_id';
+            v_demand := (v_substitutions_map->(v_kit_item.item_id::text)->>'qty')::integer;
+          END IF;
+
+          -- Add to demand map
+          v_existing_demand := COALESCE((v_item_demand->v_item_id)::integer, 0);
+          v_item_demand := jsonb_set(
+            v_item_demand,
+            ARRAY[v_item_id],
+            to_jsonb(v_existing_demand + v_demand)
+          );
+        END LOOP;
+
+      -- If it's an individual item
+      ELSIF v_equipment.equipment_item_id IS NOT NULL THEN
+        v_item_id := v_equipment.equipment_item_id::text;
+        v_demand := COALESCE((v_product->>'quantity')::integer, 1) * v_equipment.product_qty;
+
+        -- Check if already substituted
+        IF v_substitutions_map ? v_item_id THEN
+          v_item_id := v_substitutions_map->v_item_id->>'to_item_id';
+          v_demand := (v_substitutions_map->(v_equipment.equipment_item_id::text)->>'qty')::integer;
+        END IF;
+
+        -- Add to demand map
+        v_existing_demand := COALESCE((v_item_demand->v_item_id)::integer, 0);
+        v_item_demand := jsonb_set(
+          v_item_demand,
+          ARRAY[v_item_id],
+          to_jsonb(v_existing_demand + v_demand)
+        );
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  -- Step 2: Check availability for each item and find conflicts
+  FOR v_item_id IN SELECT * FROM jsonb_object_keys(v_item_demand)
+  LOOP
+    v_required_qty := (v_item_demand->v_item_id)::integer;
+
+    -- Get item availability
+    SELECT
+      ei.name,
+      ei.warehouse_category_id,
+      COALESCE((SELECT COUNT(*) FROM equipment_units
+                WHERE equipment_item_id = ei.id
+                AND status IN ('available', 'in_use')), 0),
+      COALESCE((SELECT SUM(ee.quantity)::integer
+                FROM event_equipment ee
+                JOIN events e ON e.id = ee.event_id
+                WHERE ee.equipment_item_id = ei.id
+                AND e.id != p_event_id
+                AND e.status NOT IN ('cancelled', 'rejected')
+                AND (e.start_date, e.end_date) OVERLAPS (v_start_date, v_end_date)), 0)
+    INTO v_item_name, v_warehouse_category_id, v_total_qty, v_reserved_qty
+    FROM equipment_items ei
+    WHERE ei.id = v_item_id::uuid;
+
+    v_available_qty := GREATEST(v_total_qty - v_reserved_qty, 0);
+
+    -- If shortage exists, create conflict record
+    IF v_available_qty < v_required_qty THEN
+      -- Find alternatives from same warehouse category
+      v_alternatives := '[]'::jsonb;
+
+      IF v_warehouse_category_id IS NOT NULL THEN
+        FOR v_alt IN
+          SELECT
+            ei2.id as alt_item_id,
+            ei2.name as alt_name,
+            COALESCE((SELECT COUNT(*) FROM equipment_units
+                      WHERE equipment_item_id = ei2.id
+                      AND status IN ('available', 'in_use')), 0) as alt_total_qty,
+            COALESCE((SELECT SUM(ee.quantity)::integer
+                      FROM event_equipment ee
+                      JOIN events e ON e.id = ee.event_id
+                      WHERE ee.equipment_item_id = ei2.id
+                      AND e.id != p_event_id
+                      AND e.status NOT IN ('cancelled', 'rejected')
+                      AND (e.start_date, e.end_date) OVERLAPS (v_start_date, v_end_date)), 0) as alt_reserved_qty
+          FROM equipment_items ei2
+          WHERE ei2.warehouse_category_id = v_warehouse_category_id
+            AND ei2.id != v_item_id::uuid
+            AND ei2.is_active = true
+            AND ei2.deleted_at IS NULL
+          ORDER BY ei2.name
+          LIMIT 10
+        LOOP
+          v_alternatives := v_alternatives || jsonb_build_object(
+            'item_type', 'item',
+            'item_id', v_alt.alt_item_id,
+            'item_name', v_alt.alt_name,
+            'total_qty', v_alt.alt_total_qty,
+            'reserved_qty', v_alt.alt_reserved_qty,
+            'available_qty', GREATEST(v_alt.alt_total_qty - v_alt.alt_reserved_qty, 0),
+            'warehouse_category_id', v_warehouse_category_id
+          );
+        END LOOP;
+      END IF;
+
+      -- Build conflict record
+      v_conflict := jsonb_build_object(
+        'item_type', 'item',
+        'item_id', v_item_id,
+        'item_name', v_item_name,
+        'required_qty', v_required_qty,
+        'total_qty', v_total_qty,
+        'reserved_qty', v_reserved_qty,
+        'available_qty', v_available_qty,
+        'shortage_qty', v_required_qty - v_available_qty,
+        'conflict_until', NULL,
+        'conflicts', '[]'::jsonb,
+        'alternatives', v_alternatives
+      );
+
+      v_result := v_result || v_conflict;
+    END IF;
+  END LOOP;
+
+  RETURN v_result;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION check_offer_cart_equipment_conflicts_v2 TO authenticated;
+
+COMMENT ON FUNCTION check_offer_cart_equipment_conflicts_v2 IS 'Sprawdza dostępność sprzętu dla produktów w koszyku oferty, rozwijając zestawy (kity) na pojedyncze elementy i zwracając konflikty z alternatywami';

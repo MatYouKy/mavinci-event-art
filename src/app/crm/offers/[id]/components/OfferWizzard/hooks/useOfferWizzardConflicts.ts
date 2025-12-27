@@ -19,8 +19,24 @@ export function useOfferWizardConflicts(opts: { eventId: string }) {
 
     const payload = buildConflictPayloadItems(items);
 
+    // Build substitutions from equipmentSubstitutions (committed) + selectedAlt (temporary)
+    const combinedSubstitutions: Record<string, { item_id: string; qty: number }> = {};
+
+    // First, add committed substitutions from equipmentSubstitutions
+    Object.entries(equipmentSubstitutions).forEach(([key, sub]) => {
+      combinedSubstitutions[key] = {
+        item_id: sub.to_item_id,
+        qty: sub.qty,
+      };
+    });
+
+    // Then, add temporary selections from selectedAlt (these override if same key)
+    Object.entries(selectedAlt).forEach(([key, sel]) => {
+      combinedSubstitutions[key] = sel;
+    });
+
     const substitutionsPayload = buildSubstitutionsForRpc({
-      selectedAlt,
+      selectedAlt: combinedSubstitutions,
       conflicts: baseConflicts ?? conflicts,
     });
 

@@ -246,6 +246,7 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
 
                                     const qty = selectedAlt[key]?.qty ?? c.shortage_qty ?? 1;
 
+                                    // Update substitutions first
                                     setEquipmentSubstitutions((prev) => ({
                                       ...prev,
                                       [subKey]: {
@@ -257,7 +258,14 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                                       },
                                     }));
 
-                                    // ✅ dopiero tu przeliczamy, bo to jest "commit"
+                                    // Move from selectedAlt to substitutions by clearing this selection
+                                    setSelectedAlt((prev) => {
+                                      const next = { ...prev };
+                                      delete next[key];
+                                      return next;
+                                    });
+
+                                    // Recalculate conflicts with the new substitution
                                     await checkCartConflicts(offerItems);
                                   }}
                                   className="rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2 hover:border-[#d3bb73]/30"

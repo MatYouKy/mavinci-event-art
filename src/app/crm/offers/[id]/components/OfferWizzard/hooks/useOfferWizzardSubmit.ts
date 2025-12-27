@@ -18,6 +18,7 @@ export async function submitOfferWizard(params: {
 
   selectedAlt: SelectedAltMap;
   conflicts: EquipmentConflictRow[];
+  equipmentSubstitutions?: Record<string, any>;
 }) {
   const totalAmount = calcTotal(params.offerItems);
 
@@ -62,9 +63,27 @@ export async function submitOfferWizard(params: {
   const { error: itemsError } = await supabase.from('offer_items').insert(itemsToInsert);
   if (itemsError) throw itemsError;
 
+  // Merge committed substitutions with temporary selections
+  const combinedSubstitutions: SelectedAltMap = {};
+
+  // First, add committed substitutions from equipmentSubstitutions
+  if (params.equipmentSubstitutions) {
+    Object.entries(params.equipmentSubstitutions).forEach(([key, sub]) => {
+      combinedSubstitutions[key] = {
+        item_id: sub.to_item_id,
+        qty: sub.qty,
+      };
+    });
+  }
+
+  // Then, add temporary selections from selectedAlt
+  Object.entries(params.selectedAlt).forEach(([key, sel]) => {
+    combinedSubstitutions[key] = sel;
+  });
+
   const substitutionsPayload = buildSubstitutionsForInsert({
     offerId: offerResult.id,
-    selectedAlt: params.selectedAlt,
+    selectedAlt: combinedSubstitutions,
     conflicts: params.conflicts,
   });
 
