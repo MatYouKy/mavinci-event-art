@@ -25,7 +25,6 @@ import type {
 import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
 import { extractKitItemsFromRow, isKitRow } from '../../helpers/extractKitItemsFromRow';
 import Popover from '@/components/UI/Tooltip';
-import { useKitByIdLazy } from '@/app/crm/equipment/hooks/useKitByIdLazy';
 
 type ItemType = 'item' | 'kit';
 type AvailKey = `${ItemType}-${string}`;
@@ -452,19 +451,12 @@ export const EventEquipmentTab: React.FC = () => {
 
   const renderKitRow = (row: any, editable: boolean) => {
     console.log('row', row);
-    const { loadKit, kit } = useKitByIdLazy();
-    useEffect(() => {
-      if (row?.kit?.id) {
-        loadKit(row.kit.id);
-      }
-    }, [row?.kit?.id, loadKit]);
-
     const isExpanded = expandedKits.has(row.id);
-  
+
     const kitName =
       row?.kit?.name || row?.equipment_kits?.name || row?.name || 'Zestaw';
-  
-    const kitThumb = kit?.thumbnail_url || '';
+
+    const kitThumb = row?.kit?.thumbnail_url || row?.equipment_kits?.thumbnail_url || '';
   
     const key = getKeyForEventRow(row); // "kit-<id>"
     const limits = getUiLimits((availabilityByKey as any)?.[key]);

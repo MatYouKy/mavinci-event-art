@@ -257,6 +257,7 @@ export const eventsApi = createApi({
               ),
               kit:equipment_kits(
                 name,
+                thumbnail_url,
                 items:equipment_kit_items(
                   quantity,
                   equipment:equipment_items(
