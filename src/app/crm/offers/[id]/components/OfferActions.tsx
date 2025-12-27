@@ -7,6 +7,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { IUser } from '@/types/auth.types';
+import { OfferStatus, offerStatusLabels } from '../../helpers/statusColors';
 
 interface OfferActionsProps {
   offer: any;
@@ -27,6 +28,14 @@ export default function OfferActions({
   const { employee } = useCurrentEmployee();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [canSendEmail, setCanSendEmail] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<OfferStatus>(offer?.status || 'draft');
+
+  useEffect(() => {
+    if (offer?.status) {
+      setCurrentStatus(offer.status as OfferStatus);
+    }
+  }, [offer?.status]);
 
   useEffect(() => {
     if (offer && currentUser) {
@@ -35,6 +44,39 @@ export default function OfferActions({
       setCanSendEmail(isAdmin || isCreator);
     }
   }, [offer, currentUser]);
+
+  const handleStatusChange = async (newStatus: OfferStatus) => {
+    if (!offer?.id) return;
+
+    const isAdmin = currentUser.permissions?.includes('admin');
+    const isCreator = offer.created_by === currentUser.id;
+    const canChange = isAdmin || (isCreator && currentUser.permissions?.includes('offers_manage'));
+
+    if (!canChange) {
+      showSnackbar('Nie masz uprawnień do zmiany statusu', 'error');
+      return;
+    }
+
+    try {
+      setUpdatingStatus(true);
+
+      const { error } = await supabase
+        .from('offers')
+        .update({ status: newStatus })
+        .eq('id', offer.id);
+
+      if (error) throw error;
+
+      setCurrentStatus(newStatus);
+      showSnackbar(`Status oferty zmieniony na: ${offerStatusLabels[newStatus]}`, 'success');
+      router.refresh();
+    } catch (err: any) {
+      console.error('Error updating status:', err);
+      showSnackbar(err.message || 'Błąd podczas zmiany statusu', 'error');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   const handleGeneratePdf = async () => {
     if (!offer) return;
@@ -145,6 +187,22 @@ export default function OfferActions({
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
       <div className="space-y-2">
+        <div className="mb-4">
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status oferty</label>
+          <select
+            value={currentStatus}
+            onChange={(e) => handleStatusChange(e.target.value as OfferStatus)}
+            disabled={updatingStatus}
+            className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {Object.entries(offerStatusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button
           onClick={() => {
             if (offer.event_id) {

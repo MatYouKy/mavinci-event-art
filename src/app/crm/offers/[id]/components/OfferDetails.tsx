@@ -1,8 +1,8 @@
 import React from 'react';
-import { getStatusBadgeProps } from '../../helpers/statusColors';
+import { getOfferStatusBadgeProps } from '../../helpers/statusColors';
 
 export const OfferDetails = ({ offer }: { offer: any }) => {
-  const badge = getStatusBadgeProps(offer.status);
+  const badge = getOfferStatusBadgeProps(offer.status);
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">

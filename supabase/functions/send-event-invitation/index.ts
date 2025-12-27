@@ -84,7 +84,6 @@ Deno.serve(async (req: Request) => {
     console.log('[send-event-invitation] Employee personal_email:', employee?.personal_email);
     console.log('[send-event-invitation] Email preference:', employee?.notification_email_preference);
 
-    // Determine which emails to send to based on preferences
     const notificationEmails: string[] = [];
     const preference = employee?.notification_email_preference || 'work';
 
@@ -111,11 +110,9 @@ Deno.serve(async (req: Request) => {
         break;
 
       case 'none':
-        // No emails to send
         break;
 
       default:
-        // Default to work email
         if (employee?.email) {
           notificationEmails.push(employee.email);
         }
@@ -126,7 +123,6 @@ Deno.serve(async (req: Request) => {
     if (notificationEmails.length === 0) {
       console.log('[send-event-invitation] No emails to send based on preference');
 
-      // Update assignment but don't send email
       await supabase
         .from("employee_assignments")
         .update({
@@ -156,9 +152,9 @@ Deno.serve(async (req: Request) => {
 
     const frontendUrl = Deno.env.get("FRONTEND_URL") || "https://mavinci.pl";
     console.log('[send-event-invitation] Frontend URL:', frontendUrl);
-    
-    const acceptUrl = `${frontendUrl}/invitation/accept?token=${assignment.invitation_token}`;
-    const rejectUrl = `${frontendUrl}/invitation/reject?token=${assignment.invitation_token}`;
+
+    const acceptUrl = `${frontendUrl}/api/events/invitation/accept?token=${assignment.invitation_token}`;
+    const rejectUrl = `${frontendUrl}/api/events/invitation/reject?token=${assignment.invitation_token}`;
     const eventUrl = `${frontendUrl}/crm/events/${event.id}`;
 
     const eventDateFormatted = new Date(event.event_date).toLocaleDateString('pl-PL', {
@@ -305,7 +301,6 @@ Deno.serve(async (req: Request) => {
 
     const sendEmailUrl = `${supabaseUrl}/functions/v1/send-email`;
 
-    // Send email to all notification addresses
     const emailPromises = notificationEmails.map(async (emailAddress) => {
       console.log('[send-event-invitation] Sending email to:', emailAddress);
 
