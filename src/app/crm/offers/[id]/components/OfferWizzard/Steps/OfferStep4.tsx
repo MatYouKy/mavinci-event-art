@@ -31,7 +31,6 @@ interface Subcontractor {
 
 interface ProductEquipment {
   equipment_item_id?: string;
-  cable_id?: string;
   kit_id?: string;
   quantity: number;
   is_optional?: boolean;
@@ -113,13 +112,11 @@ export default function OfferStep4({
         .select(
           `
           equipment_item_id,
-          cable_id,
           kit_id,
           quantity,
           is_optional,
           product_id,
           equipment_items:equipment_item_id(id, name, brand, model, thumbnail_url),
-          cables:cable_id(id, name, length_meters, thumbnail_url),
           equipment_kits:kit_id(id, name, thumbnail_url)
         `
         )
