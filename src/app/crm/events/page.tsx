@@ -868,8 +868,9 @@ export default function EventsPage() {
                   <EventStatusEditor
                     eventId={event.id}
                     currentStatus={event.status}
-                    onStatusChange={(newStatus) => {
-                      console.log('newStatus', newStatus);
+                    onStatusChange={() => {
+                      
+                      
                     }}
                   />
                 </div>

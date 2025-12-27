@@ -57,12 +57,6 @@ export default function EditableHeroWithMetadata({
   const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
 
   useEffect(() => {
-    console.log('[CLIENT] useEffect - syncing with initial props:', {
-      initialTitle,
-      initialLabelText,
-      initialLabelIcon,
-      initialDescription: initialDescription?.substring(0, 50),
-    });
     setTitle(initialTitle);
     setDescription(initialDescription);
     setLabelText(initialLabelText);
@@ -122,7 +116,6 @@ export default function EditableHeroWithMetadata({
           });
       }
     } catch (error) {
-      console.error('Error updating metadata:', error);
     }
   };
 
@@ -164,12 +157,12 @@ export default function EditableHeroWithMetadata({
       const { data, error } = await query.maybeSingle();
 
       if (error) {
-        console.error('Error loading data:', error);
+        showSnackbar('Błąd podczas ładowania danych', 'error');
+        throw error;
         return;
       }
 
       if (data) {
-        console.log('Loaded data from DB:', data);
         setTitle(data.title || '');
         setDescription(data.description || '');
         setLabelText(data.label_text || '');
@@ -178,7 +171,8 @@ export default function EditableHeroWithMetadata({
         setWhiteWordsCount(data.white_words_count || 2);
       }
     } catch (error) {
-      console.error('Error loading current data:', error);
+      showSnackbar('Błąd podczas ładowania danych', 'error');
+      throw error;
     }
   };
 
@@ -203,8 +197,6 @@ export default function EditableHeroWithMetadata({
         updated_at: new Date().toISOString(),
       };
 
-      console.log('Saving data to', tableName, ':', dataToSave);
-
       let query = supabase.from(tableName).update(dataToSave);
 
       if (isUniversalTable) {
@@ -216,7 +208,6 @@ export default function EditableHeroWithMetadata({
       const { error } = await query;
 
       if (error) {
-        console.error('Supabase error:', error);
         throw error;
       }
 
@@ -228,7 +219,6 @@ export default function EditableHeroWithMetadata({
 
       router.refresh();
     } catch (error) {
-      console.error('Error saving hero:', error);
       showSnackbar('Błąd podczas zapisywania zmian', 'error');
     } finally {
       setSaving(false);

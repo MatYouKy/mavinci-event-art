@@ -115,8 +115,6 @@ export function UnitsTab({
     [equipment?.warehouse_categories, equipment?.all_warehouse_categories],
   );
 
-  console.log(categoryFlags, 'categoryFlags');
-
   /** 2) ephemeral flags stored per-equipment in localStorage (optional UI toggles) */
   const [savedEphemeralFlags, setSavedEphemeralFlags] = useEphemeralFlags(equipment?.id);
 

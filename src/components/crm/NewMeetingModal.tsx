@@ -152,18 +152,14 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
         participants: participantsData.length > 0 ? participantsData : undefined,
       }).unwrap();
 
-      console.log('✅ Meeting created successfully:', result.id, result.title);
-
       showSnackbar('Spotkanie zostało utworzone pomyślnie', 'success');
 
       handleClose();
 
       setTimeout(() => {
-        console.log('🔄 Calling onSuccess callback');
         onSuccess?.();
       }, 300);
     } catch (err: any) {
-      console.error('Error creating meeting:', err);
       showSnackbar(err?.error || err?.message || 'Błąd podczas tworzenia spotkania', 'error');
     } finally {
       setIsSaving(false);

@@ -1,7 +1,9 @@
-import { Loader2, Package, Trash2 } from 'lucide-react';
+import { ChevronDown, Loader2, Package, Trash2 } from 'lucide-react';
 import { ProductEquipmentViewRow } from '../hooks/useManageProduct';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Popover from '@/components/UI/Tooltip';
+import { useKitByIdLazy } from '@/app/crm/equipment/hooks/useKitByIdLazy';
+import { ProductEquipmentMode } from '../../types';
 
 export const ProductEquipmentRow = ({
   item,
@@ -19,8 +21,14 @@ export const ProductEquipmentRow = ({
   const isKit = item.mode === 'kit';
   const [quantity, setQuantity] = useState(item.quantity);
   const [isEditing, setIsEditing] = useState(false);
-
-  console.log('item', item);
+  const [isExpanded, setIsExpanded] = useState<Record<string, boolean>>({});
+  const { loadKit, kit } = useKitByIdLazy();
+  useEffect(() => {
+    if (isKit && item.item?.id) {
+      loadKit(item.item.id);
+      setIsExpanded((prev) => ({ ...prev, [item.id]: false }));
+    }
+  }, [isKit, item.item?.id, loadKit, item.id]);
 
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuantity(Number(e.target.value));
@@ -45,49 +53,95 @@ export const ProductEquipmentRow = ({
     setIsEditing(action);
   };
 
+  const handleToggleExpand = (id: string) => {
+    setIsExpanded((prev) => {
+      const next = { ...prev };
+      next[id] = !next[id];
+      return next;
+    });
+  };
+
   return (
     <div>
       <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20">
-        {/* {isKit && (
+        {isKit && (
           <button
-            onClick={() => onToggleExpand?.(row.id)}
+            onClick={() => handleToggleExpand(item.id)}
             className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${isExpanded[item.id] ? 'rotate-180' : ''}`}
+            />
           </button>
-        )} */}
+        )}
 
         <div className="flex min-w-0 flex-1 items-center gap-3">
+          {/* THUMB */}
           {isKit ? (
-            <span className="text-base">🎁</span>
+            kit?.thumbnail_url ? (
+              <Popover
+                trigger={
+                  <div className="relative h-10 w-10">
+                    <img
+                      src={kit.thumbnail_url}
+                      alt={kit.name}
+                      className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+                    />
+
+                    {/* KIT BADGE */}
+                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                      <Package className="h-3 w-3 text-[#1c1f33]" />
+                    </div>
+                  </div>
+                }
+                content={
+                  <img
+                    src={kit.thumbnail_url}
+                    alt={kit.name}
+                    className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                  />
+                }
+                openOn="hover"
+              />
+            ) : (
+              <div className="relative flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                <Package className="h-5 w-5 text-[#e5e4e2]/40" />
+
+                {/* KIT BADGE */}
+                <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                  <Package className="h-3 w-3 text-[#1c1f33]" />
+                </div>
+              </div>
+            )
           ) : item.item?.thumbnail_url ? (
             <Popover
               trigger={
                 <img
                   src={item.item.thumbnail_url}
                   alt={item.item.name}
-                  className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover cursor-pointer hover:ring-2 hover:ring-[#d3bb73] transition-all"
+                  className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
                 />
               }
               content={
                 <img
                   src={item.item.thumbnail_url}
                   alt={item.item.name}
-                  className="h-auto rounded-lg object-contain cursor-pointer transition-all"
+                  className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                 />
               }
-              openOn="hover"  
+              openOn="hover"
             />
           ) : (
             <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
-              <Package className="h-5 w-5 text-[#e5e4e2]/30" />
+              <Package className="h-5 w-5 text-[#e5e4e2]/40" />
             </div>
           )}
 
+          {/* NAZWA */}
           <div className="flex min-w-0 flex-col">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate font-medium text-[#e5e4e2]">
-                {isKit ? item.item?.name : item.item?.name || 'Nieznany'}
+                {item.item?.name || 'Nieznany'}
               </span>
             </div>
 
@@ -173,25 +227,33 @@ export const ProductEquipmentRow = ({
         )}
       </div>
 
-      {/* {isKit && expanded && item?.kit?.items && (
+      {isKit && isExpanded[item.id] && kit?.equipment_kit_items?.length > 0 && (
         <div className="ml-9 mt-1 space-y-1">
-          {row.kit.items.map((kitItem: any, idx: number) => (
-            <div
-              key={idx}
-              className="flex items-center gap-3 rounded border border-[#d3bb73]/5 bg-[#0f1119]/50 px-4 py-2 text-sm"
-            >
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="text-[#e5e4e2]/80">{kitItem?.equipment?.name}</span>
-                <span className="text-xs text-[#e5e4e2]/45">{kitItem?.equipment?.category?.name}</span>
-              </div>
-
-              <span className="font-medium text-[#e5e4e2]/60">
-                {Number(kitItem.quantity || 0) * Number(item.quantity || 0)} szt.
-              </span>
-            </div>
-          ))}
+          {kit?.equipment_kit_items?.map((kitItem: any, idx: number) => {
+            const equipmentItem = {
+              id: kitItem.id,
+              product_id: item.product_id,
+              equipment_item_id: kitItem.equipment_id,
+              equipment_kit_id: item.item.id,
+              is_optional: kitItem.is_optional,
+              notes: kitItem.notes,
+              created_at: new Date().toISOString(),
+              quantity: kitItem.quantity,
+              item: kitItem.equipment_items,
+              mode: 'item' as ProductEquipmentMode,
+            };
+            return (
+              <ProductEquipmentRow
+                item={equipmentItem}
+                canEdit={false}
+                updatingId={updatingId}
+                handleUpdateEquipmentQuantity={handleUpdateEquipmentQuantity}
+                handleDeleteEquipment={handleDeleteEquipment}
+              />
+            );
+          })}
         </div>
-      )} */}
+      )}
     </div>
   );
 };

@@ -130,7 +130,6 @@ export default function EventAgendaTab({
     }
   }, [startTime, endTime, contact, agendaId]);
 
-  console.log('contact', contact);
 
   const fetchCreatedByEmployee = async () => {
     const { data: Author } = await supabaseServer

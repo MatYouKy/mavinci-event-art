@@ -5,6 +5,7 @@ import React, { FC, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { iconMap } from '../ConferencesPage';
 import { ResponsiveCarousel } from '@/components/ResponsiveCarousel';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface RelatedServicesSectionProps {
   isEditMode: boolean;
@@ -26,7 +27,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
   tableName = 'conferences_related_services',
 }) => {
   const [isSaving, setIsSaving] = useState(false);
-
+  const { showSnackbar } = useSnackbar();
   const filteredRelatedServices = relatedServices.filter(
     (service) => service?.is_active && !!service.hero_image_url,
   );
@@ -77,8 +78,6 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                           newSelected.add(item.id);
                           setSelectedServiceIds(newSelected);
 
-                          console.log('Inserting into:', tableName, 'with item.id:', item.id);
-
                           const { data, error } = await supabase
                             .from(tableName)
                             .insert({
@@ -88,22 +87,15 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                             .select();
 
                           if (error) {
-                            console.error('Failed to add service:', error);
+                            showSnackbar('Błąd podczas dodawania usługi', 'error');
                             newSelected.delete(item.id);
                             setSelectedServiceIds(newSelected);
                           } else {
-                            console.log('Successfully added:', data);
+                            showSnackbar('Usługa dodana', 'success');
                           }
                         } else {
                           newSelected.delete(item.id);
                           setSelectedServiceIds(newSelected);
-
-                          console.log(
-                            'Deleting from:',
-                            tableName,
-                            'where service_item_id:',
-                            item.id,
-                          );
 
                           const { error } = await supabase
                             .from(tableName)
@@ -115,7 +107,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                             newSelected.add(item.id);
                             setSelectedServiceIds(newSelected);
                           } else {
-                            console.log('Successfully removed');
+                            showSnackbar('Usługa usunięta', 'success');
                           }
                         }
                       } finally {

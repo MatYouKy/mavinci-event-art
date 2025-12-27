@@ -20,7 +20,6 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
         .eq('is_active', true)
         .order('display_order');
 
-        console.log('pRes:', pRes);
 
       if (!pRes.error && pRes.data) setProducts(pRes.data as any);
 

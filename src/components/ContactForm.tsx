@@ -7,6 +7,7 @@ import { Send, Upload, FileText, X as XIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
 import { useDialog } from '@/contexts/DialogContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export interface ContactFormProps {
   category?: string;
@@ -53,6 +54,7 @@ export default function ContactForm({
   const [isError, setIsError] = useState(false);
   const [sourcePage, setSourcePage] = useState('/');
   const { showAlert } = useDialog();
+  const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -85,7 +87,6 @@ export default function ContactForm({
         const file = fileInput?.files?.[0];
 
         if (file) {
-          console.log('[ContactForm] Uploading CV:', file.name);
 
           // Upload directly to Supabase Storage
           const fileName = `cv-uploads/${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`;
@@ -98,7 +99,7 @@ export default function ContactForm({
             });
 
           if (uploadError) {
-            console.error('[ContactForm] CV upload error:', uploadError);
+            showSnackbar('Błąd podczas przesyłania pliku CV', 'error');
             throw new Error('Nie udało się przesłać pliku CV');
           }
 
@@ -108,7 +109,6 @@ export default function ContactForm({
 
           cvUrl = urlData.publicUrl;
           cvFilename = file.name;
-          console.log('[ContactForm] CV uploaded:', cvUrl);
         }
       }
 
@@ -171,7 +171,7 @@ export default function ContactForm({
       resetForm();
       setTimeout(() => setIsSuccess(false), 5000);
     } catch (error) {
-      console.error('Failed to submit form:', error);
+      showSnackbar('Błąd podczas wysyłania formularza: ' + (error as Error).message, 'error');
       setIsError(true);
     } finally {
       setIsLoading(false);

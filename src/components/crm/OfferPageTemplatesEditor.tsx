@@ -1129,7 +1129,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
           .eq('id', template.id);
       }
     } catch (err) {
-      console.log('Nie udało się wykryć wymiarów PDF, używam zapisanych lub domyślnych');
+      showSnackbar('Błąd wykrywania wymiarów PDF', 'error');
     }
   };
 

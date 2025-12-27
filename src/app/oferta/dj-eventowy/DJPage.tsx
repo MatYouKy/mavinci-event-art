@@ -54,17 +54,6 @@ export default function DJPage() {
         supabase.from('conferences_service_items').select('*').eq('is_active', true).order('display_order'),
       ]);
 
-      console.log('DJ Page data loaded:', {
-        intro: introRes.data,
-        introError: introRes.error,
-        featuresCount: featuresRes.data?.length,
-        featuresError: featuresRes.error,
-        themesCount: themesRes.data?.length,
-        benefitsCount: benefitsRes.data?.length,
-        relatedServicesCount: relatedServicesRes.data?.length,
-        allServiceItemsCount: allServiceItemsRes.data?.length,
-      });
-
       if (introRes.error) console.error('dj_intro error:', introRes.error);
       if (featuresRes.error) console.error('dj_features error:', featuresRes.error);
       if (themesRes.error) console.error('dj_themes error:', themesRes.error);

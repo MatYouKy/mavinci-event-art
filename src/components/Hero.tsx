@@ -6,14 +6,16 @@ import { getSiteImage, SiteImage } from '../lib/siteImages';
 import { useEditMode } from '../contexts/EditModeContext';
 import { ImageEditorField } from './ImageEditorField';
 import { Formik, Form } from 'formik';
-import { IImage, IUploadImage } from '../types/image';
+import { IImage, IScreenMetadata, IUploadImage } from '../types/image';
 import { uploadImage } from '../lib/storage';
 import { supabase } from '../lib/supabase';
+import { useSnackbar } from '../contexts/SnackbarContext';
 
 export default function Hero() {
   const [heroImage, setHeroImage] = useState<SiteImage | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const { isEditMode } = useEditMode();
+  const { showSnackbar } = useSnackbar();
 
   const loadImage = async () => {
     const image = await getSiteImage('hero');
@@ -59,8 +61,8 @@ export default function Hero() {
         desktopUrl = await uploadImage(payload.file, 'hero');
       }
       // Jeśli nie ma pliku, użyj istniejącego URL
-      else if (payload.image?.image_metadata?.desktop?.src) {
-        desktopUrl = payload.image.image_metadata.desktop.src;
+      else if ((payload.image?.image_metadata?.desktop as IScreenMetadata)?.src) {
+        desktopUrl = (payload.image.image_metadata.desktop as IScreenMetadata).src;
       }
 
       if (!desktopUrl) {
@@ -93,10 +95,9 @@ export default function Hero() {
       }
 
       await loadImage();
-      console.log('Obraz zapisany pomyślnie!');
+      showSnackbar('Obraz zapisany pomyślnie', 'success');
     } catch (error) {
-      console.error('Error saving image:', error);
-      alert('Błąd podczas zapisywania obrazu: ' + (error as Error).message);
+      showSnackbar('Błąd podczas zapisywania obrazu', 'error');
     }
   };
 

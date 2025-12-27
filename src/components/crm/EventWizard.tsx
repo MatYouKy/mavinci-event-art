@@ -133,8 +133,6 @@ export default function EventWizard({
   const { equipment } = useEventEquipment
     (createdEventId as string);
 
-  console.log('---equipment', equipment);
-
   const steps = [
     { id: 1, name: 'Szczegóły', icon: Calendar, required: true },
     { id: 2, name: 'Oferta', icon: FileText, required: false },
@@ -266,7 +264,7 @@ export default function EventWizard({
 
       showSnackbar('Budżet zaktualizowany z oferty', 'success');
     } catch (err: any) {
-      console.error('Error loading equipment from offer:', err);
+      showSnackbar('Błąd podczas ładowania sprzętu z oferty', 'error');
     }
   };
 
@@ -464,7 +462,7 @@ export default function EventWizard({
           console.error('Error adding creator to team:', assignmentError);
           showSnackbar(
             'Uwaga: Nie udało się automatycznie dodać Cię do zespołu wydarzenia',
-            'warning',
+            'error',
           );
         }
       }

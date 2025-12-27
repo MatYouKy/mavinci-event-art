@@ -72,8 +72,6 @@ export default function ServiceDetailClient({
     setLocalGallery(gallery);
   }, [gallery]);
 
-  console.log(icons);
-
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
   };

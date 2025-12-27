@@ -164,7 +164,7 @@ export function useHeroImage(
         return;
       }
     } catch (err) {
-      console.log(`Tabela ${pageTableName} nie istnieje, używam starych tabel`);
+      showSnackbar(`Tabela ${pageTableName} nie istnieje, używam starych tabel`, 'error');
     }
 
     // stary system: site_images
@@ -217,17 +217,6 @@ export function useHeroImage(
 
     const currentPosition = positionToSave || (screenMode === 'desktop' ? desktopPosition : mobilePosition);
 
-    console.log('[savePosition] Saving position:', {
-      screenMode,
-      positionToSave,
-      currentPosition,
-      desktop: desktopPosition,
-      mobile: mobilePosition,
-      pageTableName,
-      isUniversalTable,
-      pageSlug,
-    });
-
     try {
       // próba: nowy system
       try {
@@ -245,13 +234,11 @@ export function useHeroImage(
         const { data: existing, error: selectError } = await query.maybeSingle();
 
         if (selectError) {
-          console.error('[savePosition] Select error:', selectError);
           throw selectError;
         }
 
         // Zawsze próbuj utworzyć rekord jeśli nie istnieje
         if (!existing) {
-          console.log('[savePosition] Creating new record');
 
           const insertData: any = {
             name: `Hero ${section}`,
@@ -281,12 +268,9 @@ export function useHeroImage(
 
           const { error } = await supabase.from(pageTableName).insert(insertData);
           if (error) {
-            console.error('[savePosition] Insert error:', error);
             throw error;
           }
-          console.log('[savePosition] Insert successful');
         } else {
-            console.log('[savePosition] Updating existing record, ID:', existing.id);
             const currentMetadata = existing.image_metadata || {};
 
             const updatedMetadata = {
@@ -306,7 +290,6 @@ export function useHeroImage(
               };
             }
 
-            console.log('[savePosition] Updated metadata:', JSON.stringify(updatedMetadata, null, 2));
 
             const { error } = await supabase
               .from(pageTableName)
@@ -317,17 +300,14 @@ export function useHeroImage(
               .eq('id', existing.id);
 
             if (error) {
-              console.error('[savePosition] Update error:', error);
               throw error;
             }
-            console.log('[savePosition] Update successful');
           }
 
           await loadImage();
           showSnackbar('Pozycja zapisana pomyślnie', 'success');
           return;
       } catch (err) {
-        console.error('[savePosition] Error in new system:', err);
         throw err;
       }
 
@@ -388,7 +368,6 @@ export function useHeroImage(
 
       showSnackbar('Pozycja zapisana pomyślnie', 'success');
     } catch (error) {
-      console.error('Error saving position:', error);
       showSnackbar('Błąd podczas zapisywania pozycji', 'error');
     } finally {
       setSaving(false);
@@ -397,7 +376,6 @@ export function useHeroImage(
 
   const saveOpacity = useCallback(async (opacityValue?: number) => {
     const valueToSave = opacityValue ?? opacity;
-    console.log('[useHeroImage] saveOpacity called with opacity:', valueToSave);
     setSaving(true);
     const pageTableName = getTableName(section);
 
@@ -432,7 +410,6 @@ export function useHeroImage(
             });
             if (error) throw error;
           } else {
-            console.log('[useHeroImage] Updating existing record with opacity:', valueToSave);
             const { error } = await supabase
               .from(pageTableName)
               .update({
@@ -447,7 +424,7 @@ export function useHeroImage(
           return;
         }
       } catch {
-        console.log('Używam starych tabel (saveOpacity)');
+        showSnackbar('Używam starych tabel (saveOpacity)', 'error');
       }
 
       // stary system
@@ -491,7 +468,6 @@ export function useHeroImage(
 
       showSnackbar('Przezroczystość zapisana pomyślnie', 'success');
     } catch (error) {
-      console.error('Error saving opacity:', error);
       showSnackbar('Błąd podczas zapisywania przezroczystości', 'error');
     } finally {
       setSaving(false);
@@ -548,7 +524,7 @@ export function useHeroImage(
             return;
           }
         } catch {
-          console.log('Używam starych tabel (uploadHeroImage)');
+          showSnackbar('Używam starych tabel (uploadHeroImage)', 'error');
         }
 
         // stary system
@@ -605,7 +581,6 @@ export function useHeroImage(
         await loadImage();
         showSnackbar('Zdjęcie wgrane pomyślnie', 'success');
       } catch (error) {
-        console.error('Error uploading image:', error);
         showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
       } finally {
         setUploading(false);
@@ -642,7 +617,6 @@ export function useHeroImage(
       await loadImage();
       showSnackbar('Pozycja zresetowana', 'success');
     } catch (error) {
-      console.error('Error resetting position:', error);
       showSnackbar('Błąd podczas resetowania pozycji', 'error');
     } finally {
       setSaving(false);
@@ -676,7 +650,7 @@ export function useHeroImage(
           return;
         }
       } catch {
-        console.log('Używam starych tabel (deleteHeroImage)');
+        showSnackbar('Używam starych tabel (deleteHeroImage)', 'error');
       }
 
       // stary system – np. soft delete przez is_active lub delete
@@ -690,7 +664,6 @@ export function useHeroImage(
       setSiteImage(null);
       showSnackbar('Hero ukryty (is_active = false)', 'success');
     } catch (error) {
-      console.error('Error deleting hero:', error);
       showSnackbar('Błąd podczas usuwania hero', 'error');
     } finally {
       setSaving(false);

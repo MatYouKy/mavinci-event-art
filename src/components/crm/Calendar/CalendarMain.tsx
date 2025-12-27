@@ -436,7 +436,6 @@ export default function CalendarMain() {
           isOpen={isMeetingModalOpen}
           onClose={() => setIsMeetingModalOpen(false)}
           onSuccess={() => {
-            console.log('🔄 RefetchEvents called from NewMeetingModal');
             refetchEvents();
           }}
           initialDate={modalInitialDate}

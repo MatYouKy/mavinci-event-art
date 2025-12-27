@@ -241,30 +241,13 @@ export default function EventLogisticsPanel({
         conflicts_count: conflictCounts[v.id] || 0,
       }));
 
-      console.log(
-        'Fetched vehicles with invitation_status:',
-        vehiclesWithConflicts.map((v) => ({
-          id: v.id,
-          driver_id: v.driver_id,
-          invitation_status: v.invitation_status,
-          pickup_timestamp: v.pickup_timestamp,
-        })),
-      );
-
       // Jeśli użytkownik nie jest adminem, pokaż tylko jego pojazdy
-      console.log('Filter debug:', {
-        canManage,
-        employeeId: employee?.id,
-        vehiclesCount: vehiclesWithConflicts.length,
-      });
       if (!canManage && employee) {
         vehiclesWithConflicts = vehiclesWithConflicts.filter(
           (v: any) => v.driver_id === employee.id,
         );
-        console.log('Filtered vehicles for driver:', vehiclesWithConflicts.length);
       }
 
-      console.log('Final vehicles:', vehiclesWithConflicts);
       setVehicles(vehiclesWithConflicts);
       setTimeline(timelineRes.data || []);
       setLoadingItems(loadingRes.data || []);

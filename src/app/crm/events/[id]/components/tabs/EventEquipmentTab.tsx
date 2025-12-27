@@ -22,6 +22,7 @@ import type {
   EquipmentKitDTO,
 } from '@/app/crm/equipment/types/equipment.types';
 import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
+import { extractKitItemsFromRow, isKitRow } from '../../helpers/extractKitItemsFromRow';
 
 type ItemType = 'item' | 'kit';
 type AvailKey = `${ItemType}-${string}`;
@@ -190,6 +191,8 @@ export const EventEquipmentTab: React.FC = () => {
     event_end_date: event?.event_end_date,
   });
 
+  console.log('equipment', equipment);
+
   useEffect(() => {
     if (!eventId) return;
     fetchAvailableEquipment();
@@ -321,6 +324,10 @@ export const EventEquipmentTab: React.FC = () => {
         .map((row) => {
           const d = getEventEquipmentDisplay(row);
 
+          // ✅ klucz: zawartość kitu tylko gdy expand_kit_in_checklist
+          const expand = !!row?.expand_kit_in_checklist;
+          const kitItems = expand ? extractKitItemsFromRow(row) : [];
+
           return {
             name: d.name,
             brand: d.brand,
@@ -329,8 +336,8 @@ export const EventEquipmentTab: React.FC = () => {
             category: d.categoryName,
             cable_length: d.cableLength,
             is_kit: d.isKit,
-            expand_kit_in_checklist: row?.expand_kit_in_checklist || false,
-            kit_items: d.kitItems,
+            expand_kit_in_checklist: expand,
+            kit_items: kitItems,
           };
         });
 
@@ -424,33 +431,213 @@ export const EventEquipmentTab: React.FC = () => {
   );
   const autoRows = useMemo(() => (equipment || []).filter((r: any) => r.auto_added), [equipment]);
 
-  const renderRow = (row: any, editable: boolean) => (
-    <EventEquipmentRow
-      key={row.id}
-      row={row}
-      editable={editable}
-      expanded={expandedKits.has(row.id)}
-      onToggleExpand={(id: string) => {
-        setExpandedKits((prev) => {
-          const next = new Set(prev);
-          next.has(id) ? next.delete(id) : next.add(id);
-          return next;
-        });
-      }}
-      availabilityByKey={availabilityByKey}
-      getKeyForEventRow={getKeyForEventRow}
-      getUiLimits={getUiLimits}
-      getStatusBadge={getStatusBadge}
-      editingQuantityId={editingQuantityId}
-      draftQuantity={draftQuantity}
-      setEditingQuantityId={setEditingQuantityId}
-      setDraftQuantity={setDraftQuantity}
-      onUpdateQuantity={handleUpdateQuantity}
-      onRemove={handleRemoveEquipment}
-      onRestore={handleRestoreAutoRow}
-      onToggleExpandInChecklist={handleToggleExpandInChecklist}
-    />
+  const manualKitRows = useMemo(
+    () => (equipment || []).filter((r: any) => !r.auto_added && isKitRow(r)),
+    [equipment],
   );
+  const autoKitRows = useMemo(
+    () => (equipment || []).filter((r: any) => r.auto_added && isKitRow(r)),
+    [equipment],
+  );
+
+  const manualItemRows = useMemo(
+    () => (equipment || []).filter((r: any) => !r.auto_added && !isKitRow(r)),
+    [equipment],
+  );
+  const autoItemRows = useMemo(
+    () => (equipment || []).filter((r: any) => r.auto_added && !isKitRow(r)),
+    [equipment],
+  );
+
+  const renderKitRow = (row: any, editable: boolean) => {
+    const expanded = expandedKits.has(row.id);
+    const key = getKeyForEventRow(row); // powinno dać "kit-<id>"
+    const limits = getUiLimits((availabilityByKey as any)?.[key]);
+
+    const qty = Number(row?.quantity || 1);
+    const badge = getStatusBadge(row?.status);
+
+    const kitItems = extractKitItemsFromRow(row);
+    const expandInPrint = !!row?.expand_kit_in_checklist;
+
+    return (
+      <div key={row.id} className="rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]">
+        <div className="flex items-start gap-3 p-4">
+          {/* expand */}
+          <button
+            className="mt-1 rounded-md border border-[#d3bb73]/20 px-2 py-1 text-xs text-[#e5e4e2]/70 hover:bg-[#1c1f33]"
+            onClick={() => {
+              setExpandedKits((prev) => {
+                const next = new Set(prev);
+                next.has(row.id) ? next.delete(row.id) : next.add(row.id);
+                return next;
+              });
+            }}
+          >
+            {expanded ? 'Ukryj' : 'Pokaż'} zawartość
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-[#e5e4e2]">
+                  {row?.kit?.name || row?.equipment_kits?.name || row?.name || 'Zestaw'}
+                </div>
+
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                  <span className={`rounded-full border px-2 py-0.5 ${badge.cls}`}>
+                    {badge.label}
+                  </span>
+                  <span className="text-[#e5e4e2]/40">
+                    max add: <span className="text-[#d3bb73]">{limits.maxAdd}</span>
+                  </span>
+                  <span className="text-[#e5e4e2]/40">
+                    max set: <span className="text-[#d3bb73]">{limits.maxSet}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* qty */}
+              <div className="flex items-center gap-2">
+                {editingQuantityId === row.id ? (
+                  <>
+                    <input
+                      type="number"
+                      min={1}
+                      max={limits.maxSet || 1}
+                      value={draftQuantity}
+                      onChange={(e) => setDraftQuantity(Number(e.target.value || 1))}
+                      className="w-20 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                    />
+                    <button
+                      className="rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33]"
+                      onClick={() => handleUpdateQuantity(row.id, draftQuantity, limits.maxSet)}
+                    >
+                      Zapisz
+                    </button>
+                    <button
+                      className="rounded-lg px-3 py-2 text-xs text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+                      onClick={() => setEditingQuantityId(null)}
+                    >
+                      Anuluj
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-[#e5e4e2]">{qty} szt.</div>
+                      <div className="text-[11px] text-[#e5e4e2]/40">zestawów</div>
+                    </div>
+
+                    {editable && (
+                      <button
+                        className="rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                        onClick={() => {
+                          setEditingQuantityId(row.id);
+                          setDraftQuantity(qty);
+                        }}
+                      >
+                        Zmień
+                      </button>
+                    )}
+
+                    <button
+                      className="rounded-lg border border-red-500/20 px-3 py-2 text-xs text-red-300 hover:bg-red-500/10"
+                      onClick={() => handleRemoveEquipment(row)}
+                    >
+                      Usuń
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* checkbox: print kit content */}
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={expandInPrint}
+                onChange={(e) => handleToggleExpandInChecklist(row.id, e.target.checked)}
+                className="h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
+              />
+              <span className="text-xs text-[#e5e4e2]/60">
+                Drukuj checklistę wraz z zawartością zestawu
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* expanded contents */}
+        {expanded && (
+          <div className="border-t border-[#d3bb73]/10 bg-[#0b0d14] p-4">
+            {kitItems.length === 0 ? (
+              <div className="text-sm text-[#e5e4e2]/50">Brak danych o zawartości zestawu.</div>
+            ) : (
+              <div className="space-y-2">
+                {kitItems.map((it, idx) => {
+                  const totalQty = it.quantity * qty;
+                  const meta = [it.brand, it.model].filter(Boolean).join(' • ');
+                  return (
+                    <div
+                      key={`${it.name}-${idx}`}
+                      className="flex items-start justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm text-[#e5e4e2]">{it.name}</div>
+                        {meta && <div className="mt-0.5 text-xs text-[#e5e4e2]/45">{meta}</div>}
+                      </div>
+
+                      <div className="shrink-0 text-right text-xs text-[#e5e4e2]/60">
+                        <div>
+                          <span className="text-[#e5e4e2]/35">{it.quantity}×</span>{' '}
+                          <span className="text-[#d3bb73]">{qty}</span>{' '}
+                          <span className="text-[#e5e4e2]/35">=</span>{' '}
+                          <span className="font-medium text-[#e5e4e2]">{totalQty}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderRow = (row: any, editable: boolean) => {
+    const filterKitItems = row?.kit?.items?.filter(
+      (item: any) => item.equipment_items?.id === row.equipment_items?.id,
+    );
+    return (
+      <EventEquipmentRow
+        key={row.id}
+        row={row}
+        editable={editable}
+        expanded={expandedKits.has(row.id)}
+        onToggleExpand={(id: string) => {
+          setExpandedKits((prev) => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+          });
+        }}
+        availabilityByKey={availabilityByKey}
+        getKeyForEventRow={getKeyForEventRow}
+        getUiLimits={getUiLimits}
+        getStatusBadge={getStatusBadge}
+        editingQuantityId={editingQuantityId}
+        draftQuantity={draftQuantity}
+        setEditingQuantityId={setEditingQuantityId}
+        setDraftQuantity={setDraftQuantity}
+        onUpdateQuantity={handleUpdateQuantity}
+        onRemove={handleRemoveEquipment}
+        onRestore={handleRestoreAutoRow}
+        onToggleExpandInChecklist={handleToggleExpandInChecklist}
+      />
+    );
+  };
 
   const actions = useMemo<Action[]>(() => {
     return [
@@ -468,6 +655,38 @@ export const EventEquipmentTab: React.FC = () => {
       },
     ];
   }, [setShowAddEquipmentModal, handleGenerateChecklist]);
+
+  const getRowEquipmentId = (r: any) =>
+    (r?.equipment_id ||
+      r?.equipment_item_id ||
+      r?.equipment?.id ||
+      r?.equipment_items?.id ||
+      null) as string | null;
+
+  const getRowKitId = (r: any) =>
+    (r?.kit_id || r?.equipment_kit_id || r?.kit?.id || r?.equipment_kits?.id || null) as
+      | string
+      | null;
+
+  const existingItemIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of equipment ?? []) {
+      if (r?.removed_from_offer) continue; // jeśli ukryte/wyłączone z eventu — nie blokuj wyboru
+      const id = getRowEquipmentId(r);
+      if (id) set.add(id);
+    }
+    return set;
+  }, [equipment]);
+
+  const existingKitIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of equipment ?? []) {
+      if (r?.removed_from_offer) continue;
+      const id = getRowKitId(r);
+      if (id) set.add(id);
+    }
+    return set;
+  }, [equipment]);
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -491,22 +710,47 @@ export const EventEquipmentTab: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {manualRows.length > 0 && (
-            <div className="space-y-2">{manualRows.map((r: any) => renderRow(r, true))}</div>
-          )}
-
-          {manualRows.length > 0 && autoRows.length > 0 && (
-            <div className="my-6 flex items-center gap-4">
-              <div className="h-px flex-1 bg-[#d3bb73]/10" />
-              <span className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                Z produktów oferty
-              </span>
-              <div className="h-px flex-1 bg-[#d3bb73]/10" />
+          {/* MANUAL: KITY */}
+          {manualKitRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Zestawy</div>
+              {manualKitRows.map((r: any) => renderKitRow(r, true))}
             </div>
           )}
 
-          {autoRows.length > 0 && (
-            <div className="space-y-2">{autoRows.map((r: any) => renderRow(r, true))}</div>
+          {/* MANUAL: ITEMY (stary EventEquipmentRow) */}
+          {manualItemRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Sprzęt</div>
+              {manualItemRows.map((r: any) => renderRow(r, true))}
+            </div>
+          )}
+
+          {manualKitRows.length + manualItemRows.length > 0 &&
+            autoKitRows.length + autoItemRows.length > 0 && (
+              <div className="my-6 flex items-center gap-4">
+                <div className="h-px flex-1 bg-[#d3bb73]/10" />
+                <span className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
+                  Z produktów oferty
+                </span>
+                <div className="h-px flex-1 bg-[#d3bb73]/10" />
+              </div>
+            )}
+
+          {/* AUTO: KITY */}
+          {autoKitRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Zestawy</div>
+              {autoKitRows.map((r: any) => renderKitRow(r, true))}
+            </div>
+          )}
+
+          {/* AUTO: ITEMY */}
+          {autoItemRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Sprzęt</div>
+              {autoItemRows.map((r: any) => renderRow(r, true))}
+            </div>
           )}
         </div>
       )}

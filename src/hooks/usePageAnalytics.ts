@@ -3,11 +3,13 @@
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
   const pathname = usePathname();
   const sessionId = useRef<string>('');
   const startTime = useRef<number>(0);
+  const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     if (typeof window === 'undefined' || !enabled) return;
@@ -19,7 +21,7 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
                        window.location.hostname === '::1';
 
     if (isLocalhost) {
-      console.log('[Analytics] Skipped - running on localhost');
+      showSnackbar('[Analytics] Skipped - running on localhost', 'error');
       return;
     }
 

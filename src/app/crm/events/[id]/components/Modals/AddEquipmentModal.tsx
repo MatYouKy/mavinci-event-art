@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { Package, X } from 'lucide-react';
 import type { AvailabilityUI } from '@/app/crm/events/hooks/useEventEquipment';
 import Popover from '@/components/UI/Tooltip';
 
@@ -39,6 +39,75 @@ function getLimits(avail?: AvailabilityUI) {
   const total = num((avail as any)?.total_quantity, 0);
 
   return { used, availableInTerm, maxAdd, maxSet, reserved, total };
+}
+
+/** --- Kit contents helpers (NOWE) --- */
+type KitContentRow = {
+  id: string;
+  name: string;
+  brand?: string;
+  model?: string;
+  lengthMeters?: number | null;
+  baseQty: number; // ile w 1 kicie
+};
+
+function extractKitContents(kit: any): KitContentRow[] {
+  // wspieramy różne struktury:
+  // - kit.equipment_kit_items (Supabase relacja)
+  // - kit.items (czasem tak bywa)
+  const rawItems: any[] =
+    (Array.isArray(kit?.equipment_kit_items) && kit.equipment_kit_items) ||
+    (Array.isArray(kit?.items) && kit.items) ||
+    [];
+
+  const out: KitContentRow[] = [];
+
+  for (const it of rawItems) {
+    const qty = num(it?.quantity, 1);
+
+    // wiersz może być equipment_items albo cables
+    const eq = it?.equipment_items || it?.equipment || null;
+    const cb = it?.cables || it?.cable || null;
+
+    if (eq) {
+      out.push({
+        id: String(eq?.id || `${eq?.name}-${out.length}`),
+        name: eq?.name || 'Nieznany element',
+        brand: eq?.brand || '',
+        model: eq?.model || '',
+        lengthMeters: null,
+        baseQty: qty,
+      });
+      continue;
+    }
+
+    if (cb) {
+      out.push({
+        id: String(cb?.id || `${cb?.name}-${out.length}`),
+        name: cb?.name || 'Kabel',
+        brand: '',
+        model: '',
+        lengthMeters: cb?.length_meters ?? cb?.length ?? null,
+        baseQty: qty,
+      });
+      continue;
+    }
+
+    // fallback
+    if (it?.name) {
+      out.push({
+        id: String(it?.id || `${it?.name}-${out.length}`),
+        name: it?.name || 'Nieznany element',
+        brand: '',
+        model: '',
+        lengthMeters: null,
+        baseQty: qty,
+      });
+    }
+  }
+
+  // lekka stabilizacja (opcjonalna)
+  return out;
 }
 
 export function AddEquipmentModal({
@@ -292,6 +361,98 @@ export function AddEquipmentModal({
     </div>
   );
 
+  const renderThumb = (type: ItemType, entity: any) => {
+    const url = entity?.thumbnail_url;
+
+    return (
+      <div className="relative mt-0.5 h-10 w-10 shrink-0">
+        {url ? (
+          <Popover
+            trigger={
+              <img
+                src={url}
+                alt={entity?.name}
+                className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+              />
+            }
+            content={
+              <img
+                src={url}
+                alt={entity?.name}
+                className="h-auto max-w-[420px] cursor-pointer rounded-lg object-contain transition-all"
+              />
+            }
+            openOn="hover"
+          />
+        ) : (
+          <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+            <Package className="h-5 w-5 text-[#e5e4e2]/40" />
+          </div>
+        )}
+
+        {type === 'kit' && (
+          <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+            <Package className="h-3 w-3 text-[#1c1f33]" />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderKitContents = (kit: any, kitQty: number) => {
+    const contents = extractKitContents(kit);
+
+    return (
+      <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-xs text-[#e5e4e2]/60">Zawartość zestawu</div>
+          <div className="text-[11px] text-[#e5e4e2]/35">
+            przelicznik: × <span className="text-[#d3bb73]">{kitQty}</span>
+          </div>
+        </div>
+
+        {contents.length === 0 ? (
+          <div className="text-xs text-[#e5e4e2]/50">Brak danych o zawartości zestawu.</div>
+        ) : (
+          <div className="space-y-1">
+            {contents.map((c) => {
+              const totalQty = c.baseQty * Math.max(1, kitQty || 1);
+              const metaParts: string[] = [];
+              if (c.brand) metaParts.push(c.brand);
+              if (c.model) metaParts.push(c.model);
+              if (c.lengthMeters) metaParts.push(`${c.lengthMeters}m`);
+
+              return (
+                <div
+                  key={c.id}
+                  className="flex items-start justify-between gap-3 text-sm text-[#e5e4e2]"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate">
+                      <span className="text-[#d3bb73]">•</span> {c.name}
+                    </div>
+                    {metaParts.length > 0 && (
+                      <div className="mt-0.5 text-xs text-[#e5e4e2]/45">
+                        {metaParts.join(' • ')}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 text-right text-xs text-[#e5e4e2]/70">
+                    <span className="text-[#e5e4e2]/40">{c.baseQty}×</span>{' '}
+                    <span className="text-[#d3bb73]">{kitQty}</span>{' '}
+                    <span className="text-[#e5e4e2]/40">=</span>{' '}
+                    <span className="font-medium text-[#e5e4e2]">{totalQty}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderRow = (type: ItemType, entity: any, title: string, subtitle?: string) => {
     const id = entity.id;
     const k = keyOf(type, id);
@@ -307,7 +468,9 @@ export function AddEquipmentModal({
     return (
       <div
         key={id}
-        className={`relative rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4 ${disabled ? 'opacity-50' : ''}`}
+        className={`relative rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4 ${
+          disabled ? 'opacity-50' : ''
+        }`}
       >
         {!HIDE_UNAVAILABLE &&
           disabled &&
@@ -325,33 +488,18 @@ export function AddEquipmentModal({
                 onChange={() => handleToggle(type, id)}
                 className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
               />
-              <Popover
-                trigger={
-                  <img
-                    src={entity.thumbnail_url}
-                    alt={entity.name}
-                    className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
-                  />
-                }
-                content={
-                  <img
-                    src={entity.thumbnail_url}
-                    alt={entity.name}
-                    className="h-auto cursor-pointer rounded-lg object-contain transition-all"
-                  />
-                }
-                openOn="hover"
-              />
-                <div className="min-w-0">
-                  <div className="truncate font-medium text-[#e5e4e2]">{title}</div>
-                  {subtitle && <div className="mt-1 text-xs text-[#e5e4e2]/60">{subtitle}</div>}
-                </div>
-              <div className=" ml-auto flex  justify-between gap-4">
 
+              {renderThumb(type, entity)}
+
+              <div className="min-w-0">
+                <div className="truncate font-medium text-[#e5e4e2]">{title}</div>
+                {subtitle && <div className="mt-1 text-xs text-[#e5e4e2]/60">{subtitle}</div>}
+              </div>
+
+              <div className="ml-auto flex justify-between gap-4">
                 <div className="shrink-0 text-right text-xs">
                   <div className="font-medium text-[#d3bb73]">{maxAdd} możesz jeszcze dodać</div>
 
-                  {/* ✅ dodatkowy kontekst (opcjonalny, ale mega pomaga) */}
                   <div className="mt-1 text-[11px] text-[#e5e4e2]/45">
                     pula w terminie: {availableInTerm} • w evencie: {used}
                   </div>
@@ -366,6 +514,7 @@ export function AddEquipmentModal({
 
         {checked && !disabled && (
           <div className="ml-7 mt-3 space-y-3">
+            {/* ✅ 1) ILOŚĆ (osobno) */}
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-3">
               <label className="mb-2 block text-xs text-[#e5e4e2]/60">
                 Ilość ({type === 'kit' ? 'zestawów' : 'jednostek'})
@@ -392,6 +541,10 @@ export function AddEquipmentModal({
               </div>
             </div>
 
+            {/* ✅ 2) ZAWARTOŚĆ KITU (osobno) */}
+            {type === 'kit' && renderKitContents(entity, Math.min(qty, maxAdd || 1))}
+
+            {/* 3) NOTATKI */}
             <input
               type="text"
               value={selectedItems[k]?.notes || ''}
@@ -409,6 +562,7 @@ export function AddEquipmentModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
         <Header />
+
         <div className="mb-4">
           <input
             type="text"
@@ -418,6 +572,7 @@ export function AddEquipmentModal({
             className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           />
         </div>
+
         <Tabs />
 
         <div className="flex-1 space-y-4 overflow-y-auto pr-2">

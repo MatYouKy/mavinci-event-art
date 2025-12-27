@@ -84,11 +84,6 @@ export default function QuizPopularPackages() {
         supabase.from('conferences_service_items').select('*').eq('is_active', true).order('display_order'),
       ]);
 
-      console.log('Quiz Page data loaded:', {
-        relatedServicesCount: relatedServicesRes.data?.length,
-        allServiceItemsCount: allServiceItemsRes.data?.length,
-      });
-
       if (relatedServicesRes.error) console.error('quiz_related_services error:', relatedServicesRes.error);
 
 

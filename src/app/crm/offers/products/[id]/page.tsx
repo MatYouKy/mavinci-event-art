@@ -77,17 +77,12 @@ interface ProductStaff {
 export default function ProductDetailPage() {
   const router = useRouter();
   const params = useParams();
-  console.log(params);
   const { showSnackbar } = useSnackbar();
   const { hasScope, isAdmin } = useCurrentEmployee();
   const { categories, isLoading: isLoadingCategories } = useEventCategories();
   const { items, isLoading, isFetching, remove } = useManageProduct({
     productId: params.id as string,
   });
-
-  console.log('items', items);
-  console.log('isLoading', isLoading);
-  console.log('isFetching', isFetching);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

@@ -120,6 +120,10 @@ export default function OfferWizard({
     return offerItems.reduce((sum, item) => sum + item.subtotal, 0);
   };
 
+  console.log('offerItems', offerItems);  
+  console.log('equipmentList', equipmentList);
+  console.log('offerData', offerData);
+
   if (!isOpen) return null;
 
   return (

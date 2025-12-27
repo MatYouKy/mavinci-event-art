@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 import EditableHeroWithMetadata from './EditableHeroWithMetadata';
+import { useSnackbar } from '../contexts/SnackbarContext';
 
 // Create server-side supabase client inline to avoid env issues
 const getSupabaseClient = () => {
@@ -28,7 +29,7 @@ interface EditableHeroSectionServerProps {
 
 async function getHeroImageServer(section: string, pageSlug: string) {
   noStore();
-
+  const { showSnackbar } = useSnackbar();
   const cleanSection = section.replace('-hero', '');
 
   // Mapowanie dla stron z dedykowanymi tabelami
@@ -45,8 +46,6 @@ async function getHeroImageServer(section: string, pageSlug: string) {
 
   const pageTableName = dedicatedTables[cleanSection] || 'service_hero_images';
   const isUniversalTable = pageTableName === 'service_hero_images';
-
-  console.log(`[SERVER] Hero fetch for section="${section}", cleanSection="${cleanSection}", table="${pageTableName}", pageSlug="${pageSlug}"`);
 
   const supabase = getSupabaseClient();
 
@@ -65,12 +64,13 @@ async function getHeroImageServer(section: string, pageSlug: string) {
   const { data: pageImage, error } = await query.maybeSingle();
 
   if (error) {
-    console.error(`[SERVER] Błąd podczas pobierania hero dla ${section}:`, error);
+    showSnackbar('Błąd podczas pobierania hero dla ${section}:', 'error');
+    throw error;
   }
 
   if (!pageImage) {
-    console.log(`[SERVER] Brak danych hero w ${pageTableName} dla sekcji: ${section}`);
-
+    showSnackbar('Brak danych hero w ${pageTableName} dla sekcji: ${section}', 'error');
+    throw new Error('Brak danych hero w ${pageTableName} dla sekcji: ${section}');
     // Zwróć domyślne wartości bazowane na sekcji
     const sectionDefaults: Record<string, any> = {
       'naglosnienie-hero': {
@@ -110,13 +110,6 @@ async function getHeroImageServer(section: string, pageSlug: string) {
     };
   }
 
-  console.log(`[SERVER] Loaded hero data for ${section}:`, {
-    title: pageImage.title,
-    label_text: pageImage.label_text,
-    label_icon: pageImage.label_icon,
-    description: pageImage.description?.substring(0, 50),
-  });
-
   return {
     imageUrl: pageImage.image_url,
     opacity: pageImage.opacity || 0.2,
@@ -139,13 +132,6 @@ export default async function EditableHeroSectionServer({
   pageSlug,
 }: EditableHeroSectionServerProps) {
   const heroData = await getHeroImageServer(section, pageSlug);
-
-  console.log(`[SERVER] Passing to client for section="${section}":`, {
-    title: heroData.title,
-    description: heroData.description?.substring(0, 50),
-    labelText: heroData.labelText,
-    labelIcon: heroData.labelIcon,
-  });
 
   return (
     <EditableHeroWithMetadata

@@ -168,8 +168,7 @@ export default function EventDetailPage() {
         .select('*')
         .eq('event_id', eventId);
 
-      console.log('[direct select employee_assignments]', { data, error });
-    })();
+    })(); 
   }, [eventId]);
 
   const {
@@ -187,11 +186,9 @@ export default function EventDetailPage() {
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
 
   useEffect(() => {
-    console.log('event-effect', event);
     const fetchLocations = async () => {
       if (event?.location_id && event?.location_id !== null) {
         const location = await getById(event.location_id);
-        console.log('location-effect', location);
         setLocation(location);
       }
     };
@@ -306,10 +303,10 @@ export default function EventDetailPage() {
         if (employee?.event_tabs && employee.event_tabs.length > 0) {
           eventTabs = employee.event_tabs;
         } else if (
-          employee?.access_levels?.event_tabs &&
-          employee.access_levels.event_tabs.length > 0
+          (employee?.access_levels as any)?.event_tabs &&
+          (employee?.access_levels as any).event_tabs.length > 0
         ) {
-          eventTabs = employee.access_levels.event_tabs;
+          eventTabs = (employee?.access_levels as any).event_tabs;
         }
 
         setAllowedEventTabs(eventTabs);
@@ -510,14 +507,9 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleToggleChecklist = async (checklistId: string, completed: boolean) => {
-    console.log('Checklist functionality disabled - table does not exist');
-  };
-
   const handleAddChecklist = async (task: string, priority: string) => {
-    console.log('Checklist functionality disabled - table does not exist');
     setShowAddChecklistModal(false);
-  };
+  };  
 
   const handleDeleteOffer = useCallback(
     async (offerId: string) => {
@@ -1235,7 +1227,6 @@ export default function EventDetailPage() {
           event={event}
           onSave={async (updatedData) => {
             try {
-              console.log('Updating event with data:', updatedData);
               const { error } = await supabase.from('events').update(updatedData).eq('id', eventId);
 
               if (error) {

@@ -317,9 +317,6 @@ export const eventsApi = createApi({
             .insert(rowsToInsert)
             .select(); // ⬅️ bez .single(), bo wstawiasz wiele
 
-          console.log('[addEventEquipment] rowsToInsert', rowsToInsert);
-          console.log('[addEventEquipment] data', data);
-          console.log('[addEventEquipment] error', error);
 
           if (error) {
             return {
@@ -360,11 +357,6 @@ export const eventsApi = createApi({
             .select()
             .single();
 
-          console.log('[updateEventEquipment] id', id);
-          console.log('[updateEventEquipment] payload', payload);
-          console.log('[updateEventEquipment] updated', updated);
-          console.log('[updateEventEquipment] error', error);
-
           if (error) {
             return {
               error: {
@@ -395,9 +387,6 @@ export const eventsApi = createApi({
       async queryFn({ id, eventId }) {
         try {
           const { error } = await supabase.from('event_equipment').delete().eq('id', id);
-
-          console.log('[removeEventEquipment] id', id);
-          console.log('[removeEventEquipment] error', error);
 
           if (error) {
             return {
@@ -502,11 +491,9 @@ export const eventsApi = createApi({
 
           if (data?.id) {
             try {
-              console.log('[addEventEmployee] Calling send-event-invitation for assignment:', data.id);
               const result = await supabase.functions.invoke('send-event-invitation', {
                 body: { assignmentId: data.id },
               });
-              console.log('[addEventEmployee] Email function result:', result);
 
               if (result.error) {
                 console.error('[addEventEmployee] Email function error:', result.error);

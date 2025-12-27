@@ -85,7 +85,7 @@ export function EditableImage({
         return;
       }
     } catch (err) {
-      console.log(`Tabela ${pageTableName} nie istnieje, używam starych tabel`);
+      showSnackbar('Tabela ${pageTableName} nie istnieje, używam starych tabel', 'error');
     }
 
     const image = await getSiteImage(section);
@@ -177,7 +177,7 @@ export function EditableImage({
           return;
         }
       } catch (err) {
-        console.log('Używam starych tabel');
+        showSnackbar('Używam starych tabel', 'error');
       }
 
       if (!siteImage) {
@@ -253,7 +253,6 @@ export function EditableImage({
       setPositionSubMenu(false);
       showSnackbar('Pozycja zapisana pomyślnie', 'success');
     } catch (error) {
-      console.error('Error saving position:', error);
       showSnackbar('Błąd podczas zapisywania pozycji', 'error');
     } finally {
       setSaving(false);
@@ -313,7 +312,7 @@ export function EditableImage({
           return;
         }
       } catch (err) {
-        console.log('Używam starych tabel');
+        showSnackbar('Używam starych tabel', 'error');
       }
 
       if (siteImage) {
@@ -368,7 +367,6 @@ export function EditableImage({
       await loadImage();
       showSnackbar('Zdjęcie wgrane pomyślnie', 'success');
     } catch (error) {
-      console.error('Error uploading image:', error);
       showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
     } finally {
       setUploading(false);
@@ -425,6 +423,7 @@ export function EditableImage({
             return;
           }
         } catch (err) {
+          showSnackbar('Błąd podczas resetowania pozycji', 'error');
         }
 
         const { error } = await supabase
@@ -448,7 +447,6 @@ export function EditableImage({
         await loadImage();
         showSnackbar('Pozycja zresetowana', 'success');
       } catch (error) {
-        console.error('Error resetting position:', error);
         showSnackbar('Błąd podczas resetowania pozycji', 'error');
       } finally {
         setSaving(false);

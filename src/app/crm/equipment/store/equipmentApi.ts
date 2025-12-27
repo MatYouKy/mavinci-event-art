@@ -281,7 +281,6 @@ export const equipmentApi = createApi({
     // szczegóły sprzętu
     getEquipmentDetails: builder.query<any, string>({
       async queryFn(id) {
-        console.log('getEquipmentDetails - fetching equipment:', id);
         const { data, error } = await supabase
           .from('equipment_items')
           .select(
@@ -310,7 +309,6 @@ export const equipmentApi = createApi({
           console.error('getEquipmentDetails - error:', error);
           return { error: error as any };
         }
-        console.log('getEquipmentDetails - data:', data);
         return { data };
       },
       providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
@@ -351,7 +349,6 @@ export const equipmentApi = createApi({
     // szczegóły kabla
     getCableDetails: builder.query<any, string>({
       async queryFn(id) {
-        console.log('getCableDetails - fetching cable:', id);
         const { data, error } = await supabase
           .from('cables')
           .select(
@@ -369,11 +366,9 @@ export const equipmentApi = createApi({
           console.error('getCableDetails - error:', error);
           return { error: error as any };
         }
-        console.log('getCableDetails - fetched data:', data);
         return { data };
       },
       providesTags: (_res, _err, id) => {
-        console.log('getCableDetails - providing tag for:', id);
         return [{ type: 'Equipment', id }];
       },
     }),
@@ -418,13 +413,11 @@ export const equipmentApi = createApi({
     // aktualizacja kabla
     updateCable: builder.mutation<{ success: true }, { id: string; payload: Record<string, any> }>({
       async queryFn({ id, payload }) {
-        console.log('updateCable mutation - updating cable:', id, payload);
 
         // Sprawdź sesję użytkownika
         const {
           data: { session },
         } = await supabase.auth.getSession();
-        console.log('Current session:', session ? `User: ${session.user.email}` : 'NO SESSION');
 
         const { error, count } = await supabase.from('cables').update(payload).eq('id', id);
 
@@ -433,7 +426,6 @@ export const equipmentApi = createApi({
           return { error: error as any };
         }
 
-        console.log('updateCable mutation - success, rows affected:', count);
 
         const { data: updatedData } = await supabase
           .from('cables')
@@ -452,7 +444,6 @@ export const equipmentApi = createApi({
         return { data: updatedData || { success: true } };
       },
       invalidatesTags: (_result, _error, { id }) => {
-        console.log('Invalidating tags for cable:', id);
         return [{ type: 'Equipment', id }, 'EquipmentList'];
       },
     }),
