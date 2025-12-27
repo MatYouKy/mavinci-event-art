@@ -40,6 +40,7 @@ import NavigationManager from '@/components/crm/NavigationManager';
 import { SnackbarProvider } from '@/contexts/SnackbarContext';
 import { canView, isAdmin, type Employee } from '@/lib/permissions';
 import { Metadata } from 'next';
+import { useActivityHeartbeat } from '@/hooks/useActivityHeartbeat';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -241,6 +242,8 @@ export default function CRMClientLayout({ children }: { children: React.ReactNod
   const [navigation, setNavigation] = useState<NavigationItem[]>(allNavigation);
   const pathname = usePathname();
   const router = useRouter();
+
+  useActivityHeartbeat();
 
   useEffect(() => {
     const savedState = localStorage.getItem('sidebarCollapsed');

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ActivityStatusIndicator } from './crm/ActivityStatusIndicator';
 
 interface ImagePosition {
   posX: number;
@@ -29,6 +30,8 @@ interface EmployeeAvatarPropsLegacy {
   className?: string;
   onClick?: () => void;
   showHoverEffect?: boolean;
+  showActivityStatus?: boolean;
+  lastActiveAt?: string | null;
   employee?: never;
 }
 
@@ -39,14 +42,17 @@ interface EmployeeAvatarPropsNew {
     name?: string;
     surname?: string;
     nickname?: string;
+    last_active_at?: string | null;
   };
   size?: number;
   className?: string;
   onClick?: () => void;
   showHoverEffect?: boolean;
+  showActivityStatus?: boolean;
   avatarUrl?: never;
   avatarMetadata?: never;
   employeeName?: never;
+  lastActiveAt?: never;
 }
 
 type EmployeeAvatarProps = EmployeeAvatarPropsLegacy | EmployeeAvatarPropsNew;
@@ -57,6 +63,7 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
     className = '',
     onClick,
     showHoverEffect = false,
+    showActivityStatus = false,
   } = props;
 
   const avatarUrl = 'employee' in props ? props.employee.avatar_url : props.avatarUrl;
@@ -64,6 +71,7 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
   const employeeName = 'employee' in props
     ? (props.employee.nickname || `${props.employee.name || ''} ${props.employee.surname || ''}`.trim() || 'User')
     : props.employeeName;
+  const lastActiveAt = 'employee' in props ? props.employee.last_active_at : props.lastActiveAt;
 
   const position = avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
   const objectFit = avatarMetadata?.desktop?.objectFit || 'cover';
@@ -92,6 +100,15 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
       {showHoverEffect && (
         <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
           <span className="text-white text-sm font-medium">Edytuj</span>
+        </div>
+      )}
+      {showActivityStatus && (
+        <div className="absolute bottom-0 right-0 translate-x-[10%] translate-y-[10%]">
+          <ActivityStatusIndicator
+            lastActiveAt={lastActiveAt}
+            size={size > 64 ? 'md' : 'sm'}
+            showTooltip={true}
+          />
         </div>
       )}
     </div>

@@ -7,11 +7,18 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const token = searchParams.get('token');
+  const execute = searchParams.get('execute');
 
   if (!token) {
     return NextResponse.json(
       { error: 'Token is required' },
       { status: 400 }
+    );
+  }
+
+  if (execute !== 'true') {
+    return NextResponse.redirect(
+      new URL(`/crm/events/invitation/accept?token=${token}`, request.url)
     );
   }
 
@@ -43,20 +50,23 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (assignmentError || !assignment) {
-    return NextResponse.redirect(
-      new URL('/crm/events?error=invalid_token', request.url)
+    return NextResponse.json(
+      { error: 'Nieprawidłowy token zaproszenia' },
+      { status: 400 }
     );
   }
 
   if (new Date(assignment.invitation_expires_at) < new Date()) {
-    return NextResponse.redirect(
-      new URL('/crm/events?error=token_expired', request.url)
+    return NextResponse.json(
+      { error: 'Token zaproszenia wygasł' },
+      { status: 400 }
     );
   }
 
   if (assignment.status !== 'pending') {
-    return NextResponse.redirect(
-      new URL(`/crm/events/${assignment.event_id}?info=already_responded`, request.url)
+    return NextResponse.json(
+      { error: 'To zaproszenie zostało już przetworzone' },
+      { status: 400 }
     );
   }
 
@@ -70,8 +80,9 @@ export async function GET(request: NextRequest) {
 
   if (updateError) {
     console.error('Error accepting invitation:', updateError);
-    return NextResponse.redirect(
-      new URL('/crm/events?error=update_failed', request.url)
+    return NextResponse.json(
+      { error: 'Nie udało się zaktualizować statusu zaproszenia' },
+      { status: 500 }
     );
   }
 
@@ -140,10 +151,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(
-    new URL(
-      `/crm/events/${assignment.event_id}?success=invitation_accepted&event=${encodeURIComponent(event.name)}`,
-      request.url
-    )
-  );
+  return NextResponse.json({
+    success: true,
+    eventId: assignment.event_id,
+    eventName: event.name,
+    message: 'Zaproszenie zostało zaakceptowane pomyślnie'
+  });
 }
