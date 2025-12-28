@@ -275,7 +275,7 @@ export default function EventWizard({
       // Pobierz sprzęt z offer_product_equipment dla wszystkich produktów
       const { data: productEquipment, error: eqError } = await supabase
         .from('offer_product_equipment')
-        .select('equipment_id, kit_id, quantity, notes')
+        .select('equipment_item_id, equipment_kit_id, quantity, notes')
         .in('product_id', productIds);
 
       if (eqError) throw eqError;
@@ -284,8 +284,8 @@ export default function EventWizard({
         // Wstaw sprzęt do event_equipment
         const equipmentToInsert = productEquipment.map((eq) => ({
           event_id: createdEventId,
-          equipment_id: eq.equipment_id || null,
-          kit_id: eq.kit_id || null,
+          equipment_id: eq.equipment_item_id || null,
+          kit_id: eq.equipment_kit_id || null,
           quantity: eq.quantity || 1,
           status: 'reserved',
           source: 'offer',
@@ -302,9 +302,11 @@ export default function EventWizard({
 
         // Pobierz szczegóły sprzętu do wyświetlenia
         const equipmentIds = productEquipment
-          .map((eq) => eq.equipment_id)
+          .map((eq) => eq.equipment_item_id)
           .filter((id): id is string => !!id);
-        const kitIds = productEquipment.map((eq) => eq.kit_id).filter((id): id is string => !!id);
+        const kitIds = productEquipment
+          .map((eq) => eq.equipment_kit_id)
+          .filter((id): id is string => !!id);
 
         let equipmentDetails: any[] = [];
         let kitDetails: any[] = [];
@@ -327,19 +329,19 @@ export default function EventWizard({
 
         // Zaktualizuj state selectedEquipment
         const mappedEquipment = productEquipment.map((eq) => {
-          if (eq.equipment_id) {
-            const detail = equipmentDetails.find((d) => d.id === eq.equipment_id);
+          if (eq.equipment_item_id) {
+            const detail = equipmentDetails.find((d) => d.id === eq.equipment_item_id);
             return {
-              id: eq.equipment_id,
+              id: eq.equipment_item_id,
               name: detail?.name || 'Sprzęt',
               thumbnail_url: detail?.thumbnail_url,
               quantity: eq.quantity,
               type: 'item',
             };
-          } else if (eq.kit_id) {
-            const detail = kitDetails.find((d) => d.id === eq.kit_id);
+          } else if (eq.equipment_kit_id) {
+            const detail = kitDetails.find((d) => d.id === eq.equipment_kit_id);
             return {
-              id: eq.kit_id,
+              id: eq.equipment_kit_id,
               name: detail?.name || 'Zestaw',
               thumbnail_url: detail?.thumbnail_url,
               quantity: eq.quantity,
