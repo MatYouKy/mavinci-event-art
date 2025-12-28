@@ -29,6 +29,71 @@ import { EquipmentStep, TeamStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
 import { ClientType } from '@/app/crm/clients/type';
 import { useEventEquipment } from '@/app/crm/events/hooks/useEventEquipment';
+import { useEmployees } from '@/app/crm/employees/hooks/useEmployees';
+import { useEventTeam } from '@/app/crm/events/hooks/useEventTeam';
+
+const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
+  const mapped = (selectedEquipment ?? [])
+    .map((eq: any) => {
+      const type = eq.type || (eq.kit_id ? 'kit' : eq.cable_id ? 'cable' : 'item');
+
+      const base = {
+        event_id: eventId,
+        quantity: Number(eq.quantity ?? 1) || 1,
+        status: eq.status ?? 'reserved',
+        notes: eq.notes ?? null,
+        auto_added: !!eq.auto_added,
+        offer_id: eq.offer_id ?? null,
+      };
+
+      if (type === 'kit') {
+        return {
+          ...base,
+          equipment_id: null,
+          cable_id: null,
+          kit_id: eq.kit_id ?? eq.id ?? null,
+        };
+      }
+
+      if (type === 'cable') {
+        return {
+          ...base,
+          equipment_id: null,
+          kit_id: null,
+          cable_id: eq.cable_id ?? eq.id ?? null,
+        };
+      }
+
+      // default: item
+      return {
+        ...base,
+        kit_id: null,
+        cable_id: null,
+        equipment_id: eq.equipment_id ?? eq.id ?? null,
+      };
+    })
+    // usuń ew. rekordy, które nie mają żadnego id (żeby nie waliło constraintem / nullami)
+    .filter((r) => !!(r.equipment_id || r.kit_id || r.cable_id));
+
+  // 2) deduplikacja w tej samej paczce (to też potrafi powodować błąd 21000)
+  const seen = new Set<string>();
+  const unique: any[] = [];
+
+  for (const r of mapped) {
+    const key = r.equipment_id
+      ? `item:${r.equipment_id}`
+      : r.kit_id
+        ? `kit:${r.kit_id}`
+        : `cable:${r.cable_id}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(r);
+    }
+  }
+
+  return unique;
+};
 
 interface EventWizardProps {
   isOpen: boolean;
@@ -69,6 +134,9 @@ export default function EventWizard({
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
+  const { addEmployee } = useEventTeam(createdEventId);
+
+  const { list: employeesList } = useEmployees({ activeOnly: true });
 
   // Krok 1: Szczegóły eventu
   const [eventData, setEventData] = useState({
@@ -118,7 +186,6 @@ export default function EventWizard({
   // Krok 4: Zespół (opcjonalnie)
   const [assignTeam, setAssignTeam] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState<any[]>([]);
-  const [employeesList, setEmployeesList] = useState<any[]>([]);
 
   // Krok 5: Logistyka (opcjonalnie)
   const [assignVehicles, setAssignVehicles] = useState(false);
@@ -130,8 +197,7 @@ export default function EventWizard({
   const [selectedSubcontractors, setSelectedSubcontractors] = useState<any[]>([]);
   const [subcontractorsList, setSubcontractorsList] = useState<any[]>([]);
 
-  const { equipment } = useEventEquipment
-    (createdEventId as string);
+  const { equipment } = useEventEquipment(createdEventId as string);
 
   const steps = [
     { id: 1, name: 'Szczegóły', icon: Calendar, required: true },
@@ -282,16 +348,17 @@ export default function EventWizard({
 
       if (productEquipment && productEquipment.length > 0) {
         // Wstaw sprzęt do event_equipment
-        const equipmentToInsert = productEquipment.map((eq) => ({
-          event_id: createdEventId,
-          equipment_id: eq.equipment_item_id || null,
-          kit_id: eq.equipment_kit_id || null,
-          quantity: eq.quantity || 1,
-          status: 'reserved',
-          notes: eq.notes || null,
-          auto_added: true,
-          offer_id: offer.id,
-        }));
+        const equipmentToInsert = buildEventEquipmentRows(
+          productEquipment.map((eq) => ({
+            id: eq.equipment_item_id ?? eq.equipment_kit_id,
+            type: eq.equipment_item_id ? 'item' : 'kit',
+            quantity: eq.quantity || 1,
+            notes: eq.notes || null,
+            auto_added: true,
+            offer_id: offer.id,
+          })),
+          createdEventId as unknown as string,
+        );
 
         const { error: insertError } = await supabase
           .from('event_equipment')
@@ -327,28 +394,30 @@ export default function EventWizard({
         }
 
         // Zaktualizuj state selectedEquipment
-        const mappedEquipment = productEquipment.map((eq) => {
-          if (eq.equipment_item_id) {
-            const detail = equipmentDetails.find((d) => d.id === eq.equipment_item_id);
-            return {
-              id: eq.equipment_item_id,
-              name: detail?.name || 'Sprzęt',
-              thumbnail_url: detail?.thumbnail_url,
-              quantity: eq.quantity,
-              type: 'item',
-            };
-          } else if (eq.equipment_kit_id) {
-            const detail = kitDetails.find((d) => d.id === eq.equipment_kit_id);
-            return {
-              id: eq.equipment_kit_id,
-              name: detail?.name || 'Zestaw',
-              thumbnail_url: detail?.thumbnail_url,
-              quantity: eq.quantity,
-              type: 'kit',
-            };
-          }
-          return null;
-        }).filter(Boolean);
+        const mappedEquipment = productEquipment
+          .map((eq) => {
+            if (eq.equipment_item_id) {
+              const detail = equipmentDetails.find((d) => d.id === eq.equipment_item_id);
+              return {
+                id: eq.equipment_item_id,
+                name: detail?.name || 'Sprzęt',
+                thumbnail_url: detail?.thumbnail_url,
+                quantity: eq.quantity,
+                type: 'item',
+              };
+            } else if (eq.equipment_kit_id) {
+              const detail = kitDetails.find((d) => d.id === eq.equipment_kit_id);
+              return {
+                id: eq.equipment_kit_id,
+                name: detail?.name || 'Zestaw',
+                thumbnail_url: detail?.thumbnail_url,
+                quantity: eq.quantity,
+                type: 'kit',
+              };
+            }
+            return null;
+          })
+          .filter(Boolean);
 
         setSelectedEquipment(mappedEquipment);
         setAssignEquipment(true);
@@ -363,15 +432,6 @@ export default function EventWizard({
     } catch (err: any) {
       showSnackbar('Błąd podczas ładowania sprzętu z oferty: ' + err.message, 'error');
     }
-  };
-
-  const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from('employees')
-      .select('id, full_name, email, avatar_url')
-      .eq('is_active', true)
-      .order('full_name');
-    if (data) setEmployeesList(data);
   };
 
   const fetchVehicles = async () => {
@@ -483,7 +543,9 @@ export default function EventWizard({
         if (!equipmentList.length) fetchEquipment();
         break;
       case 4:
-        if (!employeesList.length) fetchEmployees();
+        if (!employeesList.length) {
+          console.log('employeesList', employeesList);
+        }
         break;
       case 5:
         if (!vehiclesList.length) fetchVehicles();
@@ -625,6 +687,7 @@ export default function EventWizard({
         const {
           data: { session },
         } = await supabase.auth.getSession();
+
         await supabase.from('offers').insert([
           {
             event_id: createdEventId,
@@ -639,23 +702,93 @@ export default function EventWizard({
 
       // Krok 3: Przypisz sprzęt
       if (assignEquipment && selectedEquipment.length > 0) {
-        const equipmentItems = selectedEquipment.map((eq) => ({
-          event_id: createdEventId,
-          equipment_id: eq.id,
-          quantity: eq.quantity || 1,
-          status: 'reserved',
-        }));
-        await supabase.from('event_equipment').insert(equipmentItems);
+        // 1) pobierz istniejące wpisy dla eventu
+        const { data: existing, error: existingErr } = await supabase
+          .from('event_equipment')
+          .select('equipment_id, kit_id, cable_id')
+          .eq('event_id', createdEventId);
+
+        if (existingErr) throw existingErr;
+
+        const existingKeys = new Set(
+          (existing ?? []).map((r: any) =>
+            r.equipment_id
+              ? `item:${r.equipment_id}`
+              : r.kit_id
+                ? `kit:${r.kit_id}`
+                : `cable:${r.cable_id}`,
+          ),
+        );
+
+        // 2) zbuduj poprawne wiersze
+        const rows = buildEventEquipmentRows(selectedEquipment, createdEventId);
+
+        // 2a) DEDUPLIKACJA w obrębie tej samej paczki (żeby nie było powtórek w jednym insercie)
+        const grouped = new Map<string, any>();
+
+        for (const r of rows) {
+          const key = r.equipment_id
+            ? `item:${r.equipment_id}`
+            : r.kit_id
+              ? `kit:${r.kit_id}`
+              : `cable:${r.cable_id}`;
+
+          const prev = grouped.get(key);
+
+          if (!prev) {
+            grouped.set(key, { ...r });
+          } else {
+            // sumujemy ilości (bezpiecznie)
+            prev.quantity = (prev.quantity || 0) + (r.quantity || 0);
+
+            // notatki sklejamy bez dublowania
+            const a = (prev.notes || '').trim();
+            const b = (r.notes || '').trim();
+            if (b && !a.includes(b)) {
+              prev.notes = a ? `${a}\n${b}` : b;
+            }
+          }
+        }
+
+        const dedupedRows = Array.from(grouped.values());
+
+        // 3) zostaw tylko brakujące
+        const toInsert = dedupedRows.filter((r: any) => {
+          const key = r.equipment_id
+            ? `item:${r.equipment_id}`
+            : r.kit_id
+              ? `kit:${r.kit_id}`
+              : `cable:${r.cable_id}`;
+
+          return !existingKeys.has(key);
+        });
+
+        // 4) INSERT PO 1 REKORDZIE (omija błąd 21000 w razie triggera/upserta po stronie DB)
+        for (const row of toInsert) {
+          const { error: insertErr } = await supabase.from('event_equipment').insert([row]);
+          if (insertErr) throw insertErr;
+        }
       }
 
-      // Krok 4: Przypisz zespół
+      // Krok 4: Przypisz / zaproś zespół (TAK JAK MODAL)
       if (assignTeam && selectedEmployees.length > 0) {
-        const teamItems = selectedEmployees.map((emp) => ({
-          event_id: createdEventId,
-          employee_id: emp.id,
-          role: emp.role || 'Członek zespołu',
-        }));
-        await supabase.from('employee_assignments').insert(teamItems);
+        for (const emp of selectedEmployees) {
+          await addEmployee({
+            employeeId: emp.id,
+            role: emp.role || '',
+            responsibilities: emp.responsibilities || '',
+            access_level_id: emp.access_level_id || null,
+            permissions: emp.permissions || {
+              can_edit_event: false,
+              can_edit_agenda: false,
+              can_edit_tasks: false,
+              can_edit_files: false,
+              can_edit_equipment: false,
+              can_invite_members: false,
+              can_view_budget: false,
+            },
+          });
+        }
       }
 
       // Krok 5: Przypisz pojazdy
@@ -740,7 +873,10 @@ export default function EventWizard({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              onClose();
+              resetWizard();
+            }}
             className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
           >
             <X className="h-5 w-5 text-[#e5e4e2]" />
