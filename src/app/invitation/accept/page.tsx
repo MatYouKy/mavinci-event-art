@@ -18,15 +18,10 @@ export default async function AcceptInvitationPage({
 }) {
   const token = searchParams.token;
 
-  console.log('[accept-invitation] Starting with token:', token);
 
   if (!token) {
-    console.log('[accept-invitation] No token provided');
     redirectError('Brak tokenu zaproszenia');
   }
-
-  console.log('[accept-invitation] Supabase URL:', supabaseUrl);
-  console.log('[accept-invitation] Service key exists:', !!supabaseServiceKey);
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -55,10 +50,7 @@ export default async function AcceptInvitationPage({
     .eq('invitation_token', token)
     .maybeSingle();
 
-  console.log('[accept-invitation] Assignment query result:', { assignment, assignmentError });
-
   if (assignmentError || !assignment) {
-    console.log('[accept-invitation] Invalid token or error');
     redirectError('Nieprawidłowy token zaproszenia');
   }
 
@@ -73,8 +65,6 @@ export default async function AcceptInvitationPage({
     );
   }
 
-  console.log('[accept-invitation] Updating assignment to accepted');
-
   const { error: updateError } = await supabase
     .from('employee_assignments')
     .update({
@@ -82,8 +72,6 @@ export default async function AcceptInvitationPage({
       responded_at: new Date().toISOString(),
     })
     .eq('id', assignment.id);
-
-  console.log('[accept-invitation] Update result:', { updateError });
 
   if (updateError) {
     console.error('[accept-invitation] Error accepting invitation:', updateError);
@@ -94,7 +82,6 @@ export default async function AcceptInvitationPage({
   const event = assignment.events as any;
   const employee = assignment.employees as any;
 
-  console.log('[accept-invitation] Creating notification for creator:', event.created_by);
 
   if (event.created_by) {
     const { data: creatorNotification, error: notifError } = await supabase
@@ -119,7 +106,6 @@ export default async function AcceptInvitationPage({
       .select('id')
       .single();
 
-    console.log('[accept-invitation] Notification created:', { creatorNotification, notifError });
 
     if (notifError) {
       redirectError(`Błąd tworzenia powiadomienia: ${notifError.code} ${notifError.message}`);
@@ -141,6 +127,6 @@ export default async function AcceptInvitationPage({
     }
   }
 
-  console.log('[accept-invitation] Success! Redirecting...');
+
   redirect(`/invitation/success?event=${encodeURIComponent(event.name)}&type=accepted`);
 }

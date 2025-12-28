@@ -104,7 +104,6 @@ export default function MessagesPage() {
           table: 'contact_messages',
         },
         (payload) => {
-          console.log('Contact message change:', payload);
           setOffset(0);
           setMessages([]);
           fetchMessages(true);
@@ -122,7 +121,6 @@ export default function MessagesPage() {
           table: 'sent_emails',
         },
         (payload) => {
-          console.log('Sent email change:', payload);
           if (selectedAccount !== 'contact_form') {
             setOffset(0);
             setMessages([]);

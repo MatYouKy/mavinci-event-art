@@ -11,15 +11,9 @@ export default async function RejectInvitationPage({
 }) {
   const token = searchParams.token;
 
-  console.log('[reject-invitation] Starting with token:', token);
-
   if (!token) {
-    console.log('[reject-invitation] No token provided');
     redirect('/invitation/error?message=Brak tokenu zaproszenia');
   }
-
-  console.log('[reject-invitation] Supabase URL:', supabaseUrl);
-  console.log('[reject-invitation] Service key exists:', !!supabaseServiceKey);
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -48,10 +42,7 @@ export default async function RejectInvitationPage({
     .eq('invitation_token', token)
     .maybeSingle();
 
-  console.log('[reject-invitation] Assignment query result:', { assignment, assignmentError });
-
   if (assignmentError || !assignment) {
-    console.log('[reject-invitation] Invalid token or error');
     redirect('/invitation/error?message=Nieprawidłowy token zaproszenia');
   }
 
@@ -64,8 +55,6 @@ export default async function RejectInvitationPage({
     redirect(`/invitation/success?event=${encodeURIComponent(event?.name || '')}&type=rejected`);
   }
 
-  console.log('[reject-invitation] Updating assignment to rejected');
-
   const { error: updateError } = await supabase
     .from('employee_assignments')
     .update({
@@ -74,8 +63,6 @@ export default async function RejectInvitationPage({
     })
     .eq('id', assignment.id);
 
-  console.log('[reject-invitation] Update result:', { updateError });
-
   if (updateError) {
     console.error('[reject-invitation] Error rejecting invitation:', updateError);
     redirect('/invitation/error?message=Nie udało się zaktualizować statusu zaproszenia');
@@ -83,8 +70,6 @@ export default async function RejectInvitationPage({
 
   const event = assignment.events as any;
   const employee = assignment.employees as any;
-
-  console.log('[reject-invitation] Creating notification for creator:', event.created_by);
 
   if (event.created_by) {
     const { data: creatorNotification, error: notifError } = await supabase
@@ -109,8 +94,6 @@ export default async function RejectInvitationPage({
       .select('id')
       .single();
 
-    console.log('[reject-invitation] Notification created:', { creatorNotification, notifError });
-
     if (!notifError && creatorNotification) {
       const { error: recipientError } = await supabase
         .from('notification_recipients')
@@ -118,10 +101,7 @@ export default async function RejectInvitationPage({
           notification_id: creatorNotification.id,
           user_id: event.created_by
         });
-      console.log('[reject-invitation] Recipient added:', { recipientError });
     }
   }
-
-  console.log('[reject-invitation] Success! Redirecting...');
   redirect(`/invitation/success?event=${encodeURIComponent(event.name)}&type=rejected`);
 }

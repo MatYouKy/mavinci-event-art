@@ -140,8 +140,6 @@ export default function EventDetailPage() {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
 
-  console.log('event', event);
-
   const { getCategoryById } = useEventCategories();
   const [category, setCategory] = useState<IEventCategory | null>(null);
 
