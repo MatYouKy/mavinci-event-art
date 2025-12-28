@@ -24,6 +24,44 @@ import { useUserPreferences } from '@/hooks/useUserPreferences';
 import EventStatusEditor from '@/components/crm/EventStatusEditor';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
+const getOrgLabel = (org?: any) => org?.alias || org?.name || 'Brak klienta';
+
+const getLocationLabel = (loc?: any, fallback?: string) => {
+  if (!loc) return fallback || 'Brak lokalizacji';
+  const city = loc.city ? ` — ${loc.city}` : '';
+  return `${loc.name || 'Lokalizacja'}${city}`;
+};
+
+const getLocationLabelMobile = (
+  locations?: {
+    name?: string | null;
+  } | null,
+  locationFallback?: string | null,
+) => {
+  // 1️⃣ jeśli mamy relację locations → bierzemy TYLKO name
+  if (locations?.name) {
+    return locations.name;
+  }
+
+  // 2️⃣ fallback string → ucinamy do pierwszego przecinka
+  if (typeof locationFallback === 'string' && locationFallback.length > 0) {
+    return locationFallback.split(',')[0].trim();
+  }
+
+  return 'Brak lokalizacji';
+};
+
+const getLocationLabelDesktop = (loc?: any, fallback?: string) => {
+  if (!loc) return fallback || 'Brak lokalizacji';
+  const extra = loc.city ? ` — ${loc.city}` : '';
+  return `${loc.name || 'Lokalizacja'}${extra}`;
+};
+
+const getMapsHref = (loc?: any, fallback?: string) => {
+  const q = loc?.formatted_address || loc?.address || loc?.name || fallback || '';
+  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
+};
+
 const statusColors = {
   offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   offer_accepted: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -154,7 +192,7 @@ export default function EventsPage() {
       let query = supabase.from('events').select(
         `
           *,
-          organizations(name),
+          organizations(name, alias),
           contacts(first_name, last_name),
           event_categories(name, color),
           locations(name, formatted_address, address, city, postal_code)
@@ -812,7 +850,7 @@ export default function EventsPage() {
                 <div className="flex flex-col gap-2 text-sm text-[#e5e4e2]/70">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate">{event.organizations?.name || 'Brak klienta'}</span>
+                    <span className="truncate">{getOrgLabel(event.organizations)}</span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -826,16 +864,7 @@ export default function EventsPage() {
                   <div className="flex items-start gap-2">
                     <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
                     <span className="line-clamp-2">
-                      {event.locations ? (
-                        <>
-                          <span className="font-medium">{event.locations.name}</span>
-                          {event.locations.city && (
-                            <span className="text-[#e5e4e2]/50"> — {event.locations.city}</span>
-                          )}
-                        </>
-                      ) : (
-                        event.location || 'Brak lokalizacji'
-                      )}
+                      {getLocationLabel(event.locations, event.location)}
                     </span>
                   </div>
                 </div>
@@ -868,10 +897,7 @@ export default function EventsPage() {
                   <EventStatusEditor
                     eventId={event.id}
                     currentStatus={event.status}
-                    onStatusChange={() => {
-                      
-                      
-                    }}
+                    onStatusChange={() => {}}
                   />
                 </div>
               </div>
@@ -882,16 +908,16 @@ export default function EventsPage() {
           return (
             <div
               key={event.id}
-              className={`relative rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 ${
+              className={`relative rounded-xl border bg-[#1c1f33] p-2 sm:p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 cursor-pointer ${
                 isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
               }`}
               onClick={() => router.push(`/crm/events/${event.id}`)}
             >
               {/* Top row */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+              <div className="flex items-start justify-between gap-1 sm:gap-2">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="truncate text-base font-medium text-[#e5e4e2] md:text-lg">
+                    <h3 className="max-w-[240px] truncate text-base font-medium text-[#e5e4e2] md:text-lg">
                       {event.name}
                     </h3>
                     {isPast && (
@@ -905,8 +931,8 @@ export default function EventsPage() {
                   <div className="mt-2 flex flex-col gap-1 text-sm text-[#e5e4e2]/70 md:flex-row md:flex-wrap md:gap-4">
                     <div className="flex items-center gap-2">
                       <Building2 className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">
-                        {event.organizations?.name || 'Brak klienta'}
+                      <span className="max-w-[250px] truncate">
+                        {getOrgLabel(event.organizations)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -917,21 +943,27 @@ export default function EventsPage() {
                     </div>
                     <div className="flex min-w-0 items-center gap-2">
                       <MapPin className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">
-                        {event.locations ? (
-                          <>
-                            <span className="font-medium">{event.locations.name}</span>
-                            {(event.locations.formatted_address || event.locations.address) && (
-                              <span className="text-[#e5e4e2]/50">
-                                {' '}
-                                — {event.locations.formatted_address || event.locations.address}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          event.location || 'Brak lokalizacji'
-                        )}
-                      </span>
+
+                      <div className="min-w-0 flex-1 truncate">
+                        <a
+                          href={getMapsHref(event.locations, event.location)}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={stop}
+                          className="block min-w-0 cursor-pointer truncate text-[#e5e4e2]/70 hover:text-[#d3bb73]"
+                          title="Otwórz w mapach"
+                        >
+                          {/* MOBILE: minimum */}
+                          <span className="block max-w-[calc(100vw-140px)] truncate whitespace-nowrap sm:hidden">
+                            {getLocationLabelMobile(event.locations, event.location)}
+                          </span>
+
+                          {/* >= SM: więcej info */}
+                          <span className="hidden sm:inline">
+                            {getLocationLabelDesktop(event.locations, event.location)}
+                          </span>
+                        </a>
+                      </div>
                     </div>
                   </div>
                 </div>

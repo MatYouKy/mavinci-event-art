@@ -8,6 +8,7 @@ import {
   MapPin,
   Phone,
   Save,
+  Tag,
   User,
   UserCheck,
 } from 'lucide-react';
@@ -22,6 +23,8 @@ import { useEvent } from '@/app/crm/events/hooks/useEvent';
 import { ContactRow, OrganizationRow } from '@/app/crm/contacts/types';
 import { useLocations } from '@/app/crm/locations/useLocations';
 import { ILocation } from '@/app/crm/locations/type';
+import { useEventCategories } from '@/app/crm/event-categories/hook/useEventCategories';
+import { IEventCategory } from '@/app/crm/event-categories/types';
 
 interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
@@ -34,13 +37,13 @@ interface EventsDetailsTabProps {
 
 export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   hasLimitedAccess,
-  canManageTeam,
-  isUserAdmin,
   contact,
   organization,
   location,
+
 }) => {
   const { event, updateEvent } = useEvent();
+
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
@@ -143,8 +146,8 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
               )}
             </div>
           </div>
-          {/* 
-          {!hasLimitedAccess && (canManageTeam || isUserAdmin) && (
+
+          {/* {!hasLimitedAccess && (canManageTeam || isUserAdmin) && (
             <div className="flex items-start gap-3">
               <UserCheck className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
@@ -193,7 +196,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                 </label>
               </div>
             </div>
-          )} */}
+          )}  */}
 
           {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
           {!hasLimitedAccess && (

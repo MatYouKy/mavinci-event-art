@@ -77,6 +77,32 @@ export function useEventCategories() {
     setIcons((data ?? []) as ICustomIcon[]);
   }, []);
 
+  const getCategoryById = useCallback(
+    async (categoryId: string) => {
+      if (!categoryId) return null;
+  
+      // 1) najpierw spróbuj ze stanu (szybko, bez requestu)
+      const cached = categories.find((c) => c.id === categoryId);
+      if (cached) return cached;
+  
+      // 2) jeśli nie ma w stanie – pobierz z bazy
+      const { data, error } = await supabase
+        .from('event_categories')
+        .select(
+          `
+            *,
+            icon:custom_icons(id, name, svg_code, preview_color)
+          `,
+        )
+        .eq('id', categoryId)
+        .maybeSingle();
+  
+      if (error) throw error;
+      return (data ?? null) as IEventCategory | null;
+    },
+    [categories],
+  );
+
   const fetchContractTemplates = useCallback(async () => {
     const { data, error } = await supabase
       .from('contract_templates')
@@ -251,5 +277,6 @@ export function useEventCategories() {
     deleteCategory,
     upsertIcon,
     deleteIcon,
+    getCategoryById,
   };
 }

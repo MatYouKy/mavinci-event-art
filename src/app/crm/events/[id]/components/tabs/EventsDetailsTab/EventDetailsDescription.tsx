@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabase';
 import { useState } from 'react';
-import { IEvent } from '../../../page';
 import { Edit, Save } from 'lucide-react';
 import { logChange } from '../../../helpers/logChange';
 import { useEvent } from '@/app/crm/events/hooks/useEvent';

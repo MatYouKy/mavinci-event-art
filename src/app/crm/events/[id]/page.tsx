@@ -63,6 +63,7 @@ import { ILocation } from '../../locations/type';
 import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
 import { useEmployees } from '../../employees/hooks/useEmployees';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import { useEventCategories } from '../../event-categories/hook/useEventCategories';
 
 interface Equipment {
   kit_id: unknown;
@@ -128,7 +129,33 @@ export default function EventDetailPage() {
   const { offers, refetch: refetchOffers } = useEventOffers(eventId);
   const { equipment } = useEventEquipment(eventId);
   const { employees } = useEventTeam(eventId);
+  const { useById } = useEmployees();
   const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
+
+  const {
+    data: event,
+    isLoading,
+    error,
+  } = useGetEventByIdQuery(eventId, {
+    refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
+  });
+
+  console.log('event', event);
+
+  const { getCategoryById } = useEventCategories();
+  const [category, setCategory] = useState<IEventCategory | null>(null);
+
+  const fetchCategory = async () => {
+    const category = await getCategoryById(event?.category_id ?? '');
+    setCategory(category);
+  };
+
+  useEffect(() => {
+    if (event?.category_id) {
+      fetchCategory();
+    }
+  }, [event?.category_id, getCategoryById]);
+  const { data: creator } = useById(event?.created_by);
 
   useEffect(() => {
     setTeamEmployees(employees || []);
@@ -167,17 +194,8 @@ export default function EventDetailPage() {
         .from('employee_assignments')
         .select('*')
         .eq('event_id', eventId);
-
-    })(); 
+    })();
   }, [eventId]);
-
-  const {
-    data: event,
-    isLoading,
-    error,
-  } = useGetEventByIdQuery(eventId, {
-    refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
-  });
 
   const { data: contact } = useGetContactByIdQuery(event?.contact_person_id);
   const { getById } = useLocations();
@@ -509,7 +527,7 @@ export default function EventDetailPage() {
 
   const handleAddChecklist = async (task: string, priority: string) => {
     setShowAddChecklistModal(false);
-  };  
+  };
 
   const handleDeleteOffer = useCallback(
     async (offerId: string) => {
@@ -588,7 +606,7 @@ export default function EventDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="mt-4 flex items-center gap-4">
           <button
             onClick={() => router.back()}
             className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
@@ -597,32 +615,34 @@ export default function EventDetailPage() {
           </button>
           <div>
             <div className="mb-2 flex items-center gap-3">
-              <h1 className="text-2xl font-light text-[#e5e4e2]">{event.name}</h1>
-              {!isEditingCategory && event.category && (
+              <h1 className="text-lg font-light text-[#e5e4e2] sm:text-xl md:text-2xl">
+                {event.name}
+              </h1>
+              {!isEditingCategory && category && (
                 <button
                   onClick={() => setIsEditingCategory(true)}
-                  className="flex items-center gap-2 rounded-lg border px-3 py-1 transition-opacity hover:opacity-80"
+                  className="items-center gap-2 rounded-lg border px-3 py-1 transition-opacity hover:opacity-80 sm:hidden"
                   style={{
-                    backgroundColor: `${event.category.color}20`,
-                    borderColor: `${event.category.color}50`,
-                    color: event.category.color,
+                    backgroundColor: `${category.color}20`,
+                    borderColor: `${category.color}50`,
+                    color: category.color,
                   }}
                 >
-                  {event.category?.icon ? (
+                  {category?.icon ? (
                     <div
                       className="h-4 w-4"
-                      style={{ color: event.category.color }}
-                      dangerouslySetInnerHTML={{ __html: event.category.icon.svg_code }}
+                      style={{ color: category.color }}
+                      dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
                     />
                   ) : (
                     <Tag className="h-4 w-4" />
                   )}
-                  <span className="text-sm font-medium">{event.category.name}</span>
+                  <span className="hidden text-sm font-medium sm:block">{category.name}</span>
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
+            <div className="flex flex-col items-start gap-1 text-sm text-[#e5e4e2]/60 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
               {event.client_type === 'business' && organization && (
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
@@ -645,18 +665,40 @@ export default function EventDetailPage() {
                   </span>
                 </div>
               )}
-              {event.creator && (
+              {creator && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
-                    Autor: {event.creator.name} {event.creator.surname}
+                    Autor: {creator.name} {creator.surname}
                   </span>
                 </div>
+              )}
+              {!isEditingCategory && category && (
+                <button
+                  onClick={() => setIsEditingCategory(true)}
+                  className="hidden items-center gap-2 rounded-lg border px-3 py-1 transition-opacity hover:opacity-80 sm:flex"
+                  style={{
+                    backgroundColor: `${category.color}20`,
+                    borderColor: `${category.color}50`,
+                    color: category.color,
+                  }}
+                >
+                  {category?.icon ? (
+                    <div
+                      className="h-4 w-4"
+                      style={{ color: category.color }}
+                      dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
+                    />
+                  ) : (
+                    <Tag className="h-4 w-4" />
+                  )}
+                  <span className="hidden text-sm font-medium sm:block">{category.name}</span>
+                </button>
               )}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-start justify-start">
           <ResponsiveActionBar actions={actions} />
         </div>
       </div>
