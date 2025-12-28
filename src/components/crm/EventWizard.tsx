@@ -25,7 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from './LocationSelector';
 import OfferWizard from '../../app/crm/offers/[id]/components/OfferWizzard/OfferWizard';
-import { EquipmentStep } from './EventWizardSteps';
+import { EquipmentStep, TeamStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
 import { ClientType } from '@/app/crm/clients/type';
 import { useEventEquipment } from '@/app/crm/events/hooks/useEventEquipment';
@@ -1149,8 +1149,22 @@ export default function EventWizard({
             </div>
           )}
 
-          {/* Steps 4-6 - proste wersje */}
-          {currentStep > 3 && (
+          {/* Step 4: Zespół */}
+          {currentStep === 4 && (
+            <div>
+              <TeamStep
+                assignTeam={assignTeam}
+                setAssignTeam={setAssignTeam}
+                selectedEmployees={selectedEmployees}
+                setSelectedEmployees={setSelectedEmployees}
+                employeesList={employeesList}
+                eventId={createdEventId}
+              />
+            </div>
+          )}
+
+          {/* Steps 5-6 - proste wersje */}
+          {currentStep > 4 && (
             <div className="py-12 text-center text-[#e5e4e2]/50">
               <p className="mb-4">
                 Krok {currentStep}: {currentStepInfo.name}

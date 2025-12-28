@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Trash2, Search, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Trash2, Search, Check, AlertCircle, Star, Award } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 // Step 2: Oferta
 export function OfferStep({
@@ -225,8 +226,41 @@ export function TeamStep({
   setAssignTeam,
   selectedEmployees,
   setSelectedEmployees,
-  employeesList
+  employeesList,
+  eventId
 }: any) {
+  const [suggestedEmployees, setSuggestedEmployees] = useState<any[]>([]);
+  const [requiredSkills, setRequiredSkills] = useState<any[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  useEffect(() => {
+    if (eventId && assignTeam) {
+      fetchSuggestions();
+    }
+  }, [eventId, assignTeam]);
+
+  const fetchSuggestions = async () => {
+    if (!eventId) return;
+
+    setLoadingSuggestions(true);
+    try {
+      const { data, error } = await supabase.rpc('suggest_employees_for_event', {
+        p_event_id: eventId,
+      });
+
+      if (error) throw error;
+
+      if (data) {
+        setRequiredSkills(data.required_skills || []);
+        setSuggestedEmployees(data.suggested_employees || []);
+      }
+    } catch (e: any) {
+      console.error('Błąd pobierania sugestii:', e?.message);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
   const toggleEmployee = (employee: any) => {
     const exists = selectedEmployees.find((e: any) => e.id === employee.id);
     if (exists) {
@@ -242,6 +276,16 @@ export function TeamStep({
         e.id === employeeId ? { ...e, role } : e
       )
     );
+  };
+
+  const getProficiencyColor = (proficiency: string) => {
+    switch (proficiency) {
+      case 'expert': return 'text-purple-400 bg-purple-500/20';
+      case 'advanced': return 'text-blue-400 bg-blue-500/20';
+      case 'intermediate': return 'text-green-400 bg-green-500/20';
+      case 'basic': return 'text-yellow-400 bg-yellow-500/20';
+      default: return 'text-[#e5e4e2]/60 bg-[#e5e4e2]/10';
+    }
   };
 
   return (
@@ -262,6 +306,94 @@ export function TeamStep({
 
       {assignTeam && (
         <div className="space-y-4">
+          {/* Wymagane umiejętności */}
+          {requiredSkills.length > 0 && (
+            <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-400" />
+                <h3 className="font-medium text-yellow-300">
+                  Wymagane umiejętności dla sprzętu
+                </h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {requiredSkills.map((skill: any) => (
+                  <div
+                    key={skill.skill_id}
+                    className="flex items-center gap-1 rounded-full bg-[#0a0d1a]/50 px-3 py-1 text-sm"
+                  >
+                    <span className="text-[#e5e4e2]">{skill.skill_name}</span>
+                    <span className="text-[#e5e4e2]/60">·</span>
+                    <span className={`text-xs ${getProficiencyColor(skill.minimum_proficiency).split(' ')[0]}`}>
+                      min. {skill.minimum_proficiency}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sugerowani pracownicy */}
+          {suggestedEmployees.length > 0 && (
+            <div className="mb-4 rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Star className="h-5 w-5 text-green-400" />
+                <h3 className="font-medium text-green-300">
+                  Sugerowani pracownicy ({suggestedEmployees.length})
+                </h3>
+              </div>
+              <p className="mb-3 text-sm text-green-200/80">
+                Ci pracownicy posiadają wymagane umiejętności:
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {suggestedEmployees.map((emp: any) => {
+                  const isSelected = selectedEmployees.some((e: any) => e.id === emp.employee_id);
+                  return (
+                    <button
+                      key={emp.employee_id}
+                      onClick={() => {
+                        const employee = employeesList.find((e: any) => e.id === emp.employee_id);
+                        if (employee) toggleEmployee(employee);
+                      }}
+                      className={`rounded-lg border p-3 text-left transition-all ${
+                        isSelected
+                          ? 'border-[#d3bb73] bg-[#d3bb73]/20'
+                          : 'border-green-500/30 bg-[#0a0d1a]/50 hover:border-green-500/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-[#e5e4e2]">{emp.employee_name}</span>
+                            <div className="flex items-center gap-1 rounded-full bg-green-500/20 px-2 py-0.5">
+                              <Award className="h-3 w-3 text-green-400" />
+                              <span className="text-xs text-green-400">
+                                {emp.match_percentage}% dopasowanie
+                              </span>
+                            </div>
+                          </div>
+                          <p className="mt-1 text-xs text-[#e5e4e2]/60">{emp.email}</p>
+                          {emp.skills && emp.skills.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {emp.skills.map((skill: any, idx: number) => (
+                                <span
+                                  key={idx}
+                                  className={`rounded px-2 py-0.5 text-xs ${getProficiencyColor(skill.proficiency)}`}
+                                >
+                                  {skill.skill_name} ({skill.proficiency})
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {isSelected && <Check className="ml-2 h-5 w-5 text-[#d3bb73]" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {selectedEmployees.length > 0 && (
             <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4">
               <h4 className="text-sm font-medium text-[#e5e4e2] mb-3">
