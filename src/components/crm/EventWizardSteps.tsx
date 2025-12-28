@@ -96,6 +96,8 @@ export function EquipmentStep({
   equipmentList
 }: any) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAddMore, setShowAddMore] = useState(false);
+
   const filteredEquipment = equipmentList.filter((eq: any) =>
     eq.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     eq.equipment_categories?.name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -118,6 +120,149 @@ export function EquipmentStep({
     );
   };
 
+  const removeEquipment = (equipmentId: string) => {
+    setSelectedEquipment(selectedEquipment.filter((e: any) => e.id !== equipmentId));
+  };
+
+  // Jeśli sprzęt został już zaimportowany z oferty
+  if (selectedEquipment.length > 0) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Check className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-300">
+                Sprzęt zaimportowany z oferty ({selectedEquipment.length} pozycji)
+              </p>
+              <p className="text-xs text-green-300/70 mt-1">
+                Poniższy sprzęt został automatycznie przypisany do eventu na podstawie utworzonej oferty
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-[#e5e4e2] mb-3">
+            Przypisany sprzęt
+          </h4>
+          <div className="space-y-2">
+            {selectedEquipment.map((eq: any) => (
+              <div
+                key={eq.id}
+                className="flex items-center justify-between py-3 px-4 bg-[#0f1117] rounded-lg"
+              >
+                <div className="flex items-center gap-3 flex-1">
+                  {eq.thumbnail_url && (
+                    <img
+                      src={eq.thumbnail_url}
+                      alt={eq.name}
+                      className="w-10 h-10 rounded object-cover"
+                    />
+                  )}
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-[#e5e4e2]">{eq.name}</div>
+                    {eq.type && (
+                      <div className="text-xs text-[#e5e4e2]/50 mt-0.5">
+                        {eq.type === 'kit' ? 'Zestaw' : 'Sprzęt'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#e5e4e2]/60">Ilość:</span>
+                    <input
+                      type="number"
+                      value={eq.quantity}
+                      onChange={(e) => updateQuantity(eq.id, parseInt(e.target.value))}
+                      className="w-16 px-2 py-1 bg-[#1c1f33] border border-[#d3bb73]/20 rounded text-[#e5e4e2] text-sm"
+                      min="1"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeEquipment(eq.id)}
+                    className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                    title="Usuń"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {!showAddMore && (
+          <div className="text-center">
+            <button
+              onClick={() => setShowAddMore(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 text-[#d3bb73] rounded-lg transition-colors text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj dodatkowy sprzęt
+            </button>
+          </div>
+        )}
+
+        {showAddMore && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium text-[#e5e4e2]">Dodaj więcej sprzętu</h4>
+              <button
+                onClick={() => setShowAddMore(false)}
+                className="text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                Anuluj
+              </button>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e4e2]/50" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Szukaj sprzętu..."
+                className="w-full pl-10 pr-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+              {filteredEquipment.map((equipment: any) => {
+                const isSelected = selectedEquipment.some((e: any) => e.id === equipment.id);
+                return (
+                  <button
+                    key={equipment.id}
+                    onClick={() => toggleEquipment(equipment)}
+                    className={`p-4 rounded-lg border text-left transition-all ${
+                      isSelected
+                        ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#e5e4e2]'
+                        : 'bg-[#1c1f33] border-[#d3bb73]/20 text-[#e5e4e2]/70 hover:border-[#d3bb73]/50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">{equipment.name}</div>
+                        {equipment.equipment_categories?.name && (
+                          <div className="text-xs text-[#e5e4e2]/50 mt-1">
+                            {equipment.equipment_categories.name}
+                          </div>
+                        )}
+                      </div>
+                      {isSelected && <Check className="w-5 h-5 text-[#d3bb73]" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Jeśli nie ma sprzętu - pokaż standardowy widok z checkboxem
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">

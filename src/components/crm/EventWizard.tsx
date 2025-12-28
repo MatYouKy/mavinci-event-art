@@ -257,14 +257,110 @@ export default function EventWizard({
         .select('id, name, quantity, product_id')
         .eq('offer_id', offer.id);
 
-      if (!offerItems || offerItems.length === 0) return;
+      if (!offerItems || offerItems.length === 0) {
+        showSnackbar('Budżet zaktualizowany z oferty', 'success');
+        return;
+      }
 
-      // Na razie nie ładujemy sprzętu automatycznie - user może dodać ręcznie
-      // Ta funkcjonalność będzie rozszerzona gdy zdefiniujemy strukturę produktów
+      // Pobierz sprzęt przypisany do produktów z oferty
+      const productIds = offerItems
+        .map((item) => item.product_id)
+        .filter((id): id is string => !!id);
 
-      showSnackbar('Budżet zaktualizowany z oferty', 'success');
+      if (productIds.length === 0) {
+        showSnackbar('Budżet zaktualizowany z oferty', 'success');
+        return;
+      }
+
+      // Pobierz sprzęt z offer_product_equipment dla wszystkich produktów
+      const { data: productEquipment, error: eqError } = await supabase
+        .from('offer_product_equipment')
+        .select('equipment_id, kit_id, quantity, notes')
+        .in('product_id', productIds);
+
+      if (eqError) throw eqError;
+
+      if (productEquipment && productEquipment.length > 0) {
+        // Wstaw sprzęt do event_equipment
+        const equipmentToInsert = productEquipment.map((eq) => ({
+          event_id: createdEventId,
+          equipment_id: eq.equipment_id || null,
+          kit_id: eq.kit_id || null,
+          quantity: eq.quantity || 1,
+          status: 'reserved',
+          source: 'offer',
+          notes: eq.notes || null,
+          auto_added: true,
+          offer_id: offer.id,
+        }));
+
+        const { error: insertError } = await supabase
+          .from('event_equipment')
+          .insert(equipmentToInsert);
+
+        if (insertError) throw insertError;
+
+        // Pobierz szczegóły sprzętu do wyświetlenia
+        const equipmentIds = productEquipment
+          .map((eq) => eq.equipment_id)
+          .filter((id): id is string => !!id);
+        const kitIds = productEquipment.map((eq) => eq.kit_id).filter((id): id is string => !!id);
+
+        let equipmentDetails: any[] = [];
+        let kitDetails: any[] = [];
+
+        if (equipmentIds.length > 0) {
+          const { data: eqData } = await supabase
+            .from('equipment_items')
+            .select('id, name, thumbnail_url')
+            .in('id', equipmentIds);
+          equipmentDetails = eqData || [];
+        }
+
+        if (kitIds.length > 0) {
+          const { data: kitData } = await supabase
+            .from('equipment_kits')
+            .select('id, name, thumbnail_url')
+            .in('id', kitIds);
+          kitDetails = kitData || [];
+        }
+
+        // Zaktualizuj state selectedEquipment
+        const mappedEquipment = productEquipment.map((eq) => {
+          if (eq.equipment_id) {
+            const detail = equipmentDetails.find((d) => d.id === eq.equipment_id);
+            return {
+              id: eq.equipment_id,
+              name: detail?.name || 'Sprzęt',
+              thumbnail_url: detail?.thumbnail_url,
+              quantity: eq.quantity,
+              type: 'item',
+            };
+          } else if (eq.kit_id) {
+            const detail = kitDetails.find((d) => d.id === eq.kit_id);
+            return {
+              id: eq.kit_id,
+              name: detail?.name || 'Zestaw',
+              thumbnail_url: detail?.thumbnail_url,
+              quantity: eq.quantity,
+              type: 'kit',
+            };
+          }
+          return null;
+        }).filter(Boolean);
+
+        setSelectedEquipment(mappedEquipment);
+        setAssignEquipment(true);
+
+        showSnackbar(
+          `Zaimportowano ${productEquipment.length} pozycji sprzętu z oferty`,
+          'success',
+        );
+      } else {
+        showSnackbar('Budżet zaktualizowany z oferty', 'success');
+      }
     } catch (err: any) {
-      showSnackbar('Błąd podczas ładowania sprzętu z oferty', 'error');
+      showSnackbar('Błąd podczas ładowania sprzętu z oferty: ' + err.message, 'error');
     }
   };
 
@@ -1127,26 +1223,13 @@ export default function EventWizard({
 
           {/* Step 3: Sprzęt */}
           {currentStep === 3 && (
-            <div className="mx-auto max-w-4xl space-y-6">
-              {selectedEquipment.length > 0 && (
-                <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
-                  <p className="mb-2 text-sm font-medium text-green-300">
-                    ✓ Załadowano sprzęt z oferty ({selectedEquipment.length} pozycji)
-                  </p>
-                  <p className="text-xs text-green-300/70">
-                    Możesz dodać więcej sprzętu lub kontynuować dalej
-                  </p>
-                </div>
-              )}
-
-              <EquipmentStep
-                assignEquipment={assignEquipment}
-                setAssignEquipment={setAssignEquipment}
-                selectedEquipment={selectedEquipment}
-                setSelectedEquipment={setSelectedEquipment}
-                equipmentList={equipmentList}
-              />
-            </div>
+            <EquipmentStep
+              assignEquipment={assignEquipment}
+              setAssignEquipment={setAssignEquipment}
+              selectedEquipment={selectedEquipment}
+              setSelectedEquipment={setSelectedEquipment}
+              equipmentList={equipmentList}
+            />
           )}
 
           {/* Step 4: Zespół */}
