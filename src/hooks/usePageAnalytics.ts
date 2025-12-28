@@ -21,7 +21,7 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
                        window.location.hostname === '::1';
 
     if (isLocalhost) {
-      showSnackbar('[Analytics] Skipped - running on localhost', 'error');
+      showSnackbar('[Analytics] Skipped - running on localhost', 'info');
       return;
     }
 

@@ -1057,6 +1057,7 @@ export default function EventWizard({
                   </label>
                   <input
                     type="datetime-local"
+                    min={eventData.event_date}
                     value={eventData.event_end_date}
                     onChange={(e) => setEventData({ ...eventData, event_end_date: e.target.value })}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
