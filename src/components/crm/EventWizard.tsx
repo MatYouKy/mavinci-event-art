@@ -288,7 +288,6 @@ export default function EventWizard({
           kit_id: eq.equipment_kit_id || null,
           quantity: eq.quantity || 1,
           status: 'reserved',
-          source: 'offer',
           notes: eq.notes || null,
           auto_added: true,
           offer_id: offer.id,
@@ -645,7 +644,6 @@ export default function EventWizard({
           equipment_id: eq.id,
           quantity: eq.quantity || 1,
           status: 'reserved',
-          source: 'offer',
         }));
         await supabase.from('event_equipment').insert(equipmentItems);
       }
