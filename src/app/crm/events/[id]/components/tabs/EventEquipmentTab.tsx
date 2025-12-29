@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Package, Plus, Printer } from 'lucide-react';
+import { Loader2, Package, Plus, Printer } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
@@ -25,6 +25,74 @@ import type {
 import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
 import { extractKitItemsFromRow, isKitRow } from '../../helpers/extractKitItemsFromRow';
 import Popover from '@/components/UI/Tooltip';
+import { useDialog } from '@/contexts/DialogContext';
+
+const KitItemRow = ({
+  thumb,
+  name,
+  meta,
+  qtyText,
+  brand,
+  model,
+  expandInPrint,
+}: {
+  thumb?: string;
+  name: string;
+  meta?: string;
+  qtyText: string;
+  brand: string;
+  model: string;
+  expandInPrint: boolean;
+}) => {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5">
+      {thumb ? (
+        <Popover
+          trigger={
+            <div className="relative h-10 w-10">
+              <img
+                src={thumb}
+                alt={name}
+                className="h-9 w-9 rounded border border-[#d3bb73]/20 object-cover"
+              />
+              {expandInPrint && (<div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                <Printer className="h-3 w-3 text-[#1c1f33]" />
+              </div>
+            )}
+            </div>
+          }
+          content={
+            <img
+              src={thumb}
+              alt={name}
+              className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+            />
+          }
+          openOn="hover"
+        />
+      ) : (
+        <div className="flex h-9 w-9 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+          <PackageIcon className="h-4 w-4 text-[#e5e4e2]/40" />
+        </div>
+      )}
+
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-[#e5e4e2]">{name}</div>
+        {meta && <div className="truncate text-xs text-[#e5e4e2]/50">{meta}</div>}
+        
+        <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+          {brand && <div className="truncate text-xs text-[#e5e4e2]/50">{brand}</div>}
+          {model && <div className="truncate text-xs text-[#e5e4e2]/50">{model}</div>}
+        </div>
+      </div>
+
+      <div className="text-right text-xs text-[#e5e4e2]/70">
+        <div className="font-medium text-[#e5e4e2]">{qtyText}</div>
+        <div className="text-[11px] text-[#e5e4e2]/35">razem</div>
+      </div>
+    </div>
+  );
+};
 
 type ItemType = 'item' | 'kit';
 type AvailKey = `${ItemType}-${string}`;
@@ -166,14 +234,13 @@ export const EventEquipmentTab: React.FC = () => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
-
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
   const { showSnackbar } = useSnackbar();
   const { event } = useEvent();
   const { employee } = useCurrentEmployee();
-
+  const { showConfirm } = useDialog();
   const eventId = (event?.id || '') as UUID;
 
   // ✅ guard na start: hook może być wywołany, ale wewnątrz i tak nie robimy fetchy bez ID
@@ -204,7 +271,7 @@ export const EventEquipmentTab: React.FC = () => {
     const isAuto = !!row?.auto_added;
 
     if (isAuto) {
-      if (!confirm('Usunąć tę pozycję z eventu (pochodzi z oferty)?')) return;
+      if (!showConfirm('Usunąć tę pozycję z eventu (pochodzi z oferty)?')) return;
 
       const ok = await updateEquipment(row.id, {
         removed_from_offer: true,
@@ -219,7 +286,7 @@ export const EventEquipmentTab: React.FC = () => {
       return;
     }
 
-    if (!confirm('Czy na pewno chcesz usunąć ten sprzęt z eventu?')) return;
+    if (!showConfirm('Czy na pewno chcesz usunąć ten sprzęt z eventu?')) return;
 
     const ok = await removeEquipment(row.id);
     if (ok) {
@@ -427,7 +494,6 @@ export const EventEquipmentTab: React.FC = () => {
     }
   };
 
-
   const manualKitRows = useMemo(
     () => (equipment || []).filter((r: any) => !r.auto_added && isKitRow(r)),
     [equipment],
@@ -447,26 +513,26 @@ export const EventEquipmentTab: React.FC = () => {
     [equipment],
   );
 
-
-
   const renderKitRow = (row: any, editable: boolean) => {
     console.log('row', row);
     const isExpanded = expandedKits.has(row.id);
 
-    const kitName =
-      row?.kit?.name || row?.equipment_kits?.name || row?.name || 'Zestaw';
+    const kitName = row?.kit?.name || row?.equipment_kits?.name || row?.name || 'Zestaw';
 
     const kitThumb = row?.kit?.thumbnail_url || row?.equipment_kits?.thumbnail_url || '';
-  
+
     const key = getKeyForEventRow(row); // "kit-<id>"
     const limits = getUiLimits((availabilityByKey as any)?.[key]);
     const qty = Number(row?.quantity || 1);
     const badge = getStatusBadge(row?.status);
-  
+
     const expandInPrint = !!row?.expand_kit_in_checklist;
-  
-    const kitItems = extractKitItemsFromRow(row) || [];
-  
+
+    const kitItemsRaw =
+      row?.kit?.items ||
+      row?.equipment_kits?.equipment_kit_items ||
+      row?.equipment_kits?.equipment_kit_items || // zależnie od joinów
+      [];
     const toggleExpand = () => {
       setExpandedKits((prev) => {
         const next = new Set(prev);
@@ -474,7 +540,7 @@ export const EventEquipmentTab: React.FC = () => {
         return next;
       });
     };
-  
+
     return (
       <div key={row.id}>
         {/* GŁÓWNY WIERSZ – 1:1 jak ProductEquipmentRow */}
@@ -489,7 +555,7 @@ export const EventEquipmentTab: React.FC = () => {
               className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
             />
           </button>
-  
+
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {/* THUMB + KIT BADGE */}
             {kitThumb ? (
@@ -523,17 +589,19 @@ export const EventEquipmentTab: React.FC = () => {
                 </div>
               </div>
             )}
-  
+
             {/* NAZWA + status */}
             <div className="flex min-w-0 flex-col">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-medium text-[#e5e4e2]">{kitName}</span>
-  
-                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${badge.cls}`}>
+
+                <span
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${badge.cls}`}
+                >
                   {badge.label}
                 </span>
               </div>
-  
+
               <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/50">
                 <span>
                   możesz dodać jeszcze <span className="text-[#d3bb73]">{limits.maxAdd}</span>
@@ -545,7 +613,7 @@ export const EventEquipmentTab: React.FC = () => {
               </div>
             </div>
           </div>
-  
+
           {/* ilość + checkbox print */}
           <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/40">
             {editingQuantityId === row.id ? (
@@ -557,7 +625,7 @@ export const EventEquipmentTab: React.FC = () => {
                 >
                   ✓
                 </button>
-  
+
                 <button
                   className="rounded border border-[#d3bb73]/30 px-2 py-0.5 text-[#e5e4e2]/70 hover:text-red-400"
                   onClick={() => {
@@ -568,7 +636,7 @@ export const EventEquipmentTab: React.FC = () => {
                 >
                   ✕
                 </button>
-  
+
                 <input
                   type="number"
                   min={1}
@@ -578,7 +646,7 @@ export const EventEquipmentTab: React.FC = () => {
                   className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-sm text-[#e5e4e2]"
                   autoFocus
                 />
-  
+
                 <span className="text-[#e5e4e2]/60">szt.</span>
               </span>
             ) : (
@@ -593,92 +661,90 @@ export const EventEquipmentTab: React.FC = () => {
                 {qty} <span className="text-[#e5e4e2]/60">szt.</span>
               </span>
             )}
-  
-            <label className="hidden items-center gap-2 md:flex">
-              <input
-                type="checkbox"
-                checked={expandInPrint}
-                onChange={(e) => handleToggleExpandInChecklist(row.id, e.target.checked)}
-                className="h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
-              />
-              <span className="text-xs text-[#e5e4e2]/50">drukuj zawartość</span>
-            </label>
+
+            {/* ilość + print toggle */}
+            <div className="flex items-center gap-3 text-sm text-[#e5e4e2]/40">
+              {/* ilość (zostaje jak masz) */}
+              {editingQuantityId === row.id ? (
+                /* ... Twoja edycja qty bez zmian ... */
+                <span className="inline-flex items-center gap-2">{/* ... */}</span>
+              ) : (
+                <span
+                  className={`text-[#e5e4e2] ${editable ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
+                  onClick={() => {
+                    if (!editable) return;
+                    setEditingQuantityId(row.id);
+                    setDraftQuantity(qty);
+                  }}
+                >
+                  {qty} <span className="text-[#e5e4e2]/60">szt.</span>
+                </span>
+              )}
+            </div>
           </div>
-  
+
           {/* trash */}
           {editable && (
             <div className="flex items-center gap-2 rounded-lg p-2 pt-2 text-red-400/60 transition-colors hover:bg-red-400/10 hover:text-red-400">
-              <button onClick={() => handleRemoveEquipment(row)} aria-label="Usuń zestaw">
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <ResponsiveActionBar
+                disabledBackground
+                actions={[
+                  {
+                    label: 'Usuń zestaw',
+                    onClick: () => handleRemoveEquipment(row),
+                    icon: <Trash2 className="h-4 w-4" />,
+                    variant: 'danger',
+                  },
+                  {
+                    label:  expandInPrint ? 'ukryj zawartość' : 'drukuj zawartość',
+                    onClick: () => handleToggleExpandInChecklist(row.id, !expandInPrint),
+                    icon: expandInPrint ? (
+                      <Printer className="h-4 w-4" />
+                    ) : (
+                      <Printer className="h-4 w-4" />
+                    ),
+                    variant: 'default',
+                  },
+                ]}
+              />
             </div>
           )}
         </div>
-  
+
         {/* ROZWINIĘTA ZAWARTOŚĆ – “pod-wiersze” */}
         {isExpanded && (
-          <div className="ml-9 mt-1 space-y-1">
-            {kitItems.length === 0 ? (
+          <div className="ml-4 mt-2 space-y-2 md:ml-9">
+            {/* reszta: zawartość */}
+            {kitItemsRaw.length === 0 ? (
               <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-sm text-[#e5e4e2]/50">
                 Brak danych o zawartości zestawu.
               </div>
             ) : (
-              kitItems.map((it: any, idx: number) => {
-                const itemThumb =
-                  it.thumbnail_url ||
-                  it?.equipment_items?.thumbnail_url ||
-                  it?.image_url ||
-                  it?.equipment_items?.image_url ||
-                  '';
-  
+              kitItemsRaw.map((it: any, idx: number) => {
+                const eq = it?.equipment || it?.equipment_items || it?.equipment_item || null;
+
+                const itemThumb = eq?.thumbnail_url || eq?.image_url || it?.thumbnail_url || '';
+                const itemId = eq?.id || it?.equipment_item_id || it?.equipment_id;
+                const name = eq?.name || it?.name;
+                const brand = eq?.brand || it?.brand || '';
+                const model = eq?.model || it?.model || '';
+                const perKit = Number(it?.quantity || 1);
+                console.log('it', it);
+
                 const meta = [it.brand, it.model].filter(Boolean).join(' • ');
-                const perKit = Number(it.quantity || 1);
                 const total = perKit * qty;
-  
+
                 return (
-                  <div
-                    key={`${it.name}-${idx}`}
-                    className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5"
-                  >
-                    {/* thumb */}
-                    {itemThumb ? (
-                      <Popover
-                        trigger={
-                          <img
-                            src={itemThumb}
-                            alt={it.name}
-                            className="h-9 w-9 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
-                          />
-                        }
-                        content={
-                          <img
-                            src={itemThumb}
-                            alt={it.name}
-                            className="h-auto cursor-pointer rounded-lg object-contain transition-all"
-                          />
-                        }
-                        openOn="hover"
-                      />
-                    ) : (
-                      <div className="flex h-9 w-9 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
-                        <PackageIcon className="h-4 w-4 text-[#e5e4e2]/40" />
-                      </div>
-                    )}
-  
-                    {/* name */}
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-[#e5e4e2]">{it.name}</div>
-                      {meta && <div className="text-xs text-[#e5e4e2]/50">{meta}</div>}
-                    </div>
-  
-                    {/* qty summary */}
-                    <div className="text-right text-xs text-[#e5e4e2]/60">
-                      <div>
-                        {perKit}×{qty} = <span className="text-[#e5e4e2]">{total}</span>
-                      </div>
-                      <div className="text-[11px] text-[#e5e4e2]/35">razem</div>
-                    </div>
-                  </div>
+                  <KitItemRow
+                    key={`${itemId}-${idx}`}
+                    thumb={itemThumb}
+                    name={name}
+                    meta={meta}
+                    qtyText={`${perKit}×${qty} = ${total}`}
+                    brand={brand}
+                    model={model}
+                    expandInPrint={expandInPrint}
+                  />
                 );
               })
             )}

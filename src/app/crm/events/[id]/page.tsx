@@ -64,6 +64,10 @@ import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal
 import { useEmployees } from '../../employees/hooks/useEmployees';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { useEventCategories } from '../../event-categories/hook/useEventCategories';
+import { useEvent } from '../hooks/useEvent';
+import EventStatusSelectModal from '@/components/crm/EventStatusEditor';
+import { EventStatus } from '@/components/crm/Calendar/types';
+import EventDetailsAction from './components/tabs/EventsDetailsTab/EventDetailsAction';
 
 interface Equipment {
   kit_id: unknown;
@@ -98,6 +102,7 @@ interface ChecklistItem {
 }
 
 const statusColors: Record<string, string> = {
+  ready_for_live: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
   offer_sent: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
   offer_accepted: 'bg-green-500/10 text-green-400 border-green-500/20',
   in_preparation: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
@@ -107,7 +112,8 @@ const statusColors: Record<string, string> = {
   invoiced: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
 };
 
-const statusLabels: Record<string, string> = {
+export const statusLabels: Record<EventStatus, string> = {
+  ready_for_live: 'Gotowy do realizacji',
   offer_sent: 'Oferta wysłana',
   offer_accepted: 'Oferta zaakceptowana',
   in_preparation: 'W przygotowaniu',
@@ -115,6 +121,8 @@ const statusLabels: Record<string, string> = {
   completed: 'Zakończony',
   cancelled: 'Anulowany',
   invoiced: 'Rozliczony',
+  inquiry: 'Zapytanie',
+  offer_to_send: 'Oferta do wysłania',
 };
 
 export default function EventDetailPage() {
@@ -131,28 +139,20 @@ export default function EventDetailPage() {
   const { employees } = useEventTeam(eventId);
   const { useById } = useEmployees();
   const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
+  const { event: eventData, updateEvent } = useEvent();
 
   const {
     data: event,
+    status: eventStatus,
     isLoading,
     error,
   } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
 
-  const { getCategoryById } = useEventCategories();
-  const [category, setCategory] = useState<IEventCategory | null>(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
 
-  const fetchCategory = async () => {
-    const category = await getCategoryById(event?.category_id ?? '');
-    setCategory(category);
-  };
 
-  useEffect(() => {
-    if (event?.category_id) {
-      fetchCategory();
-    }
-  }, [event?.category_id, getCategoryById]);
   const { data: creator } = useById(event?.created_by);
 
   useEffect(() => {
@@ -228,8 +228,6 @@ export default function EventDetailPage() {
     | 'agenda'
     | 'history'
   >('overview');
-
-  const [isEditingCategory, setIsEditingCategory] = useState(false);
 
   const [categories, setCategories] = useState<IEventCategory[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -406,23 +404,7 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleUpdateCategory = async (categoryId: string) => {
-    if (!event) return;
 
-    try {
-      const { error } = await supabase
-        .from('events')
-        .update({ category_id: categoryId || null })
-        .eq('id', eventId);
-
-      if (error) throw error;
-
-      setIsEditingCategory(false);
-    } catch (err) {
-      console.error('Error updating category:', err);
-      alert('Błąd podczas aktualizacji kategorii');
-    }
-  };
 
   const handleDeleteEvent = async () => {
     if (!event) return;
@@ -616,28 +598,6 @@ export default function EventDetailPage() {
               <h1 className="text-lg font-light text-[#e5e4e2] sm:text-xl md:text-2xl">
                 {event.name}
               </h1>
-              {!isEditingCategory && category && (
-                <button
-                  onClick={() => setIsEditingCategory(true)}
-                  className="items-center gap-2 rounded-lg border px-3 py-1 transition-opacity hover:opacity-80 sm:hidden"
-                  style={{
-                    backgroundColor: `${category.color}20`,
-                    borderColor: `${category.color}50`,
-                    color: category.color,
-                  }}
-                >
-                  {category?.icon ? (
-                    <div
-                      className="h-4 w-4"
-                      style={{ color: category.color }}
-                      dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
-                    />
-                  ) : (
-                    <Tag className="h-4 w-4" />
-                  )}
-                  <span className="hidden text-sm font-medium sm:block">{category.name}</span>
-                </button>
-              )}
             </div>
 
             <div className="flex flex-col items-start gap-1 text-sm text-[#e5e4e2]/60 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
@@ -671,28 +631,16 @@ export default function EventDetailPage() {
                   </span>
                 </div>
               )}
-              {!isEditingCategory && category && (
-                <button
-                  onClick={() => setIsEditingCategory(true)}
-                  className="hidden items-center gap-2 rounded-lg border px-3 py-1 transition-opacity hover:opacity-80 sm:flex"
-                  style={{
-                    backgroundColor: `${category.color}20`,
-                    borderColor: `${category.color}50`,
-                    color: category.color,
-                  }}
-                >
-                  {category?.icon ? (
-                    <div
-                      className="h-4 w-4"
-                      style={{ color: category.color }}
-                      dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
-                    />
-                  ) : (
-                    <Tag className="h-4 w-4" />
-                  )}
-                  <span className="hidden text-sm font-medium sm:block">{category.name}</span>
-                </button>
-              )}
+
+              <EventStatusSelectModal
+                isOpen={showStatusModal}
+                onClose={() => setShowStatusModal(false)}
+                eventId={eventId}
+                currentStatus={eventData?.status ?? 'inquiry'}
+                onStatusChange={(newStatus: EventStatus) => {
+                  updateEvent({ status: newStatus });
+                }}
+              />
             </div>
           </div>
         </div>
@@ -856,34 +804,41 @@ export default function EventDetailPage() {
 
           <div className="space-y-6">
             {(isUserAdmin || hasScope('finances_manage') || hasScope('finances_view')) && (
-              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-                <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Budżet</h2>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
-                    <p className="text-2xl font-light text-[#d3bb73]">
-                      {event.expected_revenue
-                        ? event.expected_revenue.toLocaleString('pl-PL')
-                        : '0'}{' '}
-                      zł
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
-                    <p className="text-2xl font-light text-[#e5e4e2]">
-                      {event.actual_revenue ? event.actual_revenue.toLocaleString('pl-PL') : '0'} zł
-                    </p>
-                  </div>
-                  {event.expected_revenue && event.expected_revenue > 0 && event.actual_revenue && (
+              <>
+                {' '}
+                <EventDetailsAction event={event} />
+                <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+                  <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Budżet</h2>
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-[#e5e4e2]/60">Marża realizacji</p>
-                      <p className="text-xl font-light text-[#e5e4e2]">
-                        {((event.actual_revenue / event.expected_revenue) * 100).toFixed(1)}%
+                      <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
+                      <p className="text-2xl font-light text-[#d3bb73]">
+                        {event.expected_revenue
+                          ? event.expected_revenue.toLocaleString('pl-PL')
+                          : '0'}{' '}
+                        zł
                       </p>
                     </div>
-                  )}
+                    <div>
+                      <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
+                      <p className="text-2xl font-light text-[#e5e4e2]">
+                        {event.actual_revenue ? event.actual_revenue.toLocaleString('pl-PL') : '0'}{' '}
+                        zł
+                      </p>
+                    </div>
+                    {event.expected_revenue &&
+                      event.expected_revenue > 0 &&
+                      event.actual_revenue && (
+                        <div>
+                          <p className="text-sm text-[#e5e4e2]/60">Marża realizacji</p>
+                          <p className="text-xl font-light text-[#e5e4e2]">
+                            {((event.actual_revenue / event.expected_revenue) * 100).toFixed(1)}%
+                          </p>
+                        </div>
+                      )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">

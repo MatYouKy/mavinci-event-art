@@ -40,9 +40,9 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   contact,
   organization,
   location,
-
 }) => {
   const { event, updateEvent } = useEvent();
+  console.log('event', event);
 
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);

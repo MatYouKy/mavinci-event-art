@@ -21,8 +21,8 @@ import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { Modal } from '@/components/UI/Modal';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
-import EventStatusEditor from '@/components/crm/EventStatusEditor';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import { EventStatusBadge } from './UI/EventStatusBadge';
 
 const getOrgLabel = (org?: any) => org?.alias || org?.name || 'Brak klienta';
 
@@ -69,15 +69,6 @@ const statusColors = {
   in_progress: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   completed: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   invoiced: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-};
-
-const statusLabels = {
-  offer_sent: 'Oferta wysłana',
-  offer_accepted: 'Zaakceptowana',
-  in_preparation: 'Przygotowanie',
-  in_progress: 'W trakcie',
-  completed: 'Zakończony',
-  invoiced: 'Rozliczony',
 };
 
 const stop = (e: React.MouseEvent) => {
@@ -874,7 +865,7 @@ export default function EventsPage() {
                   <div
                     className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
                   >
-                    {statusLabels[event.status]}
+                    <EventStatusBadge status={event.status} />
                   </div>
 
                   {event.event_categories && (
@@ -894,11 +885,7 @@ export default function EventsPage() {
 
                 {/* Editor – na mobile często zjada miejsce, więc chowamy i pokazujemy od md */}
                 <div className="mt-3 hidden md:block">
-                  <EventStatusEditor
-                    eventId={event.id}
-                    currentStatus={event.status}
-                    onStatusChange={() => {}}
-                  />
+                  <EventStatusBadge status={event.status} />
                 </div>
               </div>
             );
@@ -908,7 +895,7 @@ export default function EventsPage() {
           return (
             <div
               key={event.id}
-              className={`relative rounded-xl border bg-[#1c1f33] p-2 sm:p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 cursor-pointer ${
+              className={`relative cursor-pointer rounded-xl border bg-[#1c1f33] p-2 transition-all hover:border-[#d3bb73]/30 sm:p-4 md:p-6 ${
                 isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
               }`}
               onClick={() => router.push(`/crm/events/${event.id}`)}
@@ -975,7 +962,7 @@ export default function EventsPage() {
                     <div
                       className={`rounded-full border px-3 py-1 text-xs ${statusColors[event.status]}`}
                     >
-                      {statusLabels[event.status]}
+                     <EventStatusBadge status={event.status} />
                     </div>
                     {event.event_categories && (
                       <div className="flex items-center gap-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
@@ -1020,7 +1007,7 @@ export default function EventsPage() {
                 <div
                   className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
                 >
-                  {statusLabels[event.status]}
+                  <EventStatusBadge status={event.status} />
                 </div>
                 {event.event_categories && (
                   <div className="rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">

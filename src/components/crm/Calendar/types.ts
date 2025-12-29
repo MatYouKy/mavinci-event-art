@@ -19,6 +19,7 @@ export type EventStatus =
   | 'offer_sent'
   | 'offer_accepted'
   | 'in_preparation'
+  | 'ready_for_live'
   | 'in_progress'
   | 'completed'
   | 'cancelled'
