@@ -1,23 +1,28 @@
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { DollarSign, Loader2, Plus, Trash2 } from 'lucide-react';
+import { DollarSign, Loader2, Plus, Send, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { Dispatch, SetStateAction, useState } from 'react';
 
 interface EventTabOfferProps {
   offers: any[];
   isConfirmed: boolean;
+  eventStatus: string;
   setShowCreateOfferModal: Dispatch<SetStateAction<boolean>>;
   handleDeleteOffer: (offerId: string) => Promise<void>;
+  handleSendOffer: () => Promise<void>;
 }
 
 export default function EventTabOffer({
   offers,
   isConfirmed,
+  eventStatus,
   setShowCreateOfferModal,
   handleDeleteOffer,
+  handleSendOffer,
 }: EventTabOfferProps) {
   const router = useRouter();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sendingOffer, setSendingOffer] = useState(false);
 
   const handleDeleteOfferLocal = async (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -34,6 +39,22 @@ export default function EventTabOffer({
     }
   };
 
+  const handleSendOfferLocal = async () => {
+    try {
+      setSendingOffer(true);
+      await handleSendOffer();
+    } catch (error) {
+      console.error('Error sending offer:', error);
+    } finally {
+      setSendingOffer(false);
+    }
+  };
+
+  // Przycisk "Wyślij ofertę" jest widoczny tylko gdy:
+  // - Jest przynajmniej jedna oferta
+  // - Status eventu to 'offer_to_send'
+  const showSendOfferButton = offers.length > 0 && eventStatus === 'offer_to_send';
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -44,6 +65,21 @@ export default function EventTabOffer({
           </div>
           <ResponsiveActionBar
             actions={[
+              ...(showSendOfferButton
+                ? [
+                    {
+                      label: 'Wyślij ofertę',
+                      onClick: handleSendOfferLocal,
+                      variant: 'success' as const,
+                      icon: sendingOffer ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      ),
+                      disabled: sendingOffer,
+                    },
+                  ]
+                : []),
               {
                 label: 'Nowa oferta',
                 onClick: () => setShowCreateOfferModal(true),

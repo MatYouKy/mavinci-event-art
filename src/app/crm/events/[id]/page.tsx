@@ -48,7 +48,11 @@ import { EventContractTab } from './components/tabs/EventContractTab';
 import { AddChecklistModal } from './components/Modals/AddChecklistModal';
 import { TeamMembersList } from './components/AddMembersList';
 import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
-import { useGetEventByIdQuery, useGetEventEmployeesQuery } from '../store/api/eventsApi';
+import {
+  useGetEventByIdQuery,
+  useGetEventEmployeesQuery,
+  useUpdateEventMutation,
+} from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useOfferActions } from '../../offers/hooks/useOfferById';
 import { useEventEquipment, useEventOffers, useEventTeam, useEventAuditLog } from '../hooks';
@@ -149,6 +153,8 @@ export default function EventDetailPage() {
   } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
+
+  const [updateEventMutation] = useUpdateEventMutation();
 
   const [showStatusModal, setShowStatusModal] = useState(false);
 
@@ -531,6 +537,27 @@ export default function EventDetailPage() {
     [deleteOfferById, showConfirm, showSnackbar, refetchOffers],
   );
 
+  const handleSendOffer = useCallback(async () => {
+    try {
+      const confirmed = await showConfirm(
+        'Czy na pewno chcesz wysłać ofertę?',
+        'Status eventu zostanie zmieniony na "Oferta wysłana".',
+      );
+
+      if (!confirmed) return;
+
+      await updateEventMutation({
+        id: eventId,
+        data: { status: 'offer_sent' as any },
+      }).unwrap();
+
+      showSnackbar('Status eventu został zmieniony na "Oferta wysłana"', 'success');
+    } catch (err) {
+      console.error('Error sending offer:', err);
+      showSnackbar('Błąd podczas zmiany statusu eventu', 'error');
+    }
+  }, [eventId, updateEventMutation, showConfirm, showSnackbar]);
+
   const actions = useMemo<Action[]>(() => {
     return [
       {
@@ -910,8 +937,10 @@ export default function EventDetailPage() {
         <EventTabOffer
           offers={offers}
           isConfirmed={isConfirmed}
+          eventStatus={event?.status || 'inquiry'}
           setShowCreateOfferModal={setShowCreateOfferModal}
           handleDeleteOffer={handleDeleteOffer}
+          handleSendOffer={handleSendOffer}
         />
       )}
 
