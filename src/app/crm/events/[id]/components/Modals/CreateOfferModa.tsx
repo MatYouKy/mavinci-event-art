@@ -1,6 +1,7 @@
-import { supabase } from '@/lib/supabase';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useEventOffers } from '../../../hooks/useEventOffers';
 
 export function CreateOfferModal({
   isOpen,
@@ -15,6 +16,8 @@ export function CreateOfferModal({
   clientId: string;
   onSuccess: () => void;
 }) {
+  const { createOffer, isCreating } = useEventOffers(eventId);
+  const { showSnackbar } = useSnackbar();
   const [formData, setFormData] = useState({
     offer_number: '',
     valid_until: '',
@@ -26,7 +29,6 @@ export function CreateOfferModal({
   const handleSubmit = async () => {
     try {
       const offerData: any = {
-        event_id: eventId,
         client_id: clientId,
         valid_until: formData.valid_until || null,
         notes: formData.notes || null,
@@ -38,22 +40,17 @@ export function CreateOfferModal({
         offerData.offer_number = formData.offer_number;
       }
 
-      const { data, error } = await supabase.from('offers').insert([offerData]).select();
+      const data = await createOffer(offerData);
 
-      if (error) {
-        console.error('Error creating offer:', error);
-        alert('Błąd podczas tworzenia oferty: ' + error.message);
-        return;
-      }
-
-      if (data && data[0]) {
-        alert(`Utworzono ofertę: ${data[0].offer_number}`);
+      if (data) {
+        showSnackbar(`Utworzono ofertę: ${data.offer_number}`, 'success');
       }
 
       onSuccess();
-    } catch (err) {
+      onClose();
+    } catch (err: any) {
       console.error('Error:', err);
-      alert('Wystąpił błąd podczas tworzenia oferty');
+      showSnackbar(err?.message || 'Wystąpił błąd podczas tworzenia oferty', 'error');
     }
   };
 
@@ -119,13 +116,22 @@ export function CreateOfferModal({
           <div className="flex gap-3 pt-4">
             <button
               onClick={handleSubmit}
-              className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              disabled={isCreating}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
-              Utwórz ofertę
+              {isCreating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Tworzenie...
+                </>
+              ) : (
+                'Utwórz ofertę'
+              )}
             </button>
             <button
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+              disabled={isCreating}
+              className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
             >
               Anuluj
             </button>

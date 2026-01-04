@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { X, Send, Mail, Loader } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useUpdateEventOfferMutation } from '@/app/crm/events/store/api/eventsApi';
 
 interface SendOfferEmailModalProps {
   offerId: string;
   offerNumber: string;
   clientEmail?: string;
   clientName?: string;
+  eventId?: string;
   onClose: () => void;
   onSent?: () => void;
 }
@@ -19,10 +21,12 @@ export default function SendOfferEmailModal({
   offerNumber,
   clientEmail = '',
   clientName = '',
+  eventId,
   onClose,
   onSent,
 }: SendOfferEmailModalProps) {
   const { showSnackbar } = useSnackbar();
+  const [updateOffer] = useUpdateEventOfferMutation();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     to: clientEmail,
@@ -83,10 +87,18 @@ W razie pytań proszę o kontakt.`,
         throw new Error(error.message || 'Błąd podczas wysyłania email');
       }
 
-      await supabase
-        .from('offers')
-        .update({ status: 'sent' })
-        .eq('id', offerId);
+      if (eventId) {
+        await updateOffer({
+          eventId,
+          offerId,
+          data: { status: 'sent' },
+        }).unwrap();
+      } else {
+        await supabase
+          .from('offers')
+          .update({ status: 'sent' })
+          .eq('id', offerId);
+      }
 
       showSnackbar('Oferta wysłana przez email', 'success');
       onSent?.();

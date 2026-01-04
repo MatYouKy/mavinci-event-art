@@ -556,7 +556,35 @@ export const eventsApi = createApi({
       ],
     }),
 
-    updateEventOffer: builder.mutation<IOfferItem, { eventId: string; offerId: string; data: any }>(
+    createEventOffer: builder.mutation<
+      any,
+      { eventId: string; offerData: any }
+    >({
+      async queryFn({ eventId, offerData }) {
+        try {
+          const { data, error } = await supabase
+            .from('offers')
+            .insert([{ ...offerData, event_id: eventId }])
+            .select()
+            .single();
+
+          if (error) throw error;
+          return { data };
+        } catch (error: any) {
+          return {
+            error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
+          };
+        }
+      },
+      invalidatesTags: (_res, _err, { eventId }) => [
+        { type: 'EventOffers', id: `${eventId}_LIST` },
+        { type: 'EventDetails', id: eventId },
+        { type: 'Events', id: eventId },
+        { type: 'Events', id: 'LIST' },
+      ],
+    }),
+
+    updateEventOffer: builder.mutation<any, { eventId: string; offerId: string; data: any }>(
       {
         async queryFn({ offerId, data }) {
           try {
@@ -568,7 +596,7 @@ export const eventsApi = createApi({
               .single();
 
             if (error) throw error;
-            return { data: updated as IOfferItem };
+            return { data: updated };
           } catch (error: any) {
             return {
               error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
@@ -579,12 +607,14 @@ export const eventsApi = createApi({
           { type: 'EventOffers', id: `${eventId}_LIST` },
           { type: 'EventOffers', id: offerId },
           { type: 'EventDetails', id: eventId },
+          { type: 'Events', id: eventId },
+          { type: 'Events', id: 'LIST' },
         ],
       },
     ),
 
     // ============ OFFERS ENDPOINTS ============
-    getEventOffers: builder.query<IOfferItem[], string>({
+    getEventOffers: builder.query<any[], string>({
       async queryFn(eventId) {
         try {
           const { data, error } = await supabase
@@ -601,7 +631,7 @@ export const eventsApi = createApi({
             .order('created_at', { ascending: false });
 
           if (error) throw error;
-          return { data: (data || []) as unknown as IOfferItem[] };
+          return { data: data || [] };
         } catch (error: any) {
           return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
@@ -875,6 +905,9 @@ export const {
   useAddEventEmployeeMutation,
   useRemoveEventEmployeeMutation,
   useGetEventOffersQuery,
+  useCreateEventOfferMutation,
+  useDeleteEventOfferMutation,
+  useUpdateEventOfferMutation,
   useGetEventAuditLogQuery,
   useGetEventTasksQuery,
   useGetEventFilesQuery,
@@ -886,7 +919,5 @@ export const {
   useDeleteAgendaItemMutation,
   useGetEventContractsQuery,
   useGetEventByIdQuery,
-  useDeleteEventOfferMutation,
-  useUpdateEventOfferMutation,
   useLazyGetEventByIdQuery,
 } = eventsApi;

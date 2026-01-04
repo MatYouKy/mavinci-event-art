@@ -42,6 +42,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 import EditEventModalNew from '@/components/crm/EditEventModalNew';
+import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 import EventTabOffer from './components/tabs/EventTabOffer';
 import { EventsDetailsTab } from './components/tabs/EventsDetailsTab/EventsDetailsTab';
 import { EventContractTab } from './components/tabs/EventContractTab';
@@ -534,26 +535,32 @@ export default function EventDetailPage() {
     [removeOffer, showConfirm, showSnackbar],
   );
 
+  const [showSendOfferModal, setShowSendOfferModal] = useState(false);
+  const [selectedOfferToSend, setSelectedOfferToSend] = useState<any>(null);
+
   const handleSendOffer = useCallback(async () => {
+    const latestOffer = offers.find((o) => o.status === 'draft');
+    if (!latestOffer) {
+      showSnackbar('Brak oferty do wysłania', 'error');
+      return;
+    }
+    setSelectedOfferToSend(latestOffer);
+    setShowSendOfferModal(true);
+  }, [offers, showSnackbar]);
+
+  const handleOfferSent = useCallback(async () => {
     try {
-      const confirmed = await showConfirm(
-        'Czy na pewno chcesz wysłać ofertę?',
-        'Status eventu zostanie zmieniony na "Oferta wysłana".',
-      );
-
-      if (!confirmed) return;
-
       await updateEventMutation({
         id: eventId,
         data: { status: 'offer_sent' as any },
       }).unwrap();
-
-      showSnackbar('Status eventu został zmieniony na "Oferta wysłana"', 'success');
+      showSnackbar('Oferta została wysłana', 'success');
+      setShowSendOfferModal(false);
+      setSelectedOfferToSend(null);
     } catch (err) {
-      console.error('Error sending offer:', err);
-      showSnackbar('Błąd podczas zmiany statusu eventu', 'error');
+      console.error('Error updating event status:', err);
     }
-  }, [eventId, updateEventMutation, showConfirm, showSnackbar]);
+  }, [eventId, updateEventMutation, showSnackbar]);
 
   const actions = useMemo<Action[]>(() => {
     return [
@@ -1280,6 +1287,21 @@ export default function EventDetailPage() {
             setShowCreateOfferModal(false);
             setActiveTab('offer');
           }}
+        />
+      )}
+
+      {showSendOfferModal && selectedOfferToSend && event && (
+        <SendOfferEmailModal
+          offerId={selectedOfferToSend.id}
+          offerNumber={selectedOfferToSend.offer_number}
+          eventId={eventId}
+          clientEmail={event.contact_person?.email || ''}
+          clientName={event.contact_person?.full_name || event.organization?.name || ''}
+          onClose={() => {
+            setShowSendOfferModal(false);
+            setSelectedOfferToSend(null);
+          }}
+          onSent={handleOfferSent}
         />
       )}
     </div>

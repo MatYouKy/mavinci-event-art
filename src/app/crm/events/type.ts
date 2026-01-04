@@ -6,6 +6,36 @@ import { IOfferItem } from '../offers/types';
 
 export type SelectedItem = { id: string; quantity: number; notes: string; type: 'item' | 'kit' };
 
+export interface IOffer {
+  id: string;
+  offer_number: string;
+  event_id: string;
+  client_id?: string | null;
+  created_by?: string | null;
+  total_amount?: number;
+  valid_until?: string | null;
+  status: string;
+  pdf_url?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  organization?: {
+    id: string;
+    name: string;
+  } | null;
+  contact?: {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    full_name?: string;
+  } | null;
+  creator?: {
+    id: string;
+    name: string;
+    surname?: string;
+  } | null;
+}
+
 export interface IEvent {
   location_id: any;
   id: string;
