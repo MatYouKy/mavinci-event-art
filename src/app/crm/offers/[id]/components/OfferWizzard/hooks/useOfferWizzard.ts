@@ -222,7 +222,8 @@ export function useOfferWizardLogic(opts: {
       dispatch(
         eventsApi.util.invalidateTags([
           { type: 'EventEquipment', id: opts.eventId },
-          { type: 'EventOffers', id: opts.eventId },
+          { type: 'EventOffers', id: `${opts.eventId}_LIST` },
+          { type: 'EventOffers', id: offer.id },
         ]),
       );
 
