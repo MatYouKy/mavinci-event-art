@@ -352,24 +352,8 @@ export default function EventWizard({
       if (eqError) throw eqError;
 
       if (productEquipment && productEquipment.length > 0) {
-        // Wstaw sprzęt do event_equipment
-        const equipmentToInsert = buildEventEquipmentRows(
-          productEquipment.map((eq) => ({
-            id: eq.equipment_item_id ?? eq.equipment_kit_id,
-            type: eq.equipment_item_id ? 'item' : 'kit',
-            quantity: eq.quantity || 1,
-            notes: eq.notes || null,
-            auto_added: true,
-            offer_id: offer.id,
-          })),
-          createdEventId as unknown as string,
-        );
-
-        const { error: insertError } = await supabase
-          .from('event_equipment')
-          .insert(equipmentToInsert);
-
-        if (insertError) throw insertError;
+        // NIE WSTAWIAMY - sprzęt zostanie dodany automatycznie przez sync_offer_equipment_to_event
+        // Tylko przygotowujemy dane do wyświetlenia w UI
 
         // Pobierz szczegóły sprzętu do wyświetlenia
         const equipmentIds = productEquipment
@@ -409,6 +393,8 @@ export default function EventWizard({
                 thumbnail_url: detail?.thumbnail_url,
                 quantity: eq.quantity,
                 type: 'item',
+                auto_added: true, // FLAG: Sprzęt z oferty - już zsynchronizowany
+                offer_id: offer.id,
               };
             } else if (eq.equipment_kit_id) {
               const detail = kitDetails.find((d) => d.id === eq.equipment_kit_id);
@@ -418,6 +404,8 @@ export default function EventWizard({
                 thumbnail_url: detail?.thumbnail_url,
                 quantity: eq.quantity,
                 type: 'kit',
+                auto_added: true, // FLAG: Sprzęt z oferty - już zsynchronizowany
+                offer_id: offer.id,
               };
             }
             return null;
@@ -701,16 +689,25 @@ export default function EventWizard({
       }
 
       // Krok 3: Przypisz sprzęt (używa hooka z RTK Query)
+      // UWAGA: Sprzęt z oferty jest już synchronizowany przez sync_offer_equipment_to_event
+      // Dodajemy tylko sprzęt dodany RĘCZNIE (bez auto_added / offer_id)
       if (assignEquipment && selectedEquipment.length > 0 && addEquipment) {
-        // Konwertuj selectedEquipment na format oczekiwany przez addEquipment hook
-        const equipmentItems = selectedEquipment.map((eq) => ({
-          id: eq.id,
-          type: eq.type || (eq.kit_id ? 'kit' : 'item'),
-          quantity: eq.quantity || 1,
-          notes: eq.notes || undefined,
-        }));
+        // Filtruj - dodaj tylko sprzęt który NIE pochodzi z oferty
+        const manualEquipment = selectedEquipment.filter(
+          (eq) => !eq.auto_added && !eq.offer_id,
+        );
 
-        await addEquipment(equipmentItems);
+        if (manualEquipment.length > 0) {
+          // Konwertuj selectedEquipment na format oczekiwany przez addEquipment hook
+          const equipmentItems = manualEquipment.map((eq) => ({
+            id: eq.id,
+            type: eq.type || (eq.kit_id ? 'kit' : 'item'),
+            quantity: eq.quantity || 1,
+            notes: eq.notes || undefined,
+          }));
+
+          await addEquipment(equipmentItems);
+        }
       }
 
       // Krok 4: Przypisz / zaproś zespół (TAK JAK MODAL)
