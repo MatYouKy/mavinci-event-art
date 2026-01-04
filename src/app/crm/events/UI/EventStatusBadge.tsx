@@ -47,6 +47,10 @@ const STATUS_STYLES: Record<
     label: 'Zafakturowany',
     className: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
   },
+  ready_for_live: {
+    label: 'Gotowy do realizacji',
+    className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  },
 };
 
 export function EventStatusBadge({ status }: Props) {

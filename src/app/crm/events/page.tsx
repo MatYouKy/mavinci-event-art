@@ -861,9 +861,8 @@ export default function EventsPage() {
                 </div>
 
                 {/* Pills */}
-                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#d3bb73]/10 pt-4">
+                <div className="mt-4 flex flex-wrap items-center gap-2 ">
                   <div
-                    className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
                   >
                     <EventStatusBadge status={event.status} />
                   </div>
@@ -960,7 +959,6 @@ export default function EventsPage() {
                   {/* pills (na mobile mogą być pod spodem, więc tu chowamy) */}
                   <div className="hidden items-center gap-2 md:flex">
                     <div
-                      className={`rounded-full border px-3 py-1 text-xs ${statusColors[event.status]}`}
                     >
                      <EventStatusBadge status={event.status} />
                     </div>
