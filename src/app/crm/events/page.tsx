@@ -826,7 +826,7 @@ export default function EventsPage() {
                         actions={[
                           {
                             label: 'Usuń',
-                            onClick: () => handleDeleteClick({} as any, event),
+                            onClick: () => handleDeleteClick(null, event),
                             icon: <Trash2 className="h-4 w-4" />,
                             variant: 'danger',
                           },
@@ -989,7 +989,7 @@ export default function EventsPage() {
                       actions={[
                         {
                           label: 'Usuń',
-                          onClick: () => handleDeleteClick({} as any, event),
+                          onClick: () => handleDeleteClick(null, event),
                           icon: <Trash2 className="h-4 w-4" />,
                           variant: 'danger',
                         },
