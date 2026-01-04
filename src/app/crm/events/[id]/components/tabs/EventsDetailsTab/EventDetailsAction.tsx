@@ -24,7 +24,7 @@ import { useEventCategories } from '@/app/crm/event-categories/hook/useEventCate
 import { IEventCategory } from '@/app/crm/event-categories/types';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
-const eventStatusLabels: Record<EventStatus, string> = {
+export const eventStatusLabels: Record<EventStatus, string> = {
   inquiry: 'Zapytanie',
   offer_to_send: 'Oferta do wysłania',
   offer_sent: 'Oferta wysłana',
@@ -38,7 +38,7 @@ const eventStatusLabels: Record<EventStatus, string> = {
 };
 
 // Badge style per status (pasuje do Twojego theme)
-const statusBadgeClasses: Record<EventStatus, string> = {
+export const statusBadgeClasses: Record<EventStatus, string> = {
   inquiry: 'bg-blue-500/10 text-blue-300 border-blue-500/20',
   offer_to_send: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20',
   offer_sent: 'bg-purple-500/10 text-purple-300 border-purple-500/20',

@@ -33,6 +33,7 @@ import { useEmployees } from '@/app/crm/employees/hooks/useEmployees';
 import { useEventTeam } from '@/app/crm/events/hooks/useEventTeam';
 import { useCreateEventMutation, eventsApi } from '@/app/crm/events/store/api/eventsApi';
 import { useDispatch } from 'react-redux';
+import { eventStatusLabels } from '@/app/crm/events/[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
 
 const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
   const mapped = (selectedEquipment ?? [])
@@ -153,7 +154,7 @@ export default function EventWizard({
     location: '',
     budget: '',
     description: '',
-    status: 'offer_sent',
+    status: 'inquiry',
   });
 
   const [clientType, setClientType] = useState<'business' | 'individual'>(
@@ -201,7 +202,7 @@ export default function EventWizard({
   const [selectedSubcontractors, setSelectedSubcontractors] = useState<any[]>([]);
   const [subcontractorsList, setSubcontractorsList] = useState<any[]>([]);
 
-  const { equipment, addEquipment } = useEventEquipment(createdEventId as string);
+  const { addEquipment } = useEventEquipment(createdEventId as string);
 
   const steps = [
     { id: 1, name: 'Szczegóły', icon: Calendar, required: true },
@@ -756,7 +757,9 @@ export default function EventWizard({
         await supabase.from('event_subcontractors').insert(subcontractorItems);
 
         // Invaliduj cache RTK Query aby automatycznie odświeżyć dane
-        dispatch(eventsApi.util.invalidateTags([{ type: 'EventSubcontractors', id: createdEventId }]));
+        dispatch(
+          eventsApi.util.invalidateTags([{ type: 'EventSubcontractors', id: createdEventId }]),
+        );
       }
 
       showSnackbar('Event utworzony pomyślnie ze wszystkimi szczegółami!', 'success');
@@ -1182,12 +1185,11 @@ export default function EventWizard({
                     onChange={(e) => setEventData({ ...eventData, status: e.target.value })}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   >
-                    <option value="offer_sent">Oferta wysłana</option>
-                    <option value="offer_accepted">Zaakceptowana</option>
-                    <option value="in_preparation">Przygotowanie</option>
-                    <option value="in_progress">W trakcie</option>
-                    <option value="completed">Zakończony</option>
-                    <option value="invoiced">Rozliczony</option>
+                    {Object.entries(eventStatusLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1201,19 +1203,6 @@ export default function EventWizard({
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   placeholder="Dodatkowe informacje o evencie..."
                 />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Uczestnicy</label>
-                <ParticipantsAutocomplete
-                  value={participants}
-                  onChange={setParticipants}
-                  placeholder="Dodaj uczestników (pracownicy, kontakty lub wpisz nazwę)..."
-                  eventId={createdEventId}
-                />
-                <p className="mt-1 text-xs text-[#e5e4e2]/50">
-                  Wybierz pracowników, kontakty lub wpisz imię i nazwisko ręcznie
-                </p>
               </div>
             </div>
           )}
