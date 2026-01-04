@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { useDialog } from '@/contexts/DialogContext';
+import { useDispatch } from 'react-redux';
+import { eventsApi } from '@/app/crm/events/store/api/eventsApi';
 
 import { useOfferWizardClient } from './useOfferWizzardClient';
 import { useOfferWizardCatalog } from './useOfferWizzardCatalog';
@@ -21,6 +23,7 @@ export function useOfferWizardLogic(opts: {
   onClose: () => void;
 }) {
   const { showDialog } = useDialog();
+  const dispatch = useDispatch();
 
   const hasOrganization =
     opts.defaults?.organizationId && opts.defaults.organizationId.trim() !== '';
@@ -213,6 +216,15 @@ export function useOfferWizardLogic(opts: {
         conflicts: conflicts.conflicts,
         equipmentSubstitutions: conflicts.equipmentSubstitutions,
       });
+
+      // Invaliduj cache RTK Query aby automatycznie odświeżyć sprzęt i oferty eventu
+      // Trigger w bazie danych automatycznie dodał sprzęt z produktów oferty do event_equipment
+      dispatch(
+        eventsApi.util.invalidateTags([
+          { type: 'EventEquipment', id: opts.eventId },
+          { type: 'EventOffers', id: opts.eventId },
+        ]),
+      );
 
       showDialog({
         title: `Utworzono ofertę: ${offer.offer_number}`,
