@@ -638,7 +638,10 @@ export const eventsApi = createApi({
           };
         }
       },
-      providesTags: (result, _error, eventId) => [{ type: 'EventOffers', id: eventId }],
+      providesTags: (result, _error, eventId) => [
+        { type: 'EventOffers', id: `${eventId}_LIST` },
+        ...(result || []).map((offer: any) => ({ type: 'EventOffers' as const, id: offer.id })),
+      ],
     }),
 
     // ============ AUDIT LOG ENDPOINTS ============

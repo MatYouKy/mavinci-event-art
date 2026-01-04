@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
       throw new Error("Not authorized to send this offer");
     }
 
-    const { data: emailAccount } = await supabase
+    let { data: emailAccount } = await supabase
       .from("employee_email_accounts")
       .select("*")
       .eq("employee_id", user.id)
@@ -81,7 +81,17 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!emailAccount) {
-      throw new Error("No default email account found for user");
+      const { data: systemAccount } = await supabase
+        .from("employee_email_accounts")
+        .select("*")
+        .eq("is_system_account", true)
+        .maybeSingle();
+
+      if (!systemAccount) {
+        throw new Error("Nie masz skonfigurowanego domyślnego konta email. Skontaktuj się z administratorem lub skonfiguruj konto w ustawieniach.");
+      }
+
+      emailAccount = systemAccount;
     }
 
     const relayUrl = Deno.env.get("SMTP_RELAY_URL");
