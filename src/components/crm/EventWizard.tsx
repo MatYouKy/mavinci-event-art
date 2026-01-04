@@ -31,6 +31,8 @@ import { ClientType } from '@/app/crm/clients/type';
 import { useEventEquipment } from '@/app/crm/events/hooks/useEventEquipment';
 import { useEmployees } from '@/app/crm/employees/hooks/useEmployees';
 import { useEventTeam } from '@/app/crm/events/hooks/useEventTeam';
+import { useCreateEventMutation, eventsApi } from '@/app/crm/events/store/api/eventsApi';
+import { useDispatch } from 'react-redux';
 
 const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
   const mapped = (selectedEquipment ?? [])
@@ -131,10 +133,12 @@ export default function EventWizard({
   initialClientType,
 }: EventWizardProps) {
   const { showSnackbar } = useSnackbar();
+  const dispatch = useDispatch();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
   const { addEmployee } = useEventTeam(createdEventId);
+  const [createEventMutation] = useCreateEventMutation();
 
   const { list: employeesList } = useEmployees({ activeOnly: true });
 
@@ -197,7 +201,7 @@ export default function EventWizard({
   const [selectedSubcontractors, setSelectedSubcontractors] = useState<any[]>([]);
   const [subcontractorsList, setSubcontractorsList] = useState<any[]>([]);
 
-  const { equipment } = useEventEquipment(createdEventId as string);
+  const { equipment, addEquipment } = useEventEquipment(createdEventId as string);
 
   const steps = [
     { id: 1, name: 'Szczegóły', icon: Calendar, required: true },
@@ -563,41 +567,36 @@ export default function EventWizard({
         data: { session },
       } = await supabase.auth.getSession();
 
-      const { data, error } = await supabase
-        .from('events')
-        .insert([
-          {
-            name: eventData.name,
-            organization_id:
-              eventData.organization_id && eventData.organization_id.trim() !== ''
-                ? eventData.organization_id
-                : null,
-            contact_person_id:
-              eventData.contact_person_id && eventData.contact_person_id.trim() !== ''
-                ? eventData.contact_person_id
-                : null,
-            category_id:
-              eventData.category_id && eventData.category_id.trim() !== ''
-                ? eventData.category_id
-                : null,
-            event_date: eventData.event_date,
-            event_end_date: eventData.event_end_date || null,
-            location: eventData.location,
-            budget: eventData.budget ? parseFloat(eventData.budget) : null,
-            description: eventData.description || null,
-            status: eventData.status,
-            created_by: session?.user?.id || null,
-            participants: participants.length > 0 ? participants : [],
-          },
-        ])
-        .select()
-        .single();
+      // Użyj mutation z RTK Query zamiast bezpośredniego insertu
+      const eventPayload: any = {
+        name: eventData.name,
+        organization_id:
+          eventData.organization_id && eventData.organization_id.trim() !== ''
+            ? eventData.organization_id
+            : null,
+        contact_person_id:
+          eventData.contact_person_id && eventData.contact_person_id.trim() !== ''
+            ? eventData.contact_person_id
+            : null,
+        category_id:
+          eventData.category_id && eventData.category_id.trim() !== ''
+            ? eventData.category_id
+            : null,
+        event_date: eventData.event_date,
+        event_end_date: eventData.event_end_date || null,
+        location: eventData.location,
+        budget: eventData.budget ? parseFloat(eventData.budget) : null,
+        description: eventData.description || null,
+        status: eventData.status,
+        created_by: session?.user?.id || null,
+        participants: participants.length > 0 ? participants : [],
+      };
 
-      if (error) throw error;
-
+      const data = await createEventMutation(eventPayload).unwrap();
       setCreatedEventId(data.id);
 
       // Automatycznie dodaj autora do zespołu z pełnym dostępem (status: accepted)
+      // Używamy bezpośredniego insertu bo addEmployee wysyła zaproszenia emailowe
       if (session?.user?.id) {
         const { error: assignmentError } = await supabase.from('employee_assignments').insert([
           {
@@ -700,74 +699,17 @@ export default function EventWizard({
         ]);
       }
 
-      // Krok 3: Przypisz sprzęt
-      if (assignEquipment && selectedEquipment.length > 0) {
-        // 1) pobierz istniejące wpisy dla eventu
-        const { data: existing, error: existingErr } = await supabase
-          .from('event_equipment')
-          .select('equipment_id, kit_id, cable_id')
-          .eq('event_id', createdEventId);
+      // Krok 3: Przypisz sprzęt (używa hooka z RTK Query)
+      if (assignEquipment && selectedEquipment.length > 0 && addEquipment) {
+        // Konwertuj selectedEquipment na format oczekiwany przez addEquipment hook
+        const equipmentItems = selectedEquipment.map((eq) => ({
+          id: eq.id,
+          type: eq.type || (eq.kit_id ? 'kit' : 'item'),
+          quantity: eq.quantity || 1,
+          notes: eq.notes || undefined,
+        }));
 
-        if (existingErr) throw existingErr;
-
-        const existingKeys = new Set(
-          (existing ?? []).map((r: any) =>
-            r.equipment_id
-              ? `item:${r.equipment_id}`
-              : r.kit_id
-                ? `kit:${r.kit_id}`
-                : `cable:${r.cable_id}`,
-          ),
-        );
-
-        // 2) zbuduj poprawne wiersze
-        const rows = buildEventEquipmentRows(selectedEquipment, createdEventId);
-
-        // 2a) DEDUPLIKACJA w obrębie tej samej paczki (żeby nie było powtórek w jednym insercie)
-        const grouped = new Map<string, any>();
-
-        for (const r of rows) {
-          const key = r.equipment_id
-            ? `item:${r.equipment_id}`
-            : r.kit_id
-              ? `kit:${r.kit_id}`
-              : `cable:${r.cable_id}`;
-
-          const prev = grouped.get(key);
-
-          if (!prev) {
-            grouped.set(key, { ...r });
-          } else {
-            // sumujemy ilości (bezpiecznie)
-            prev.quantity = (prev.quantity || 0) + (r.quantity || 0);
-
-            // notatki sklejamy bez dublowania
-            const a = (prev.notes || '').trim();
-            const b = (r.notes || '').trim();
-            if (b && !a.includes(b)) {
-              prev.notes = a ? `${a}\n${b}` : b;
-            }
-          }
-        }
-
-        const dedupedRows = Array.from(grouped.values());
-
-        // 3) zostaw tylko brakujące
-        const toInsert = dedupedRows.filter((r: any) => {
-          const key = r.equipment_id
-            ? `item:${r.equipment_id}`
-            : r.kit_id
-              ? `kit:${r.kit_id}`
-              : `cable:${r.cable_id}`;
-
-          return !existingKeys.has(key);
-        });
-
-        // 4) INSERT PO 1 REKORDZIE (omija błąd 21000 w razie triggera/upserta po stronie DB)
-        for (const row of toInsert) {
-          const { error: insertErr } = await supabase.from('event_equipment').insert([row]);
-          if (insertErr) throw insertErr;
-        }
+        await addEquipment(equipmentItems);
       }
 
       // Krok 4: Przypisz / zaproś zespół (TAK JAK MODAL)
@@ -799,6 +741,9 @@ export default function EventWizard({
           assigned_at: new Date().toISOString(),
         }));
         await supabase.from('event_vehicles').insert(vehicleItems);
+
+        // Invaliduj cache RTK Query aby automatycznie odświeżyć dane
+        dispatch(eventsApi.util.invalidateTags([{ type: 'EventVehicles', id: createdEventId }]));
       }
 
       // Krok 6: Przypisz podwykonawców
@@ -809,6 +754,9 @@ export default function EventWizard({
           description: sub.description || '',
         }));
         await supabase.from('event_subcontractors').insert(subcontractorItems);
+
+        // Invaliduj cache RTK Query aby automatycznie odświeżyć dane
+        dispatch(eventsApi.util.invalidateTags([{ type: 'EventSubcontractors', id: createdEventId }]));
       }
 
       showSnackbar('Event utworzony pomyślnie ze wszystkimi szczegółami!', 'success');
