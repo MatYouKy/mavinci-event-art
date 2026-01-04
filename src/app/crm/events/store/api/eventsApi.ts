@@ -549,8 +549,10 @@ export const eventsApi = createApi({
       invalidatesTags: (_res, _err, { eventId, offerId }) => [
         { type: 'EventOffers', id: `${eventId}_LIST` },
         { type: 'EventOffers', id: offerId },
-        // opcjonalnie, jeśli event_details ma w sobie offers (u Ciebie ma):
         { type: 'EventDetails', id: eventId },
+        { type: 'Events', id: eventId },
+        { type: 'Events', id: 'LIST' },
+        { type: 'EventEquipment', id: eventId },
       ],
     }),
 

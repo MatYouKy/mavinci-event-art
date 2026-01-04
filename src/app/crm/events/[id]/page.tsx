@@ -54,7 +54,6 @@ import {
   useUpdateEventMutation,
 } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useOfferActions } from '../../offers/hooks/useOfferById';
 import { useEventEquipment, useEventOffers, useEventTeam, useEventAuditLog } from '../hooks';
 import { IEventCategory } from '../../event-categories/types';
 import { IEmployee } from '../../employees/type';
@@ -136,9 +135,8 @@ export default function EventDetailPage() {
   const eventId = params.id as string;
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { deleteOfferById } = useOfferActions();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
-  const { offers, refetch: refetchOffers } = useEventOffers(eventId);
+  const { offers, removeOffer } = useEventOffers(eventId);
   const { equipment } = useEventEquipment(eventId);
   const { employees } = useEventTeam(eventId);
   const { useById } = useEmployees();
@@ -526,15 +524,14 @@ export default function EventDetailPage() {
       if (!confirmed) return;
       setIsConfirmed(false);
       try {
-        await deleteOfferById(offerId);
+        await removeOffer(offerId);
         showSnackbar('Oferta została usunięta', 'success');
-        refetchOffers();
       } catch (err) {
         console.error('Error deleting offer:', err);
         showSnackbar('Błąd podczas usuwania oferty', 'error');
       }
     },
-    [deleteOfferById, showConfirm, showSnackbar, refetchOffers],
+    [removeOffer, showConfirm, showSnackbar],
   );
 
   const handleSendOffer = useCallback(async () => {
@@ -1281,8 +1278,7 @@ export default function EventDetailPage() {
           clientType={event?.client_type || 'business'}
           onSuccess={() => {
             setShowCreateOfferModal(false);
-            refetchOffers();
-            setActiveTab('offer'); // Odśwież dane eventu aby zaktualizować budżet
+            setActiveTab('offer');
           }}
         />
       )}
