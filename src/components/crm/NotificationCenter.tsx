@@ -29,6 +29,8 @@ export default function NotificationCenter() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showPanel, setShowPanel] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const prevUnreadCountRef = useRef<number>(0);
@@ -161,7 +163,7 @@ export default function NotificationCenter() {
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (error) throw error;
 
@@ -250,6 +252,44 @@ export default function NotificationCenter() {
       }
     } catch (error) {
       console.error('Error deleting notification:', error);
+    }
+  };
+
+  const deleteAllNotifications = async () => {
+    try {
+      setDeletingAll(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Pobierz wszystkie recipient_ids użytkownika (nie tylko z bieżącego limitu)
+      const { data: allRecipients, error: fetchError } = await supabase
+        .from('notification_recipients')
+        .select('id')
+        .eq('user_id', user.id);
+
+      if (fetchError) throw fetchError;
+
+      if (!allRecipients || allRecipients.length === 0) {
+        showSnackbar('Brak powiadomień do usunięcia', 'info');
+        return;
+      }
+
+      // Usuń wszystkie
+      const { error: deleteError } = await supabase
+        .from('notification_recipients')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (deleteError) throw deleteError;
+
+      setNotifications([]);
+      setUnreadCount(0);
+      showSnackbar(`Usunięto ${allRecipients.length} powiadomień`, 'success');
+    } catch (error) {
+      console.error('Error deleting all notifications:', error);
+      showSnackbar('Błąd podczas usuwania powiadomień', 'error');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -369,9 +409,14 @@ export default function NotificationCenter() {
           <div className="fixed md:absolute right-0 md:right-0 top-16 md:top-12 left-0 md:left-auto w-full md:w-96 max-h-[80vh] md:max-h-[600px] bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl z-50 flex flex-col mx-auto md:mx-0 max-w-md md:max-w-none">
             <div className="p-4 border-b border-[#d3bb73]/20">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-[#e5e4e2]">
-                  Powiadomienia
-                </h3>
+                <div>
+                  <h3 className="text-lg font-bold text-[#e5e4e2]">
+                    Powiadomienia
+                  </h3>
+                  <p className="text-xs text-[#e5e4e2]/40 mt-0.5">
+                    Wyświetlanie ostatnich 100
+                  </p>
+                </div>
                 <button
                   onClick={() => setShowPanel(false)}
                   className="p-1 hover:bg-[#0f1119] rounded transition-colors"
@@ -403,16 +448,28 @@ export default function NotificationCenter() {
                 </button>
               </div>
 
-              {unreadCount > 0 && (
-                <button
-                  onClick={markAllAsRead}
-                  disabled={loading}
-                  className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
-                >
-                  <CheckCheck className="w-4 h-4" />
-                  Oznacz wszystkie jako przeczytane
-                </button>
-              )}
+              <div className="mt-2 space-y-2">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllAsRead}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm font-medium hover:bg-[#d3bb73]/30 transition-colors disabled:opacity-50"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    Oznacz wszystkie jako przeczytane
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={deletingAll}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Usuń wszystkie powiadomienia
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
@@ -603,6 +660,47 @@ export default function NotificationCenter() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal potwierdzenia usunięcia wszystkich */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-red-500/20 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/20">
+                <Trash2 className="h-5 w-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-[#e5e4e2]">
+                  Usuń wszystkie powiadomienia?
+                </h3>
+                <p className="mt-1 text-sm text-[#e5e4e2]/60">
+                  Ta akcja usunie wszystkie Twoje powiadomienia z bazy danych. Tej operacji nie można cofnąć.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deletingAll}
+                className="flex-1 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={async () => {
+                  await deleteAllNotifications();
+                  setShowDeleteConfirm(false);
+                }}
+                disabled={deletingAll}
+                className="flex-1 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+              >
+                {deletingAll ? 'Usuwanie...' : 'Usuń wszystkie'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
