@@ -151,7 +151,7 @@ export default function OfertaPageClient() {
                 colorTo={service.color_to}
                 borderColor={service.border_color}
                 heroImageUrl={service.hero_image_url || undefined}
-                heroOpacity={service.hero_opacity}
+                heroOpacity={0.9}
                 imageMetadata={service.image_metadata}
                 index={index}
               />
