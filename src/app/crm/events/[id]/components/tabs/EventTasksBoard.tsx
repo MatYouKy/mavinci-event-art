@@ -17,37 +17,32 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '../../../../../../components/crm/TaskCard';
+import { Task } from '@/components/crm/TaskCard';
 
-interface Task {
+type EmployeeLite = {
   id: string;
-  title: string;
-  description: string | null;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled';
-  board_column: string;
-  order_index: number;
-  due_date: string | null;
-  event_id: string | null;
-  created_at: string;
-  updated_at: string;
-  currently_working_by?: string | null;
-  currently_working_employee?: {
-    name: string;
-    surname: string;
-    avatar_url: string | null;
-    avatar_metadata?: any;
-  } | null;
-  assignees?: Array<{
-    employee: {
-      id: string;
-      name: string;
-      surname: string;
-      avatar_url: string | null;
-      email: string | null;
-      phone_number: string | null;
-    };
-  }>;
-}
+  name: string;
+  surname: string;
+  avatar_url: string | null;
+  avatar_metadata?: any;
+  email?: string;
+  phone_number?: string;
+};
+
+const normalizeEmployee = (emp: any): EmployeeLite | null => {
+  const e = Array.isArray(emp) ? emp[0] : emp;
+  if (!e) return null;
+
+  return {
+    id: String(e.id ?? ''),
+    name: String(e.name ?? ''),
+    surname: String(e.surname ?? ''),
+    avatar_url: e.avatar_url ?? null,
+    avatar_metadata: e.avatar_metadata,
+    email: e.email ?? undefined,
+    phone_number: e.phone_number ?? undefined,
+  };
+};
 
 interface EventTasksBoardProps {
   eventId: string;
@@ -55,7 +50,7 @@ interface EventTasksBoardProps {
 }
 
 export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardProps) {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<Array<Task>>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -157,16 +152,27 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .select('*', { count: 'exact', head: true })
             .eq('task_id', updatedTask.id);
 
-          setTasks((prevTasks) => {
+            const normalizedAssignees = (assigneesData ?? [])
+            .map((a: any) => {
+              const emp = normalizeEmployee(a.employee);
+              return emp ? { employee: emp } : null;
+            })
+            .filter(Boolean) as Array<{
+            employee: ReturnType<typeof normalizeEmployee> extends infer R
+              ? Exclude<R, null>
+              : never;
+          }>;
+
+          setTasks((prevTasks: Task[]) => {
             const taskExists = prevTasks.some((t) => t.id === updatedTask.id);
 
             if (taskExists) {
-              return prevTasks.map((task) =>
+              return prevTasks.map((task: Task) =>
                 task.id === updatedTask.id
                   ? {
                       ...task,
                       ...updatedTask,
-                      assignees: assigneesData || [],
+                      assignees: normalizedAssignees,
                       currently_working_employee,
                       comments_count: count || 0,
                     }
@@ -221,15 +227,31 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .select('*', { count: 'exact', head: true })
             .eq('task_id', newTask.id);
 
-          setTasks((prevTasks) => [
-            ...prevTasks,
-            {
-              ...newTask,
-              assignees: assigneesData || [],
-              currently_working_employee,
-              comments_count: count || 0,
-            },
-          ]);
+          const normalizedAssignees = (assigneesData ?? [])
+            .map((a: any) => {
+              const emp = normalizeEmployee(a.employee);
+              return emp ? { employee: emp } : null;
+            })
+            .filter(Boolean) as Array<{
+            employee: ReturnType<typeof normalizeEmployee> extends infer R
+              ? Exclude<R, null>
+              : never;
+          }>;
+          setTasks((prevTasks: Array<Task>) => {
+            return prevTasks.map((task: Task) =>
+              task.id === newTask.id
+                ? {
+                    ...task,
+                    ...newTask,
+                    assignees: normalizedAssignees,
+                    currently_working_employee: currently_working_employee
+                      ? normalizeEmployee(currently_working_employee)
+                      : null,
+                    comments_count: count || 0,
+                  }
+                : task,
+            );
+          });
         },
       )
       .on(
@@ -262,7 +284,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .maybeSingle();
 
           if (employee) {
-            setTasks((prevTasks) =>
+            setTasks((prevTasks: Array<Task>) =>
               prevTasks.map((task) =>
                 task.id === newAssignee.task_id
                   ? {
@@ -285,7 +307,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         (payload) => {
           const deletedAssignee = payload.old as any;
 
-          setTasks((prevTasks) =>
+          setTasks((prevTasks: Array<Task>) =>
             prevTasks.map((task) =>
               task.id === deletedAssignee.task_id
                 ? {
@@ -315,7 +337,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .select('*', { count: 'exact', head: true })
             .eq('task_id', taskId);
 
-          setTasks((prevTasks) =>
+          setTasks((prevTasks: Array<Task>) =>
             prevTasks.map((task) =>
               task.id === taskId ? { ...task, comments_count: count || 0 } : task,
             ),

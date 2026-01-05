@@ -35,6 +35,7 @@ export default function DJPage() {
   const fetchData = async () => {
     try {
       const [
+        heroRes,
         introRes,
         featuresRes,
         themesRes,
@@ -42,6 +43,12 @@ export default function DJPage() {
         relatedServicesRes,
         allServiceItemsRes,
       ] = await Promise.all([
+        supabase
+          .from('dj_hero_page_images')
+          .select('*')
+          .eq('section', 'hero')
+          .eq('is_active', true)
+          .maybeSingle(),
         supabase.from('dj_intro').select('*').single(),
         supabase.from('dj_features').select('*').eq('is_visible', true).order('order_index'),
         supabase.from('dj_themes').select('*').eq('is_visible', true).order('order_index'),
@@ -51,14 +58,19 @@ export default function DJPage() {
           .select(`*, service_item:conferences_service_items(*)`)
           .eq('is_active', true)
           .order('display_order'),
-        supabase.from('conferences_service_items').select('*').eq('is_active', true).order('display_order'),
+        supabase
+          .from('conferences_service_items')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order'),
       ]);
 
       if (introRes.error) console.error('dj_intro error:', introRes.error);
       if (featuresRes.error) console.error('dj_features error:', featuresRes.error);
       if (themesRes.error) console.error('dj_themes error:', themesRes.error);
       if (benefitsRes.error) console.error('dj_benefits error:', benefitsRes.error);
-      if (relatedServicesRes.error) console.error('dj_related_services error:', relatedServicesRes.error);
+      if (relatedServicesRes.error)
+        console.error('dj_related_services error:', relatedServicesRes.error);
 
       if (introRes.data) setIntro(introRes.data);
       if (featuresRes.data) setFeatures(featuresRes.data);
@@ -70,6 +82,8 @@ export default function DJPage() {
         setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_item_id)));
       }
       if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
+
+      if (heroRes.error) console.error('dj_hero_page_images error:', heroRes.error);
     } catch (error) {
       console.error('Error fetching DJ data:', error);
     }

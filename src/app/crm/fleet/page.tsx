@@ -1,19 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Car,
   Plus,
   Search,
-  Filter,
-  Calendar,
   Fuel,
   Wrench,
-  FileText,
-  AlertTriangle,
-  TrendingUp,
   Users,
-  MapPin,
   Edit,
   Trash2,
   Eye,
@@ -21,9 +15,7 @@ import {
   DollarSign,
   Activity,
   Gauge,
-  Clock,
   CheckCircle,
-  XCircle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -34,41 +26,9 @@ import QuickFuelModal from '@/components/crm/QuickFuelModal';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import Popover from '@/components/UI/Tooltip';
 import { ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
-
-interface Vehicle {
-  id: string;
-  name: string;
-  brand: string;
-  model: string;
-  registration_number: string;
-  vin: string;
-  year: number;
-  status: string;
-  ownership_type: string;
-  category: string;
-  current_mileage: number;
-  fuel_type: string;
-  primary_image_url: string | null;
-  all_images: { id: string; image_url: string; title: string | null }[];
-  assigned_to: string | null;
-  assigned_employee_name: string | null;
-  assigned_employee_surname: string | null;
-  assigned_employee_avatar_url: string | null;
-  assigned_employee_avatar_metadata: any;
-  upcoming_services: number;
-  expiring_insurance: number;
-  yearly_maintenance_cost: number;
-  yearly_fuel_cost: number;
-  avg_fuel_consumption_3months: number;
-  in_use: boolean;
-  in_use_by: string | null;
-  in_use_event: string | null;
-  in_use_driver_id: string | null;
-  in_use_driver_name: string | null;
-  in_use_driver_surname: string | null;
-  in_use_driver_avatar_url: string | null;
-  in_use_driver_avatar_metadata: any;
-}
+import { IVehicle } from './types/fleet.types';
+import { useAppDispatch } from '@/store/hooks';
+import { fleetApi, useDeleteVehicleMutation, useGetFleetVehiclesQuery } from './api/fleetApi';
 
 export default function FleetPage() {
   const router = useRouter();
@@ -76,302 +36,139 @@ export default function FleetPage() {
   const { showConfirm } = useDialog();
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
   const { getViewMode, setViewMode: saveViewMode } = useUserPreferences();
+  const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
 
-  const [quickFuelVehicle, setQuickFuelVehicle] = useState<Vehicle | null>(null);
+  const dispatch = useAppDispatch();
+
+  const {
+    data: vehicles = [],
+    isLoading,
+    refetch,
+  } = useGetFleetVehiclesQuery(undefined, {
+    refetchOnMountOrArgChange: false, // ✅ nie odświeżaj przy powrocie na stronę
+    refetchOnFocus: false,
+    refetchOnReconnect: true,
+  });
+
+  const [deleteVehicle] = useDeleteVehicleMutation();
+
+  const [quickFuelVehicle, setQuickFuelVehicle] = useState<IVehicle | null>(null);
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({});
   const [hoveredVehicleId, setHoveredVehicleId] = useState<string | null>(null);
 
   const canManage = canManageModule('fleet');
   const canCreate = canCreateInModule('fleet');
 
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [filteredVehicles, setFilteredVehicles] = useState<Vehicle[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>(getViewMode('fleet') === 'grid' ? 'cards' : 'table');
-
-  // Statystyki
-  const [stats, setStats] = useState({
-    total: 0,
-    active: 0,
-    in_service: 0,
-    totalCost: 0,
-    averageMileage: 0,
-  });
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(
+    getViewMode('fleet') === 'grid' ? 'cards' : 'table',
+  );
 
   useEffect(() => {
-    fetchVehicles();
-
-    // Subscribe to realtime updates for event_vehicles and vehicle_alerts
     const channel = supabase
       .channel('fleet_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'event_vehicles',
-        },
-        () => {
-          fetchVehicles();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'vehicle_alerts',
-        },
-        () => {
-          fetchVehicles();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'insurance_policies',
-        },
-        () => {
-          fetchVehicles();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_vehicles' }, () => {
+        dispatch(fleetApi.util.invalidateTags([{ type: 'Fleet', id: 'LIST' }]));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicle_alerts' }, () => {
+        dispatch(fleetApi.util.invalidateTags([{ type: 'Fleet', id: 'LIST' }]));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'insurance_policies' }, () => {
+        dispatch(fleetApi.util.invalidateTags([{ type: 'Fleet', id: 'LIST' }]));
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [dispatch]);
 
-  useEffect(() => {
-    filterVehicles();
-  }, [vehicles, searchTerm, statusFilter, categoryFilter]);
+  const stats = useMemo(() => {
+    const total = vehicles.length;
+    const active = vehicles.filter((v) => v.status === 'active').length;
+    const in_service = vehicles.filter((v) => v.status === 'in_service').length;
 
-  const fetchVehicles = async () => {
-    try {
-      setLoading(true);
-
-      const { data: vehiclesData, error: vehiclesError } = await supabase
-        .from('vehicles')
-        .select(`
-          *,
-          vehicle_assignments!vehicle_assignments_vehicle_id_fkey (
-            employee_id,
-            status,
-            employees (
-              id,
-              name,
-              surname,
-              avatar_url,
-              avatar_metadata
-            )
-          )
-        `)
-        .order('name', { ascending: true});
-
-      if (vehiclesError) throw vehiclesError;
-
-      const enrichedVehicles = await Promise.all(
-        (vehiclesData || []).map(async (vehicle) => {
-          const activeAssignment = vehicle.vehicle_assignments?.find(
-            (a: any) => a.status === 'active'
-          );
-
-          const { count: upcomingServices } = await supabase
-            .from('maintenance_records')
-            .select('*', { count: 'exact', head: true })
-            .eq('vehicle_id', vehicle.id)
-            .gte('next_service_date', new Date().toISOString())
-            .lte('next_service_date', new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
-
-          // Pobierz alerty ubezpieczeniowe z vehicle_alerts (trigger już obliczył czy są potrzebne)
-          const { count: expiringInsurance } = await supabase
-            .from('vehicle_alerts')
-            .select('*', { count: 'exact', head: true })
-            .eq('vehicle_id', vehicle.id)
-            .eq('alert_type', 'insurance')
-            .eq('is_active', true);
-
-          const { data: maintenanceCosts } = await supabase
-            .from('maintenance_records')
-            .select('total_cost')
-            .eq('vehicle_id', vehicle.id)
-            .gte('date', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString());
-
-          const { data: fuelCosts } = await supabase
-            .from('fuel_entries')
-            .select('total_cost')
-            .eq('vehicle_id', vehicle.id)
-            .gte('date', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString());
-
-          const { data: fuelConsumption } = await supabase
-            .from('fuel_entries')
-            .select('avg_consumption')
-            .eq('vehicle_id', vehicle.id)
-            .not('avg_consumption', 'is', null)
-            .gte('date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString());
-
-          const yearlyMaintenanceCost = maintenanceCosts?.reduce(
-            (sum, r) => sum + (r.total_cost || 0),
-            0
-          ) || 0;
-
-          const yearlyFuelCost = fuelCosts?.reduce(
-            (sum, r) => sum + (r.total_cost || 0),
-            0
-          ) || 0;
-
-          const avgFuelConsumption =
-            fuelConsumption?.length > 0
-              ? fuelConsumption.reduce((sum, r) => sum + (r.avg_consumption || 0), 0) /
-                fuelConsumption.length
-              : 0;
-
-          const { data: primaryImage } = await supabase
-            .from('vehicle_images')
-            .select('image_url')
-            .eq('vehicle_id', vehicle.id)
-            .eq('is_primary', true)
-            .maybeSingle();
-
-          const { data: allImages } = await supabase
-            .from('vehicle_images')
-            .select('id, image_url, title')
-            .eq('vehicle_id', vehicle.id)
-            .order('sort_order', { ascending: true });
-
-          // Check if vehicle is currently in use
-          const { data: inUseData, error: inUseError } = await supabase
-            .from('event_vehicles')
-            .select(`
-              id,
-              driver:employees!event_vehicles_driver_id_fkey(id, name, surname, avatar_url, avatar_metadata),
-              event:events(name)
-            `)
-            .eq('vehicle_id', vehicle.id)
-            .eq('is_in_use', true)
-            .maybeSingle();
-
-          if (inUseError) {
-            console.error('Error fetching in_use data for vehicle', vehicle.name, inUseError);
-          }
-
-          return {
-            ...vehicle,
-            assigned_to: activeAssignment?.employee_id || null,
-            assigned_employee_name: activeAssignment?.employees?.name || null,
-            assigned_employee_surname: activeAssignment?.employees?.surname || null,
-            assigned_employee_avatar_url: activeAssignment?.employees?.avatar_url || null,
-            assigned_employee_avatar_metadata: activeAssignment?.employees?.avatar_metadata || null,
-            upcoming_services: upcomingServices || 0,
-            expiring_insurance: expiringInsurance || 0,
-            yearly_maintenance_cost: yearlyMaintenanceCost,
-            yearly_fuel_cost: yearlyFuelCost,
-            avg_fuel_consumption_3months: avgFuelConsumption,
-            primary_image_url: primaryImage?.image_url || null,
-            all_images: allImages || [],
-            in_use: !!inUseData,
-            in_use_by: inUseData?.driver ? `${inUseData.driver.name} ${inUseData.driver.surname}` : null,
-            in_use_event: inUseData?.event?.name || null,
-            in_use_driver_id: inUseData?.driver?.id || null,
-            in_use_driver_name: inUseData?.driver?.name || null,
-            in_use_driver_surname: inUseData?.driver?.surname || null,
-            in_use_driver_avatar_url: inUseData?.driver?.avatar_url || null,
-            in_use_driver_avatar_metadata: inUseData?.driver?.avatar_metadata || null,
-          };
-        })
-      );
-
-      setVehicles(enrichedVehicles);
-      calculateStats(enrichedVehicles);
-    } catch (error) {
-      console.error('Error fetching vehicles:', error);
-      showSnackbar('Błąd podczas ładowania pojazdów', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const calculateStats = (data: Vehicle[]) => {
-    const total = data.length;
-    const active = data.filter((v) => v.status === 'active').length;
-    const in_service = data.filter((v) => v.status === 'in_service').length;
-    const totalCost = data.reduce(
+    const totalCost = vehicles.reduce(
       (sum, v) => sum + (v.yearly_maintenance_cost || 0) + (v.yearly_fuel_cost || 0),
-      0
+      0,
     );
-    const averageMileage =
-      data.reduce((sum, v) => sum + (v.current_mileage || 0), 0) / Math.max(total, 1);
 
-    setStats({
+    const averageMileage =
+      vehicles.reduce((sum, v) => sum + (v.current_mileage || 0), 0) / Math.max(total, 1);
+
+    return {
       total,
       active,
       in_service,
       totalCost,
       averageMileage: Math.round(averageMileage),
-    });
-  };
+    };
+  }, [vehicles]);
 
-  const filterVehicles = () => {
-    let filtered = [...vehicles];
+  const filteredVehicles = vehicles.filter((v) => {
+    const search = searchTerm.trim().toLowerCase();
 
-    // Filtr wyszukiwania
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (v) =>
-          v.name?.toLowerCase().includes(search) ||
-          v.brand?.toLowerCase().includes(search) ||
-          v.model?.toLowerCase().includes(search) ||
-          v.registration_number?.toLowerCase().includes(search) ||
-          v.vin?.toLowerCase().includes(search)
-      );
-    }
+    const matchesSearch =
+      !search ||
+      v.name?.toLowerCase().includes(search) ||
+      v.brand?.toLowerCase().includes(search) ||
+      v.model?.toLowerCase().includes(search) ||
+      v.registration_number?.toLowerCase().includes(search) ||
+      v.vin?.toLowerCase().includes(search);
 
-    // Filtr statusu
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter((v) => v.status === statusFilter);
-    }
+    const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
+    const matchesCategory = categoryFilter === 'all' || v.category === categoryFilter;
 
-    // Filtr kategorii
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter((v) => v.category === categoryFilter);
-    }
+    return matchesSearch && matchesStatus && matchesCategory;
+  });
 
-    setFilteredVehicles(filtered);
-  };
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   const handleDeleteVehicle = async (id: string, name: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć pojazd?',
-      `Pojazd "${name}" zostanie trwale usunięty wraz z całą historią.`
+      `Pojazd "${name}" zostanie trwale usunięty wraz z całą historią.`,
     );
-
     if (!confirmed) return;
 
-    try {
-      const { error } = await supabase.from('vehicles').delete().eq('id', id);
+    const startedAt = Date.now();
+    setDeletingVehicleId(id);
 
-      if (error) throw error;
+    try {
+      await deleteVehicle({ vehicleId: id }).unwrap();
+
+      // wymuś widoczność loadera
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < 450) await delay(450 - elapsed);
 
       showSnackbar('Pojazd został usunięty', 'success');
-      fetchVehicles();
-    } catch (error) {
-      console.error('Error deleting vehicle:', error);
+
+      // ✅ usuń z cache ręcznie (bez “mignięcia” przez refetch)
+      dispatch(
+        fleetApi.util.updateQueryData('getFleetVehicles', undefined, (draft) => {
+          const idx = draft.findIndex((v) => v.id === id);
+          if (idx !== -1) draft.splice(idx, 1);
+        }),
+      );
+
+      // opcjonalnie: jeśli masz mocne “enrichment” po stronie API i chcesz pewność,
+      // możesz po chwili zrobić invalidate:
+      // setTimeout(() => dispatch(fleetApi.util.invalidateTags([{ type:'Fleet', id:'LIST' }])), 500);
+    } catch (e) {
+      console.error(e);
       showSnackbar('Błąd podczas usuwania pojazdu', 'error');
+    } finally {
+      setDeletingVehicleId((curr) => (curr === id ? null : curr));
     }
   };
 
   const getStatusBadge = (status: string, inUse: boolean = false) => {
     if (inUse) {
       return (
-        <span className="px-2 py-1 rounded text-xs bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30 inline-flex items-center gap-1 w-auto whitespace-nowrap">
-          <Activity className="w-3 h-3" />
-          W użytkowaniu
+        <span className="inline-flex w-auto items-center gap-1 whitespace-nowrap rounded border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
+          <Activity className="h-3 w-3" />W użytkowaniu
         </span>
       );
     }
@@ -385,19 +182,25 @@ export default function FleetPage() {
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
-    return <span className={`px-2 py-1 rounded text-xs inline-block w-auto whitespace-nowrap ${config.class}`}>{config.label}</span>;
+    return (
+      <span
+        className={`inline-block w-auto whitespace-nowrap rounded px-2 py-1 text-xs ${config.class}`}
+      >
+        {config.label}
+      </span>
+    );
   };
 
   const getCategoryIcon = (category: string) => {
     const icons = {
-      personal_car: <Car className="w-5 h-5" />,
-      van: <Car className="w-5 h-5" />,
-      truck: <Car className="w-5 h-5" />,
-      bus: <Car className="w-5 h-5" />,
-      motorcycle: <Car className="w-5 h-5" />,
-      trailer: <Car className="w-5 h-5" />,
+      personal_car: <Car className="h-5 w-5" />,
+      van: <Car className="h-5 w-5" />,
+      truck: <Car className="h-5 w-5" />,
+      bus: <Car className="h-5 w-5" />,
+      motorcycle: <Car className="h-5 w-5" />,
+      trailer: <Car className="h-5 w-5" />,
     };
-    return icons[category as keyof typeof icons] || <Car className="w-5 h-5" />;
+    return icons[category as keyof typeof icons] || <Car className="h-5 w-5" />;
   };
 
   const renderAvatar = (
@@ -405,7 +208,7 @@ export default function FleetPage() {
     surname: string | null,
     avatarUrl: string | null,
     avatarMetadata: any,
-    size: number = 28
+    size: number = 28,
   ) => {
     const position = avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
     const objectFit = avatarMetadata?.desktop?.objectFit || 'cover';
@@ -413,21 +216,21 @@ export default function FleetPage() {
 
     return (
       <div
-        className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer hover:border-[#d3bb73]/40 transition-colors"
+        className="relative cursor-pointer overflow-hidden rounded-full border-2 border-[#0f1119] bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/40"
         style={{ width: `${size}px`, height: `${size}px` }}
       >
         {avatarUrl ? (
           <img
             src={avatarUrl}
             alt={`${name} ${surname}`}
-            className="w-full h-full"
+            className="h-full w-full"
             style={{
               objectFit: objectFit as any,
               transform: `translate(${position.posX}%, ${position.posY}%) scale(${position.scale})`,
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-xs font-medium">
+          <div className="flex h-full w-full items-center justify-center bg-[#1c1f33] text-xs font-medium text-[#e5e4e2]/60">
             {initials}
           </div>
         )}
@@ -435,78 +238,78 @@ export default function FleetPage() {
     );
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d3bb73]"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-[#e5e4e2] flex items-center gap-3">
-            <Car className="w-8 h-8 text-[#d3bb73]" />
+          <h1 className="flex items-center gap-3 text-3xl font-bold text-[#e5e4e2]">
+            <Car className="h-8 w-8 text-[#d3bb73]" />
             Flota Pojazdów
           </h1>
-          <p className="text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-[#e5e4e2]/60">
             Zarządzaj pojazdami firmowymi, tankowaniami, przeglądami i ubezpieczeniami
           </p>
         </div>
         {canCreate && (
           <button
             onClick={() => router.push('/crm/fleet/new')}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-medium"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             Dodaj pojazd
           </button>
         )}
       </div>
 
       {/* Statystyki */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Wszystkie pojazdy</span>
-            <Car className="w-5 h-5 text-[#d3bb73]" />
+            <Car className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">{stats.total}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Aktywne</span>
-            <CheckCircle className="w-5 h-5 text-green-400" />
+            <CheckCircle className="h-5 w-5 text-green-400" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">{stats.active}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">W serwisie</span>
-            <Wrench className="w-5 h-5 text-orange-400" />
+            <Wrench className="h-5 w-5 text-orange-400" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">{stats.in_service}</div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Koszty roczne</span>
-            <DollarSign className="w-5 h-5 text-[#d3bb73]" />
+            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">
             {(stats.totalCost / 1000).toFixed(1)}k zł
           </div>
         </div>
 
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-[#e5e4e2]/60">Śr. przebieg</span>
-            <Gauge className="w-5 h-5 text-[#d3bb73]" />
+            <Gauge className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div className="text-2xl font-bold text-[#e5e4e2]">
             {stats.averageMileage.toLocaleString()} km
@@ -515,18 +318,18 @@ export default function FleetPage() {
       </div>
 
       {/* Filtry i wyszukiwanie */}
-      <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-4">
-        <div className="flex flex-col md:flex-row gap-4">
+      <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+        <div className="flex flex-col gap-4 md:flex-row">
           {/* Wyszukiwarka */}
           <div className="flex-1">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-[#e5e4e2]/40" />
               <input
                 type="text"
                 placeholder="Szukaj po nazwie, marce, modelu, rejestracji lub VIN..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/50"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 pl-10 pr-4 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/50 focus:outline-none"
               />
             </div>
           </div>
@@ -535,7 +338,7 @@ export default function FleetPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
           >
             <option value="all">Wszystkie statusy</option>
             <option value="active">Dostępny</option>
@@ -549,7 +352,7 @@ export default function FleetPage() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2]"
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
           >
             <option value="all">Wszystkie kategorie</option>
             <option value="personal_car">Samochód osobowy</option>
@@ -567,13 +370,13 @@ export default function FleetPage() {
                 setViewMode('cards');
                 saveViewMode('fleet', 'grid');
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                 viewMode === 'cards'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
               }`}
             >
-              <LayoutGrid className="w-4 h-4" />
+              <LayoutGrid className="h-4 w-4" />
               Kafelki
             </button>
             <button
@@ -581,13 +384,13 @@ export default function FleetPage() {
                 setViewMode('table');
                 saveViewMode('fleet', 'list');
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                 viewMode === 'table'
                   ? 'bg-[#d3bb73] text-[#1c1f33]'
                   : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
               }`}
             >
-              <List className="w-4 h-4" />
+              <List className="h-4 w-4" />
               Lista
             </button>
           </div>
@@ -596,297 +399,333 @@ export default function FleetPage() {
 
       {/* Lista pojazdów */}
       {filteredVehicles.length === 0 ? (
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-          <Car className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
-          <p className="text-[#e5e4e2]/60 text-lg">
+        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+          <Car className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+          <p className="text-lg text-[#e5e4e2]/60">
             {searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
               ? 'Nie znaleziono pojazdów spełniających kryteria'
               : 'Brak pojazdów. Dodaj pierwszy pojazd do floty.'}
           </p>
         </div>
       ) : viewMode === 'cards' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredVehicles.map((vehicle) => (
-            <div
-              key={vehicle.id}
-              className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden hover:border-[#d3bb73]/30 transition-colors"
-            >
-              {/* Image Carousel */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredVehicles.map((vehicle) => {
+            const isRowDeleting = deletingVehicleId === vehicle.id;
+            return (
               <div
-                className="h-48 bg-[#0f1119] flex items-center justify-center relative cursor-pointer group"
-                onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                key={vehicle.id}
+                className={`overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/30 ${
+                  isRowDeleting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                }`}
               >
-                {vehicle.all_images.length > 0 ? (
-                  <>
-                    <img
-                      src={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.image_url}
-                      alt={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.title || vehicle.name}
-                      className="w-full h-full object-cover"
-                    />
-                    {vehicle.all_images.length > 1 && (
-                      <>
-                        {(imageIndexes[vehicle.id] || 0) > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setImageIndexes(prev => ({
-                                ...prev,
-                                [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1)
-                              }));
-                            }}
-                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                          </button>
-                        )}
-                        {(imageIndexes[vehicle.id] || 0) < vehicle.all_images.length - 1 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setImageIndexes(prev => ({
-                                ...prev,
-                                [vehicle.id]: Math.min(vehicle.all_images.length - 1, (prev[vehicle.id] || 0) + 1)
-                              }));
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                        )}
-                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                          {vehicle.all_images.map((_, idx) => (
-                            <div
-                              key={idx}
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                idx === (imageIndexes[vehicle.id] || 0)
-                                  ? 'bg-white'
-                                  : 'bg-white/40'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <Car className="w-24 h-24 text-[#e5e4e2]/20" />
-                )}
-                <div className="absolute top-2 right-2">{getStatusBadge(vehicle.status, vehicle.in_use)}</div>
-              </div>
-
-              {/* Content */}
-              <div className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h3 className="text-lg font-semibold text-[#e5e4e2] mb-1">
-                      {vehicle.name}
-                    </h3>
-                    <p className="text-sm text-[#e5e4e2]/60">
-                      {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
-                    </p>
+                {/* Image Carousel */}
+                <div
+                  className="group relative flex h-48 cursor-pointer items-center justify-center bg-[#0f1119]"
+                  onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                >
+                  {vehicle.all_images.length > 0 ? (
+                    <>
+                      <img
+                        src={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.image_url}
+                        alt={
+                          vehicle.all_images[imageIndexes[vehicle.id] || 0]?.title || vehicle.name
+                        }
+                        className="h-full w-full object-cover"
+                      />
+                      {vehicle.all_images.length > 1 && (
+                        <>
+                          {(imageIndexes[vehicle.id] || 0) > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setImageIndexes((prev) => ({
+                                  ...prev,
+                                  [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1),
+                                }));
+                              }}
+                              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </button>
+                          )}
+                          {(imageIndexes[vehicle.id] || 0) < vehicle.all_images.length - 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setImageIndexes((prev) => ({
+                                  ...prev,
+                                  [vehicle.id]: Math.min(
+                                    vehicle.all_images.length - 1,
+                                    (prev[vehicle.id] || 0) + 1,
+                                  ),
+                                }));
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          )}
+                          <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1">
+                            {vehicle.all_images.map((_, idx) => (
+                              <div
+                                key={idx}
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  idx === (imageIndexes[vehicle.id] || 0)
+                                    ? 'bg-white'
+                                    : 'bg-white/40'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <Car className="h-24 w-24 text-[#e5e4e2]/20" />
+                  )}
+                  <div className="absolute right-2 top-2">
+                    {getStatusBadge(vehicle.status, vehicle.in_use)}
                   </div>
-                  {getCategoryIcon(vehicle.category)}
                 </div>
 
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#e5e4e2]/60">Rejestracja:</span>
-                    <span className="text-[#e5e4e2] font-medium">
-                      {vehicle.registration_number || '-'}
-                    </span>
+                {/* Content */}
+                <div className="p-4">
+                  <div className="mb-2 flex items-start justify-between">
+                    <div>
+                      <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2]">{vehicle.name}</h3>
+                      <p className="text-sm text-[#e5e4e2]/60">
+                        {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
+                      </p>
+                    </div>
+                    {getCategoryIcon(vehicle.category)}
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#e5e4e2]/60">Przebieg:</span>
-                    <span className="text-[#e5e4e2] font-medium">
-                      {vehicle.current_mileage?.toLocaleString() || 0} km
-                    </span>
-                  </div>
-                  {vehicle.assigned_employee_name && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Users className="w-4 h-4 text-[#d3bb73]" />
-                      <span className="text-[#e5e4e2]/80">
-                        {vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}
+
+                  <div className="mb-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-[#e5e4e2]/60">Rejestracja:</span>
+                      <span className="font-medium text-[#e5e4e2]">
+                        {vehicle.registration_number || '-'}
                       </span>
                     </div>
-                  )}
-                  {vehicle.in_use && vehicle.in_use_by && (
-                    <div className="flex items-center gap-2 text-sm bg-[#d3bb73]/10 px-2 py-1 rounded">
-                      <Activity className="w-4 h-4 text-[#d3bb73]" />
-                      <span className="text-[#d3bb73] font-medium">
-                        {vehicle.in_use_by}
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-[#e5e4e2]/60">Przebieg:</span>
+                      <span className="font-medium text-[#e5e4e2]">
+                        {vehicle.current_mileage?.toLocaleString() || 0} km
                       </span>
-                      {vehicle.in_use_event && (
-                        <span className="text-[#e5e4e2]/60 text-xs">
-                          • {vehicle.in_use_event}
+                    </div>
+                    {vehicle.assigned_employee_name && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 text-[#d3bb73]" />
+                        <span className="text-[#e5e4e2]/80">
+                          {vehicle.assigned_employee_name} {vehicle.assigned_employee_surname}
                         </span>
+                      </div>
+                    )}
+                    {vehicle.in_use && vehicle.in_use_by && (
+                      <div className="flex items-center gap-2 rounded bg-[#d3bb73]/10 px-2 py-1 text-sm">
+                        <Activity className="h-4 w-4 text-[#d3bb73]" />
+                        <span className="font-medium text-[#d3bb73]">{vehicle.in_use_by}</span>
+                        {vehicle.in_use_event && (
+                          <span className="text-xs text-[#e5e4e2]/60">
+                            • {vehicle.in_use_event}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Alerts and Status */}
+                  {(vehicle.upcoming_services > 0 || vehicle.expiring_insurance > 0) && (
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {vehicle.upcoming_services > 0 && (
+                        <div className="flex items-center gap-1 rounded bg-orange-500/10 px-2 py-1 text-xs text-orange-400">
+                          <Wrench className="h-3 w-3" />
+                          {vehicle.upcoming_services} przegląd
+                          {vehicle.upcoming_services > 1 ? 'y' : ''}
+                        </div>
+                      )}
+                      {vehicle.expiring_insurance > 0 && (
+                        <div className="flex items-center gap-1 rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
+                          <Shield className="h-3 w-3" />
+                          Ubezp.
+                        </div>
                       )}
                     </div>
                   )}
-                </div>
 
-                {/* Alerts and Status */}
-                {(vehicle.upcoming_services > 0 || vehicle.expiring_insurance > 0) && (
-                  <div className="flex gap-2 mb-4 flex-wrap">
-                    {vehicle.upcoming_services > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 px-2 py-1 rounded">
-                        <Wrench className="w-3 h-3" />
-                        {vehicle.upcoming_services} przegląd
-                        {vehicle.upcoming_services > 1 ? 'y' : ''}
-                      </div>
-                    )}
-                    {vehicle.expiring_insurance > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded">
-                        <Shield className="w-3 h-3" />
-                        Ubezp.
-                      </div>
+                  {/* Quick Action: Fuel */}
+                  {canManage && (
+                    <button
+                      onClick={() => setQuickFuelVehicle(vehicle as unknown as IVehicle)}
+                      className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                    >
+                      <Fuel className="h-4 w-4" />
+                      Dodaj tankowanie
+                    </button>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#0f1119] px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Szczegóły
+                    </button>
+                    {canManage && (
+                      <>
+                        <button
+                          onClick={() => router.push(`/crm/fleet/${vehicle.id}/edit`)}
+                          className="flex items-center justify-center rounded-lg bg-[#0f1119] px-3 py-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteVehicle(vehicle.id, vehicle.name)}
+                          disabled={isRowDeleting}
+                          className={`flex items-center justify-center rounded-lg px-3 py-2 transition-colors ${
+                            isRowDeleting
+                              ? 'cursor-not-allowed bg-red-500/10 text-red-400 opacity-60'
+                              : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                          }`}
+                        >
+                          {isRowDeleting ? (
+                            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-red-400" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </>
                     )}
                   </div>
-                )}
-
-                {/* Quick Action: Fuel */}
-                {canManage && (
-                  <button
-                    onClick={() => setQuickFuelVehicle(vehicle)}
-                    className="w-full flex items-center justify-center gap-2 bg-[#d3bb73]/10 text-[#d3bb73] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/20 transition-colors text-sm mb-2"
-                  >
-                    <Fuel className="w-4 h-4" />
-                    Dodaj tankowanie
-                  </button>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
-                    className="flex-1 flex items-center justify-center gap-2 bg-[#0f1119] text-[#e5e4e2] px-4 py-2 rounded-lg hover:bg-[#0f1119]/80 transition-colors text-sm"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Szczegóły
-                  </button>
-                  {canManage && (
-                    <>
-                      <button
-                        onClick={() => router.push(`/crm/fleet/${vehicle.id}/edit`)}
-                        className="flex items-center justify-center bg-[#0f1119] text-[#e5e4e2] px-3 py-2 rounded-lg hover:bg-[#0f1119]/80 transition-colors"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteVehicle(vehicle.id, vehicle.name)}
-                        className="flex items-center justify-center bg-red-500/10 text-red-400 px-3 py-2 rounded-lg hover:bg-red-500/20 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
-        <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-[#0f1119] border-b border-[#d3bb73]/10">
+              <thead className="border-b border-[#d3bb73]/10 bg-[#0f1119]">
                 <tr>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">Pojazd</th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Pojazd</th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">
                     Rejestracja
                   </th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">
-                    Przebieg
-                  </th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Przebieg</th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">
                     Przypisany
                   </th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">Status</th>
-                  <th className="text-left p-4 text-sm font-medium text-[#e5e4e2]/60">Alerty</th>
-                  <th className="text-right p-4 text-sm font-medium text-[#e5e4e2]/60">
-                    Akcje
-                  </th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Status</th>
+                  <th className="p-4 text-left text-sm font-medium text-[#e5e4e2]/60">Alerty</th>
+                  <th className="p-4 text-right text-sm font-medium text-[#e5e4e2]/60">Akcje</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredVehicles.map((vehicle) => (
-                  <tr
-                    key={vehicle.id}
-                    className="border-b border-[#d3bb73]/5 hover:bg-[#0f1119]/50 transition-colors"
-                  >
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="relative w-16 h-16 rounded-lg overflow-hidden bg-[#0f1119] flex items-center justify-center flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-[#d3bb73]/50 transition-all"
-                          onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
-                          onMouseEnter={() => setHoveredVehicleId(vehicle.id)}
-                          onMouseLeave={() => setHoveredVehicleId(null)}
-                        >
-                          {vehicle.all_images.length > 0 ? (
-                            <img
-                              src={vehicle.all_images[0]?.image_url}
-                              alt={vehicle.name}
-                              className="w-full h-full object-cover"
+                {filteredVehicles.map((vehicle) => {
+                  const isRowDeleting = deletingVehicleId === vehicle.id;
+                  const imageUrl = vehicle?.thumb_url ?? null;
+                  return (
+                    <tr
+                      key={vehicle.id}
+                      className={`border-b border-[#d3bb73]/5 transition-colors hover:bg-[#0f1119]/50 ${
+                        isRowDeleting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                      }`}
+                    >
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="relative flex h-16 w-16 flex-shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#0f1119] transition-all hover:ring-2 hover:ring-[#d3bb73]/50"
+                            onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                            onMouseEnter={() => setHoveredVehicleId(vehicle.id)}
+                            onMouseLeave={() => setHoveredVehicleId(null)}
+                          >
+                            {imageUrl ? (
+                              <Popover
+                              trigger={
+                                <img
+                                  src={imageUrl}
+                                  alt={vehicle.name ?? 'Pojazd'}
+                                  className="h-16 w-16 object-cover"
+                                  loading="lazy"
+                                />
+                              }
+                              content={
+                                <img
+                                  src={imageUrl}
+                                  alt={vehicle.name ?? 'Pojazd'}
+                                  className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                                />
+                              }
+                              openOn="hover"
                             />
-                          ) : (
-                            <Car className="w-8 h-8 text-[#e5e4e2]/20" />
-                          )}
+                            ) : (
+                              <Car className="h-8 w-8 text-[#e5e4e2]/20" />
+                            )}
 
-                          {/* Popover on hover */}
-                          {hoveredVehicleId === vehicle.id && vehicle.all_images.length > 0 && (
-                            <div className="absolute left-20 top-0 z-50 w-64 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl p-2 pointer-events-none">
-                              <img
-                                src={vehicle.all_images[0]?.image_url}
-                                alt={vehicle.name}
-                                className="w-full h-48 object-cover rounded"
-                              />
-                              {vehicle.all_images.length > 1 && (
-                                <div className="text-xs text-[#e5e4e2]/60 text-center mt-2">
-                                  +{vehicle.all_images.length - 1} więcej
-                                </div>
-                              )}
+                            {/* Popover on hover */}
+                            {hoveredVehicleId === vehicle.id && vehicle.all_images.length > 0 && (
+                              <div className="pointer-events-none absolute left-20 top-0 z-50 w-64 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-2 shadow-2xl">
+                                <img
+                                  src={vehicle.all_images[0]?.image_url}
+                                  alt={vehicle.name}
+                                  className="h-48 w-full rounded object-cover"
+                                />
+                                {vehicle.all_images.length > 1 && (
+                                  <div className="mt-2 text-center text-xs text-[#e5e4e2]/60">
+                                    +{vehicle.all_images.length - 1} więcej
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div
+                            className="cursor-pointer"
+                            onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                          >
+                            <div className="font-medium text-[#e5e4e2]">{vehicle.name}</div>
+                            <div className="text-sm text-[#e5e4e2]/60">
+                              {vehicle.brand} {vehicle.model}
                             </div>
-                          )}
-                        </div>
-                        <div
-                          className="cursor-pointer"
-                          onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
-                        >
-                          <div className="font-medium text-[#e5e4e2]">{vehicle.name}</div>
-                          <div className="text-sm text-[#e5e4e2]/60">
-                            {vehicle.brand} {vehicle.model}
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-4 text-[#e5e4e2]">
-                      {vehicle.registration_number || '-'}
-                    </td>
-                    <td className="p-4 text-[#e5e4e2]">
-                      {vehicle.current_mileage?.toLocaleString() || 0} km
-                    </td>
-                    <td className="p-4 text-[#e5e4e2]/80">
-                       {vehicle.in_use && vehicle.in_use_driver_id && (
+                      </td>
+                      <td className="p-4 text-[#e5e4e2]">{vehicle.registration_number || '-'}</td>
+                      <td className="p-4 text-[#e5e4e2]">
+                        {vehicle.current_mileage?.toLocaleString() || 0} km
+                      </td>
+                      <td className="p-4 text-[#e5e4e2]/80">
+                        {vehicle.in_use && vehicle.in_use_driver_id && (
                           <Popover
                             content={
-                              <div className="p-3 min-w-[200px] items-center justify-center">
+                              <div className="min-w-[200px] items-center justify-center p-3">
                                 <div className="flex items-center justify-center">
-                                  <div onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}>
+                                  <div
+                                    onClick={() =>
+                                      router.push(`/crm/employees/${vehicle.in_use_driver_id}`)
+                                    }
+                                  >
                                     {renderAvatar(
                                       vehicle.in_use_driver_name,
                                       vehicle.in_use_driver_surname,
                                       vehicle.in_use_driver_avatar_url,
                                       vehicle.in_use_driver_avatar_metadata,
-                                      48
+                                      48,
                                     )}
                                   </div>
-                                  <div className="flex-1 min-w-0">
+                                  <div className="min-w-0 flex-1">
                                     <button
-                                      onClick={() => router.push(`/crm/employees/${vehicle.in_use_driver_id}`)}
-                                      className="text-[#e5e4e2] hover:text-[#d3bb73] font-medium text-sm transition-colors truncate block w-full text-left"
+                                      onClick={() =>
+                                        router.push(`/crm/employees/${vehicle.in_use_driver_id}`)
+                                      }
+                                      className="block w-full truncate text-left text-sm font-medium text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
                                     >
                                       {vehicle.in_use_driver_name} {vehicle.in_use_driver_surname}
                                     </button>
-                                    <div className="text-xs text-[#e5e4e2]/60 mt-1">
+                                    <div className="mt-1 text-xs text-[#e5e4e2]/60">
                                       Kliknij aby przejść do profilu
                                     </div>
                                   </div>
@@ -899,66 +738,73 @@ export default function FleetPage() {
                               vehicle.in_use_driver_surname,
                               vehicle.in_use_driver_avatar_url,
                               vehicle.in_use_driver_avatar_metadata,
-                              28
+                              28,
                             )}
-                            <p className="ml-4 text-xs text-[#e5e4e2]/60 mt-1">{`${vehicle.in_use_driver_name} ${vehicle.in_use_driver_surname}`} </p>
+                            <p className="ml-4 mt-1 text-xs text-[#e5e4e2]/60">
+                              {`${vehicle.in_use_driver_name} ${vehicle.in_use_driver_surname}`}{' '}
+                            </p>
                           </Popover>
                         )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        {getStatusBadge(vehicle.status, vehicle.in_use)}
-                       
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        {vehicle.upcoming_services > 0 && (
-                          <Wrench className="w-4 h-4 text-orange-400" />
-                        )}
-                        {vehicle.expiring_insurance > 0 && (
-                          <Shield className="w-4 h-4 text-red-400" />
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
-                          className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
-                          title="Podgląd"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setQuickFuelVehicle(vehicle)}
-                          className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
-                          title="Dodaj tankowanie"
-                        >
-                          <Fuel className="w-4 h-4" />
-                        </button>
-                        {canManage && (
-                          <>
-                            <button
-                              onClick={() => router.push(`/crm/fleet/${vehicle.id}/edit`)}
-                              className="p-2 text-[#e5e4e2] hover:bg-[#0f1119] rounded-lg transition-colors"
-                              title="Edytuj"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteVehicle(vehicle.id, vehicle.name)}
-                              className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                              title="Usuń"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(vehicle.status, vehicle.in_use)}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2">
+                          {vehicle.upcoming_services > 0 && (
+                            <Wrench className="h-4 w-4 text-orange-400" />
+                          )}
+                          {vehicle.expiring_insurance > 0 && (
+                            <Shield className="h-4 w-4 text-red-400" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => router.push(`/crm/fleet/${vehicle.id}`)}
+                            className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                            title="Podgląd"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setQuickFuelVehicle(vehicle as unknown as IVehicle)}
+                            className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-500/10"
+                            title="Dodaj tankowanie"
+                          >
+                            <Fuel className="h-4 w-4" />
+                          </button>
+                          {canManage && (
+                            <>
+                              <button
+                                onClick={() => router.push(`/crm/fleet/${vehicle.id}/edit`)}
+                                className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]"
+                                title="Edytuj"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteVehicle(vehicle.id, vehicle.name)}
+                                disabled={isRowDeleting}
+                                className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10"
+                                title="Usuń"
+                              >
+                                {isRowDeleting ? (
+                                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-red-400" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -973,7 +819,7 @@ export default function FleetPage() {
           currentMileage={quickFuelVehicle.current_mileage || 0}
           onClose={() => setQuickFuelVehicle(null)}
           onSuccess={() => {
-            fetchVehicles();
+            refetch();
           }}
         />
       )}

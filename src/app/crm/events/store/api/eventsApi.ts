@@ -1,12 +1,7 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase';
-import { ClientType } from '@/app/crm/clients/type';
-import { IEventCategory } from '@/app/crm/event-categories/types';
-import { IOfferItem } from '@/app/crm/offers/types';
+
 import { IEvent } from '../../type';
-import { ILocation } from '@/app/crm/locations/type';
-import { SelectedItem } from '../../type';
-import { IEmployee } from '@/app/crm/employees/type';
 
 export type EventsApiErrorStatus = 'CUSTOM_ERROR' | 'FETCH_ERROR' | 'NOT_FOUND';
 
@@ -46,6 +41,7 @@ export const eventsApi = createApi({
     'EventAgenda',
     'EventFinances',
     'EventContracts',
+    'EventLogistics',
   ],
   endpoints: (builder) => ({
     // Pobierz listę wydarzeń (kalendarz)
@@ -318,7 +314,6 @@ export const eventsApi = createApi({
             .insert(rowsToInsert)
             .select(); // ⬅️ bez .single(), bo wstawiasz wiele
 
-
           if (error) {
             return {
               error: {
@@ -556,10 +551,7 @@ export const eventsApi = createApi({
       ],
     }),
 
-    createEventOffer: builder.mutation<
-      any,
-      { eventId: string; offerData: any }
-    >({
+    createEventOffer: builder.mutation<any, { eventId: string; offerData: any }>({
       async queryFn({ eventId, offerData }) {
         try {
           const { data, error } = await supabase
@@ -584,34 +576,32 @@ export const eventsApi = createApi({
       ],
     }),
 
-    updateEventOffer: builder.mutation<any, { eventId: string; offerId: string; data: any }>(
-      {
-        async queryFn({ offerId, data }) {
-          try {
-            const { data: updated, error } = await supabase
-              .from('offers')
-              .update(data)
-              .eq('id', offerId)
-              .select()
-              .single();
+    updateEventOffer: builder.mutation<any, { eventId: string; offerId: string; data: any }>({
+      async queryFn({ offerId, data }) {
+        try {
+          const { data: updated, error } = await supabase
+            .from('offers')
+            .update(data)
+            .eq('id', offerId)
+            .select()
+            .single();
 
-            if (error) throw error;
-            return { data: updated };
-          } catch (error: any) {
-            return {
-              error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
-            };
-          }
-        },
-        invalidatesTags: (_res, _err, { eventId, offerId }) => [
-          { type: 'EventOffers', id: `${eventId}_LIST` },
-          { type: 'EventOffers', id: offerId },
-          { type: 'EventDetails', id: eventId },
-          { type: 'Events', id: eventId },
-          { type: 'Events', id: 'LIST' },
-        ],
+          if (error) throw error;
+          return { data: updated };
+        } catch (error: any) {
+          return {
+            error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
+          };
+        }
       },
-    ),
+      invalidatesTags: (_res, _err, { eventId, offerId }) => [
+        { type: 'EventOffers', id: `${eventId}_LIST` },
+        { type: 'EventOffers', id: offerId },
+        { type: 'EventDetails', id: eventId },
+        { type: 'Events', id: eventId },
+        { type: 'Events', id: 'LIST' },
+      ],
+    }),
 
     // ============ OFFERS ENDPOINTS ============
     getEventOffers: builder.query<any[], string>({
@@ -891,6 +881,81 @@ export const eventsApi = createApi({
       },
       providesTags: (result, error, eventId) => [{ type: 'EventContracts', id: eventId }],
     }),
+    getEventLogistics: builder.query<
+      { vehicles: any[]; timeline: any[]; loadingItems: any[] },
+      { eventId: string; canManage: boolean; employeeId?: string | null }
+    >({
+      async queryFn({ eventId, canManage, employeeId }) {
+        try {
+          const [vehiclesRes, conflictsRes, timelineRes, loadingRes] = await Promise.all([
+            supabase
+              .from('event_vehicles')
+              .select(
+                `
+            *,
+            vehicles!event_vehicles_vehicle_id_fkey(name, registration_number, fuel_type,thumb_url ),
+            trailer:vehicles!event_vehicles_trailer_vehicle_id_fkey(name, registration_number, fuel_type),
+            driver:employees!event_vehicles_driver_id_fkey(id, name, surname)
+          `,
+              )
+              .eq('event_id', eventId)
+              .order('created_at', { ascending: true }),
+
+            supabase
+              .from('vehicle_reservation_conflicts')
+              .select('*')
+              .or(`event_id_1.eq.${eventId},event_id_2.eq.${eventId}`),
+
+            supabase
+              .from('event_logistics_timeline')
+              .select(`*, responsible_employee:employees(name, surname)`)
+              .eq('event_id', eventId)
+              .order('sort_order', { ascending: true }),
+
+            supabase
+              .from('event_loading_checklist')
+              .select(`*, vehicles(name)`)
+              .eq('event_id', eventId)
+              .order('sort_order', { ascending: true }),
+          ]);
+
+          if (vehiclesRes.error) throw vehiclesRes.error;
+          if (conflictsRes.error) throw conflictsRes.error;
+          if (timelineRes.error) throw timelineRes.error;
+          if (loadingRes.error) throw loadingRes.error;
+
+          const conflictCounts: Record<string, number> = {};
+          (conflictsRes.data || []).forEach((conflict: any) => {
+            const key = conflict.reservation_id;
+            conflictCounts[key] = (conflictCounts[key] || 0) + 1;
+          });
+
+          let vehiclesWithConflicts = (vehiclesRes.data || []).map((v: any) => ({
+            ...v,
+            conflicts_count: conflictCounts[v.id] || 0,
+          }));
+
+          if (!canManage && employeeId) {
+            vehiclesWithConflicts = vehiclesWithConflicts.filter(
+              (v: any) => v.driver_id === employeeId,
+            );
+          }
+
+          return {
+            data: {
+              vehicles: vehiclesWithConflicts,
+              timeline: timelineRes.data || [],
+              loadingItems: loadingRes.data || [],
+            },
+          };
+        } catch (error: any) {
+          return {
+            error: { status: 'FETCH_ERROR', message: error?.message ?? 'Unknown error' } as any,
+          };
+        }
+      },
+      providesTags: (_res, _err, arg) => [{ type: 'EventLogistics', id: arg.eventId }],
+    }),
   }),
 });
 
@@ -923,4 +988,6 @@ export const {
   useGetEventContractsQuery,
   useGetEventByIdQuery,
   useLazyGetEventByIdQuery,
+  useGetEventLogisticsQuery,
+  useLazyGetEventLogisticsQuery,
 } = eventsApi;

@@ -201,7 +201,7 @@ export default function EditVehiclePage() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/crm/fleet')}
           className="flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] mb-4"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -842,7 +842,7 @@ export default function EditVehiclePage() {
         <div className="flex gap-4 justify-end">
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={() => router.push('/crm/fleet')}
             className="px-6 py-3 bg-[#0f1119] text-[#e5e4e2] rounded-lg hover:bg-[#0f1119]/80 transition-colors"
             disabled={loading}
           >

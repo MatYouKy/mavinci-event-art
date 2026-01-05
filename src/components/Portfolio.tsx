@@ -103,7 +103,7 @@ export default function Portfolio() {
           <div className="flex flex-wrap justify-center gap-3 md:gap-4">
             {filteredProjects.map((project, index) => (
             <Link
-              href={`/portfolio/${project.id}`}
+              href={`/portfolio/${project.slug}`}
               key={project.id}
               className="group relative overflow-hidden rounded-2xl cursor-pointer block w-full md:w-[calc(33.333%-1.33rem)]"
               style={{
@@ -122,9 +122,6 @@ export default function Portfolio() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
 
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-[-10px] group-hover:translate-y-0">
-                  <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
-                    <Eye className="w-5 h-5 text-[#1c1f33]" />
-                  </div>
                   <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
                     <ArrowUpRight className="w-5 h-5 text-[#1c1f33]" />
                   </div>

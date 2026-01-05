@@ -537,7 +537,6 @@ export default function EventWizard({
         break;
       case 4:
         if (!employeesList.length) {
-          console.log('employeesList', employeesList);
         }
         break;
       case 5:

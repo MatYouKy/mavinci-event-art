@@ -34,6 +34,7 @@ import {
 } from './store/equipmentApi';
 
 import type { EquipmentCatalogItem } from './hooks/useEquipmentCatalog';
+import Popover from '@/components/UI/Tooltip';
 
 type UnitStatus = 'available' | 'damaged' | 'in_service' | 'retired';
 
@@ -503,7 +504,7 @@ export default function EquipmentPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => {
-            const stock = getStock(item);
+            const stock = getStock(item as EquipmentListItem);
             return (
               <div
                 key={item.id}
@@ -543,10 +544,22 @@ export default function EquipmentPage() {
                 )}
                 <div className="relative">
                   {item.thumbnail_url ? (
-                    <img
-                      src={item.thumbnail_url}
-                      alt={item.name}
-                      className="mb-4 h-32 w-full rounded-lg object-cover"
+                    <Popover
+                      trigger={
+                        <img
+                          src={item.thumbnail_url}
+                          alt={item.name}
+                          className="mb-4 h-32 w-full rounded-lg object-cover"
+                        />
+                      }
+                      content={
+                        <img
+                          src={item.thumbnail_url}
+                          alt={item.name ?? 'Sprzęt'}
+                          className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                        />
+                      }
+                      openOn="hover"
                     />
                   ) : (
                     <div className="mb-4 flex h-32 w-full items-center justify-center rounded-lg bg-[#0f1119]">
@@ -589,7 +602,7 @@ export default function EquipmentPage() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
           {items.map((item) => {
-            const stock = getStock(item);
+            const stock = getStock(item as EquipmentListItem);
             return (
               <div
                 key={item.id}
@@ -604,10 +617,22 @@ export default function EquipmentPage() {
               >
                 <div className="relative">
                   {item.thumbnail_url ? (
-                    <img
-                      src={item.thumbnail_url}
-                      alt={item.name}
-                      className="h-12 w-12 rounded-lg object-cover"
+                    <Popover
+                      trigger={
+                        <img
+                          src={item.thumbnail_url}
+                          alt={item.name ?? 'Sprzęt'}
+                          className="h-12 w-12 rounded-lg object-cover"
+                        />
+                      }
+                      content={ 
+                        <img
+                          src={item.thumbnail_url}
+                          alt={item.name ?? 'Sprzęt'}
+                          className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                        />
+                      }
+                      openOn="hover"
                     />
                   ) : (
                     <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#0f1119]">

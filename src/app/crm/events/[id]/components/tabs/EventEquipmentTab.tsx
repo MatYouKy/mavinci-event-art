@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Package, Plus, Printer } from 'lucide-react';
+import { Package, Plus, Printer } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
@@ -260,8 +260,6 @@ export const EventEquipmentTab: React.FC = () => {
     event_end_date: event?.event_end_date,
   });
 
-  console.log('equipment', equipment);
-
   useEffect(() => {
     if (!eventId) return;
     fetchAvailableEquipment();
@@ -502,7 +500,6 @@ export const EventEquipmentTab: React.FC = () => {
     () => (equipment || []).filter((r: any) => r.auto_added && isKitRow(r)),
     [equipment],
   );
-  console.log('autoKitRows', autoKitRows);
 
   const manualItemRows = useMemo(
     () => (equipment || []).filter((r: any) => !r.auto_added && !isKitRow(r)),
@@ -514,7 +511,6 @@ export const EventEquipmentTab: React.FC = () => {
   );
 
   const renderKitRow = (row: any, editable: boolean) => {
-    console.log('row', row);
     const isExpanded = expandedKits.has(row.id);
 
     const kitName = row?.kit?.name || row?.equipment_kits?.name || row?.name || 'Zestaw';
@@ -729,7 +725,6 @@ export const EventEquipmentTab: React.FC = () => {
                 const brand = eq?.brand || it?.brand || '';
                 const model = eq?.model || it?.model || '';
                 const perKit = Number(it?.quantity || 1);
-                console.log('it', it);
 
                 const meta = [it.brand, it.model].filter(Boolean).join(' • ');
                 const total = perKit * qty;

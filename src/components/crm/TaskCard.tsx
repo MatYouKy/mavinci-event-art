@@ -5,7 +5,7 @@ import { Calendar, GripVertical, Edit, Trash2, UserPlus, MessageSquare } from 'l
 import { memo } from 'react';
 import TaskAssigneeAvatars from './TaskAssigneeAvatars';
 
-interface Task {
+export interface Task {
   id: string;
   title: string;
   description: string | null;

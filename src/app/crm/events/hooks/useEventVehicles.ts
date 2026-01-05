@@ -1,19 +1,31 @@
-import { useGetEventVehiclesQuery } from '@/app/crm/events/store/api/eventsApi';
+import { useCallback, useMemo } from 'react';
+import { useLazyGetEventLogisticsQuery } from '@/app/crm/events/store/api/eventsApi';
 
-export function useEventVehicles(eventId: string) {
-  const {
-    data: vehicles = [],
-    isLoading,
-    error,
-    refetch,
-  } = useGetEventVehiclesQuery(eventId, {
-    skip: !eventId,
-  });
+type Params = {
+  eventId: string;
+  canManage: boolean;
+  employeeId?: string | null;
+};
 
-  return {
-    vehicles,
-    isLoading,
-    error,
-    refetch,
-  };
+export function useEventLogisticsLazy() {
+  const [trigger, result] = useLazyGetEventLogisticsQuery();
+
+  // Stabilna referencja funkcji (nie zmienia się co render)
+  const fetchLogistics = useCallback(
+    (params: Params) => {
+      // preferCacheValue = true -> RTK Query może zwrócić cache jeśli jest
+      // jeśli chcesz ZAWSZE odświeżać, daj false
+      return trigger(params, true);
+    },
+    [trigger],
+  );
+
+  // (Opcjonalnie) Stabilny obiekt zwracany z hooka
+  return useMemo(
+    () => ({
+      fetchLogistics,
+      ...result, // data, isLoading, isFetching, error, itd.
+    }),
+    [fetchLogistics, result],
+  );
 }

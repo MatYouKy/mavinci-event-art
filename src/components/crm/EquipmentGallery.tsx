@@ -49,6 +49,7 @@ export default function EquipmentGallery({ equipmentId, canManage }: EquipmentGa
         .from('equipment_images')
         .select('*')
         .eq('equipment_id', equipmentId)
+        .order('is_primary', { ascending: false })
         .order('sort_order', { ascending: true });
 
       if (error) throw error;

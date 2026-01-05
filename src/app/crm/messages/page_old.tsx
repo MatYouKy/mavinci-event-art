@@ -140,8 +140,7 @@ export default function MessagesPage() {
           table: 'received_emails',
         },
         (payload) => {
-          console.log('Received email change:', payload);
-          if (selectedAccount !== 'contact_form') {
+            if (selectedAccount !== 'contact_form') {
             setOffset(0);
             setMessages([]);
             fetchMessages(true);

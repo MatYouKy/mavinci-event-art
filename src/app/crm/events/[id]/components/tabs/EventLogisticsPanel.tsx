@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Truck,
   MapPin,
@@ -21,6 +21,7 @@ import {
   ChevronUp,
   X,
   Gauge,
+  TruckIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -28,6 +29,8 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddEventVehicleModal from '../../../../../../components/crm/AddEventVehicleModal';
 import VehicleHandoverModal from '../../../../../../components/crm/VehicleHandoverModal';
+import Popover from '@/components/UI/Tooltip';
+import { useEventLogisticsLazy } from '../../../hooks/useEventVehicles';
 
 interface EventLogisticsProps {
   eventId: string;
@@ -139,9 +142,6 @@ export default function EventLogisticsPanel({
   const { showConfirm } = useDialog();
   const { employee } = useCurrentEmployee();
 
-  const [vehicles, setVehicles] = useState<EventVehicle[]>([]);
-  const [timeline, setTimeline] = useState<LogisticsActivity[]>([]);
-  const [loadingItems, setLoadingItems] = useState<LoadingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState<string>('vehicles');
 
@@ -154,110 +154,38 @@ export default function EventLogisticsPanel({
     null,
   );
 
-  useEffect(() => {
-    fetchLogisticsData();
+  const { fetchLogistics, data, isLoading, isFetching, error } = useEventLogisticsLazy();
 
-    // Subscribe to realtime updates for event_vehicles
+  const fetchLogisticsRef = useRef(fetchLogistics);
+
+  useEffect(() => {
+    fetchLogisticsRef.current = fetchLogistics;
+  }, [fetchLogistics]);
+
+  const vehicles = data?.vehicles ?? ([] as EventVehicle[]);
+  const timeline = data?.timeline ?? ([] as LogisticsActivity[]);
+  const loadingItems = data?.loadingItems ?? ([] as LoadingItem[]);
+
+  useEffect(() => {
+    if (!eventId) return;
+
+    const args = { eventId, canManage, employeeId: employee?.id ?? null };
+
+    fetchLogisticsRef.current(args);
+
     const channel = supabase
-      .channel('event_vehicles_changes')
+      .channel(`event_vehicles_changes_${eventId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'event_vehicles',
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => {
-          fetchLogisticsData();
-        },
+        { event: '*', schema: 'public', table: 'event_vehicles', filter: `event_id=eq.${eventId}` },
+        () => fetchLogisticsRef.current(args),
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [eventId]);
-
-  const fetchLogisticsData = async () => {
-    try {
-      setLoading(true);
-
-      const [vehiclesRes, conflictsRes, timelineRes, loadingRes] = await Promise.all([
-        supabase
-          .from('event_vehicles')
-          .select(
-            `
-            *,
-            vehicles!event_vehicles_vehicle_id_fkey(name, registration_number, fuel_type),
-            trailer:vehicles!event_vehicles_trailer_vehicle_id_fkey(name, registration_number, fuel_type),
-            driver:employees!event_vehicles_driver_id_fkey(id, name, surname)
-          `,
-          )
-          .eq('event_id', eventId)
-          .order('created_at', { ascending: true }),
-
-        supabase
-          .from('vehicle_reservation_conflicts')
-          .select('*')
-          .or(`event_id_1.eq.${eventId},event_id_2.eq.${eventId}`),
-
-        supabase
-          .from('event_logistics_timeline')
-          .select(
-            `
-            *,
-            responsible_employee:employees(name, surname)
-          `,
-          )
-          .eq('event_id', eventId)
-          .order('sort_order', { ascending: true }),
-
-        supabase
-          .from('event_loading_checklist')
-          .select(
-            `
-            *,
-            vehicles(name)
-          `,
-          )
-          .eq('event_id', eventId)
-          .order('sort_order', { ascending: true }),
-      ]);
-
-      if (vehiclesRes.error) throw vehiclesRes.error;
-      if (conflictsRes.error) throw conflictsRes.error;
-      if (timelineRes.error) throw timelineRes.error;
-      if (loadingRes.error) throw loadingRes.error;
-
-      const conflictCounts: Record<string, number> = {};
-      (conflictsRes.data || []).forEach((conflict: any) => {
-        const key = conflict.reservation_id;
-        conflictCounts[key] = (conflictCounts[key] || 0) + 1;
-      });
-
-      let vehiclesWithConflicts = (vehiclesRes.data || []).map((v: any) => ({
-        ...v,
-        conflicts_count: conflictCounts[v.id] || 0,
-      }));
-
-      // Jeśli użytkownik nie jest adminem, pokaż tylko jego pojazdy
-      if (!canManage && employee) {
-        vehiclesWithConflicts = vehiclesWithConflicts.filter(
-          (v: any) => v.driver_id === employee.id,
-        );
-      }
-
-      setVehicles(vehiclesWithConflicts);
-      setTimeline(timelineRes.data || []);
-      setLoadingItems(loadingRes.data || []);
-    } catch (error) {
-      console.error('Error fetching logistics:', error);
-      showSnackbar('Błąd podczas ładowania danych logistycznych', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [eventId, canManage, employee?.id]); // <-- bez fetchLogistics
 
   const handleDeleteVehicle = async (vehicleId: string) => {
     const confirmed = await showConfirm({
@@ -273,7 +201,7 @@ export default function EventLogisticsPanel({
       if (error) throw error;
 
       showSnackbar('Pojazd został usunięty', 'success');
-      fetchLogisticsData();
+      fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null });
     } catch (error: any) {
       console.error('Error deleting vehicle:', error);
       showSnackbar(error.message || 'Błąd podczas usuwania pojazdu', 'error');
@@ -336,7 +264,7 @@ export default function EventLogisticsPanel({
     setExpandedSection(expandedSection === section ? '' : section);
   };
 
-  if (loading) {
+  if (isLoading || isFetching) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
@@ -426,188 +354,217 @@ export default function EventLogisticsPanel({
               </div>
             ) : (
               <div className="divide-y divide-[#d3bb73]/5">
-                {vehicles.map((vehicle) => (
-                  <div key={vehicle.id} className="p-4 hover:bg-[#0f1119]/30">
-                    {/* Nagłówek z przyciskami akcji */}
-                    <div className="mb-3 flex items-start justify-between">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h4 className="font-semibold text-[#e5e4e2]">
-                          {vehicle.is_external
-                            ? `${vehicle.external_company_name || 'Zewnętrzny'}`
-                            : vehicle.vehicles?.name || 'Brak nazwy'}
-                        </h4>
-                        {!vehicle.is_external && vehicle.vehicles?.registration_number && (
-                          <span className="text-sm text-[#e5e4e2]/60">
-                            {vehicle.vehicles.registration_number}
-                          </span>
-                        )}
-                        {vehicle.is_external && (
-                          <span className="rounded bg-purple-500/20 px-2 py-1 text-xs text-purple-400">
-                            Zewnętrzny
-                          </span>
-                        )}
-                        {vehicle.is_in_use && (
-                          <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
-                            <CheckCircle className="h-3 w-3" />W użytkowaniu
-                          </span>
-                        )}
-                        {getStatusBadge(vehicle.status)}
-                        {vehicle.conflicts_count && vehicle.conflicts_count > 0 && (
-                          <span className="flex items-center gap-1 rounded bg-orange-500/20 px-2 py-1 text-xs text-orange-400">
-                            <AlertCircle className="h-3 w-3" />
-                            Konflikt
-                          </span>
-                        )}
-                      </div>
+                {vehicles.map((vehicle) => {
+                  const vehicleName = vehicle.vehicles?.name ?? null;
+                  const imageUrl = vehicle.vehicles?.thumb_url ?? null;
+                  return (
+                    <div key={vehicle.id} className="p-4 hover:bg-[#0f1119]/30">
+                      {/* Nagłówek z przyciskami akcji */}
+                      <div className="mb-3 flex items-start justify-between">
+                        <div className="flex flex-wrap items-center gap-3">
+                          {imageUrl ? (
+                            <Popover
+                              trigger={
+                                <img
+                                  src={imageUrl}
+                                  alt={vehicleName ?? 'Pojazd'}
+                                  className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
+                                  loading="lazy"
+                                />
+                              }
+                              content={
+                                <img
+                                  src={imageUrl}
+                                  alt={vehicleName ?? 'Pojazd'}
+                                  className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                                />
+                              }
+                              openOn="hover"
+                            />
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                              <TruckIcon className="h-5 w-5 text-[#e5e4e2]/60" />
+                            </div>
+                          )}
 
-                      {/* Przyciski akcji */}
-                      <div className="flex items-center gap-2">
-                        {/* Przycisk odbioru tylko dla kierowcy */}
-                        {employee && vehicle.driver_id === employee.id && (
-                          <button
-                            onClick={() => {
-                              setSelectedVehicleForHandover(vehicle);
-                              setShowHandoverModal(true);
-                            }}
-                            className={`flex items-center gap-2 rounded-lg px-4 py-2 font-medium transition-colors ${
-                              vehicle.is_in_use
-                                ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
-                                : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                            } `}
-                            title={vehicle.is_in_use ? 'Zdaj pojazd' : 'Odbierz pojazd'}
-                          >
-                            <Gauge className="h-5 w-5" />
-                            {vehicle.is_in_use ? 'Zdaj pojazd' : 'Odbierz pojazd'}
-                          </button>
-                        )}
+                          <h4 className="font-semibold text-[#e5e4e2]">
+                            {vehicle.is_external
+                              ? `${vehicle.external_company_name || 'Zewnętrzny'}`
+                              : vehicle.vehicles?.name || 'Brak nazwy'}
+                          </h4>
+                          {!vehicle.is_external && vehicle.vehicles?.registration_number && (
+                            <span className="text-sm text-[#e5e4e2]/60">
+                              {vehicle.vehicles.registration_number}
+                            </span>
+                          )}
+                          {vehicle.is_external && (
+                            <span className="rounded bg-purple-500/20 px-2 py-1 text-xs text-purple-400">
+                              Zewnętrzny
+                            </span>
+                          )}
+                          {vehicle.is_in_use && (
+                            <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
+                              <CheckCircle className="h-3 w-3" />W użytkowaniu
+                            </span>
+                          )}
+                          {getStatusBadge(vehicle.status)}
+                          {vehicle.conflicts_count && vehicle.conflicts_count > 0 && (
+                            <span className="flex items-center gap-1 rounded bg-orange-500/20 px-2 py-1 text-xs text-orange-400">
+                              <AlertCircle className="h-3 w-3" />
+                              Konflikt
+                            </span>
+                          )}
+                        </div>
 
-                        {/* Przyciski zarządzania tylko dla managerów */}
-                        {canManage && (
-                          <>
+                        {/* Przyciski akcji */}
+                        <div className="flex items-center gap-2">
+                          {/* Przycisk odbioru tylko dla kierowcy */}
+                          {employee && vehicle.driver_id === employee.id && (
                             <button
                               onClick={() => {
-                                setEditingVehicleId(vehicle.id);
-                                setShowVehicleModal(true);
+                                setSelectedVehicleForHandover(vehicle);
+                                setShowHandoverModal(true);
                               }}
-                              className="rounded p-1.5 transition-colors hover:bg-blue-500/20"
-                              title="Edytuj pojazd"
+                              className={`flex items-center gap-2 rounded-lg px-4 py-2 font-medium transition-colors ${
+                                vehicle.is_in_use
+                                  ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                                  : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                              } `}
+                              title={vehicle.is_in_use ? 'Zdaj pojazd' : 'Odbierz pojazd'}
                             >
-                              <Edit className="h-4 w-4 text-blue-400" />
+                              <Gauge className="h-5 w-5" />
+                              {vehicle.is_in_use ? 'Zdaj pojazd' : 'Odbierz pojazd'}
                             </button>
-                            <button
-                              onClick={() => handleDeleteVehicle(vehicle.id)}
-                              className="rounded p-1.5 transition-colors hover:bg-red-500/20"
-                              title="Usuń pojazd"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-400" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                          )}
 
-                    {/* Szczegóły pojazdu */}
-                    <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
-                      <div>
-                        <span className="text-[#e5e4e2]/60">Rola:</span>
-                        <p className="text-[#e5e4e2]">
-                          {vehicle.role === 'transport_equipment'
-                            ? 'Transport sprzętu'
-                            : vehicle.role === 'transport_crew'
-                              ? 'Transport ekipy'
-                              : 'Wsparcie'}
-                        </p>
-                      </div>
-                      {vehicle.driver && (
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Kierowca:</span>
-                          <p className="text-[#e5e4e2]">
-                            {vehicle.driver.name} {vehicle.driver.surname}
-                          </p>
-                        </div>
-                      )}
-                      <div>
-                        <span className="text-[#e5e4e2]/60">Wyjazd:</span>
-                        <p className="text-[#e5e4e2]">
-                          {vehicle.departure_time
-                            ? new Date(vehicle.departure_time).toLocaleTimeString('pl-PL', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : '-'}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-[#e5e4e2]/60">Dystans:</span>
-                        <p className="text-[#e5e4e2]">{vehicle.estimated_distance_km || 0} km</p>
-                      </div>
-                      <div>
-                        <span className="text-[#e5e4e2]/60">Koszt szac.:</span>
-                        <p className="text-[#e5e4e2]">
-                          {(
-                            (vehicle.fuel_cost_estimate || 0) +
-                            (vehicle.toll_cost_estimate || 0) +
-                            (vehicle.external_rental_cost || 0) +
-                            (vehicle.external_trailer_rental_cost || 0)
-                          ).toFixed(0)}{' '}
-                          zł
-                        </p>
-                      </div>
-                    </div>
-
-                    {vehicle.has_trailer && (
-                      <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
-                        <div className="mb-2 flex items-center gap-2">
-                          <Package className="h-4 w-4 text-[#d3bb73]" />
-                          <span className="text-sm font-medium text-[#d3bb73]">Przyczepka</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-                          {vehicle.is_trailer_external ? (
+                          {/* Przyciski zarządzania tylko dla managerów */}
+                          {canManage && (
                             <>
-                              <div>
-                                <span className="text-[#e5e4e2]/60">Nazwa:</span>
-                                <p className="text-[#e5e4e2]">
-                                  {vehicle.external_trailer_name || '-'}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-[#e5e4e2]/60">Firma:</span>
-                                <p className="text-[#e5e4e2]">
-                                  {vehicle.external_trailer_company || '-'}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-[#e5e4e2]/60">Koszt wynajmu:</span>
-                                <p className="text-[#e5e4e2]">
-                                  {vehicle.external_trailer_rental_cost?.toFixed(0) || 0} zł
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-[#e5e4e2]/60">Miejsce zwrotu:</span>
-                                <p className="text-[#e5e4e2]">
-                                  {vehicle.external_trailer_return_location || '-'}
-                                </p>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div>
-                                <span className="text-[#e5e4e2]/60">Nazwa:</span>
-                                <p className="text-[#e5e4e2]">{vehicle.trailer?.name || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-[#e5e4e2]/60">Rejestracja:</span>
-                                <p className="text-[#e5e4e2]">
-                                  {vehicle.trailer?.registration_number || '-'}
-                                </p>
-                              </div>
+                              <button
+                                onClick={() => {
+                                  setEditingVehicleId(vehicle.id);
+                                  setShowVehicleModal(true);
+                                }}
+                                className="rounded p-1.5 transition-colors hover:bg-blue-500/20"
+                                title="Edytuj pojazd"
+                              >
+                                <Edit className="h-4 w-4 text-blue-400" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteVehicle(vehicle.id)}
+                                className="rounded p-1.5 transition-colors hover:bg-red-500/20"
+                                title="Usuń pojazd"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-400" />
+                              </button>
                             </>
                           )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {/* Szczegóły pojazdu */}
+                      <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+                        <div>
+                          <span className="text-[#e5e4e2]/60">Rola:</span>
+                          <p className="text-[#e5e4e2]">
+                            {vehicle.role === 'transport_equipment'
+                              ? 'Transport sprzętu'
+                              : vehicle.role === 'transport_crew'
+                                ? 'Transport ekipy'
+                                : 'Wsparcie'}
+                          </p>
+                        </div>
+                        {vehicle.driver && (
+                          <div>
+                            <span className="text-[#e5e4e2]/60">Kierowca:</span>
+                            <p className="text-[#e5e4e2]">
+                              {vehicle.driver.name} {vehicle.driver.surname}
+                            </p>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-[#e5e4e2]/60">Wyjazd:</span>
+                          <p className="text-[#e5e4e2]">
+                            {vehicle.departure_time
+                              ? new Date(vehicle.departure_time).toLocaleTimeString('pl-PL', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-[#e5e4e2]/60">Dystans:</span>
+                          <p className="text-[#e5e4e2]">{vehicle.estimated_distance_km || 0} km</p>
+                        </div>
+                        <div>
+                          <span className="text-[#e5e4e2]/60">Koszt szac.:</span>
+                          <p className="text-[#e5e4e2]">
+                            {(
+                              (vehicle.fuel_cost_estimate || 0) +
+                              (vehicle.toll_cost_estimate || 0) +
+                              (vehicle.external_rental_cost || 0) +
+                              (vehicle.external_trailer_rental_cost || 0)
+                            ).toFixed(0)}{' '}
+                            zł
+                          </p>
+                        </div>
+                      </div>
+
+                      {vehicle.has_trailer && (
+                        <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
+                          <div className="mb-2 flex items-center gap-2">
+                            <Package className="h-4 w-4 text-[#d3bb73]" />
+                            <span className="text-sm font-medium text-[#d3bb73]">Przyczepka</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                            {vehicle.is_trailer_external ? (
+                              <>
+                                <div>
+                                  <span className="text-[#e5e4e2]/60">Nazwa:</span>
+                                  <p className="text-[#e5e4e2]">
+                                    {vehicle.external_trailer_name || '-'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-[#e5e4e2]/60">Firma:</span>
+                                  <p className="text-[#e5e4e2]">
+                                    {vehicle.external_trailer_company || '-'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-[#e5e4e2]/60">Koszt wynajmu:</span>
+                                  <p className="text-[#e5e4e2]">
+                                    {vehicle.external_trailer_rental_cost?.toFixed(0) || 0} zł
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-[#e5e4e2]/60">Miejsce zwrotu:</span>
+                                  <p className="text-[#e5e4e2]">
+                                    {vehicle.external_trailer_return_location || '-'}
+                                  </p>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  <span className="text-[#e5e4e2]/60">Nazwa:</span>
+                                  <p className="text-[#e5e4e2]">{vehicle.trailer?.name || '-'}</p>
+                                </div>
+                                <div>
+                                  <span className="text-[#e5e4e2]/60">Rejestracja:</span>
+                                  <p className="text-[#e5e4e2]">
+                                    {vehicle.trailer?.registration_number || '-'}
+                                  </p>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -616,7 +573,7 @@ export default function EventLogisticsPanel({
 
       {/* Harmonogram */}
       <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
-        <button
+        <div
           onClick={() => toggleSection('timeline')}
           className="flex w-full items-center justify-between p-4 transition-colors hover:bg-[#0f1119]/50"
         >
@@ -644,7 +601,7 @@ export default function EventLogisticsPanel({
               <ChevronDown className="h-5 w-5 text-[#e5e4e2]/60" />
             )}
           </div>
-        </button>
+        </div>
 
         {expandedSection === 'timeline' && (
           <div className="border-t border-[#d3bb73]/10">
@@ -715,99 +672,6 @@ export default function EventLogisticsPanel({
         )}
       </div>
 
-      {/* Lista załadunkowa */}
-      <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
-        <button
-          onClick={() => toggleSection('loading')}
-          className="flex w-full items-center justify-between p-4 transition-colors hover:bg-[#0f1119]/50"
-        >
-          <div className="flex items-center gap-3">
-            <Package className="h-5 w-5 text-[#d3bb73]" />
-            <h3 className="text-lg font-semibold text-[#e5e4e2]">Lista załadunkowa</h3>
-            <span className="text-sm text-[#e5e4e2]/60">({loadingItems.length})</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {canManage && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowLoadingModal(true);
-                }}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-              >
-                <Plus className="h-4 w-4" />
-                Dodaj pozycję
-              </button>
-            )}
-            {expandedSection === 'loading' ? (
-              <ChevronUp className="h-5 w-5 text-[#e5e4e2]/60" />
-            ) : (
-              <ChevronDown className="h-5 w-5 text-[#e5e4e2]/60" />
-            )}
-          </div>
-        </button>
-
-        {expandedSection === 'loading' && (
-          <div className="border-t border-[#d3bb73]/10">
-            {loadingItems.length === 0 ? (
-              <div className="p-8 text-center">
-                <Package className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/20" />
-                <p className="text-[#e5e4e2]/60">Brak pozycji na liście załadunkowej</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-[#d3bb73]/10 bg-[#0f1119]">
-                    <tr>
-                      <th className="p-3 text-left text-sm font-medium text-[#e5e4e2]/60">
-                        Pozycja
-                      </th>
-                      <th className="p-3 text-left text-sm font-medium text-[#e5e4e2]/60">Ilość</th>
-                      <th className="p-3 text-left text-sm font-medium text-[#e5e4e2]/60">Waga</th>
-                      <th className="p-3 text-left text-sm font-medium text-[#e5e4e2]/60">
-                        Pojazd
-                      </th>
-                      <th className="p-3 text-center text-sm font-medium text-[#e5e4e2]/60">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loadingItems.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-b border-[#d3bb73]/5 hover:bg-[#0f1119]/30"
-                      >
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            {item.fragile && <AlertCircle className="h-4 w-4 text-orange-400" />}
-                            <span className="text-[#e5e4e2]">{item.item_name}</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-[#e5e4e2]">{item.quantity}</td>
-                        <td className="p-3 text-[#e5e4e2]">
-                          {item.weight_kg ? `${item.weight_kg} kg` : '-'}
-                        </td>
-                        <td className="p-3 text-[#e5e4e2]">{item.vehicles?.name || '-'}</td>
-                        <td className="p-3">
-                          <div className="flex items-center justify-center gap-2">
-                            {item.loaded ? (
-                              <CheckCircle className="h-5 w-5 text-green-400" />
-                            ) : (
-                              <div className="h-5 w-5 rounded-full border-2 border-[#e5e4e2]/20" />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* Modal dodawania pojazdu */}
       {showVehicleModal && (
         <AddEventVehicleModal
@@ -821,7 +685,7 @@ export default function EventLogisticsPanel({
             setEditingVehicleId(null);
           }}
           onSuccess={() => {
-            fetchLogisticsData();
+            fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null });
             setEditingVehicleId(null);
           }}
         />
@@ -836,7 +700,7 @@ export default function EventLogisticsPanel({
             setSelectedVehicleForHandover(null);
           }}
           onSuccess={() => {
-            fetchLogisticsData();
+            fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null });
             setShowHandoverModal(false);
             setSelectedVehicleForHandover(null);
           }}

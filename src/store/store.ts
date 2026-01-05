@@ -15,6 +15,7 @@ import { eventCategoriesApi } from '@/app/crm/event-categories/store/eventCatego
 import { clientsApi } from '@/app/crm/contacts/store/clientsApi';
 import { locationsApi } from '@/app/crm/locations/locationsApi';
 import { employeesApi } from '@/app/crm/employees/store/employeeApi';
+import { fleetApi } from '@/app/crm/fleet/api/fleetApi';
 
 export const store = configureStore({
   reducer: {
@@ -34,6 +35,7 @@ export const store = configureStore({
     [employeesApi.reducerPath]: employeesApi.reducer,
     [tasksApi.reducerPath]: tasksApi.reducer,
     [calendarApi.reducerPath]: calendarApi.reducer,
+    [fleetApi.reducerPath]: fleetApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware()
@@ -47,7 +49,8 @@ export const store = configureStore({
       .concat(locationsApi.middleware)
       .concat(employeesApi.middleware)
       .concat(tasksApi.middleware)
-      .concat(calendarApi.middleware),
+      .concat(calendarApi.middleware)
+      .concat(fleetApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
