@@ -53,55 +53,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error('Error fetching metadata pages for sitemap:', error);
   }
 
-  const servicePages: MetadataRoute.Sitemap = [];
-  const serviceSlugs = [
-    'dj-eventowy',
-    'konferencje',
-    'streaming',
-    'symulatory-vr',
-    'quizy-teleturnieje',
-    'integracje',
-    'kasyno',
-    'wieczory-tematyczne',
-    'technika-sceniczna',
-  ];
+  // Fetch dynamic service detail pages from conferences_service_items
+  let serviceDetailPages: MetadataRoute.Sitemap = [];
+  try {
+    const { data: services } = await supabase
+      .from('conferences_service_items')
+      .select('slug, updated_at')
+      .eq('is_active', true);
 
-  for (const slug of serviceSlugs) {
-    try {
-      let lastModified = new Date();
-
-      if (slug === 'dj-eventowy') {
-        const { data: djData } = await supabase
-          .from('dj_intro')
-          .select('updated_at')
-          .maybeSingle();
-        lastModified = djData?.updated_at ? new Date(djData.updated_at) : new Date();
-      } else {
-        const tableName = `${slug.replace(/-/g, '_')}_page_images`;
-        const { data: heroData } = await supabase
-          .from(tableName)
-          .select('updated_at')
-          .eq('section', 'hero')
-          .eq('is_active', true)
-          .maybeSingle();
-        lastModified = heroData?.updated_at ? new Date(heroData.updated_at) : new Date();
-      }
-
-      servicePages.push({
-        url: `${baseUrl}/oferta/${slug}`,
-        lastModified,
-        changeFrequency: 'monthly',
-        priority: 0.8,
-      });
-    } catch (error) {
-      console.error(`Error fetching service page ${slug}:`, error);
-      servicePages.push({
-        url: `${baseUrl}/oferta/${slug}`,
-        lastModified: new Date(),
-        changeFrequency: 'monthly',
-        priority: 0.8,
-      });
+    if (services && services.length > 0) {
+      serviceDetailPages = services.map((service) => ({
+        url: `${baseUrl}/uslugi/${service.slug}`,
+        lastModified: service.updated_at ? new Date(service.updated_at) : new Date(),
+        changeFrequency: 'monthly' as const,
+        priority: 0.7,
+      }));
     }
+  } catch (error) {
+    console.error('Error fetching service detail pages for sitemap:', error);
   }
 
   const casinoSubpages: MetadataRoute.Sitemap = [
@@ -166,7 +135,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const allPages = [
     ...mainPages,
-    ...servicePages,
+    ...serviceDetailPages,
     ...casinoSubpages,
     ...portfolioPages,
     ...cityPages,

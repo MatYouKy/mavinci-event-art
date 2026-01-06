@@ -101,47 +101,71 @@ export async function GET() {
     console.error('Error fetching metadata pages:', error);
   }
 
-  const serviceSlugs = [
-    'naglosnienie',
-    'konferencje',
-    'streaming',
-    'symulatory-vr',
-    'quizy-teleturnieje',
-    'integracje',
-    'kasyno',
-    'wieczory-tematyczne',
-    'technika-sceniczna',
-  ];
+  // Fetch dynamic service detail pages with images
+  try {
+    const { data: services } = await supabase
+      .from('conferences_service_items')
+      .select('id, slug, name, thumbnail_url, updated_at')
+      .eq('is_active', true);
 
-  for (const slug of serviceSlugs) {
-    try {
-      const tableName = `${slug.replace(/-/g, '_')}_page_images`;
-      const { data: heroData } = await supabase
-        .from(tableName)
-        .select('image_url, title, alt, updated_at')
-        .eq('section', 'hero')
-        .eq('is_active', true)
-        .maybeSingle();
+    if (services && services.length > 0) {
+      for (const service of services) {
+        const images: ImageInfo[] = [];
 
-      const images: ImageInfo[] = [];
-      if (heroData?.image_url) {
-        images.push({
-          url: heroData.image_url,
-          title: heroData.title || heroData.alt || slug,
-          caption: heroData.alt,
+        // Fetch hero image for this service
+        const { data: heroImage } = await supabase
+          .from('service_hero_images')
+          .select('image_url, alt_text')
+          .eq('page_slug', `uslugi/${service.slug}`)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (heroImage?.image_url) {
+          images.push({
+            url: heroImage.image_url,
+            title: service.name,
+            caption: heroImage.alt_text || service.name,
+          });
+        } else if (service.thumbnail_url) {
+          images.push({
+            url: service.thumbnail_url,
+            title: service.name,
+            caption: service.name,
+          });
+        }
+
+        // Fetch gallery images for this service using service ID
+        const { data: gallery } = await supabase
+          .from('conferences_service_gallery')
+          .select('image_url, caption, alt_text')
+          .eq('service_id', service.id)
+          .eq('is_active', true)
+          .order('display_order')
+          .limit(5);
+
+        if (gallery && gallery.length > 0) {
+          gallery.forEach((img) => {
+            if (img.image_url) {
+              images.push({
+                url: img.image_url,
+                title: img.caption || service.name,
+                caption: img.alt_text || service.name,
+              });
+            }
+          });
+        }
+
+        urls.push({
+          loc: `${baseUrl}/uslugi/${service.slug}`,
+          lastmod: service.updated_at || new Date().toISOString(),
+          changefreq: 'monthly',
+          priority: 0.7,
+          images: images.length > 0 ? images : undefined,
         });
       }
-
-      urls.push({
-        loc: `${baseUrl}/oferta/${slug}`,
-        lastmod: heroData?.updated_at || new Date().toISOString(),
-        changefreq: 'monthly',
-        priority: 0.8,
-        images: images.length > 0 ? images : undefined,
-      });
-    } catch (error) {
-      console.error(`Error fetching service ${slug}:`, error);
     }
+  } catch (error) {
+    console.error('Error fetching service detail pages for image sitemap:', error);
   }
 
   const casinoSubpages = ['blackjack', 'ruletka', 'poker'];
