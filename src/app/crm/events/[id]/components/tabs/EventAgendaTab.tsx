@@ -335,13 +335,6 @@ export default function EventAgendaTab({
         );
 
         if (itemsError) throw itemsError;
-
-        // Sortujemy lokalnie po zapisie
-        const cleanItems = sortedItems.map((item) => ({
-          ...item,
-          isEditing: false,
-        }));
-        setAgendaItems(cleanItems);
       }
 
       // notes
@@ -400,12 +393,6 @@ export default function EventAgendaTab({
       setEndTimeInput(isoToTimeInput(endTime));
     }
 
-    // Czyścimy flagi edycji
-    const cleanItems = agendaItems.map((item) => ({
-      ...item,
-      isEditing: false,
-    }));
-    setAgendaItems(cleanItems);
     setEditMode(false);
   };
 
@@ -953,7 +940,7 @@ export default function EventAgendaTab({
                   <tbody>
                     {getSortedAgendaItems().map((item, idx) => (
                       <tr
-                        key={`${item.time}-${item.title}-${idx}`}
+                        key={item.id || `sorted-${idx}`}
                         className="border-b border-[#d3bb73]/10 last:border-0"
                       >
                         <td className="px-4 py-3 align-top text-[#e5e4e2]/80">
@@ -993,7 +980,7 @@ export default function EventAgendaTab({
 
                     return (
                       <div
-                        key={originalIndex}
+                        key={item.id || `temp-${originalIndex}`}
                         className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4"
                       >
                         <Clock className="mt-1 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
