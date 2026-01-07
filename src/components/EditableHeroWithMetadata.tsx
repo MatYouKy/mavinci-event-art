@@ -40,8 +40,8 @@ export default function EditableHeroWithMetadata({
   initialImageUrl,
   initialOpacity,
   initialPosition,
-  initialTitle = '',
-  initialDescription = '',
+  initialTitle,
+  initialDescription,
 }: EditableHeroWithMetadataProps) {
   const isMobile = useMobile();
   const router = useRouter();
@@ -49,29 +49,34 @@ export default function EditableHeroWithMetadata({
   const { showSnackbar } = useSnackbar();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [title, setTitle] = useState(initialTitle);
-  const [description, setDescription] = useState(initialDescription);
+  const [title, setTitle] = useState(initialTitle ?? '');
+  const [description, setDescription] = useState(initialDescription ?? '');
   const [labelText, setLabelText] = useState(initialLabelText);
   const [labelIcon, setLabelIcon] = useState(initialLabelIcon);
   const [buttonText, setButtonText] = useState(initialButtonText);
   const [whiteWordsCount, setWhiteWordsCount] = useState(initialWhiteWordsCount);
 
+  const hasInitialContent =
+    (typeof initialTitle === 'string' && initialTitle.trim().length > 0) ||
+    (typeof initialDescription === 'string' && initialDescription.trim().length > 0);
+
   useEffect(() => {
-    setTitle(initialTitle);
-    setDescription(initialDescription);
+    setTitle(initialTitle ?? '');
+    setDescription(initialDescription ?? '');
     setLabelText(initialLabelText);
     setLabelIcon(initialLabelIcon);
     setButtonText(initialButtonText);
     setWhiteWordsCount(initialWhiteWordsCount);
-  }, [initialTitle, initialDescription, initialLabelText, initialLabelIcon, initialButtonText, initialWhiteWordsCount]);
+  }, [
+    initialTitle,
+    initialDescription,
+    initialLabelText,
+    initialLabelIcon,
+    initialButtonText,
+    initialWhiteWordsCount,
+  ]);
 
-  const {
-    imageUrl,
-    opacity,
-    uploadHeroImage,
-    saveOpacity,
-    uploading,
-  } = useHeroImage(section, {
+  const { imageUrl, opacity, uploadHeroImage, saveOpacity, uploading } = useHeroImage(section, {
     pageSlug,
     defaultImage: initialImageUrl,
     defaultOpacity: initialOpacity,
@@ -105,18 +110,15 @@ export default function EditableHeroWithMetadata({
           })
           .eq('id', existing.id);
       } else {
-        await supabase
-          .from('schema_org_page_metadata')
-          .insert({
-            page_slug: normalizedSlug,
-            og_image: newImageUrl,
-            title: title || 'Obsługa Konferencji',
-            description: description || '',
-            keywords: [],
-          });
+        await supabase.from('schema_org_page_metadata').insert({
+          page_slug: normalizedSlug,
+          og_image: newImageUrl,
+          title: title || 'Obsługa Konferencji',
+          description: description || '',
+          keywords: [],
+        });
       }
-    } catch (error) {
-    }
+    } catch (error) {}
   };
 
   useEffect(() => {
@@ -140,6 +142,9 @@ export default function EditableHeroWithMetadata({
   };
 
   const loadCurrentData = async () => {
+    // ✅ jeśli SSR podał content, nie pobieramy z Supabase (brak sensu)
+    if (hasInitialContent) return;
+
     try {
       const tableName = getTableName();
       const isUniversalTable = tableName === 'service_hero_images';
@@ -159,7 +164,6 @@ export default function EditableHeroWithMetadata({
       if (error) {
         showSnackbar('Błąd podczas ładowania danych', 'error');
         throw error;
-        return;
       }
 
       if (data) {
@@ -177,7 +181,29 @@ export default function EditableHeroWithMetadata({
   };
 
   const handleEditClick = async () => {
-    await loadCurrentData();
+    await (async () => {
+      // zawsze dociągnij z bazy dla edycji
+      const tableName = getTableName();
+      const isUniversalTable = tableName === 'service_hero_images';
+
+      let query = supabase
+        .from(tableName)
+        .select('title, description, label_text, label_icon, button_text, white_words_count');
+
+      if (isUniversalTable) query = query.eq('page_slug', pageSlug);
+      else query = query.eq('section', 'hero');
+
+      const { data } = await query.maybeSingle();
+      if (data) {
+        setTitle(data.title || '');
+        setDescription(data.description || '');
+        setLabelText(data.label_text || '');
+        setLabelIcon(data.label_icon || '');
+        setButtonText(data.button_text || 'Zobacz inne oferty');
+        setWhiteWordsCount(data.white_words_count || 2);
+      }
+    })();
+
     setIsEditing(true);
   };
 
@@ -250,14 +276,17 @@ export default function EditableHeroWithMetadata({
     fetchCurrentIcon();
   }, [labelIcon]);
 
+  const resolvedDefaultImage =
+    initialImageUrl && initialImageUrl.trim() !== '' ? initialImageUrl : imageUrl;
+
   return (
     <div className="relative">
       <PageHeroImage
         section={section}
-        defaultImage={initialImageUrl}
+        defaultImage={resolvedDefaultImage}
         defaultOpacity={initialOpacity}
       >
-        <section className={`relative overflow-hidden pt-24 pb-2 md:pb-16`}>
+        <section className={`relative overflow-hidden pb-2 pt-24 md:pb-16`}>
           <div className="absolute inset-0 bg-gradient-to-b from-[#0a0c15]/50 via-[#0f1119]/30 to-[#1c1f33]" />
 
           <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -303,7 +332,7 @@ export default function EditableHeroWithMetadata({
               )}
             </div>
 
-            <div className="grid items-center gap-12 lg:grid-cols-2 ">
+            <div className="grid items-center gap-12 lg:grid-cols-2">
               <div>
                 {isEditing ? (
                   <div className="mb-8 space-y-4">
@@ -340,7 +369,9 @@ export default function EditableHeroWithMetadata({
                       label="Ikona etykiety"
                     />
                     <div>
-                      <label className="mb-2 block text-sm text-[#e5e4e2]/70">Tekst przycisku</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                        Tekst przycisku
+                      </label>
                       <input
                         type="text"
                         value={buttonText}
@@ -364,40 +395,52 @@ export default function EditableHeroWithMetadata({
                   </div>
                 ) : (
                   <>
-                    <div className={`mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2 ${isMobile ? 'text-xs' : ''}`}>
+                    <div
+                      className={`mb-6 inline-flex items-center gap-3 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2 ${isMobile ? 'text-xs' : ''}`}
+                    >
                       {currentIcon ? (
                         <div
-                          className="w-5 h-5 text-[#d3bb73]"
+                          className="h-5 w-5 text-[#d3bb73]"
                           dangerouslySetInnerHTML={{ __html: currentIcon.svg_code }}
                         />
                       ) : (
-                        <div className="w-5 h-5 rounded-full bg-[#d3bb73]/30" />
+                        <div className="h-5 w-5 rounded-full bg-[#d3bb73]/30" />
                       )}
-                      <span className={`text-sm font-medium text-[#d3bb73] ${isMobile ? 'text-xs' : ''}`}>{labelText}</span>
+                      <span
+                        className={`text-sm font-medium text-[#d3bb73] ${isMobile ? 'text-xs' : ''}`}
+                      >
+                        {labelText}
+                      </span>
                     </div>
-                    <h1 className={`mb-6 text-4xl font-light text-[#e5e4e2] md:text-6xl ${isMobile ? 'text-2xl' : ''}`}>
+                    <h1
+                      className={`mb-6 text-4xl font-light text-[#e5e4e2] md:text-6xl ${isMobile ? 'text-2xl' : ''}`}
+                    >
                       {beforeTitle}
                       {afterTitle && ' '}
                       <span className="text-[#d3bb73]">{afterTitle}</span>
                     </h1>
 
-                    <p className={`mb-8 text-lg font-light leading-relaxed text-[#e5e4e2]/70 ${isMobile ? 'text-sm' : ''}`}>
+                    <p
+                      className={`mb-8 text-lg font-light leading-relaxed text-[#e5e4e2]/70 ${isMobile ? 'text-sm' : ''}`}
+                    >
                       {description || ''}
                     </p>
 
                     <div className="flex flex-wrap gap-4">
                       <a
                         href="/#kontakt"
-                        className={`${isMobile ? 'w-full justify-center' : ''} md:w-auto inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90`}
+                        className={`${isMobile ? 'w-full justify-center' : ''} inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:w-auto`}
                       >
                         Zapytaj o wycenę
                       </a>
-                      {buttonText && <Link
-                        href={backHref}
-                        className={`${isMobile ? 'w-full justify-center' : ''} md:w-auto inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-8 py-3 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20`}
-                      >
-                        {buttonText}
-                      </Link>}
+                      {buttonText && (
+                        <Link
+                          href={backHref}
+                          className={`${isMobile ? 'w-full justify-center' : ''} inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-8 py-3 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 md:w-auto`}
+                        >
+                          {buttonText}
+                        </Link>
+                      )}
                     </div>
                   </>
                 )}
@@ -408,9 +451,9 @@ export default function EditableHeroWithMetadata({
                   <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl" />
                   <div className="relative overflow-hidden rounded-3xl border border-[#d3bb73]/20">
                     <img
-                      src={imageUrl}
+                      src={resolvedDefaultImage}
                       alt={title || 'Hero image'}
-                      className="h-full w-full object-cover max-h-[300px]"
+                      className="h-full max-h-[300px] w-full object-cover"
                     />
                   </div>
                 </div>

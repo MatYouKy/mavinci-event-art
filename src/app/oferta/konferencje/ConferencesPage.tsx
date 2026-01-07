@@ -6,13 +6,10 @@ import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
-  ChevronDown, Mail, ArrowLeft, Presentation, Music, Trash2, Plus, Edit2
+  Presentation, Music,
 } from 'lucide-react';
-import Link from 'next/link';
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { useEditMode } from '@/contexts/EditModeContext';
-import { PageHeroImage } from '@/components/PageHeroImage';
-import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import { DetailedServices } from './sections/DetailedServices';
 import { GallerySection } from './sections/GallerySection';
 import { MultiCitySection } from './sections/MultiCitySection';
@@ -166,6 +163,7 @@ export default function ConferencesPage() {
       showSnackbar('Błąd podczas dodawania miasta', 'error');
     }
   };
+
 
   const handleUpdateCity = async (cityData: any) => {
     try {

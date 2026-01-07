@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '@/lib/supabase';
 
-async function getHeroImageServer(section: string, pageSlug: string) {
+async function getHeroImageServer(section: string, pageSlug: string, citySlug?: string) {
   noStore();
 
   const cleanSection = section.replace('-hero', '');
@@ -36,6 +36,24 @@ async function getHeroImageServer(section: string, pageSlug: string) {
     return getHeroDefaults(section);
   }
 
+  let baseData = pageImage;
+
+  if (cleanSection === 'konferencje' && citySlug) {
+    const { data: city } = await supabase
+    .from('conferences_cities')
+    .select('name')
+    .eq('slug', citySlug)
+    .maybeSingle();
+    // jeżeli w title nie ma miasta, to doklej
+    if (!baseData?.title?.toLowerCase().includes(city?.name?.toLowerCase())) {
+      baseData.title = `${baseData?.title} ${city?.name}`;
+    }
+
+    baseData.description = `${baseData?.description} ${city?.name}`;
+    baseData.labelText = `${baseData?.labelText} ${city?.name}`;
+    baseData.labelIcon = `${baseData?.labelIcon} ${city?.name}`;
+  }
+
   return {
     imageUrl: pageImage.image_url ?? '',
     opacity: pageImage.opacity ?? 0.2,
@@ -44,7 +62,7 @@ async function getHeroImageServer(section: string, pageSlug: string) {
       posY: pageImage.image_metadata?.desktop?.position?.posY ?? 0,
       scale: pageImage.image_metadata?.desktop?.position?.scale ?? 1,
     },
-    title: pageImage.title ?? '',
+    title: baseData.title ?? '',
     description: pageImage.description ?? '',
     labelText: pageImage.label_text ?? '',
     labelIcon: pageImage.label_icon ?? '',
@@ -92,11 +110,10 @@ function getHeroDefaults(section: string) {
   };
 }
 
-
 import { unstable_noStore as noStore } from 'next/cache';
-import EditableHeroWithMetadata from './EditableHeroWithMetadata';// server-only plik
+import EditableHeroWithMetadata from './EditableHeroWithMetadata'; // server-only plik
 
-export default async function EditableHeroSectionServer({ section, pageSlug }) {
+export default async function EditableHeroSectionServer({ section, pageSlug, initialImageUrl, initialTitle, initialDescription, whiteWordsCount }) {
   noStore();
   const heroData = await getHeroImageServer(section, pageSlug);
 
@@ -104,15 +121,15 @@ export default async function EditableHeroSectionServer({ section, pageSlug }) {
     <EditableHeroWithMetadata
       section={section}
       pageSlug={pageSlug}
-      whiteWordsCount={heroData.whiteWordsCount}
+      whiteWordsCount={whiteWordsCount || heroData.whiteWordsCount}
       labelText={heroData.labelText}
       labelIcon={heroData.labelIcon}
       buttonText={heroData.buttonText}
-      initialImageUrl={heroData.imageUrl}
+      initialImageUrl={initialImageUrl || heroData.imageUrl}
       initialOpacity={heroData.opacity}
       initialPosition={heroData.position}
-      initialTitle={heroData.title}
-      initialDescription={heroData.description}
+      initialTitle={initialTitle || heroData.title}
+      initialDescription={initialDescription || heroData.description}
     />
   );
 }

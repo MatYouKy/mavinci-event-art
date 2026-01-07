@@ -46,20 +46,9 @@ export default function CityConferenceClient({
         defaultDescription={defaultDescription}
       />
 
-      <div className="flex min-h-screen items-center justify-center bg-[#0f1119] px-6 py-20">
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1119] px-6 py-2">
         <div className="w-full max-w-4xl">
           <div className="mb-12 text-center">
-            <h1 className="mb-6 text-4xl font-light leading-tight text-[#e5e4e2] md:text-6xl">
-              Obsługa Konferencji
-              <br />
-              <span className="text-[#d3bb73]">{cityName}</span>
-            </h1>
-
-            <p className="mx-auto mb-8 max-w-2xl text-sm leading-relaxed text-[#e5e4e2]/70 md:text-base">
-              Profesjonalna obsługa techniczna konferencji w {cityName}. Nagłośnienie, multimedia,
-              streaming live i realizacja wideo.
-            </p>
-
             <div className="mx-auto mb-12 grid max-w-3xl gap-6 md:grid-cols-3">
               <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
                 <div className="mb-2 text-3xl font-light text-[#d3bb73]">50-5000+</div>
@@ -146,7 +135,7 @@ export default function CityConferenceClient({
                   if (contactSection) {
                     contactSection.scrollIntoView({ behavior: 'smooth' });
                   } else {
-                    router.push('/oferta/konferencje#contact');
+                    router.push('/#kontakt');
                   }
                 }}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg border-2 border-[#d3bb73] bg-transparent px-6 py-3 text-base font-medium text-[#d3bb73] transition-all hover:bg-[#d3bb73]/10 sm:w-auto sm:px-8 sm:py-4 sm:text-lg"

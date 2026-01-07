@@ -185,7 +185,7 @@ export function useHeroImage(
     }
 
     setLoading(false);
-  }, [section, getTableName, defaultOpacity]);
+  },  [section, getTableName, defaultOpacity, defaultImage, pageSlug, screenMode, showSnackbar]);
 
   useEffect(() => {
     loadImage();

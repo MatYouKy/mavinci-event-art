@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useEditMode } from '@/contexts/EditModeContext';
-import { useSnackbar } from '@/contexts/SnackbarContext';
-import type { SiteImage } from '@/lib/siteImages';
+
 import { SliderX, SliderY, SliderScale, SliderOpacity } from './UI/Slider/Slider';
 import { Save, X } from 'lucide-react';
 import { ThreeDotMenu } from './UI/ThreeDotMenu/ThreeDotMenu';
@@ -43,6 +42,22 @@ export function PageHeroImage({
     pageSlug,
     defaultOpacity: 0.2,
   });
+  const [stableSrc, setStableSrc] = useState<string>(() => {
+    return typeof defaultImage === 'string' && defaultImage.trim() ? defaultImage : '';
+  });
+
+  useEffect(() => {
+    if (typeof imageUrl === 'string' && imageUrl.trim()) {
+      setStableSrc(imageUrl);
+    }
+  }, [imageUrl]);
+
+  useEffect(() => {
+    // jeśli zmienił się default (np. inna strona), też aktualizuj
+    if (typeof defaultImage === 'string' && defaultImage.trim()) {
+      setStableSrc(defaultImage);
+    }
+  }, [defaultImage]);
 
   const { isEditMode } = useEditMode();
   const [isEditingPosition, setIsEditingPosition] = useState(false);
@@ -70,7 +85,6 @@ export function PageHeroImage({
     }
   }, [position, opacity, defaultOpacity, isEditingOpacity, isEditingPosition]);
 
-
   const handleCancelPosition = () => {
     setIsEditingPosition(false);
     setPositionSubMenu(false);
@@ -80,19 +94,24 @@ export function PageHeroImage({
   const handleCancelOpacity = () => {
     setIsEditingOpacity(false);
     setOpacitySubMenu(false);
-    setEditState(s => ({ ...s, opacity: opacity || defaultOpacity }));
+    setEditState((s) => ({ ...s, opacity: opacity || defaultOpacity }));
   };
 
   const handleStartEditingOpacity = () => {
     setIsEditingOpacity(true);
     setOpacitySubMenu(true);
-    setEditState(s => ({ ...s, opacity: opacity || defaultOpacity }));
+    setEditState((s) => ({ ...s, opacity: opacity || defaultOpacity }));
   };
 
   const handleStartEditingPosition = () => {
     setIsEditingPosition(true);
     setPositionSubMenu(true);
-    setEditState(s => ({ ...s, posX: position.posX, posY: position.posY, scale: position.scale }));
+    setEditState((s) => ({
+      ...s,
+      posX: position.posX,
+      posY: position.posY,
+      scale: position.scale,
+    }));
   };
 
   const handleSaveOpacity = async () => {
@@ -136,25 +155,26 @@ export function PageHeroImage({
     },
   ];
 
-  const displayOpacity = isEditingOpacity ? editState.opacity : (opacity || defaultOpacity);
-  const displayPosition = isEditingPosition ? editState : (position || { posX: 0, posY: 0, scale: 1 });
+  const displayOpacity = isEditingOpacity ? editState.opacity : opacity || defaultOpacity;
+  const displayPosition = isEditingPosition
+    ? editState
+    : position || { posX: 0, posY: 0, scale: 1 };
 
   // Use initial values from SSR if available, otherwise fall back to hook values
-  const finalImageUrl = imageUrl;
   const finalOpacity = displayOpacity;
 
   return (
     <div className={`relative ${className}`}>
       <div className="absolute inset-0 overflow-hidden">
         <div
-          className="w-full h-full"
+          className="h-full w-full"
           style={{
             position: 'relative',
             opacity: isEditingOpacity ? displayOpacity : finalOpacity,
           }}
         >
           <img
-            src={loading ? defaultImage : finalImageUrl}
+            src={stableSrc}
             alt={section}
             className="absolute"
             style={{
@@ -193,20 +213,20 @@ export function PageHeroImage({
                 <button
                   onClick={positionSubMenu ? handleSavePosition : handleSaveOpacity}
                   disabled={loading}
-                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? (
-                    <div className="w-5 h-5 border-2 border-[#1c1f33] border-t-transparent rounded-full animate-spin" />
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1c1f33] border-t-transparent" />
                   ) : (
-                    <Save className="w-5 h-5" />
+                    <Save className="h-5 w-5" />
                   )}
                 </button>
                 <button
                   onClick={positionSubMenu ? handleCancelPosition : handleCancelOpacity}
                   disabled={loading}
-                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-[#800020]/20 p-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             }
@@ -217,10 +237,10 @@ export function PageHeroImage({
       {isEditingPosition && positionSubMenu && (
         <div className="absolute inset-0 z-40" style={{ pointerEvents: 'none' }}>
           <div style={{ pointerEvents: 'auto' }}>
-            <div className="absolute top-4 left-4 z-50 bg-[#1c1f33]/95 border border-[#d3bb73]/30 rounded-lg p-2 flex gap-2">
+            <div className="absolute left-4 top-4 z-50 flex gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33]/95 p-2">
               <button
                 onClick={() => setScreenMode('desktop')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
                   screenMode === 'desktop'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
@@ -230,7 +250,7 @@ export function PageHeroImage({
               </button>
               <button
                 onClick={() => setScreenMode('mobile')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
                   screenMode === 'mobile'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
@@ -244,21 +264,21 @@ export function PageHeroImage({
               min={-100}
               max={100}
               step={0.1}
-              onChange={(_, v) => setEditState(s => ({ ...s, posX: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, posX: v as number }))}
             />
             <SliderY
               value={editState.posY}
               min={-100}
               max={100}
               step={0.1}
-              onChange={(_, v) => setEditState(s => ({ ...s, posY: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, posY: v as number }))}
             />
             <SliderScale
               value={editState.scale}
               min={0.1}
               max={3}
               step={0.01}
-              onChange={(_, v) => setEditState(s => ({ ...s, scale: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, scale: v as number }))}
             />
           </div>
         </div>
@@ -272,7 +292,7 @@ export function PageHeroImage({
               min={0}
               max={2}
               step={0.01}
-              onChange={(_, v) => setEditState(s => ({ ...s, opacity: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, opacity: v as number }))}
               style={{ bottom: 70, top: 'auto' }}
             />
           </div>
@@ -280,8 +300,8 @@ export function PageHeroImage({
       )}
 
       {loading && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="w-16 h-16 border-4 border-[#d3bb73] border-t-transparent rounded-full animate-spin" />
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="h-16 w-16 animate-spin rounded-full border-4 border-[#d3bb73] border-t-transparent" />
         </div>
       )}
 
