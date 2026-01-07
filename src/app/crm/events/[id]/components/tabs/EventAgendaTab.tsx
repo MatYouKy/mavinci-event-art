@@ -25,32 +25,54 @@ import { useGetContactByIdQuery } from '@/app/crm/contacts/store/clientsApi';
 import { ContactRow, OrganizationRow } from '@/app/crm/contacts/types';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
-// YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00.000Z
+// YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00 (local time, no timezone conversion)
 const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
   if (!dateOnly || !timeStr) return null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return null;
   if (!/^\d{2}:\d{2}$/.test(timeStr)) return null;
 
-  return `${dateOnly}T${timeStr}:00.000Z`;
+  return `${dateOnly}T${timeStr}:00`;
 };
 
 const isoToDateInput = (value?: string | null): string => {
   if (!value) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 
+  // Extract date part without timezone conversion
+  if (value.includes('T')) {
+    return value.split('T')[0];
+  }
+
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // Use local date without timezone conversion
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const isoToTimeInput = (value?: string | null): string => {
   if (!value) return '';
   if (/^\d{2}:\d{2}$/.test(value)) return value;
 
+  // Extract time part without timezone conversion
+  if (value.includes('T')) {
+    const timePart = value.split('T')[1];
+    if (timePart) {
+      return timePart.slice(0, 5); // HH:MM
+    }
+  }
+
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(11, 16); // HH:MM
+
+  // Use local time without timezone conversion
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 };
 
 interface EventAgendaTabProps {

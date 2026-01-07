@@ -116,28 +116,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         });
       }
 
-      // Safely extract contract_template object from event.event_categories
-      // event.event_categories can be an array, so pick the first element if it's an array
+      // Extract contract template from event.event_categories
+      // Supabase returns contract_templates as a single object (not array) when using foreign key join
       let template = null;
-      if (Array.isArray(event.event_categories) && event.event_categories.length > 0) {
-        // "contract_templates" is an array, pick template with id === contract_template_id if exists
-        const category = event.event_categories[0];
-        if (category.contract_templates && category.contract_template_id) {
-          template = category.contract_templates.find(
-            (tpl: any) => tpl.id === category.contract_template_id
-          );
-          // Attach page_settings if exists (SupaBase *select* joins, etc workaround)
-          if (template && template.page_settings === undefined && category.contract_templates) {
-            template.page_settings = template.page_settings ?? null;
+
+      if (event.event_categories) {
+        // event_categories can be an object or array depending on the response
+        const category = Array.isArray(event.event_categories)
+          ? event.event_categories[0]
+          : event.event_categories;
+
+        if (category) {
+          // contract_templates is returned as a single object, not an array
+          if (category.contract_templates) {
+            template = category.contract_templates;
           }
         }
-      } else if (
-        event.event_categories && 
-        typeof event.event_categories === 'object' && 
-        'contract_template' in event.event_categories
-      ) {
-        // handles the case where event.event_categories is a single object
-        template = (event.event_categories as any).contract_template;
       }
 
       // Normalize template as expected type or null
