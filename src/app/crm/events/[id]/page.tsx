@@ -149,6 +149,7 @@ export default function EventDetailPage() {
     status: eventStatus,
     isLoading,
     error,
+    refetch: refetchEvent,
   } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
@@ -1263,6 +1264,7 @@ export default function EventDetailPage() {
                 return;
               }
 
+              await refetchEvent();
               setShowEditEventModal(false);
               showSnackbar('Wydarzenie zaktualizowane', 'success');
             } catch (err) {
