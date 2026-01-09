@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
@@ -8,8 +8,11 @@ import {
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
   Presentation, Music,
 } from 'lucide-react';
+
 import ContactFormWithTracking from '@/components/ContactFormWithTracking';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+
 import { DetailedServices } from './sections/DetailedServices';
 import { GallerySection } from './sections/GallerySection';
 import { MultiCitySection } from './sections/MultiCitySection';
@@ -21,8 +24,6 @@ import { FAQSection } from './sections/FAQ/FAQSection';
 import { ContactCTA } from './sections/ContactCTA';
 import { RelatedServicesSection } from './sections/RelatedServicesSection';
 import { AdvantagesSection } from './sections/AdvantagesSection';
-import { useSnackbar } from '@/contexts/SnackbarContext';
-
 
 export const iconMap: Record<string, any> = {
   Mic, Camera, Lightbulb, Monitor, Wifi, Settings,
@@ -32,27 +33,65 @@ export const iconMap: Record<string, any> = {
   Volume2: Mic, Truck: Package
 };
 
-export default function ConferencesPage() {
+type Props = {
+  initialHeroData: any;
+  initialServices: any[];
+  initialCaseStudies: any[];
+  initialAdvantages: any[];
+  initialProcess: any[];
+  initialPricing: any[];
+  initialFaq: any[];
+  initialGallery: any[];
+  initialPortfolioProjects: any[];
+  initialCities: any[];
+  initialServiceCategories: any[];
+  initialRelatedServices: any[];
+  initialAllServiceItems: any[];
+  initialSelectedServiceIds: string[];
+};
+
+export default function ConferencesPageClient({
+  initialHeroData,
+  initialServices,
+  initialCaseStudies,
+  initialAdvantages,
+  initialProcess,
+  initialPricing,
+  initialFaq,
+  initialGallery,
+  initialPortfolioProjects,
+  initialCities,
+  initialServiceCategories,
+  initialRelatedServices,
+  initialAllServiceItems,
+  initialSelectedServiceIds,
+}: Props) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
-  
-  const [heroData, setHeroData] = useState<any>(null);
 
-  const [services, setServices] = useState<any[]>([]);
-  const [caseStudies, setCaseStudies] = useState<any[]>([]);
-  const [advantages, setAdvantages] = useState<any[]>([]);
-  const [process, setProcess] = useState<any[]>([]);
-  const [pricing, setPricing] = useState<any[]>([]);
-  const [faq, setFaq] = useState<any[]>([]);
-  const [gallery, setGallery] = useState<any[]>([]);
-  const [portfolioProjects, setPortfolioProjects] = useState<any[]>([]);
-  const [cities, setCities] = useState<any[]>([]);
-  const [serviceCategories, setServiceCategories] = useState<any[]>([]);
+  // ⭐ Startujemy z danymi z SSR
+  const [heroData, setHeroData] = useState<any>(initialHeroData);
+
+  const [services, setServices] = useState<any[]>(initialServices);
+  const [caseStudies, setCaseStudies] = useState<any[]>(initialCaseStudies);
+  const [advantages, setAdvantages] = useState<any[]>(initialAdvantages);
+  const [process, setProcess] = useState<any[]>(initialProcess);
+  const [pricing, setPricing] = useState<any[]>(initialPricing);
+  const [faq, setFaq] = useState<any[]>(initialFaq);
+  const [gallery, setGallery] = useState<any[]>(initialGallery);
+  const [portfolioProjects, setPortfolioProjects] = useState<any[]>(initialPortfolioProjects);
+  const [cities, setCities] = useState<any[]>(initialCities);
+  const [serviceCategories, setServiceCategories] = useState<any[]>(initialServiceCategories);
+
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
-  const [relatedServices, setRelatedServices] = useState<any[]>([]);
-  const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
-  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
+
+  const [relatedServices, setRelatedServices] = useState<any[]>(initialRelatedServices);
+  const [allServiceItems, setAllServiceItems] = useState<any[]>(initialAllServiceItems);
+
+  const initialSet = useMemo(() => new Set(initialSelectedServiceIds), [initialSelectedServiceIds]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(initialSet);
+
   const [isEditingProcess, setIsEditingProcess] = useState(false);
 
   const [isEditingCities, setIsEditingCities] = useState(false);
@@ -60,9 +99,11 @@ export default function ConferencesPage() {
   const [isAddingCity, setIsAddingCity] = useState(false);
   const [newCityName, setNewCityName] = useState('');
 
+  // ✅ Opcjonalnie: tylko w edit mode dociągamy świeże dane po stronie klienta
   useEffect(() => {
-    loadData();
-  }, []);
+    if (isEditMode) loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode]);
 
   const loadData = async () => {
     const [
@@ -99,21 +140,12 @@ export default function ConferencesPage() {
         .select(`*, service_item:conferences_service_items(*)`)
         .eq('is_active', true)
         .order('display_order'),
-      supabase
-        .from('conferences_service_items')
-        .select('*')
-        .eq('is_active', true)
-        .order('name'),
-      supabase
-        .from('conferences_gallery')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_order'),
+      supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
+      supabase.from('conferences_gallery').select('*').eq('is_active', true).order('display_order'),
     ]);
 
-    if (heroRes.data) {
-      setHeroData(heroRes.data);
-    }
+    if (heroRes.data) setHeroData(heroRes.data);
+
     if (servicesRes.data) setServices(servicesRes.data);
     if (caseStudiesRes.data) setCaseStudies(caseStudiesRes.data);
     if (advantagesRes.data) setAdvantages(advantagesRes.data);
@@ -123,13 +155,14 @@ export default function ConferencesPage() {
     if (portfolioRes.data) setPortfolioProjects(portfolioRes.data);
     if (citiesRes.data) setCities(citiesRes.data);
     if (serviceCategoriesRes.data) setServiceCategories(serviceCategoriesRes.data);
-
-    if (relatedServicesRes.data) {
-      setRelatedServices(relatedServicesRes.data.map((r) => r.service_item));
-      setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_item_id)));
-    }
     if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
     if (galleryRes.data) setGallery(galleryRes.data);
+
+    if (relatedServicesRes.data) {
+      const items = relatedServicesRes.data.map((r: any) => r.service_item).filter(Boolean);
+      setRelatedServices(items);
+      setSelectedServiceIds(new Set(relatedServicesRes.data.map((r: any) => r.service_item_id).filter(Boolean)));
+    }
   };
 
   const handleAddCity = async () => {
@@ -163,7 +196,6 @@ export default function ConferencesPage() {
       showSnackbar('Błąd podczas dodawania miasta', 'error');
     }
   };
-
 
   const handleUpdateCity = async (cityData: any) => {
     try {
@@ -206,63 +238,80 @@ export default function ConferencesPage() {
     }
   };
 
-  if (!heroData) {
-    return (
-      <>
-        <div className="min-h-screen bg-[#0f1119] flex items-center justify-center">
-          <div className="text-[#d3bb73]">Ładowanie...</div>
-        </div>
-      </>
-    );
-  }
-
+  // ✅ UWAGA: już nie blokujemy całej strony loaderem (SEO!)
+  // Jeśli heroData jest null, nadal renderujemy resztę (a Hero masz w OfferLayout)
   return (
-    <>
-      <div className="min-h-screen bg-[#0f1119]">
-        {/* Hero Section with PageHeroImage */}
-        
-        <TechnicalServices services={services} isEditMode={isEditMode} loadData={loadData} />
-        {(gallery.length > 0 || isEditMode) && (
-          <GallerySection isEditMode={isEditMode} gallery={gallery} loadData={loadData} />
-        )}
-        <AdvantagesSection advantages={advantages} />
+    <div className="min-h-screen bg-[#0f1119]">
+      <TechnicalServices services={services} isEditMode={isEditMode} loadData={loadData} />
 
-        {serviceCategories.length > 0 && (
-          <DetailedServices setIsContactFormOpen={() => setIsContactFormOpen(true)} />
-        )}
+      {(gallery.length > 0 || isEditMode) && (
+        <GallerySection isEditMode={isEditMode} gallery={gallery} loadData={loadData} />
+      )}
 
-{portfolioProjects.length > 0 && (
-          <PortfolioProjects isEditMode={isEditMode} portfolioProjects={portfolioProjects} />
-        )}
-        <ProcessSection isEditMode={isEditMode} process={process} setIsEditingProcess={setIsEditingProcess} isEditingProcess={isEditingProcess} loadData={loadData} />
-        
-        {/* <PricingSection isEditMode={isEditMode} pricing={pricing} loadData={loadData} setIsContactFormOpen={setIsContactFormOpen} /> */}
-     
+      <AdvantagesSection advantages={advantages} />
 
-        {/* FAQ */}
-        {faq.length > 0 && (
-          <CaseStudiesSection caseStudies={caseStudies} />
-        )}
-        <FAQSection faq={faq} setExpandedFaq={setExpandedFaq} expandedFaq={expandedFaq} />
+      {serviceCategories.length > 0 && (
+        <DetailedServices setIsContactFormOpen={() => setIsContactFormOpen(true)} />
+      )}
 
-        {/* Related Services Section */}
-        {(relatedServices.length > 0 || isEditMode) && (
-          <RelatedServicesSection isEditMode={isEditMode} selectedServiceIds={selectedServiceIds} setSelectedServiceIds={setSelectedServiceIds} allServiceItems={allServiceItems} loadData={loadData} relatedServices={relatedServices} />
-        )}
-        {cities.length > 0 && (
-          <MultiCitySection isEditMode={isEditMode} isEditingCities={isEditingCities} setIsEditingCities={setIsEditingCities} handleUpdateCity={handleUpdateCity} setEditingCity={setEditingCity} setIsAddingCity={setIsAddingCity} handleDeleteCity={handleDeleteCity} cities={cities} editingCity={editingCity} newCityName={newCityName} setNewCityName={setNewCityName} handleAddCity={handleAddCity} isAddingCity={isAddingCity} />
-        )}
+      {portfolioProjects.length > 0 && (
+        <PortfolioProjects isEditMode={isEditMode} portfolioProjects={portfolioProjects} />
+      )}
 
-        <ContactCTA setIsContactFormOpen={setIsContactFormOpen} />
+      <ProcessSection
+        isEditMode={isEditMode}
+        process={process}
+        setIsEditingProcess={setIsEditingProcess}
+        isEditingProcess={isEditingProcess}
+        loadData={loadData}
+      />
 
-        <ContactFormWithTracking
-          isOpen={isContactFormOpen}
-          onClose={() => setIsContactFormOpen(false)}
-          sourcePage="Konferencje"
-          sourceSection="conferences"
-          defaultEventType="Konferencja"
+      {faq.length > 0 && (
+        <CaseStudiesSection caseStudies={caseStudies} />
+      )}
+
+      <FAQSection faq={faq} setExpandedFaq={setExpandedFaq} expandedFaq={expandedFaq} />
+
+      {(relatedServices.length > 0 || isEditMode) && (
+        <RelatedServicesSection
+          isEditMode={isEditMode}
+          selectedServiceIds={selectedServiceIds}
+          setSelectedServiceIds={setSelectedServiceIds}
+          allServiceItems={allServiceItems}
+          loadData={loadData}
+          relatedServices={relatedServices}
         />
+      )}
 
+      {cities.length > 0 && (
+        <MultiCitySection
+          isEditMode={isEditMode}
+          isEditingCities={isEditingCities}
+          setIsEditingCities={setIsEditingCities}
+          handleUpdateCity={handleUpdateCity}
+          setEditingCity={setEditingCity}
+          setIsAddingCity={setIsAddingCity}
+          handleDeleteCity={handleDeleteCity}
+          cities={cities}
+          editingCity={editingCity}
+          newCityName={newCityName}
+          setNewCityName={setNewCityName}
+          handleAddCity={handleAddCity}
+          isAddingCity={isAddingCity}
+        />
+      )}
+
+      <ContactCTA setIsContactFormOpen={setIsContactFormOpen} />
+
+      <ContactFormWithTracking
+        isOpen={isContactFormOpen}
+        onClose={() => setIsContactFormOpen(false)}
+        sourcePage="Konferencje"
+        sourceSection="conferences"
+        defaultEventType="Konferencja"
+      />
+
+      {/* Twoje animacje możesz zostawić, tylko nie dawaj opacity:0 na tekst SEO (H1/lead/FAQ). */}
       <style jsx global>{`
         @keyframes fade-in-up {
           from {
@@ -279,9 +328,7 @@ export default function ConferencesPage() {
           animation: fade-in-up 0.8s ease-out forwards;
           opacity: 0;
         }
-        `}</style>
-
-      </div>
-    </>
+      `}</style>
+    </div>
   );
 }
