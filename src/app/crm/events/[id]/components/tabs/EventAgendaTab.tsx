@@ -316,7 +316,7 @@ export default function EventAgendaTab({
               event_date: normalizedEventDate,
               start_time: isoStart,
               end_time: isoEnd,
-              client_contact: contact.full_name || null,
+              client_contact: contact?.full_name || null,
               created_by: employee?.id,
             },
           ])
@@ -334,7 +334,7 @@ export default function EventAgendaTab({
             event_date: normalizedEventDate,
             start_time: isoStart,
             end_time: isoEnd,
-            client_contact: contact.full_name || null,
+            client_contact: contact?.full_name || null,
           })
           .eq('id', currentAgendaId);
 
@@ -447,8 +447,8 @@ export default function EventAgendaTab({
         startTime: startTimeInput,
         endTime: endTimeInput,
         clientContact: organization?.alias || organization?.name || '',
-        contactName: contact.full_name || '',
-        contactNumber: contact.business_phone || '',
+        contactName: contact?.full_name || '',
+        contactNumber: contact?.business_phone || '',
         agendaItems: getSortedAgendaItems(),
         agendaNotes,
         lastUpdated: new Date().toISOString(),
