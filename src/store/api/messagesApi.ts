@@ -339,6 +339,13 @@ export const messagesApi = api.injectEndpoints({
               const fromName = employee ? `${employee.name} ${employee.surname}` : 'System';
               const bodyText = data.body.replace(/<[^>]*>/g, '');
 
+              // Fetch attachments for sent emails
+              const { data: attachments } = await supabase
+                .from('email_attachments')
+                .select('id, filename, content_type, size_bytes, storage_path')
+                .eq('email_id', id)
+                .eq('email_type', 'sent');
+
               messageData = {
                 id: data.id,
                 type: 'sent',
@@ -353,6 +360,7 @@ export const messagesApi = api.injectEndpoints({
                 isStarred: false,
                 email_account_id: data.email_account_id,
                 originalData: data,
+                attachments: attachments || [],
               };
             }
           } else if (type === 'received') {

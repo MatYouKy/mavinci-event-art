@@ -319,3 +319,13 @@ npm install
 # Restart
 pm2 restart mavinci-imap-sync
 ```
+
+## Obsługa Załączników
+
+Worker automatycznie:
+- Wykrywa załączniki w emailach
+- Zapisuje pliki do Supabase Storage (bucket: `email-attachments`)
+- Tworzy rekordy w tabeli `email_attachments`
+- Załączniki są dostępne w CRM z możliwością pobrania
+
+**Uwaga:** Załączniki są przechowywane w folderze `received/{email_id}/` w Supabase Storage.

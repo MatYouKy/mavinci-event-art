@@ -148,7 +148,11 @@ async function syncAccount(account) {
           is_starred: false,
         };
 
-        const { error: insertError } = await supabase.from('received_emails').insert(emailData);
+        const { data: insertedEmail, error: insertError } = await supabase
+          .from('received_emails')
+          .insert(emailData)
+          .select()
+          .single();
 
         if (insertError) {
           if (insertError.code === '23505') {
@@ -161,6 +165,56 @@ async function syncAccount(account) {
           syncedCount++;
           const receivedDateStr = parsed.date ? new Date(parsed.date).toLocaleString('pl-PL') : 'unknown';
           console.log(`  ✓ Synced [${receivedDateStr}]: ${parsed.subject || '(No subject)'}`);
+
+          // Process attachments if any
+          if (parsed.attachments && parsed.attachments.length > 0) {
+            console.log(`    📎 Processing ${parsed.attachments.length} attachment(s)...`);
+
+            for (const attachment of parsed.attachments) {
+              try {
+                const fileName = attachment.filename || `attachment-${Date.now()}`;
+                const contentType = attachment.contentType || 'application/octet-stream';
+                const buffer = attachment.content;
+                const sizeBytes = buffer.length;
+
+                // Generate storage path: email-attachments/received/{email_id}/{filename}
+                const storagePath = `received/${insertedEmail.id}/${fileName}`;
+
+                // Upload to Supabase Storage
+                const { error: uploadError } = await supabase.storage
+                  .from('email-attachments')
+                  .upload(storagePath, buffer, {
+                    contentType: contentType,
+                    upsert: false,
+                  });
+
+                if (uploadError) {
+                  console.error(`    ✗ Failed to upload attachment ${fileName}:`, uploadError.message);
+                  continue;
+                }
+
+                // Insert attachment record
+                const { error: attachmentError } = await supabase
+                  .from('email_attachments')
+                  .insert({
+                    email_id: insertedEmail.id,
+                    email_type: 'received',
+                    filename: fileName,
+                    content_type: contentType,
+                    size_bytes: sizeBytes,
+                    storage_path: storagePath,
+                  });
+
+                if (attachmentError) {
+                  console.error(`    ✗ Failed to save attachment record ${fileName}:`, attachmentError.message);
+                } else {
+                  console.log(`    ✓ Saved attachment: ${fileName} (${(sizeBytes / 1024).toFixed(1)} KB)`);
+                }
+              } catch (attachError) {
+                console.error(`    ✗ Error processing attachment:`, attachError.message);
+              }
+            }
+          }
         }
       } catch (parseError) {
         console.error('  ✗ Parse error:', parseError.message);
