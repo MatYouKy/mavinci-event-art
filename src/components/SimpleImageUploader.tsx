@@ -90,6 +90,15 @@ export function SimpleImageUploader({
     };
   }, [initialImage?.src]);
 
+  // Cleanup Object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (preview && preview.startsWith('blob:')) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
+
   const processFile = (selectedFile: File) => {
     // Reset error state when selecting new file
     setImageLoadError(false);
@@ -101,16 +110,29 @@ export function SimpleImageUploader({
     }
 
     setFile(selectedFile);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreview(reader.result as string);
-    };
-    reader.readAsDataURL(selectedFile);
+
+    // CRITICAL FIX: Use Object URL instead of base64 data URL
+    // Object URLs are memory-efficient and don't crash browser
+    // Clean up previous Object URL if exists
+    if (preview && preview.startsWith('blob:')) {
+      URL.revokeObjectURL(preview);
+    }
+
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setPreview(objectUrl);
 
     onImageSelect({
       file: selectedFile,
       alt,
-      image_metadata: { 
+      desktop: {
+        src: objectUrl,
+        position: { posX: 0, posY: 0, scale: 1 }
+      },
+      mobile: {
+        src: objectUrl,
+        position: { posX: 0, posY: 0, scale: 1 }
+      },
+      image_metadata: {
         desktop: {
           position: { posX: 0, posY: 0, scale: 1 }
         },
@@ -152,10 +174,18 @@ export function SimpleImageUploader({
 
   const handleAltChange = (newAlt: string) => {
     setAlt(newAlt);
-    if (file) {
+    if (file && preview) {
       onImageSelect({
         file,
         alt: newAlt,
+        desktop: {
+          src: preview,
+          position: { posX: 0, posY: 0, scale: 1 }
+        },
+        mobile: {
+          src: preview,
+          position: { posX: 0, posY: 0, scale: 1 }
+        },
         image_metadata: {
           desktop: {
             position: { posX: 0, posY: 0, scale: 1 }
@@ -169,6 +199,10 @@ export function SimpleImageUploader({
   };
 
   const handleRemove = () => {
+    // Clean up Object URL to prevent memory leaks
+    if (preview && preview.startsWith('blob:')) {
+      URL.revokeObjectURL(preview);
+    }
     setPreview(null);
     setFile(null);
     setImageLoadError(false);
@@ -187,7 +221,11 @@ export function SimpleImageUploader({
               alt={alt || 'Podgląd'}
               className="w-full h-full object-cover"
               onError={(e) => {
-                console.error('Preview image load error for URL:', preview);
+                // CRITICAL FIX: Don't log the URL if it's base64 - causes browser crash
+                const urlPreview = preview?.startsWith('data:')
+                  ? '[base64 data URL - too large to display]'
+                  : preview?.substring(0, 100);
+                console.error('Preview image load error for URL:', urlPreview);
                 setPreview(null);
                 setImageLoadError(true);
                 setFile(null);

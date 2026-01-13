@@ -67,6 +67,15 @@ export default function PortfolioDetailClient() {
     fetchProject();
   }, [slug]);
 
+  // Cleanup Object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewImage && previewImage.startsWith('blob:')) {
+        URL.revokeObjectURL(previewImage);
+      }
+    };
+  }, [previewImage]);
+
   const fetchProject = async () => {
     setLoading(true);
     try {
@@ -118,11 +127,9 @@ export default function PortfolioDetailClient() {
   const handleImageSelect = (data: IUploadImage) => {
     setImageData(data);
     if (data.file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result as string);
-      };
-      reader.readAsDataURL(data.file);
+      // Use Object URL instead of base64 to prevent browser crashes
+      const objectUrl = URL.createObjectURL(data.file);
+      setPreviewImage(objectUrl);
     }
   };
 
@@ -615,7 +622,7 @@ export default function PortfolioDetailClient() {
                       rows={8}
                     />
                     <p className="text-[#e5e4e2]/50 text-xs mt-2">
-                      Tip: Używaj konkretnych słów kluczowych jak "organizacja eventów firmowych", "catering na konferencje", "nagłośnienie sceny", "oświetlenie eventowe" itp.
+                      Tip: Używaj konkretnych słów kluczowych jak &quot;organizacja eventów firmowych&quot;, &quot;catering na konferencje&quot;, &quot;nagłośnienie sceny&quot;, &quot;oświetlenie eventowe&quot; itp.
                     </p>
                   </div>
 
@@ -725,7 +732,7 @@ export default function PortfolioDetailClient() {
                   <li>• Edytuj pola bezpośrednio w miejscu gdzie będą widoczne</li>
                   <li>• Użyj suwaka przeźroczystości aby dostosować widoczność tła</li>
                   <li>• Możesz zmienić główne zdjęcie lub dodać nowe do galerii</li>
-                  <li>• Kliknij "Zapisz zmiany" aby zapisać wszystkie edycje</li>
+                  <li>• Kliknij &quot;Zapisz zmiany&quot; aby zapisać wszystkie edycje</li>
                 </ul>
               </div>
             </div>
