@@ -442,7 +442,7 @@ export default function ServiceDetailClient({
                   <div>
                     <p className="mb-2 text-[#e5e4e2]/70">Brak zdjęć w galerii</p>
                     <p className="text-sm text-[#e5e4e2]/40">
-                      Kliknij "Dodaj zdjęcie" aby rozpocząć
+                      Kliknij &quot;Dodaj zdjęcie&quot; aby rozpocząć
                     </p>
                   </div>
                 </div>
