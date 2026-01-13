@@ -16,6 +16,8 @@ export interface IScreenMetadata {
 }
 
 export interface IScreenMetadataUpload {
+  objectFit: string;
+  objectFit: string;
   position?: IImagePosition;
   upload_settings?: IUploadSettings;
 }

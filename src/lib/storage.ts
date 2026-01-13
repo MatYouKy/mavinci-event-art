@@ -42,110 +42,160 @@ const compressAndResizeImage = async (
     throw new Error(`Plik jest zbyt duży (max ${maxFileSize / 1024 / 1024}MB)`);
   }
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+  const mimeType =
+    format === 'webp' ? 'image/webp' : format === 'png' ? 'image/png' : 'image/jpeg';
 
-    // Set timeout for FileReader
-    const readerTimeout = setTimeout(() => {
-      reject(new Error('Przekroczono limit czasu odczytu pliku'));
-    }, 30000); // 30 seconds
+  // 1) Najpierw próbujemy createImageBitmap (najstabilniejsze, bez <img src=blob/dataUrl>)
+  try {
+    const bitmap = await createImageBitmap(file);
 
-    reader.onload = (event) => {
-      clearTimeout(readerTimeout);
+    const srcW = bitmap.width;
+    const srcH = bitmap.height;
 
-      const dataUrl = event.target?.result as string;
-      if (!dataUrl) {
-        reject(new Error('Nie udało się odczytać pliku'));
-        return;
+    if (!srcW || !srcH) {
+      bitmap.close?.();
+      throw new Error('Nieprawidłowe wymiary obrazu');
+    }
+
+    let targetW = srcW;
+    let targetH = srcH;
+
+    if (targetW > maxWidth || targetH > maxHeight) {
+      const aspect = targetW / targetH;
+      if (targetW >= targetH) {
+        targetW = Math.min(targetW, maxWidth);
+        targetH = targetW / aspect;
+      } else {
+        targetH = Math.min(targetH, maxHeight);
+        targetW = targetH * aspect;
       }
+    }
 
-      const img = new Image();
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(targetW));
+    canvas.height = Math.max(1, Math.round(targetH));
 
-      // Set timeout for image loading
-      const imgTimeout = setTimeout(() => {
-        reject(new Error('Przekroczono limit czasu ładowania obrazu. Sprawdź czy plik nie jest uszkodzony.'));
-      }, 30000); // 30 seconds
+    const ctx = canvas.getContext('2d', { alpha: format === 'png' });
+    if (!ctx) {
+      bitmap.close?.();
+      throw new Error('Nie udało się utworzyć kontekstu canvas');
+    }
 
-      img.onload = () => {
-        clearTimeout(imgTimeout);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap as any, 0, 0, canvas.width, canvas.height);
 
-        try {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
+    bitmap.close?.();
 
-          // Validate image dimensions
-          if (width === 0 || height === 0) {
-            reject(new Error('Nieprawidłowe wymiary obrazu'));
-            return;
+    const blob: Blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('Nie udało się skompresować obrazu'))),
+        mimeType,
+        quality
+      );
+    });
+
+    return blob;
+  } catch (err) {
+    // fallback poniżej (normalne przy Safari/niektórych formatach)
+  }
+
+  // 2) Fallback: <img> + blob URL (NIE dataURL) + decode() + poprawny cleanup
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    // timeout
+    const imgTimeout = setTimeout(() => {
+      URL.revokeObjectURL(url);
+      reject(
+        new Error(
+          'Przekroczono limit czasu ładowania obrazu. Sprawdź czy plik nie jest uszkodzony.'
+        )
+      );
+    }, 30000);
+
+    const cleanup = () => {
+      clearTimeout(imgTimeout);
+      URL.revokeObjectURL(url);
+    };
+
+    img.onload = async () => {
+      try {
+        // decode = bardziej stabilne niż samo onload w niektórych przeglądarkach
+        if ('decode' in img) {
+          // @ts-ignore
+          await img.decode();
+        }
+
+        const srcW = img.naturalWidth || img.width;
+        const srcH = img.naturalHeight || img.height;
+
+        if (!srcW || !srcH) {
+          cleanup();
+          reject(new Error('Nieprawidłowe wymiary obrazu'));
+          return;
+        }
+
+        let targetW = srcW;
+        let targetH = srcH;
+
+        if (targetW > maxWidth || targetH > maxHeight) {
+          const aspect = targetW / targetH;
+          if (targetW >= targetH) {
+            targetW = Math.min(targetW, maxWidth);
+            targetH = targetW / aspect;
+          } else {
+            targetH = Math.min(targetH, maxHeight);
+            targetW = targetH * aspect;
           }
+        }
 
-          // Calculate new dimensions maintaining aspect ratio
-          if (width > maxWidth || height > maxHeight) {
-            const aspectRatio = width / height;
-            if (width > height) {
-              width = Math.min(width, maxWidth);
-              height = width / aspectRatio;
-            } else {
-              height = Math.min(height, maxHeight);
-              width = height * aspectRatio;
-            }
-          }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(targetW));
+        canvas.height = Math.max(1, Math.round(targetH));
 
-          // Round to avoid subpixel rendering
-          canvas.width = Math.round(width);
-          canvas.height = Math.round(height);
+        const ctx = canvas.getContext('2d', { alpha: format === 'png' });
+        if (!ctx) {
+          cleanup();
+          reject(new Error('Nie udało się utworzyć kontekstu canvas'));
+          return;
+        }
 
-          const ctx = canvas.getContext('2d', { alpha: format === 'png' });
-          if (!ctx) {
-            reject(new Error('Nie udało się utworzyć kontekstu canvas'));
-            return;
-          }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          // Use better image smoothing
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-          // Convert to specified format
-          const mimeType = format === 'webp'
-            ? 'image/webp'
-            : format === 'png'
-            ? 'image/png'
-            : 'image/jpeg';
-
+        const blob: Blob = await new Promise((resolveBlob, rejectBlob) => {
           canvas.toBlob(
-            (blob) => {
-              if (!blob) {
-                reject(new Error('Nie udało się skompresować obrazu'));
-                return;
-              }
-              resolve(blob);
-            },
+            (b) => (b ? resolveBlob(b) : rejectBlob(new Error('Nie udało się skompresować obrazu'))),
             mimeType,
             quality
           );
-        } catch (err) {
-          reject(new Error(`Błąd przetwarzania obrazu: ${err instanceof Error ? err.message : 'Nieznany błąd'}`));
-        }
-      };
+        });
 
-      img.onerror = (err) => {
-        clearTimeout(imgTimeout);
-        console.error('Image load error:', err);
-        reject(new Error('Nie udało się załadować obrazu. Plik może być uszkodzony lub w nieobsługiwanym formacie.'));
-      };
-
-      img.src = dataUrl;
+        cleanup();
+        resolve(blob);
+      } catch (e: any) {
+        cleanup();
+        reject(
+          new Error(
+            `Błąd przetwarzania obrazu: ${e instanceof Error ? e.message : 'Nieznany błąd'}`
+          )
+        );
+      }
     };
 
-    reader.onerror = () => {
-      clearTimeout(readerTimeout);
-      reject(new Error('Błąd podczas odczytu pliku'));
+    img.onerror = () => {
+      cleanup();
+      reject(
+        new Error(
+          'Nie udało się załadować obrazu. Plik może być uszkodzony lub w nieobsługiwanym formacie.'
+        )
+      );
     };
 
-    reader.readAsDataURL(file);
+    img.src = url;
   });
 };
 

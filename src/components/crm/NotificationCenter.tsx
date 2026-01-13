@@ -5,6 +5,7 @@ import { Bell, X, Check, ExternalLink, Trash2, CheckCheck, CheckCircle, XCircle,
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Notification {
   id: string;
@@ -24,6 +25,9 @@ interface Notification {
 
 export default function NotificationCenter() {
   const router = useRouter();
+  const {
+    isAdmin,
+  } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -449,7 +453,7 @@ export default function NotificationCenter() {
               </div>
 
               <div className="mt-2 space-y-2">
-                {unreadCount > 0 && (
+                {unreadCount > 0 && isAdmin && (
                   <button
                     onClick={markAllAsRead}
                     disabled={loading}
@@ -459,7 +463,7 @@ export default function NotificationCenter() {
                     Oznacz wszystkie jako przeczytane
                   </button>
                 )}
-                {notifications.length > 0 && (
+                {notifications.length > 0 && isAdmin && (
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
                     disabled={deletingAll}

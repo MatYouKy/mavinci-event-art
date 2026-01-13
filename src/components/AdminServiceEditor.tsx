@@ -521,7 +521,6 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
               <ServiceGalleryEditor
                 serviceId={serviceId}
                 gallery={gallery}
-                onUpdate={loadGallery}
               />
             </div>
 

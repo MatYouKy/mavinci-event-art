@@ -106,6 +106,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
           .eq('email', session.user.email)
           .maybeSingle();
         if (employeeData) {
+          console.log('employeeData', employeeData);
           setEmployee(employeeData);
         }
       }

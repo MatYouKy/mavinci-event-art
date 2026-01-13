@@ -177,5 +177,6 @@ export const canEditWebsite = (
 ): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
-  return hasPermission(employee, 'website_edit');
+  // if(employee.permissions?.includes('website_manage')) return true;
+  return hasPermission(employee, 'website_edit') || hasPermission(employee, 'page_manage');
 };
